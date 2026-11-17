@@ -17,6 +17,8 @@ export interface CreateRunBody extends CommandInput {
   phases?: string[];
   /** May the planner split the run into subtasks. The server's `SPLIT` decides when it is missing. */
   split?: boolean;
+  /** Ids of uploaded files (`POST /uploads`) the run's agents read. */
+  attachments?: string[];
 }
 
 export interface StartStepBody extends CommandInput {
@@ -27,6 +29,8 @@ export interface StartStepBody extends CommandInput {
 export interface ReplayBody extends CommandInput {
   prompt?: string;
   phases?: string[];
+  /** Ids of uploaded files (`POST /uploads`) the run's agents read. */
+  attachments?: string[];
 }
 
 export interface ResumeBody extends CommandInput {

@@ -1,3 +1,5 @@
+import type { AttachmentRef } from './attachments';
+
 /** The kind of the document that holds the plan chat. */
 export const PLAN_CHAT_KIND = 'plan_chat';
 
@@ -15,6 +17,8 @@ export interface PlanChatEntry {
   state: 'pending' | 'taken';
   /** The plan version this entry produced. Missing when the plan did not change. */
   version?: number;
+  /** The files sent with the message. */
+  attachments?: AttachmentRef[];
 }
 
 /** What one change of the plan added, changed and dropped, and why. */
@@ -32,6 +36,8 @@ export interface PlanRevision {
 /** What `POST /runs/:key/plan-chat` takes. */
 export interface PlanChatBody {
   message: string;
+  /** Ids of uploaded files (`POST /uploads`) sent with the message. */
+  attachments?: string[];
 }
 
 /** The body of the run's `plan_chat` document. */

@@ -18,6 +18,6 @@ export class PlanChatController {
     @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<FlowView & CommandReceipt> {
     const author = actor && actor !== 'machine' ? actor : null;
-    return this.planChat.send(key, body?.message, author, idempotencyKey);
+    return this.planChat.send(key, body?.message, author, idempotencyKey, body?.attachments);
   }
 }

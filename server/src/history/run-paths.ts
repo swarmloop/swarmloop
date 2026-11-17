@@ -20,3 +20,16 @@ export function removeTree(path: string): void {
 export function removeTreeAsync(path: string): Promise<void> {
   return rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
+
+/** Where uploaded files wait until a message or a run takes them. */
+export function uploadsDir(config: AppConfig): string {
+  return join(root(config), 'data', 'uploads');
+}
+
+/**
+ * The run's read-only files. It sits in the run's agent state folder (the same segments as `agentStateDir` in the
+ * sandbox layer, which history may not import).
+ */
+export function attachmentsDir(config: AppConfig, key: string): string {
+  return join(root(config), 'data', 'agent-state', key, 'attachments');
+}

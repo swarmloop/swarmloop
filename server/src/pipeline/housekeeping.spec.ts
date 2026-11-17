@@ -9,6 +9,10 @@ import { Housekeeping } from './housekeeping';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { RunEntity } from '../history/entities';
+import { AppConfig } from '../config/env';
+import { Clock } from '../core/clock';
+import { AttachmentStore } from '../history/attachment-store';
+import { uploadsDir } from '../history/run-paths';
 import { OwnUseMeter } from './own-use-meter';
 import { RunRetention } from './run-retention';
 import { ageRun, makeWorld, type World } from './workspace.spec-helpers';
@@ -73,6 +77,19 @@ describe('Housekeeping startup', () => {
     await measure.mock.results[0].value;
 
     expect(meter.last()?.line).toContain('swarmloop uses worktrees');
+  });
+
+  it('removes the staged uploads that are more than a day old at startup', async () => {
+    world = await makeWorld('PROJ-7');
+    const staged = await world.app.get(AttachmentStore).stage('old.txt', Buffer.from('x'));
+    const folder = join(uploadsDir(world.app.get(AppConfig)), staged.id);
+    await world.app.get(Housekeeping).startup();
+    expect(existsSync(folder)).toBe(true);
+
+    jest.spyOn(world.app.get(Clock), 'now').mockReturnValue(Date.now() + 2 * 86_400_000);
+    await world.app.get(Housekeeping).startup();
+
+    expect(existsSync(folder)).toBe(false);
   });
 });
 
