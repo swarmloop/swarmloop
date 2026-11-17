@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LoopEventEntity } from '../../history/entities';
-import { phases, reason, returns, sentence } from './flow';
+import { phases, reason, resumeState, returns, sentence } from './flow';
 
 describe('failure reason', () => {
   it('shows the current pipeline error instead of an older failing test', () => {
@@ -250,6 +250,14 @@ describe('sentence of a stop with its own next step', () => {
     expect(say(run('waiting', 'pipeline', code, { retryAt }))).toBe(
       `${start} The step is tried again by itself at ${retryAt}. Resume tries now.`,
     );
+  });
+
+  it('says the message of a stalled run as it is', () => {
+    const stalled = run('waiting', 'implement', 'STALLED', {
+      message: 'Stalled 4 times with no reason; Resume to try again',
+    });
+    expect(say(stalled)).toBe('Stalled 4 times with no reason; Resume to try again');
+    expect(resumeState(stalled, [], [])).toBe('ready');
   });
 
   it('says what a loop limit block does on any step', () => {

@@ -1,7 +1,7 @@
 import { activeDurationMs, toDurationParts } from '../../history/active-duration';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
-import { blockCode, deriveState } from '../../history/run-state';
+import { blockCode, deriveState, isReturned } from '../../history/run-state';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { actionsFor, REASON } from '../../contract/run-state';
 import type { StateFacts } from '../../history/run-state';
@@ -87,10 +87,6 @@ export function phases(
     }
     return { phase: phase.phase, steps: [...steps, reportChip(run, stats, documents, root, preparing)] };
   });
-}
-
-function hasReturned(run: RunEntity): boolean {
-  return run.attemptsReview > 0 || run.attemptsPipeline > 0 || run.attemptsChecks > 0;
 }
 
 const WHY_CHARS = 60;
@@ -186,7 +182,7 @@ export function stateView(
   const { state, reason } = deriveState(run, {
     ...facts,
     needsAnswers: open.length > 0,
-    returned: run.status === 'waiting' && run.currentStep === 'implement' && hasReturned(run),
+    returned: isReturned(run),
     blockCode: run.status === 'blocked' ? blockCode(run.currentStep, latest(documents, 'error')) : undefined,
   });
   return { state, reason, actions: actionsFor(state, reason?.code ?? null) };
@@ -238,6 +234,7 @@ function codeSentence(run: RunEntity, maxReturns: number): string | null {
     const when = reason.retryAt ? ` at ${reason.retryAt}` : '';
     return `${OUTAGE_NAMES[reason.code]} The step is tried again by itself${when}. Resume tries now.`;
   }
+  if (state === 'waiting' && reason?.code === REASON.stalled) return reason.message;
   if (state !== 'blocked' || !reason) return null;
   if (reason.code === REASON.loopLimit) {
     return `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`;
@@ -310,7 +307,7 @@ export function sentence(
     return 'The next continuation prepares the worktrees.';
   }
   if (run.currentStep === 'implement' && run.status === 'waiting') {
-    const returned = hasReturned(run);
+    const returned = isReturned(run);
     return returned
       ? 'The next continuation returns to implementation.'
       : 'The next continuation implements the approved plan.';

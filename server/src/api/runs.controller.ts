@@ -1,3 +1,4 @@
+import { PERSON_RESUME } from '../pipeline/resume-sender';
 import {
   BadRequestException,
   Body,
@@ -301,9 +302,15 @@ export class RunsController {
     @Res({ passthrough: true }) response: { status(code: number): void },
     @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<RunRef & CommandReceipt> {
-    const result = await this.dispatch<RunRef>('resume', key, { prompt: body?.prompt }, idempotencyKey, {
-      expectedRevision: body?.expectedRevision,
-    });
+    const result = await this.dispatch<RunRef>(
+      'resume',
+      key,
+      { prompt: body?.prompt, ...PERSON_RESUME },
+      idempotencyKey,
+      {
+        expectedRevision: body?.expectedRevision,
+      },
+    );
     response.status(httpStatus(result));
     return result;
   }

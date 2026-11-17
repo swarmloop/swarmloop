@@ -1,4 +1,4 @@
-import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
+import type { RunEntity, StepStatEntity } from '../../history/entities';
 import { isLoopStep } from '../../core/pipeline-result';
 import { readOutcome } from '../../history/run-state';
 import type { MergeOutcome } from '../../contract/run-state';
@@ -26,10 +26,7 @@ export function stepStatus(name: string, run: RunEntity, stat: StepStatEntity | 
   return 'idle';
 }
 
-export function latest(documents: DocumentEntity[], kind: string): string | null {
-  const found = [...documents].reverse().find((document) => document.kind === kind);
-  return found?.body ?? null;
-}
+export { latest } from '../../history/latest-document';
 
 /** Set on a subtask only: its parent's key and its task id. */
 const parentLink = (run: RunEntity, keys: Map<number, string>): { parentKey?: string; taskId?: string } =>

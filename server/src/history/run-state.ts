@@ -96,6 +96,7 @@ function unfinishedState(
     stored &&
     (stored.code === ERROR_CODES.RUNTIME_LIMIT ||
       stored.code === ERROR_CODES.GIT_AUTH ||
+      stored.code === REASON.stalled ||
       stored.code === ERROR_CODES.HOST_UNAVAILABLE ||
       stored.code === ERROR_CODES.CI_NOT_STARTED ||
       stored.code === ERROR_CODES.DOCKER_UNAVAILABLE ||
@@ -186,6 +187,17 @@ export function stateColumns(
     mergeOutcome,
     doneAt: done ? (change.doneAt ?? current.doneAt ?? null) : null,
   };
+}
+
+/** Whether the run was sent back to implement by a failed review, checks or pipeline and now waits there. */
+export function isReturned(
+  run: Pick<RunEntity, 'status' | 'currentStep' | 'attemptsReview' | 'attemptsPipeline' | 'attemptsChecks'>,
+): boolean {
+  return (
+    run.status === 'waiting' &&
+    run.currentStep === 'implement' &&
+    (run.attemptsReview > 0 || run.attemptsPipeline > 0 || run.attemptsChecks > 0)
+  );
 }
 
 /** Moves a run to a state in memory. Persist it with `saveRun`, `claim` or `finalize`. */

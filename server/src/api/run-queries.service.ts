@@ -50,7 +50,7 @@ import {
 } from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
-import { openItems } from './run-view/open-items';
+import { openItems } from '../steps/shared/open-items';
 import { requirementBodies, viewTitle } from './run-view/run-title';
 import { readHistory } from './run-queries-history';
 import { openSpend } from './run-queries-spend';

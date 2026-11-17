@@ -70,6 +70,7 @@ export const REASON = {
   mergeWatchUnavailable: 'MERGE_WATCH_UNAVAILABLE',
   mergeWatchStopped: 'MERGE_WATCH_STOPPED',
   skipped: 'SKIPPED',
+  stalled: 'STALLED',
   agentPlace: 'AGENT_PLACE',
 } as const;
 
@@ -116,6 +117,7 @@ export const NEEDS_PERSON: Readonly<Record<string, RunAction>> = {
   [ERROR_CODES.BRANCH_DIVERGED]: 'resume',
   [ERROR_CODES.REBASE_CONFLICT]: 'rebase',
   [REASON.stopped]: 'resume',
+  [REASON.stalled]: 'resume',
   [REASON.loopLimit]: 'resume',
   [ERROR_CODES.SPEND_LIMIT]: 'resume',
   [REASON.checkFailed]: 'resume',
@@ -160,7 +162,11 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
     case 'stopped':
       return ['resume', 'replay', 'rebase'];
     case 'waiting':
-      if (reasonCode === ERROR_CODES.RUNTIME_LIMIT || reasonCode === ERROR_CODES.GIT_AUTH) {
+      if (
+        reasonCode === ERROR_CODES.RUNTIME_LIMIT ||
+        reasonCode === ERROR_CODES.GIT_AUTH ||
+        reasonCode === REASON.stalled
+      ) {
         return ['resume', 'replay', 'rebase'];
       }
       if (reasonCode && TIMED_RETRY_CODES.includes(reasonCode)) return ['stop', 'resume', 'replay', 'rebase'];
@@ -280,6 +286,7 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
   [REASON.mergeWatchUnavailable]: 'state',
   [REASON.mergeWatchStopped]: 'state',
   [REASON.skipped]: 'state',
+  [REASON.stalled]: 'state',
   [REASON.agentPlace]: 'place',
   [NEEDS_ANSWERS]: 'state',
 };

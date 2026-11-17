@@ -1,6 +1,7 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
 import { FlowRepository } from '../history/flow.repository';
 import { CommandService } from '../pipeline/command.service';
+import { PERSON_RESUME } from '../pipeline/resume-sender';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, StepOptions } from '../core/pipeline-result';
 
@@ -30,7 +31,9 @@ export class RunCommand extends CommandRunner {
       }
     }
     await report(
-      await this.commands.inProcess('resume', key, { ...options }, () => this.pipeline.runThrough(key, options)),
+      await this.commands.inProcess('resume', key, { ...options, ...PERSON_RESUME }, () =>
+        this.pipeline.runThrough(key, options),
+      ),
     );
   }
 

@@ -28,6 +28,7 @@ async function setup() {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
     undefined,
     fixture.credentials,
   );
