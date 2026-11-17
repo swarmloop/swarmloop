@@ -9,6 +9,8 @@ import type { ServerState } from '@contract/server-pause';
 
 interface LiveSnapshot {
   runs: RunSummary[];
+  /** True once the runs list has come from the API or the socket. */
+  loaded: boolean;
   connected: boolean;
   /** The flow of the watched run. */
   flow: FlowView | null;
@@ -30,7 +32,15 @@ interface LiveStore {
 }
 
 function createStore(): LiveStore {
-  let snapshot: LiveSnapshot = { runs: [], connected: false, flow: null, logs: [], events: null, paused: false };
+  let snapshot: LiveSnapshot = {
+    runs: [],
+    loaded: false,
+    connected: false,
+    flow: null,
+    logs: [],
+    events: null,
+    paused: false,
+  };
   let watched: string | null = null;
   const listeners = new Set<() => void>();
   const update = (patch: Partial<LiveSnapshot>): void => {
@@ -45,7 +55,7 @@ function createStore(): LiveStore {
       };
     },
     getSnapshot: () => snapshot,
-    setRuns: (next) => update({ runs: typeof next === 'function' ? next(snapshot.runs) : next }),
+    setRuns: (next) => update({ runs: typeof next === 'function' ? next(snapshot.runs) : next, loaded: true }),
     watchRun(key) {
       if (key === watched) {
         return;
@@ -65,7 +75,7 @@ function createStore(): LiveStore {
         }
       };
       const onDisconnect = (): void => update({ connected: false });
-      const onRuns = (body: RunsView): void => update({ runs: body.runs });
+      const onRuns = (body: RunsView): void => update({ runs: body.runs, loaded: true });
       const onFlow = (body: FlowView): void => {
         if (body.key === watched) {
           update({ flow: body });

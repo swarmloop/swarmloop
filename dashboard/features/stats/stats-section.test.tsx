@@ -6,6 +6,7 @@ import { getStats } from '../../lib/endpoints';
 import { statsView } from '../../test/fixtures';
 import { QueryWrapper } from '../../test/query-wrapper';
 import { StatsSection } from './stats-section';
+import { TILE_COLUMNS } from './stat-tiles';
 import { big, hours, ticks, usd } from './stats-format';
 
 vi.mock('../../lib/endpoints', () => ({ getStats: vi.fn() }));
@@ -150,10 +151,46 @@ describe('StatsSection', () => {
     expect(screen.getByRole('region', { name: 'Runs' })).toBeInTheDocument();
   });
 
-  it('says why the statistics are missing', async () => {
-    vi.mocked(getStats).mockRejectedValue(new Error('api is down'));
+  it('says why the statistics are missing and loads them again on Retry', async () => {
+    vi.mocked(getStats).mockRejectedValueOnce(new Error('api is down'));
     renderSection();
     expect(await screen.findByText(/Statistics are not available: api is down/)).toBeInTheDocument();
+
+    vi.mocked(getStats).mockResolvedValue(statsView());
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByLabelText('Runs: 4')).toBeInTheDocument();
+    expect(screen.queryByText(/Statistics are not available/)).not.toBeInTheDocument();
+  });
+
+  it('fills whole rows of four columns from md up, so no row is part empty at 1280 and 1440 px', async () => {
+    renderSection();
+    const tile = await screen.findByLabelText('Runs: 4');
+    const spans = [...(tile.parentElement?.children ?? [])].map((item) => Number(item.getAttribute('data-span')));
+
+    expect(spans).toHaveLength(9);
+    expect(spans.reduce((sum, span) => sum + span, 0) % TILE_COLUMNS).toBe(0);
+    expect(spans.filter((span) => span === 2)).toHaveLength(3);
+    const css = [...document.styleSheets]
+      .flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText))
+      .join('\n');
+    expect(css).toMatch(
+      new RegExp(`min-width:900px\\) \\{[^{]*\\{grid-template-columns: repeat\\(${TILE_COLUMNS}, minmax`),
+    );
+    expect(css).not.toContain('repeat(6');
+  });
+
+  it('shows the title of a run in the top runs, not its name', async () => {
+    const view = statsView();
+    vi.mocked(getStats).mockResolvedValue({
+      ...view,
+      runs: view.runs.map((run) => ({ ...run, name: `# ${run.key} raw prompt`, title: `Title of ${run.key}` })),
+    });
+    renderSection();
+    const table = await screen.findByRole('region', { name: 'Runs' });
+
+    expect(within(table).getByText('Title of run-a')).toBeInTheDocument();
+    expect(within(table).queryByText(/raw prompt/)).not.toBeInTheDocument();
   });
 });
 

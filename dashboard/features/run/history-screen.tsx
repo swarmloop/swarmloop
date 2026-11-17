@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactElement, ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -11,13 +11,16 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import { AttemptSelector } from './attempt-selector';
 import { SeriesChart } from './series';
 import { getHistory, getRunLog } from '../../lib/endpoints';
+import { useDocumentTitle } from '../../lib/document-title';
 import { count, duration, memory, money } from '../../lib/format';
 import { documentsByKind, tokensByModel } from './history';
 import { latestPhaseLabels } from './phases';
+import { useLiveBridge } from '../shell';
 import { LOG_CHUNK } from './use-visit-log';
 import { LogTranscript } from './log-transcript';
 import { DocumentBody } from './transcript/document-detail';
@@ -30,7 +33,11 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
   const [visit, setVisit] = useState<number | null>(null);
   const [file, setFile] = useState<string | null>(null);
 
-  useEffect(() => {
+  const title = useLiveBridge((snapshot) => snapshot.runs.find((run) => run.key === runKey)?.title) ?? runKey;
+  useDocumentTitle(title);
+
+  const reload = useCallback((): void => {
+    setError(null);
     getHistory(runKey)
       .then((body) => {
         setView(body);
@@ -39,11 +46,27 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'history failed'));
   }, [runKey]);
 
+  useEffect(reload, [reload]);
+
   const grouped = useMemo(() => documentsByKind(view?.documents ?? []), [view]);
   const tokens = useMemo(() => tokensByModel(view?.stats ?? []), [view]);
 
   if (!view) {
-    return <Typography color={error ? 'error' : 'text.secondary'}>{error ?? 'Loading history.'}</Typography>;
+    return error ? (
+      <Box>
+        <Typography color="error">{`History could not be loaded: ${error}`}</Typography>
+        <Button onClick={reload} sx={{ mt: 1 }}>
+          Retry
+        </Button>
+      </Box>
+    ) : (
+      <Box aria-label="Loading history">
+        <Skeleton variant="text" width={320} height={40} />
+        {[0, 1, 2, 3].map((index) => (
+          <Skeleton key={index} variant="rounded" height={44} sx={{ mb: 1 }} />
+        ))}
+      </Box>
+    );
   }
   const samples = view.samples.filter((sample) => sample.stepStatId === visit);
   const opened = view.files.find((item) => `${item.name}:${item.path}` === file);
@@ -52,8 +75,8 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
       <Button component={Link} href={`/runs/${runKey}` as Route} color="inherit" sx={{ mb: 1 }}>
         Back to the flow
       </Button>
-      <Typography variant="h5" sx={{ fontFamily: 'var(--font-mono)', mb: 2 }}>
-        {runKey}
+      <Typography variant="h5" component="h1" sx={{ mb: 2 }}>
+        {title}
       </Typography>
       <Section title="Flows">
         {(view.launches ?? []).length === 0 ? (
@@ -66,7 +89,7 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
                 size="small"
                 variant="outlined"
                 label={label}
-                sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                sx={{ height: 22, bgcolor: 'transparent', fontSize: 12 }}
               />
             ))}
           </Box>

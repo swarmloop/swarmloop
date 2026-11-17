@@ -14,14 +14,18 @@ import { ShowControl } from './show-control';
 export function RunColumn({
   runs,
   now,
+  loaded,
   error,
+  onRetry,
   selected,
   onOpen,
   onRemove,
 }: {
   runs: RunSummary[];
   now: number;
+  loaded: boolean;
   error: string | null;
+  onRetry: () => void;
   selected: string;
   /** `search` is the query that keeps the chosen part: `?show=done`, or empty. */
   onOpen: (key: string, search: string) => void;
@@ -53,7 +57,9 @@ export function RunColumn({
       control={<ShowControl part={part} counts={counts} onPart={onPart} />}
       selected={selected}
       now={now}
+      loaded={loaded}
       error={error}
+      onRetry={onRetry}
       onOpen={(key) => onOpen(key, search)}
       onRemove={(run) => onRemove(run, search)}
     />

@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import ListItem from '@mui/material/ListItem';
@@ -8,6 +9,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { openRunMs } from '../../lib/elapsed';
+import type { epicFigures } from '@contract/epic-figures';
 import { duration, money, relative, when } from '../../lib/format';
 import { RunStateIcon } from '../run';
 import { RowDelete, useRowReveal } from './row-delete';
@@ -27,6 +29,7 @@ export function RunRow({
   run,
   selected,
   now,
+  figures,
   toggle = null,
   extras = null,
   onOpen,
@@ -35,6 +38,8 @@ export function RunRow({
   run: RunSummary;
   selected: boolean;
   now: number;
+  /** An epic's time and money with the parts they add up from; the same figures as the run page. */
+  figures?: ReturnType<typeof epicFigures>;
   /** The epic toggle at the start of line 1. */
   toggle?: ReactNode;
   /** The epic task summary at the end of line 2. */
@@ -47,7 +52,11 @@ export function RunRow({
   const step = view.tone === 'working' && run.state !== 'done' ? run.currentStep.replace(/[-_]/g, ' ') : '';
   // An epic's time is the server's wall clock; any other run adds the step it is in, which `durationMs` leaves out.
   const totals = run.epic ?? { durationMs: run.durationMs + openRunMs(run, now), usd: run.usd };
-  const parts = [step, duration(totals.durationMs), money(totals.usd)].filter(Boolean);
+  const parts = [
+    { text: step },
+    { text: figures?.time ?? duration(totals.durationMs), tip: figures?.timeTip },
+    { text: figures?.money ?? money(totals.usd), tip: figures?.moneyTip },
+  ].filter((part) => part.text);
   return (
     <ListItem disablePadding disableGutters sx={{ mb: 0.5 }} {...handlers}>
       <ListItemButton
@@ -64,7 +73,7 @@ export function RunRow({
               <RunStateIcon view={view} size={16} />
             </Box>
             <Typography variant="body2" sx={{ fontWeight: 500, flex: 1, minWidth: 0, ...ELLIPSIS }}>
-              {run.name}
+              {run.title}
             </Typography>
             <Tooltip title={`Started ${when(run.createdAt)} · Last change ${when(run.updatedAt)}`}>
               <Typography
@@ -86,7 +95,18 @@ export function RunRow({
             <Tooltip title={view.tip}>
               <span>{view.word}</span>
             </Tooltip>
-            {parts.map((part) => ` · ${part}`).join('')}
+            {parts.map((part) => (
+              <Fragment key={part.text}>
+                {' · '}
+                {part.tip ? (
+                  <Tooltip title={part.tip}>
+                    <span>{part.text}</span>
+                  </Tooltip>
+                ) : (
+                  part.text
+                )}
+              </Fragment>
+            ))}
             {extras}
           </Typography>
         </Box>

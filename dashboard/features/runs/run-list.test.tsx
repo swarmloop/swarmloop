@@ -3,7 +3,9 @@ import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { RunSummary } from '@contract/api';
+import { epicFigures } from '@contract/epic-figures';
 import { ERROR_CODES } from '@contract/error-codes';
+import { duration, money } from '../../lib/format';
 import { runSummary } from '../../test/fixtures';
 import { RunList } from './run-list';
 import { epicOfThree, listRun, NOW, renderList, STATE_RUNS, TODAY, YESTERDAY } from './run-list.spec-helpers';
@@ -22,7 +24,9 @@ function list(overrides: Partial<ComponentProps<typeof RunList>> = {}) {
     onPart: vi.fn(),
     selected: '',
     now: 0,
+    loaded: true,
     error: null,
+    onRetry: vi.fn(),
     onOpen: vi.fn(),
     onRemove: vi.fn(),
     ...overrides,
@@ -99,7 +103,7 @@ describe('RunList', () => {
 
   it('labels a merged subtask Merged', async () => {
     const user = userEvent.setup({ delay: null });
-    const parent = { ...runSummary(), key: 'run-0', name: 'Parent run' };
+    const parent = { ...runSummary(), key: 'run-0', name: 'Parent run', title: 'Parent run' };
     const merged = {
       ...runSummary(),
       status: 'done',
@@ -126,6 +130,32 @@ describe('RunList', () => {
     list({ runs: [], visible: [] });
 
     expect(screen.getByText('No runs yet.')).toBeInTheDocument();
+  });
+
+  it('shows skeleton rows and no empty text while the list loads', () => {
+    list({ runs: [], visible: [], loaded: false });
+
+    expect(screen.getByLabelText('Loading runs')).toBeInTheDocument();
+    expect(screen.queryByText(/No runs yet/)).not.toBeInTheDocument();
+  });
+
+  it('says what failed with Retry instead of a skeleton that never ends', async () => {
+    const user = userEvent.setup({ delay: null });
+    const props = list({ runs: [], visible: [], loaded: false, error: 'api is down' });
+
+    expect(screen.getByText('Runs could not be loaded: api is down')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Loading runs')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(props.onRetry).toHaveBeenCalled();
+  });
+
+  it('shows the title of a run, not its name', () => {
+    const run = { ...runSummary(), name: '# 03 — Applier and command', title: 'Applier and command' };
+    list({ runs: [run], visible: [run] });
+
+    expect(screen.getByText('Applier and command')).toBeInTheDocument();
+    expect(screen.queryByText(/^# 03/)).not.toBeInTheDocument();
   });
 
   it('says No key matches. when the filter matches nothing', () => {
@@ -183,11 +213,12 @@ describe('RunList', () => {
   });
 
   describe('subtasks', () => {
-    const parent = { ...runSummary(), key: 'p-1', name: 'Parent run', status: 'running', usd: 2 };
+    const parent = { ...runSummary(), key: 'p-1', name: 'Parent run', title: 'Parent run', status: 'running', usd: 2 };
     const child = {
       ...runSummary(),
       key: 'p-1-t1',
       name: 'Child one',
+      title: 'Child one',
       status: 'waiting',
       usd: 0.5,
       parentKey: 'p-1',
@@ -406,6 +437,21 @@ describe('RunList', () => {
       expect(line).toHaveTextContent('$14.88');
       expect(line).toHaveTextContent('3 tasks · 1 merged · 1 blocked');
       expect(screen.getAllByTestId('progress-segment')).toHaveLength(3);
+    });
+
+    it("takes an epic row's figures from epicFigures, with their parts in the tooltips and no total or this run", async () => {
+      const user = userEvent.setup({ delay: null });
+      const figures = epicFigures(
+        { epicUsd: 14.88, ownUsd: 1, epicMs: 126 * 60_000, taskCount: 3, workedMs: null },
+        { money, duration },
+      );
+      renderList(epic);
+
+      const line = screen.getByText('Waiting for subtasks', { selector: 'span' }).parentElement;
+      expect(line).toHaveTextContent(`${figures.time} · ${figures.money}`);
+      await user.hover(within(line as HTMLElement).getByText(figures.money));
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(figures.moneyTip);
+      expect(screen.queryByText(/\btotal\b|this run/)).not.toBeInTheDocument();
     });
 
     it('opens by itself for a blocked task and lists the open tasks in plan order, one line each', () => {

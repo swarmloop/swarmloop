@@ -46,7 +46,7 @@ function DashboardFrame({
 }): ReactElement {
   const pathname = usePathname();
   const router = useRouter();
-  const { runs, now, error, connected, removeRun } = useRuns();
+  const { runs, loaded, now, error, retry, connected, removeRun } = useRuns();
   const openNewRun = useNewRun();
   const { blocker } = useReadiness();
   const [pendingRemove, setPendingRemove] = useState<{ run: RunSummary; search: string } | null>(null);
@@ -168,7 +168,9 @@ function DashboardFrame({
               runs={runs}
               selected={selected}
               now={now}
+              loaded={loaded}
               error={error}
+              onRetry={retry}
               onOpen={(key, search) => router.push(`/runs/${key}${search}` as Route)}
               onRemove={(run, search) => {
                 setRemoveError(null);
