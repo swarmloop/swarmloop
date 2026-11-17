@@ -71,7 +71,7 @@ The repository list is every git clone in `CHECKOUTS_ROOT`, or only the ones nam
 
 ### 🚢 Commit, merge request, and CI
 
-Start: `docker compose up -d`, open the dashboard, then **Connect GitHub** (a private GitHub App made from a manifest, on the account that owns your repositories) or **Connect GitLab**. After the app is made, the page asks you to install it on the repositories, and the login comes after the install. Every run then uses the access of the person who started it, and a run whose token was revoked waits with `GIT_AUTH` until that person reconnects. The browser always needs a session; the CLI, ACP and scripts keep using the machine token (`SWARMLOOP_TOKEN` bearer). Secrets are stored encrypted with `SWARMLOOP_SECRET` (or a key made in `data/secret`).
+Start: `docker compose up -d`, open the dashboard, then **Connect GitHub** (a private GitHub App made from a manifest, on the account that owns your repositories) or **Connect GitLab**. After the app is made, the page asks you to install it on the repositories, and the login comes after the install. Every run then uses the access of the person who started it, and a run whose token was revoked waits with `GIT_AUTH` until that person reconnects. The browser needs a session; the CLI, ACP and scripts act as a person through a personal API token (`SWARMLOOP_TOKEN` or `sloop login`). Secrets are stored encrypted with `SWARMLOOP_SECRET` (or a key made in `data/secret`).
 
 For a headless setup, or for runs started by the CLI or a script, copy the empty `GITHUB_TOKEN` or `GITLAB_TOKEN` line from `defaults.env` into `.env` (or set it in the shell) and set a git token instead and run `docker compose up -d` again. This time leave **ci** ticked. When the reviewers pass, the server pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
 
@@ -380,7 +380,7 @@ When the API is on another machine, set the URL in `env`:
 "env": { "SWARMLOOP_API_URL": "http://your-server:3920" }
 ```
 
-`sloop` calls `http://127.0.0.1:3920`, the value in `defaults.env`, when that variable is not set. It sends `SWARMLOOP_TOKEN` from its environment, or reads `data/token` in the repository folder, as the machine token. Any other ACP client starts the same command. The Cursor desktop app runs its own agent and does not load this file.
+`sloop` calls `http://127.0.0.1:3920`, the value in `defaults.env`, when that variable is not set. `sloop login` prints a short code and a link; open the link signed in and approve the code, and `sloop` keeps the token in `~/.config/swarmloop/cli.json` (readable only by you). `sloop login --token <value>` stores a token made in Settings → API tokens, and `sloop logout` revokes it. `SWARMLOOP_TOKEN` in the environment wins over that file. `run` and `step` need `SWARMLOOP_TOKEN`. The machine token is gone: an old `SWARMLOOP_TOKEN` becomes the first admin's token. Any other ACP client starts the same command. The Cursor desktop app runs its own agent and does not load this file.
 
 ## 🔧 Settings
 
@@ -401,7 +401,7 @@ When the API is on another machine, set the URL in `env`:
 | `SWARMLOOP_API_HOST`, `SWARMLOOP_API_PORT` | Where the API listens. `defaults.env` uses `127.0.0.1:3920`. Without a login provider the server refuses to start on another address. |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `GITLAB_OAUTH_CLIENT_ID`, `GITLAB_OAUTH_CLIENT_SECRET` | Login with GitHub or GitLab. See [Login](#login). |
 | `SWARMLOOP_ALLOW` | Who may log in: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty: a person who can push to a repository this server works on, or the first person to log in on the server's own machine while nobody is connected; a plain GitHub OAuth App from `.env` keeps the owner of `GITHUB_TOKEN`. |
-| `SWARMLOOP_TOKEN` | Bearer token for the CLI, ACP and scripts. Empty: made in `data/token`. |
+| `SWARMLOOP_TOKEN` | A personal token from Settings → API tokens, for the CLI, ACP and scripts. The queue runner's token must be an admin's. |
 
 Spend, tokens, retries, and timeouts are in [Limits](#-limits-on-money-tokens-and-time). A missing model key does not stop the start: readiness names the runtime and links to its card. To change a setting, copy its line from `defaults.env` into `.env` next to `compose.yml`, or set it in the shell.
 
@@ -413,17 +413,17 @@ The flow is the same for every ticket. The rules live in `skills/` in this repo,
 
 ### Login
 
-The panel has a login with GitHub and with GitLab. Nothing acts without a session or the machine token.
+The panel has a login with GitHub and with GitLab. Nothing acts without a session or a personal API token. People are members or admins, and the first person is an admin; an admin can make another person one, or take it back, as long as one admin stays.
 
 1. Create an OAuth App on GitHub, or an application on your GitLab with the scopes `read_user` and `read_api`. Its callback is `SWARMLOOP_PUBLIC_URL` plus `/auth/github/callback` or `/auth/gitlab/callback`. A self-hosted GitLab is the one at `GITLAB_BASE_URL`.
 2. Put the id and secret in `.env`: `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`, `GITLAB_OAUTH_CLIENT_ID` and `GITLAB_OAUTH_CLIENT_SECRET`. The login page shows a button for each provider that has both.
 3. Say who may log in with `SWARMLOOP_ALLOW`, comma-separated: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty means a person whose own token can push to at least one repository this server works on (`CHECKOUTS_ROOT`, narrowed by `SWARMLOOP_REPOS`), on the host they log in with; read access is not enough, and a refusal says `<host>:<login> can't push to any repository this server works on`. A plain GitHub OAuth App from `.env` keeps the owner of `GITHUB_TOKEN` as the default. A non-empty list works as written and only narrows or names people. Membership is checked once, at login, with the person's own token, which is not kept. A refused login names the account and the reason.
 
-The GitHub App made from the dashboard is private and belongs to the account that owns the repositories. A private app can be installed only on its owner, and only that account or the members of the owning organization can sign in to it. People outside the organization (outside collaborators) cannot sign in to a private organization app: add them to the organization instead. An install started on GitHub's own page returns to swarmloop with `Installed on <account>` and a Log in button. Connections has **Replace app** for the person who made the app, with a confirm that names who gets disconnected. It starts the same manifest flow as first run, and the old app keeps working until GitHub returns the new one; only then are the connections made through the old app removed, and their runs wait with `GIT_AUTH` until those people log in again. Cancelling on GitHub changes nothing. The app on GitHub stays, and Connections links to its settings for deleting it.
+The GitHub App made from the dashboard is private and belongs to the account that owns the repositories. A private app can be installed only on its owner, and only that account or the members of the owning organization can sign in to it. People outside the organization (outside collaborators) cannot sign in to a private organization app: add them to the organization instead. An install started on GitHub's own page returns to swarmloop with `Installed on <account>` and a Log in button. Connections has **Replace app** for the person who made the app and for admins, with a confirm that names who gets disconnected. It starts the same manifest flow as first run, and the old app keeps working until GitHub returns the new one; only then are the connections made through the old app removed, and their runs wait with `GIT_AUTH` until those people log in again. Cancelling on GitHub changes nothing. The app on GitHub stays, and Connections links to its settings for deleting it.
 
 The Settings page lets each person choose the agents per role and tier for their own runs. The `AGENTS_*` values (set in `defaults.env`, overridden by `.env` or the shell) are the server default. The choice is read when a run starts and kept on the run.
 
-A session lasts 14 days, or until Logout. Every run records who started it, and the run page shows it. The CLI, ACP, smoke and scripts send `SWARMLOOP_TOKEN` as `Authorization: Bearer <token>`. When it is empty the server makes one in `data/token`, and `docker compose exec server node dist/main.js doctor` prints it.
+A session lasts 14 days, or until Logout. Every run records who started it, and the run page shows it. The CLI, ACP and scripts send a personal token from Settings → API tokens as `Authorization: Bearer <token>`; it acts as the person who made it, with their keys and settings. Pausing the server is for admins, so the queue runner's token must be an admin's.
 
 Without a provider the server answers only on loopback and the panel works for one person on this machine, as before. A server that listens on another address without a provider refuses to start and says which variables to set. The compose file publishes the ports on `127.0.0.1`: to reach them from other machines, set a provider and `SWARMLOOP_PUBLIC_URL`, then publish the ports on an address your team can reach. Do not put this on the public internet.
 

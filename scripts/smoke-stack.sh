@@ -20,6 +20,8 @@ curl -fsS "${retry[@]}" http://127.0.0.1:3920/health
 curl -fsS "${retry[@]}" http://127.0.0.1:3920/auth/first-run
 curl -fsS "${retry[@]}" http://127.0.0.1:3921/ > /dev/null
 curl -fsS http://127.0.0.1:3921/swarmloop-api/health
+curl -fsS http://127.0.0.1:3921/swarmloop-api/auth/first-run
+curl -fsS http://127.0.0.1:3921/login > /dev/null
 SWARMLOOP_SOCKET_URL=http://live.example:4000 docker compose up -d --wait --pull never
 curl -fsS "${retry[@]}" http://127.0.0.1:3921/ | grep -F 'http://live.example:4000'
 # Files a leaked data folder would expose, written by the server's own user so the folder keeps its owner.
