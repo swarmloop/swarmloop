@@ -13,10 +13,12 @@ import type { SettingsBody } from '@contract/api';
 import type { SettingsView } from '@contract/settings';
 import { ConnectionsPage } from '../connections';
 import { ThemeModeSwitch } from '../shell';
-import { getSettings, saveSettings } from '../../lib/endpoints';
+import { getSession, getSettings, saveSettings } from '../../lib/endpoints';
 import { AgentsSection } from './agents-section';
+import { ApiTokensSection } from './api-tokens-section';
+import { PeopleSection } from './people-section';
 
-const SECTIONS = ['Agents', 'Connections', 'Appearance', 'Server'] as const;
+const SECTIONS = ['Agents', 'Connections', 'API tokens', 'People', 'Appearance', 'Server'] as const;
 type Section = (typeof SECTIONS)[number];
 
 const reason = (cause: unknown, fallback: string): string => (cause instanceof Error ? cause.message : fallback);
@@ -28,6 +30,7 @@ export function SettingsPage(): ReactElement {
   const [draft, setDraft] = useState<SettingsBody>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
     getSettings().then(
@@ -36,6 +39,11 @@ export function SettingsPage(): ReactElement {
         setDraft(loaded.settings);
       },
       (cause: unknown) => setError(reason(cause, 'settings could not be read')),
+    );
+    // A failed call counts as a non-admin: the People section stays hidden.
+    getSession().then(
+      (me) => setAdmin(me.role === 'admin'),
+      () => setAdmin(false),
     );
   }, []);
 
@@ -64,7 +72,7 @@ export function SettingsPage(): ReactElement {
       </Typography>
       <Box sx={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
         <List component="nav" aria-label="settings sections" sx={{ width: 200, flexShrink: 0 }}>
-          {SECTIONS.map((name) => (
+          {SECTIONS.filter((name) => name !== 'People' || admin).map((name) => (
             <ListItemButton key={name} selected={name === section} onClick={() => setSection(name)}>
               <ListItemText primary={name} />
             </ListItemButton>
@@ -72,6 +80,8 @@ export function SettingsPage(): ReactElement {
         </List>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           {section === 'Connections' ? <ConnectionsPage /> : null}
+          {section === 'API tokens' ? <ApiTokensSection /> : null}
+          {section === 'People' && admin ? <PeopleSection /> : null}
           {section === 'Appearance' ? <ThemeModeSwitch /> : null}
           {section === 'Server' && view ? (
             <Box

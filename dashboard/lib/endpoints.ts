@@ -23,6 +23,17 @@ import type {
   TicketKeysView,
 } from '@contract/api';
 import type { ConnectionCard, IntegrationCardsView, SignInView } from '@contract/connections';
+import type {
+  CliLoginView,
+  CreateTokenBody,
+  CreatedTokenView,
+  PeopleView,
+  PersonView,
+  Role,
+  SetRoleBody,
+  TokensView,
+  UseTokenBody,
+} from '@contract/people';
 import type { ReadinessView } from '@contract/readiness';
 import type { SettingsView } from '@contract/settings';
 import type { StepEventPage } from '@contract/step-events';
@@ -110,3 +121,20 @@ export const startReviewer = (key: string, name: string): Promise<unknown> => ap
 export const replayStep = (key: string, name: string, body: ReplayBody): Promise<unknown> =>
   api(`${step(key, name)}/replay`, post(body));
 export const removeRun = (key: string): Promise<unknown> => api(run(key), { method: 'DELETE' });
+
+const token = (id: number): string => `/tokens/${id}`;
+const cliLogin = (code: string): string => `/tokens/cli/${encodeURIComponent(code)}`;
+export const listTokens = (): Promise<TokensView> => api<TokensView>('/tokens');
+/** Makes a token for the signed-in person; the value is in the answer once. */
+export const createToken = (body: CreateTokenBody): Promise<CreatedTokenView> =>
+  api<CreatedTokenView>('/tokens', post(body));
+export const useExistingToken = (body: UseTokenBody): Promise<unknown> => api('/tokens/existing', post(body));
+export const revokeToken = (id: number): Promise<unknown> => api(token(id), { method: 'DELETE' });
+export const getCliLogin = (code: string): Promise<CliLoginView> => api<CliLoginView>(cliLogin(code));
+export const approveCliLogin = (code: string): Promise<unknown> => api(`${cliLogin(code)}/approve`, post());
+export const listPeople = (): Promise<PeopleView> => api<PeopleView>('/people');
+export const setRole = (login: string, role: Role): Promise<PersonView> =>
+  api<PersonView>(`/people/${encodeURIComponent(login)}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role } satisfies SetRoleBody),
+  });
