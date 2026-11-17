@@ -1,6 +1,6 @@
 import 'reflect-metadata';
+import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { StepKernel } from '../step-kernel';
-import { mkdirSync } from 'fs';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -32,7 +32,7 @@ describe('code-review step golden traces', () => {
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'swarmloop-review-golden-'));
     await writeEnv(root);
-    mkdirSync(join(root, 'worktrees', KEY, 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', KEY, 'billing-api'));
   });
 
   afterEach(async () => {

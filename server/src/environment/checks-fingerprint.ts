@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { CheckEntry } from './environment-config';
-import { worktreeSnapshot } from '../git/worktree-git';
+import { checkoutSnapshot } from '../git/worktree-git';
 
 /** What the fingerprint reads of a prepared environment. */
 interface FingerprintEnvironment {
@@ -23,7 +23,7 @@ export async function checksFingerprint(
   return createHash('sha256')
     .update(
       [
-        await worktreeSnapshot(input.mounts),
+        await checkoutSnapshot(input.mounts),
         imageId,
         JSON.stringify([
           record.config.checks,

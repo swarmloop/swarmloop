@@ -14,7 +14,17 @@ import { FetchFailed, NothingToMerge } from '../../core/swarmloop-error';
 import { NOTHING_TO_MERGE } from './nothing-to-merge';
 import { ARTIFACTS } from '../contract/artifacts';
 import { git } from '../../testing/git-fixture';
+import * as delays from '../../core/delay';
+import { VisitRepository } from '../../history/visit.repository';
+import { clearGitFaults, failGit } from '../../testing/git-fault.spec-helpers';
+import { stampGate } from '../shared/gate';
 import { boot, call, featureTree, result, seed, TOKEN } from './merge-request.spec-helpers';
+
+import type * as GitFault from '../../testing/git-fault.spec-helpers';
+
+jest.mock('child_process', () =>
+  jest.requireActual<typeof GitFault>('../../testing/git-fault.spec-helpers').faultyChildProcess(),
+);
 
 describe('merge-request step', () => {
   it('opens one merge request and stores the summary', async () => {
@@ -471,6 +481,7 @@ describe('merge-request step', () => {
 
   it('finishes when ci was skipped', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-skip-'));
+    featureTree(root, 'PROJ-206');
     const find = jest.fn();
     const open = jest.fn();
     const app = await boot(root, { find, open }, jest.fn());
@@ -495,6 +506,7 @@ describe('merge-request step', () => {
 
   it('names a missing token', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-token-'));
+    featureTree(root, 'PROJ-205');
     const app = await boot(root, { find: jest.fn(), open: jest.fn() }, jest.fn(), '');
     try {
       await seed(app, 'PROJ-205');
@@ -524,5 +536,136 @@ describe('merge-request step', () => {
     } finally {
       await app.close();
     }
+  });
+
+  describe('a review that does not count', () => {
+    beforeEach(() => {
+      jest.spyOn(delays, 'delay').mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      clearGitFaults();
+      jest.restoreAllMocks();
+    });
+
+    async function booted(key: string, options?: Parameters<typeof seed>[2]) {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-gate-'));
+      featureTree(root, key);
+      const open = jest.fn();
+      const app = await boot(root, { find: jest.fn(async () => ({ record: null, httpCalls: [] })), open }, jest.fn());
+      await seed(app, key, options);
+      return { app, open };
+    }
+
+    async function staleStamp(app: Awaited<ReturnType<typeof boot>>, key: string): Promise<void> {
+      const run = (await app.get(RunRepository).findRun(key))!;
+      await stampGate(app.get(DocumentRepository), run, 'review_report', 'other files');
+    }
+
+    it('goes back to code-review when the report was stamped for other files', async () => {
+      const { app, open } = await booted('PROJ-240');
+      try {
+        await staleStamp(app, 'PROJ-240');
+        const done = await app.get(PipelineService).step('merge-request', 'PROJ-240');
+
+        expect(done.exitCode).toBe(0);
+        expect(done.message).toContain('review was for other files: back to code-review');
+        expect((await app.get(RunRepository).findRun('PROJ-240'))?.currentStep).toBe('code-review');
+        expect(open).not.toHaveBeenCalled();
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('names both generations when the report is from an earlier one', async () => {
+      const { app } = await booted('PROJ-241');
+      try {
+        await app.get(RunRepository).bumpGeneration('PROJ-241');
+        await staleStamp(app, 'PROJ-241');
+        await app.get(RunRepository).bumpGeneration('PROJ-241');
+        const done = await app.get(PipelineService).step('merge-request', 'PROJ-241');
+
+        expect(done.message).toContain('review was for generation 1, now 2: back to code-review');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('fails with a missing report when there is no review report', async () => {
+      const { app } = await booted('PROJ-242', { implementation: false });
+      try {
+        const run = (await app.get(RunRepository).findRun('PROJ-242'))!;
+        await app.get(DocumentRepository).putDocument(run, 'implementation', 'changed the field\n');
+        const done = await app.get(PipelineService).step('merge-request', 'PROJ-242');
+
+        expect(done.exitCode).toBe(1);
+        expect(done.message).toContain('review report is missing');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('fails instead of going back again when a fresh review still does not count', async () => {
+      const { app } = await booted('PROJ-243');
+      try {
+        await staleStamp(app, 'PROJ-243');
+        await app.get(PipelineService).step('merge-request', 'PROJ-243');
+        const runs = app.get(RunRepository);
+        const run = (await runs.findRun('PROJ-243'))!;
+        const now = new Date().toISOString();
+        const visit = (step: string, document: { kind: string; fileName: string; body: string } | null = null) =>
+          app.get(VisitRepository).finishVisit(run, {
+            step,
+            model: null,
+            mode: null,
+            startedAt: now,
+            finishedAt: now,
+            durationMs: 0,
+            status: 'done',
+            exitCode: 0,
+            killReason: null,
+            tokensIn: 0,
+            tokensOut: 0,
+            usd: 0,
+            samples: [],
+            exchange: null,
+            httpCalls: [],
+            document,
+            resumed: false,
+          });
+        // As a real round writes them: each reviewer's visit first, then the code-review visit with the report.
+        await visit('code-review-requirements');
+        await visit('code-review-quality');
+        await visit('code-review', { kind: 'review_report', fileName: '', body: 'Reviewed again.\n' });
+        await staleStamp(app, 'PROJ-243');
+        run.currentStep = 'merge-request';
+        run.status = 'waiting';
+        await runs.saveRun(run);
+
+        const done = await app.get(PipelineService).step('merge-request', 'PROJ-243');
+
+        expect(done.exitCode).toBe(1);
+        expect(done.message).toContain('review was for other files: back to code-review');
+        const failed = await runs.findRun('PROJ-243');
+        expect(failed?.status).toBe('failed');
+        expect(failed?.currentStep).toBe('merge-request');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it("fails with git's text and opens no request when the probe of the worktree fails", async () => {
+      const { app, open } = await booted('PROJ-244');
+      try {
+        failGit(['rev-parse', '--show-toplevel'], { stderr: 'fatal: detected dubious ownership in repository' }, 2);
+        const done = await app.get(PipelineService).step('merge-request', 'PROJ-244');
+
+        expect(done.exitCode).toBe(1);
+        expect(done.message).toContain('dubious ownership');
+        expect(open).not.toHaveBeenCalled();
+      } finally {
+        await app.close();
+      }
+    });
   });
 });

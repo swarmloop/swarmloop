@@ -26,7 +26,7 @@ interface SnapshotBody {
 
 export { captureTree } from '../git/worktree-tree';
 import { GIT_LIMITS } from '../git/git';
-import { captureTree, git, ownsRepo } from '../git/worktree-tree';
+import { captureTree, git, ownsRepo, requireTree } from '../git/worktree-tree';
 
 /** Local branch goes back to the snapshot commit, then the dirty tree is laid on top. Ignored files stay. */
 export async function restoreTree(repo: string, head: string, tree: string): Promise<void> {
@@ -125,10 +125,13 @@ export async function snapshotRun(
   chat?: string,
 ): Promise<void> {
   try {
-    const mounts = mountsForRun(join(deps.root, 'worktrees', run.key), run.targetPath);
+    const worktrees = join(deps.root, 'worktrees', run.key);
+    const mounts = mountsForRun(worktrees, run.targetPath);
+    // The run's own worktrees have a tree; a person's checkout, or a run with no worktree yet, may have none.
+    const own = !run.targetPath && mounts.every((mount) => mount.hostPath !== worktrees);
     const repos: RepoTree[] = [];
     for (const mount of mounts) {
-      const captured = await captureTree(mount.hostPath);
+      const captured = own ? await requireTree(mount.hostPath) : await captureTree(mount.hostPath);
       if (captured) {
         repos.push({ repo: mount.hostPath, head: captured.head, tree: captured.tree });
       }

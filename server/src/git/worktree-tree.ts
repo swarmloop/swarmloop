@@ -2,8 +2,10 @@ import { execFile } from 'child_process';
 import { randomBytes } from 'crypto';
 import { copyFileSync, existsSync, realpathSync, rmSync, statSync, utimesSync } from 'fs';
 import { tmpdir } from 'os';
-import { isAbsolute, join, resolve } from 'path';
+import { basename, isAbsolute, join, resolve } from 'path';
 import { rawEnv } from '../config/process-env';
+import { delay } from '../core/delay';
+import { SwarmloopError } from '../core/swarmloop-error';
 import { GIT_LIMITS, git as recordedGit } from './git';
 
 /** A git call that records no command span. It has a limit (a short one unless the caller names one), so a hung git ends as a failure. */
@@ -35,35 +37,51 @@ export function git(
   });
 }
 
-const TIMED_OUT = ' timed out after ';
+const NOT_A_REPOSITORY = 'not a git repository';
+const PROBE_RETRY_MS = 1000;
 
-async function isGitRepo(repo: string): Promise<boolean> {
-  try {
-    return (await git(repo, ['rev-parse', '--is-inside-work-tree'])).trim() === 'true';
-  } catch (error) {
-    throwTimeout(error);
-    return false;
+/**
+ * Runs a probe that records no event. Git's own "not a git repository" answer is null; any other failure is tried once
+ * more after a pause and then thrown with git's text, so a slow or broken git is never read as "not a repository".
+ */
+async function probe(repo: string, args: string[]): Promise<string | null> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await git(repo, args);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes(NOT_A_REPOSITORY)) {
+        return null;
+      }
+      if (attempt > 1) {
+        throw error;
+      }
+      await delay(PROBE_RETRY_MS);
+    }
   }
 }
 
-/** Any failure of these probes means "not a repository", except a timeout: that is a failure to report. */
-function throwTimeout(error: unknown): void {
-  if (error instanceof Error && error.message.includes(TIMED_OUT)) {
-    throw error;
+async function isGitRepo(repo: string): Promise<boolean> {
+  if (!existsSync(repo)) {
+    return false;
   }
+  return (await probe(repo, ['rev-parse', '--is-inside-work-tree']))?.trim() === 'true';
 }
 
 export async function ownsRepo(repo: string): Promise<boolean> {
   if (!(await isGitRepo(repo))) {
     return false;
   }
-  try {
-    const top = (await git(repo, ['rev-parse', '--show-toplevel'])).trim();
-    return realpathSync(top) === realpathSync(repo);
-  } catch (error) {
-    throwTimeout(error);
-    return false;
+  const top = await probe(repo, ['rev-parse', '--show-toplevel']);
+  return top !== null && realpathSync(top.trim()) === realpathSync(repo);
+}
+
+/** The tree of a worktree that must have one: no repository of its own is a failure with the path, never a null. */
+export async function requireTree(repo: string): Promise<{ head: string; tree: string }> {
+  const captured = await captureTree(repo);
+  if (!captured) {
+    throw new SwarmloopError(`${basename(repo)}: no git tree at ${repo}`);
   }
+  return captured;
 }
 
 /** Index and HEAD stay put. The tree includes untracked files and skips ignored ones. A subdirectory of a repository is not rewound. */

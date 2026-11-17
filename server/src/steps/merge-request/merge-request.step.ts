@@ -20,7 +20,9 @@ import { lateInput } from '../agent-step';
 import { renderImplementation } from '../implement/implement-record';
 import { hasWorkToMerge } from '../shared/branch-work';
 import { worktreesFingerprint } from '../shared/gate';
+import { jumpBackToReview } from '../shared/back-to-review';
 import { RunReport } from '../shared/run-report';
+import { StaleReview } from '../shared/stale-review';
 import { spliceReport } from '../shared/report-markers';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
@@ -69,6 +71,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     private readonly registry: CodeHostRegistry,
     private readonly runStop: RunStop,
     private readonly runReport: RunReport,
+    private readonly staleReview: StaleReview,
   ) {
     super(kernel);
   }
@@ -98,6 +101,9 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
       client,
     );
     const built = await this.summary(ctx, phases, trees);
+    if ('route' in built) {
+      return built;
+    }
     const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
     const withWork = await this.withWork(trees);
     if (withWork.length === 0) {
@@ -180,7 +186,8 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     return trees;
   }
 
-  private async summary(ctx: StepContext, phases: readonly PhaseName[], trees: Tree[]): Promise<Summary> {
+  /** The body of the request, or the jump back to review when the report is for other files. */
+  private async summary(ctx: StepContext, phases: readonly PhaseName[], trees: Tree[]): Promise<Summary | StepResult> {
     const implementation = await this.implementation(ctx);
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
@@ -190,9 +197,19 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     }
     const fingerprint = await worktreesFingerprint(trees.map((tree) => tree.path));
     const counted = await ctx.gate(ARTIFACTS.reviewReport, fingerprint);
-    const parts = counted ? await ctx.reread(ARTIFACTS.reviewReportResult) : null;
+    if (!counted) {
+      const stale = await this.staleReview.reason(ctx.opened.run);
+      if (!stale) {
+        throw new SwarmloopError('review report is missing');
+      }
+      if (stale.again) {
+        throw new SwarmloopError(`${stale.reason}: back to code-review`);
+      }
+      return jumpBackToReview(ctx, this.flows, stale.reason);
+    }
+    const parts = await ctx.reread(ARTIFACTS.reviewReportResult);
     const report = parts ? await this.runReport.render(ctx.opened.run) : null;
-    const rendered = report ?? (counted ? await ctx.reread(ARTIFACTS.reviewReport) : null);
+    const rendered = report ?? (await ctx.reread(ARTIFACTS.reviewReport));
     const summary = rendered?.trim() ?? '';
     if (!summary) {
       throw new SwarmloopError('review report is missing');

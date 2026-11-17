@@ -6,11 +6,23 @@ import {
   classify,
   parsePipelineRefs,
   renderNone,
+  unchangedSincePipeline,
   renderPass,
   verdictOf,
   type Seen,
 } from './pipeline-report';
 import { renderFail } from './pipeline-failure-report';
+import { mkdirSync, mkdtempSync } from 'fs';
+import { tmpdir } from 'os';
+import { basename, join } from 'path';
+import { clearGitFaults, failGit } from '../../testing/git-fault.spec-helpers';
+import { git } from '../../testing/git-fixture';
+
+import type * as GitFault from '../../testing/git-fault.spec-helpers';
+
+jest.mock('child_process', () =>
+  jest.requireActual<typeof GitFault>('../../testing/git-fault.spec-helpers').faultyChildProcess(),
+);
 
 function item(overrides: Partial<Seen> = {}): Seen {
   const seen = {
@@ -151,5 +163,47 @@ describe('pipeline report', () => {
       expect(checkFacts([item()])).toEqual({});
       expect(checkFacts([item({ checks: [check] })]).checks?.[0]).toMatchObject({ name: 'Code scanning results' });
     });
+  });
+});
+
+describe('unchangedSincePipeline', () => {
+  function repoWithRecord(): { path: string; record: string; mounts: { hostPath: string; containerPath: string }[] } {
+    const path = mkdtempSync(join(tmpdir(), 'swarmloop-unchanged-'));
+    git(path, ['init', '-q']);
+    git(path, ['remote', 'add', 'origin', 'https://gitlab.example/group/demo.git']);
+    git(path, ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'one']);
+    const sha = git(path, ['rev-parse', 'HEAD']);
+    return {
+      path,
+      record: `project: group/demo\nref: feature/x\nsha: ${sha}\n`,
+      mounts: [{ hostPath: path, containerPath: '/work' }],
+    };
+  }
+
+  afterEach(() => {
+    clearGitFaults();
+  });
+
+  it('says unchanged when the tree is the one CI ran on', async () => {
+    const { record, mounts } = repoWithRecord();
+
+    expect(await unchangedSincePipeline(record, mounts)).toBe(true);
+  });
+
+  it("fails with git's text when the remote cannot be read", async () => {
+    const { record, mounts } = repoWithRecord();
+    failGit(['remote', 'get-url'], { stderr: 'fatal: detected dubious ownership in repository' });
+
+    await expect(unchangedSincePipeline(record, mounts)).rejects.toThrow('dubious ownership');
+  });
+
+  it('fails with the name and the path for a worktree with a record but no git tree', async () => {
+    const { path, record } = repoWithRecord();
+    const nested = join(path, 'sub');
+    mkdirSync(nested);
+
+    await expect(unchangedSincePipeline(record, [{ hostPath: nested, containerPath: '/work' }])).rejects.toThrow(
+      `${basename(nested)}: no git tree at ${nested}`,
+    );
   });
 });

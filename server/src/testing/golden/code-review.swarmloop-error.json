@@ -42,6 +42,70 @@
       "step": "code-review"
     },
     {
+      "kind": "command.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.started",
+      "step": "code-review"
+    },
+    {
+      "kind": "command.finished",
+      "step": "code-review"
+    },
+    {
       "kind": "activity.finished",
       "step": "code-review"
     },

@@ -1,8 +1,13 @@
+import { createHash } from 'crypto';
+import { mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { basename, join } from 'path';
+import { git } from '../../testing/git-fixture';
 import { countsFor } from '../../history/gate-stamp';
 import { DocumentRepository } from '../../history/document.repository';
 import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
-import { gateCounts, stampGate, worktreesFingerprint } from './gate';
+import { checkoutFingerprint, gateCounts, stampGate, worktreesFingerprint } from './gate';
 
 describe('countsFor', () => {
   const run = { generation: 2 };
@@ -46,8 +51,29 @@ describe('gate stamps on documents', () => {
   });
 
   it('keeps one order of the worktrees whoever asks', async () => {
-    expect(await worktreesFingerprint(['/nowhere/b', '/nowhere/a'])).toBe(
-      await worktreesFingerprint(['/nowhere/a', '/nowhere/b']),
-    );
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-gate-'));
+    const [a, b] = ['a', 'b'].map((name) => {
+      mkdirSync(join(root, name));
+      git(join(root, name), ['init', '-q']);
+      return join(root, name);
+    });
+    expect(await worktreesFingerprint([b, a])).toBe(await worktreesFingerprint([a, b]));
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('fails for a worktree with no git tree', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'swarmloop-gate-plain-'));
+    await expect(worktreesFingerprint([folder])).rejects.toThrow(`${basename(folder)}: no git tree at ${folder}`);
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it('gives a checkout that is a subdirectory its name-only fingerprint', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'swarmloop-gate-repo-'));
+    git(repo, ['init', '-q']);
+    mkdirSync(join(repo, 'sub'));
+    const sub = join(repo, 'sub');
+    expect(await checkoutFingerprint([sub])).toBe(createHash('sha256').update('sub').digest('hex'));
+    await expect(worktreesFingerprint([sub])).rejects.toThrow('no git tree');
+    rmSync(repo, { recursive: true, force: true });
   });
 });

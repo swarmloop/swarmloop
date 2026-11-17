@@ -1,9 +1,10 @@
+import { createHash } from 'crypto';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { gitOutput } from '../testing/git-fixture';
-import { worktreeSnapshot } from './worktree-git';
+import { checkoutSnapshot, requiredTreeFingerprint, worktreeFingerprint, worktreeSnapshot } from './worktree-git';
 
 function git(repo: string, args: string[]): string {
   return gitOutput(repo, ['-C', repo, ...args]);
@@ -54,5 +55,31 @@ describe('worktreeSnapshot', () => {
     await worktreeSnapshot(mounts);
 
     expect(git(repo, ['status', '--porcelain']).trim()).toBe('?? created.ts');
+  });
+});
+
+describe('worktrees with no tree', () => {
+  it('fails the snapshot of a folder that is not a repository, and the checkout snapshot reads its status', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'swarmloop-plain-'));
+    const mounts = [{ hostPath: folder, containerPath: '/work' }];
+
+    await expect(worktreeSnapshot(mounts)).rejects.toThrow(`${basename(folder)}: no git tree at ${folder}`);
+    await expect(requiredTreeFingerprint(mounts)).rejects.toThrow('no git tree at');
+    await expect(worktreeFingerprint(mounts)).resolves.toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("gives a subdirectory of a repository today's results for a checkout", async () => {
+    const { repo } = makeRepo();
+    mkdirSync(join(repo, 'sub'));
+    const mounts = [{ hostPath: join(repo, 'sub'), containerPath: '/work' }];
+
+    await expect(checkoutSnapshot(mounts)).resolves.toContain('sub\n');
+    await expect(worktreeFingerprint(mounts)).resolves.toBe(createHash('sha256').update('sub').digest('hex'));
+  });
+
+  it('gives a repository the same fingerprint either way', async () => {
+    const { mounts } = makeRepo();
+
+    expect(await requiredTreeFingerprint(mounts)).toBe(await worktreeFingerprint(mounts));
   });
 });

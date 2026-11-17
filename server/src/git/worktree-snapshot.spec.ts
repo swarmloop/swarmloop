@@ -79,6 +79,74 @@ describe('worktree snapshot', () => {
     }
   });
 
+  describe('snapshotRun', () => {
+    function deps(root: string): { put: jest.Mock; deps: Parameters<typeof snapshotRun>[0] } {
+      const put = jest.fn().mockResolvedValue(undefined);
+      return {
+        put,
+        deps: {
+          documents: { putDocument: put } as unknown as DocumentRepository,
+          visits: { latestChatId: jest.fn().mockResolvedValue(null) } as unknown as VisitRepository,
+          root,
+        },
+      };
+    }
+
+    it('writes no snapshot and logs the path for a run worktree that is not a repository', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'swarmloop-snapshot-root-'));
+      const worktree = join(root, 'worktrees', 'PROJ-2', 'api');
+      mkdirSync(worktree, { recursive: true });
+      const { put, deps: snapshotDeps } = deps(root);
+      const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      try {
+        await snapshotRun(
+          snapshotDeps,
+          new FakeClock(),
+          { id: 1, key: 'PROJ-2', targetPath: null } as RunEntity,
+          'implement',
+        );
+        expect(put).not.toHaveBeenCalled();
+        expect(error).toHaveBeenCalledWith(`api: no git tree at ${worktree}`);
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it('writes the snapshot of a run worktree that is a repository', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'swarmloop-snapshot-root-'));
+      const worktree = join(root, 'worktrees', 'PROJ-3', 'api');
+      mkdirSync(worktree, { recursive: true });
+      git(worktree, ['init']);
+      writeFileSync(join(worktree, 'a'), 'a\n');
+      const { put, deps: snapshotDeps } = deps(root);
+
+      await snapshotRun(
+        snapshotDeps,
+        new FakeClock(),
+        { id: 1, key: 'PROJ-3', targetPath: null } as RunEntity,
+        'implement',
+      );
+
+      expect(put).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes no snapshot and fails nothing for a checkout that is a subdirectory of a repository', async () => {
+      const repo = mkdtempSync(join(tmpdir(), 'swarmloop-snapshot-sub-'));
+      git(repo, ['init']);
+      mkdirSync(join(repo, 'sub'));
+      const { put, deps: snapshotDeps } = deps(repo);
+      const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      try {
+        const run = { id: 1, key: 'PROJ-4', targetPath: join(repo, 'sub') } as RunEntity;
+        await snapshotRun(snapshotDeps, new FakeClock(), run, 'implement');
+        expect(put).not.toHaveBeenCalled();
+        expect(error).not.toHaveBeenCalled();
+      } finally {
+        error.mockRestore();
+      }
+    });
+  });
+
   it('keeps the step and the time so an unchanged tree is still a new document', () => {
     const first = renderSnapshot({
       step: 'implement',

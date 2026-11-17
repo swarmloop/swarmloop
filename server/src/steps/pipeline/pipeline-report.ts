@@ -2,7 +2,7 @@ import type { AttemptCheck } from '../../contract/step-events';
 import type { PipelineCheck, PipelineJob, PipelineRef, PipelineRun } from '../../integrations/code-host/code-host';
 import { basename } from 'path';
 import { git } from '../../git/git';
-import { captureTree, git as quietGit } from '../../git/worktree-tree';
+import { git as quietGit, requireTree } from '../../git/worktree-tree';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { remoteProject } from '../merge-request/merge-request-record';
 
@@ -184,23 +184,37 @@ export function renderInfra(code: InfraCode, seen: Seen[], notes: string): strin
   return `${[line, ...names.map((name) => `job: ${name}`)].join('\n')}\n`;
 }
 
+/** Git's answer for a commit this repository does not have. */
+const UNKNOWN_REVISION = 'unknown revision';
+
 /**
  * Whether every repo with a `pipeline_ref` record still has the tree of the commit CI ran on.
- * Null when no repo has a record, or a sha cannot be resolved here.
+ * Null when no repo has a record, or a sha is not in this repository. Any other failed git call, or a worktree with
+ * no tree, is a failure with git's text.
  */
 export async function unchangedSincePipeline(refBody: string | null, mounts: SandboxMount[]): Promise<boolean | null> {
   const records = parsePipelineRefs(refBody ?? '');
   let compared = false;
   for (const mount of mounts) {
-    const origin = await quietGit(mount.hostPath, ['remote', 'get-url', 'origin']).catch(() => '');
+    const origin = await quietGit(mount.hostPath, ['remote', 'get-url', 'origin']).catch((error: unknown) => {
+      if (error instanceof Error && error.message.includes('No such remote')) {
+        return '';
+      }
+      throw error;
+    });
     const project = origin ? safeProject(origin.trim()) : null;
     const sha = records.find((record) => record.project === project)?.sha;
     if (!project || !sha) {
       continue;
     }
-    const pipelineTree = await quietGit(mount.hostPath, ['rev-parse', `${sha}^{tree}`]).catch(() => null);
-    const current = await captureTree(mount.hostPath);
-    if (!pipelineTree || !current) {
+    const pipelineTree = await quietGit(mount.hostPath, ['rev-parse', `${sha}^{tree}`]).catch((error: unknown) => {
+      if (error instanceof Error && error.message.includes(UNKNOWN_REVISION)) {
+        return null;
+      }
+      throw error;
+    });
+    const current = await requireTree(mount.hostPath);
+    if (pipelineTree === null) {
       return null;
     }
     compared = true;

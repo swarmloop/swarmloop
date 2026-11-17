@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { gitWorktree } from './git-worktree.spec-helpers';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -528,7 +529,7 @@ describe('crash matrix', () => {
     app = await createTestApp({ realReview: true, blocks });
     const runs = app.app.get(RunRepository);
     const documents = app.app.get(DocumentRepository);
-    mkdirSync(join(app.root, 'worktrees', KEY, 'billing-api'), { recursive: true });
+    gitWorktree(join(app.root, 'worktrees', KEY, 'billing-api'));
     const seeded = await runs.begin(KEY, 'code-review');
     seeded.status = 'waiting';
     seeded.currentStep = 'implement-improve';

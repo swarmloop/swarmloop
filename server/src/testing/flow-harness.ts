@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import type { StepName } from '../contract/steps';
 import { readDefaultSettings } from '../config/load-env';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { CommandService } from '../pipeline/command.service';
@@ -75,6 +76,8 @@ export async function createFlowHarness(
     realImplement?: boolean | 'all';
     /** Every run takes the real code-review step. */
     realReview?: boolean;
+    /** These steps are the real ones. */
+    realSteps?: StepName[];
     taskWorktrees?: boolean;
     env?: Record<string, string>;
     blocks?: BlockAgentRunner;
@@ -89,6 +92,7 @@ export async function createFlowHarness(
     realImplement: options.realImplement ?? 'all',
     realHost: options.realHost,
     realReview: options.realReview,
+    realSteps: options.realSteps,
     blocks: options.blocks,
     runner: options.runner,
     env,

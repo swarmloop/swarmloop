@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { mkdirSync } from 'fs';
+import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -12,7 +12,7 @@ import { boot, reply, reportReply, result, seed, writeEnv } from './code-review.
 async function parentReview(key: string, reviewAgent: string) {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-epic-'));
   await writeEnv(root, undefined, undefined, undefined, { AGENTS_REVIEW: reviewAgent });
-  mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
+  gitWorktree(join(root, 'worktrees', key, 'billing-api'));
   const agent = jest.fn(async (input: AgentRunInput) =>
     result(input.step.endsWith('report') ? reportReply('It holds.') : reply('notes', 'ok'), input.step),
   );

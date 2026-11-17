@@ -3,7 +3,7 @@ import { basename } from 'path';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { git, gitDetail } from './git';
-import { captureTree } from './worktree-tree';
+import { captureTree, requireTree } from './worktree-tree';
 
 export async function featureHeads(
   mounts: SandboxMount[],
@@ -48,8 +48,19 @@ export async function assertUncommitted(
 /**
  * Two stamps match only when every repository has the same HEAD and the same content, untracked files included.
  * `git diff HEAD` cannot see an edit inside a file git does not track yet, so the stamp is the tree of a temporary index.
+ * Every mount is a worktree of the run, so it must have a tree.
  */
 export async function worktreeSnapshot(mounts: SandboxMount[]): Promise<string> {
+  const parts: string[] = [];
+  for (const mount of mounts) {
+    const captured = await requireTree(mount.hostPath);
+    parts.push(`${basename(mount.hostPath)}\n${captured.head}\n${captured.tree}`);
+  }
+  return parts.join('\0');
+}
+
+/** The snapshot of a person's checkout: a folder that is not a repository of its own is read by its status and diff. */
+export async function checkoutSnapshot(mounts: SandboxMount[]): Promise<string> {
   const parts: string[] = [];
   for (const mount of mounts) {
     const repo = basename(mount.hostPath);
@@ -65,6 +76,10 @@ export async function worktreeSnapshot(mounts: SandboxMount[]): Promise<string> 
   return parts.join('\0');
 }
 
+function digest(parts: string[]): string {
+  return createHash('sha256').update(parts.join('\0')).digest('hex');
+}
+
 /**
  * What a journal and a gate record of the files they judged: the content of every worktree, untracked files included,
  * and not its HEAD, so committing the same files keeps it. A mount that is not a repository of its own adds only its name.
@@ -75,7 +90,17 @@ export async function worktreeFingerprint(mounts: SandboxMount[]): Promise<strin
     const captured = await captureTree(mount.hostPath);
     parts.push(captured ? `${basename(mount.hostPath)}\n${captured.tree}` : basename(mount.hostPath));
   }
-  return createHash('sha256').update(parts.join('\0')).digest('hex');
+  return digest(parts);
+}
+
+/** The same value as `worktreeFingerprint` for repositories with a tree; a worktree of the run with none is a failure. */
+export async function requiredTreeFingerprint(mounts: SandboxMount[]): Promise<string> {
+  const parts: string[] = [];
+  for (const mount of mounts) {
+    const captured = await requireTree(mount.hostPath);
+    parts.push(`${basename(mount.hostPath)}\n${captured.tree}`);
+  }
+  return digest(parts);
 }
 
 export async function worktreeStatus(mounts: SandboxMount[]): Promise<string> {

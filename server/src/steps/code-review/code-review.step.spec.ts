@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 
+import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { mkdirSync, rmSync, utimesSync, writeFileSync } from 'fs';
@@ -55,7 +56,7 @@ describe('code-review step', () => {
   });
 
   it('retries an empty review report with the targeted follow-up', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-79', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-79', 'billing-api'));
     let reports = 0;
     const agent = jest.fn(async (input: AgentRunInput) => {
       if (input.step.endsWith('report')) {
@@ -75,7 +76,7 @@ describe('code-review step', () => {
   });
 
   it('stores five reviews when every decision is ok', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-80', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-80', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(
         input.step.endsWith('report') ? reportReply('The parser change holds together.') : reply('notes', 'ok'),
@@ -152,8 +153,8 @@ describe('code-review step', () => {
   });
 
   it('puts the Impact section in every reviewer prompt and the report prompt, and leaves it out without a list', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-86', 'billing-api'), { recursive: true });
-    mkdirSync(join(root, 'worktrees', 'PROJ-87', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-86', 'billing-api'));
+    gitWorktree(join(root, 'worktrees', 'PROJ-87', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(input.step.endsWith('report') ? reportReply('Holds.') : reply('notes', 'ok'), input.step),
     );
@@ -176,7 +177,7 @@ describe('code-review step', () => {
   });
 
   it('runs the five reviewers together and writes the report after they finish', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-81', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-81', 'billing-api'));
     let open = 0;
     let peak = 0;
     let releaseReviewers: (() => void) | undefined;
@@ -222,7 +223,7 @@ describe('code-review step', () => {
   });
 
   it('returns to implement while attempts_review is below the limit', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-200', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-200', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(
         input.step.endsWith('report')
@@ -256,7 +257,7 @@ describe('code-review step', () => {
   });
 
   it('still returns to implement when the prompt names a branch', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-93', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-93', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(answerFor(input.step, input.step.endsWith('quality') ? 'return' : 'ok')),
     );
@@ -277,7 +278,7 @@ describe('code-review step', () => {
   });
 
   it('finishes a review return even when attempts_review is already at the limit', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-82', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-82', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(answerFor(input.step, input.step.endsWith('quality') ? 'return' : 'ok')),
     );
@@ -294,7 +295,7 @@ describe('code-review step', () => {
   });
 
   it("recovers a reviewer's result block from the log on retry", async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-201', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-201', 'billing-api'));
     mkdirSync(join(root, 'data'), { recursive: true });
     await writeFile(
       join(root, 'data', 'PROJ-201-code-review-performance-output.txt'),
@@ -318,7 +319,7 @@ describe('code-review step', () => {
   });
 
   it('keeps finished reviewers and starts only the one that failed', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-83', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-83', 'billing-api'));
     let quality = 'notes\n';
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(input.step.endsWith('quality') ? quality : answerFor(input.step)),
@@ -342,7 +343,7 @@ describe('code-review step', () => {
   });
 
   it('does not start when the remaining call ceiling cannot cover every reviewer', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-84', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-84', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step)));
     useAgent(agent);
     await seed(app, 'PROJ-84', 0, 15);
@@ -356,7 +357,7 @@ describe('code-review step', () => {
   });
 
   it('keeps an unchanged approved diff when a new fan-out does not fit', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-100', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-100', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(input.step.endsWith('report') ? reportReply('The checks are in.') : reply(input.step, 'ok')),
     );
@@ -382,7 +383,7 @@ describe('code-review step', () => {
   });
 
   it('reuses stored reviews when Run again left a failed visit waiting', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-88', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-88', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(
         answerFor(input.step, input.step.endsWith('quality') || input.step.endsWith('regressions') ? 'return' : 'ok'),
@@ -431,7 +432,7 @@ describe('code-review step', () => {
   });
 
   it('continues an interrupted reviewer and keeps a finished return', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-94', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-94', 'billing-api'));
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
       join(root, 'data', 'PROJ-94-code-review-security-session.json'),
@@ -462,7 +463,7 @@ describe('code-review step', () => {
   });
 
   it('keeps other open reviewers when one is started alone', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-89', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-89', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step)));
     useAgent(agent);
     await seed(app, 'PROJ-89');
