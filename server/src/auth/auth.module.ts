@@ -11,11 +11,13 @@ import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsController } from './connections.controller';
 import { ConnectionsService } from './connections.service';
 import { HostAppsService } from './host-apps.service';
+import { PeopleService } from './people.service';
 import { PersonalCredentials } from './personal-credentials.service';
 import { LoginStates } from './login-states';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { HOST_APP_STORE } from '../integrations/code-host/login-provider';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { PersonalTokens } from './personal-tokens.service';
 import { SecretBox, secretKey } from './secret-box';
 import { SessionService } from './session.service';
 
@@ -32,6 +34,8 @@ import { SessionService } from './session.service';
     ...codeHostAdapters().flatMap((adapter) => (adapter.appFlow ? [adapter.appFlow] : [])),
     { provide: HOST_APP_STORE, useExisting: HostAppsService },
     PersonalCredentials,
+    PersonalTokens,
+    PeopleService,
     {
       provide: SecretBox,
       useFactory: (config: AppConfig) =>
@@ -46,6 +50,6 @@ import { SessionService } from './session.service';
     },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
-  exports: [AuthService, ConnectionsService, HostAppsService, PersonalCredentials],
+  exports: [AuthService, ConnectionsService, HostAppsService, PersonalCredentials, PersonalTokens, PeopleService],
 })
 export class AuthModule {}
