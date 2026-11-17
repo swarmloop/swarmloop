@@ -1,14 +1,14 @@
 import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../lib/api';
-import { getFlow, getRunLog, stopRun } from '../../lib/endpoints';
+import { getFlow, getRunLog, replayStep, stopRun } from '../../lib/endpoints';
 import { emitted, receive } from '../../test/fake-socket';
 import { flowView } from '../../test/fixtures';
 import { reviewLog } from '../../test/review-log';
 import { LiveBridgeProvider } from '../shell';
 import { useRunFlow } from './use-run-flow';
 
-vi.mock('../../lib/endpoints', () => ({ getFlow: vi.fn(), getRunLog: vi.fn(), stopRun: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({ getFlow: vi.fn(), getRunLog: vi.fn(), stopRun: vi.fn(), replayStep: vi.fn() }));
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 
 function Probe({ runKey }: { runKey: string }) {
@@ -190,5 +190,30 @@ describe('useRunFlow', () => {
 
     expect(outcomes).toEqual(['stop refused', 'stopped']);
     expect(await screen.findByText('status: failed')).toBeInTheDocument();
+  });
+
+  it('puts the upload ids in the replay body only when there are some', async () => {
+    vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'done' }));
+    vi.mocked(replayStep).mockResolvedValue({});
+    function ReplayProbe() {
+      const { flow, startReplay } = useRunFlow('run-1');
+      return (
+        <div>
+          {flow ? <p>loaded</p> : null}
+          <button onClick={() => void startReplay('implementation', 'p', ['planning'])}>plain</button>
+          <button onClick={() => void startReplay('implementation', 'p', ['planning'], ['u1'])}>with files</button>
+        </div>
+      );
+    }
+
+    render(<ReplayProbe />, { wrapper: LiveBridgeProvider });
+    await screen.findByText('loaded');
+    await act(async () => screen.getByRole('button', { name: 'plain' }).click());
+    await act(async () => screen.getByRole('button', { name: 'with files' }).click());
+
+    expect(vi.mocked(replayStep).mock.calls).toEqual([
+      ['run-1', 'implementation', { prompt: 'p', phases: ['planning'] }],
+      ['run-1', 'implementation', { prompt: 'p', phases: ['planning'], attachments: ['u1'] }],
+    ]);
   });
 });

@@ -20,8 +20,8 @@ export function useRunFlow(runKey: string): {
   setConfirmStop: Dispatch<SetStateAction<boolean>>;
   replay: string | null;
   setReplay: Dispatch<SetStateAction<string | null>>;
-  pending: { prompt: string; phases: PhaseName[] } | null;
-  setPending: Dispatch<SetStateAction<{ prompt: string; phases: PhaseName[] } | null>>;
+  pending: { prompt: string; phases: PhaseName[]; attachments?: string[] } | null;
+  setPending: Dispatch<SetStateAction<{ prompt: string; phases: PhaseName[]; attachments?: string[] } | null>>;
   selected: string | null;
   now: number;
   openMs: number;
@@ -31,7 +31,7 @@ export function useRunFlow(runKey: string): {
   applyWaiting: (next: FlowView) => void;
   stopRun: () => Promise<void>;
   rebaseRun: () => Promise<void>;
-  startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
+  startReplay: (step: string, prompt: string, phases: PhaseName[], attachments?: string[]) => Promise<void>;
   startReviewer: (step: string) => Promise<void>;
   resumeRun: () => void;
 } {
@@ -39,7 +39,7 @@ export function useRunFlow(runKey: string): {
   const [error, setError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
   const [replay, setReplay] = useState<string | null>(null);
-  const [pending, setPending] = useState<{ prompt: string; phases: PhaseName[] } | null>(null);
+  const [pending, setPending] = useState<{ prompt: string; phases: PhaseName[]; attachments?: string[] } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loads, setLoads] = useState(0);
   const memory = useRef<FlowMemory>({ pinnedAt: null, heldMs: 0, heldStart: null, openReviews: [] });

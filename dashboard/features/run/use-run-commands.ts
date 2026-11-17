@@ -41,7 +41,7 @@ export function useRunCommands({
 }: CommandContext): {
   stopRun: () => Promise<void>;
   rebaseRun: () => Promise<void>;
-  startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
+  startReplay: (step: string, prompt: string, phases: PhaseName[], attachments?: string[]) => Promise<void>;
   startReviewer: (step: string) => Promise<void>;
   resumeRun: () => void;
 } {
@@ -85,12 +85,16 @@ export function useRunCommands({
     });
   };
 
-  const startReplay = (step: string, prompt: string, phases: PhaseName[]): Promise<void> => {
+  const startReplay = (step: string, prompt: string, phases: PhaseName[], attachments?: string[]): Promise<void> => {
     if (!flow) {
       return Promise.resolve();
     }
     const run = flow;
-    return replayStep(run.key, step, { prompt, phases } satisfies ReplayBody).then(() => {
+    return replayStep(run.key, step, {
+      prompt,
+      phases,
+      ...(attachments ? { attachments } : {}),
+    } satisfies ReplayBody).then(() => {
       followStep.current = true;
       setSelected(step);
       memory.current = { ...memory.current, pinnedAt: run.updatedAt };

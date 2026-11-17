@@ -411,7 +411,7 @@ export default tseslint.config(
           mode: 'folder',
         })),
         { type: 'dashboard-lib', pattern: 'dashboard/lib/**', mode: 'folder' },
-        { type: 'dashboard-ui', pattern: 'dashboard/components/ui/**', mode: 'folder' },
+        { type: 'dashboard-ui', pattern: 'dashboard/components/{ui,composer}/**', mode: 'folder' },
         { type: 'contract', pattern: 'server/src/contract/**', mode: 'folder' },
       ],
       'boundaries/ignore': ['dashboard/features/**/*.test.*'],
@@ -443,8 +443,8 @@ export default tseslint.config(
               message: 'Import another feature through its index.ts.',
             },
             {
-              regex: '^(\\.\\.?/)+(?!.*components/ui/).*components/',
-              message: 'Features may import shared UI only from components/ui.',
+              regex: '^(\\.\\.?/)+(?!.*components/(?:ui|composer)/).*components/',
+              message: 'Features may import shared UI only from components/ui and components/composer.',
             },
             {
               regex: '^(\\.\\.?/)+(app|hooks)/',

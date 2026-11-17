@@ -22,6 +22,7 @@ import type {
   TicketKeysBody,
   TicketKeysView,
 } from '@contract/api';
+import type { UploadView } from '@contract/attachments';
 import type { ConnectionCard, IntegrationCardsView, SignInView } from '@contract/connections';
 import type { ReadinessView } from '@contract/readiness';
 import type { SettingsView } from '@contract/settings';
@@ -110,3 +111,10 @@ export const startReviewer = (key: string, name: string): Promise<unknown> => ap
 export const replayStep = (key: string, name: string, body: ReplayBody): Promise<unknown> =>
   api(`${step(key, name)}/replay`, post(body));
 export const removeRun = (key: string): Promise<unknown> => api(run(key), { method: 'DELETE' });
+/** Keeps one file on the server for a message or a new run to take by its id; the body is the raw file. */
+export const uploadFile = (file: Blob, name: string): Promise<UploadView> =>
+  api<UploadView>(`/uploads?name=${encodeURIComponent(name)}`, {
+    ...post(),
+    body: file,
+    headers: { 'Content-Type': 'application/octet-stream' },
+  });
