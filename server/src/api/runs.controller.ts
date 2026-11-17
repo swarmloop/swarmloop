@@ -226,10 +226,12 @@ export class RunsController {
     @Body() body: ReplayBody,
     @Res({ passthrough: true }) response: { status(code: number): void },
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Actor() actor?: string | null,
   ): Promise<RunRef & CommandReceipt> {
     const payload: ReplayPayload = { step, prompt: body.prompt ?? '', phases: body.phases };
     const result = await this.dispatch<RunRef>('replay', key, payload, idempotencyKey, {
       expectedRevision: body.expectedRevision,
+      actor,
     });
     response.status(httpStatus(result));
     return result;
@@ -275,9 +277,11 @@ export class RunsController {
     @Res({ passthrough: true }) response: { status(code: number): void },
     @Body() body?: CommandInput,
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Actor() actor?: string | null,
   ): Promise<RunRef & CommandReceipt> {
     const result = await this.dispatch<RunRef>('rebase', key, {}, idempotencyKey, {
       expectedRevision: body?.expectedRevision,
+      actor,
     });
     response.status(httpStatus(result));
     return result;
@@ -300,9 +304,11 @@ export class RunsController {
     @Body() body: ResumeBody,
     @Res({ passthrough: true }) response: { status(code: number): void },
     @Headers('idempotency-key') idempotencyKey?: string,
+    @Actor() actor?: string | null,
   ): Promise<RunRef & CommandReceipt> {
     const result = await this.dispatch<RunRef>('resume', key, { prompt: body?.prompt }, idempotencyKey, {
       expectedRevision: body?.expectedRevision,
+      actor,
     });
     response.status(httpStatus(result));
     return result;
@@ -314,9 +320,9 @@ export class RunsController {
     key: string,
     payload: Record<string, unknown> | object,
     idempotencyKey: string | undefined,
-    options: Pick<SubmitOptions, 'create'> & { expectedRevision?: unknown } = {},
+    options: Pick<SubmitOptions, 'create' | 'actor'> & { expectedRevision?: unknown } = {},
   ): Promise<T & CommandReceipt> {
-    const { expectedRevision, create } = options;
+    const { expectedRevision, create, actor } = options;
     if (expectedRevision !== undefined && !Number.isInteger(expectedRevision)) {
       throw new BadRequestException('expectedRevision is not a count');
     }
@@ -324,6 +330,7 @@ export class RunsController {
       idempotencyKey: idempotencyKey?.trim() || undefined,
       expectedRevision: expectedRevision as number | undefined,
       create,
+      actor,
     });
     return { ...value, ...receipt };
   }

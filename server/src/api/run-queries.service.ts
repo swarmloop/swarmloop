@@ -169,6 +169,7 @@ export class RunQueriesService {
       ...(await parentOf(this.runs, this.documents, run)),
       ...(label ? { backlog: label } : {}),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
+      ...(run.ownerSince ? { ownerSince: run.ownerSince } : {}),
       ...taskView(
         documents,
         run.currentStep,
