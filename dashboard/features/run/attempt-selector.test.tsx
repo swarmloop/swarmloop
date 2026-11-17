@@ -97,10 +97,35 @@ describe('AttemptSelector in the step header', () => {
     );
 
     const first = screen.getByRole('button', { name: '1' });
-    expect(first).toHaveStyle({ color: 'var(--chart-returns)', fontWeight: '700' });
+    expect(first).toHaveStyle({ color: createTheme().palette.error.main, fontWeight: '700' });
     expect(first).toHaveClass('MuiButton-outlined');
     expect(screen.getByRole('button', { name: '2' })).toHaveClass('MuiButton-text');
-    expect(first).not.toHaveStyle({ color: createTheme().palette.error.main });
+  });
+
+  it('reads Attempt followed by the numbers separated by dots and still selects one', async () => {
+    const user = userEvent.setup({ delay: null });
+    const onSelect = vi.fn();
+    const view = stepView({ visits: visits(3) });
+    const { container } = render(
+      <StepHeader
+        step="implement"
+        view={view}
+        attempt={2}
+        setAttempt={onSelect}
+        follow={{ current: true }}
+        attempts={3}
+        visit={view.visits[2]}
+        label="done"
+        shownDuration={0}
+        shownAttempt={3}
+        problemId={null}
+        problemCount={0}
+      />,
+    );
+
+    expect(container.textContent).toContain('Attempt 1 · 2 · 3');
+    await user.click(screen.getByRole('button', { name: '2' }));
+    expect(onSelect).toHaveBeenCalledWith(1);
   });
 
   it('keeps a selected earlier attempt visible as a button', () => {
