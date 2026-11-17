@@ -26,6 +26,7 @@ import {
   replayStep,
   resumeRun,
   sendAnswers,
+  sendPlanChat,
   setRunProjects,
   startReviewer,
   stopRun,
@@ -57,6 +58,16 @@ describe('endpoints', () => {
     vi.mocked(api).mockRejectedValue(new Error('The file is larger than 25 MB'));
 
     await expect(uploadFile(new Blob(['x']), 'big.bin')).rejects.toThrow('The file is larger than 25 MB');
+  });
+
+  it('posts a plan chat message to the run, with upload ids only when there are some', async () => {
+    await sendPlanChat('a/b', 'split it', ['u1']);
+    await sendPlanChat('run-1', 'hello');
+
+    expect(vi.mocked(api).mock.calls).toEqual([
+      ['/runs/a%2Fb/plan-chat', { method: 'POST', body: JSON.stringify({ message: 'split it', attachments: ['u1'] }) }],
+      ['/runs/run-1/plan-chat', { method: 'POST', body: JSON.stringify({ message: 'hello' }) }],
+    ]);
   });
 
   it('reads with GET paths and encodes the key once', async () => {

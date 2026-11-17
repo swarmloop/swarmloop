@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getFlow, getStep, getStepEvents, listProjects, listRemote } from '../../../../lib/endpoints';
+import { getFlow, getStep, getStepEvents, listProjects, listRemote, getSession } from '../../../../lib/endpoints';
 import { LiveBridgeProvider } from '../../../shell';
 import { QueryWrapper } from '../../../../test/query-wrapper';
 import { flowView, stepView } from '../../../../test/fixtures';
@@ -17,6 +17,7 @@ vi.mock('../../../../lib/endpoints', () => ({
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
   sendAnswers: vi.fn(),
+  getSession: vi.fn(),
   resumeRun: vi.fn(),
   stopRun: vi.fn(),
   rebaseRun: vi.fn(),
@@ -44,6 +45,7 @@ const launches = [
 const metrics = { ...flowView().metrics, cpuPeak: 679, memPeak: 4107.3 * 1024 * 1024 };
 
 beforeEach(() => {
+  vi.mocked(getSession).mockResolvedValue({ user: 'alice' });
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
