@@ -48,10 +48,13 @@ export class EnvironmentService extends ProjectEnvironments {
     return found;
   }
 
-  /** The commands of a repository that the paths of its last checks visit skipped. */
-  async skippedChecks(key: string, repo: string): Promise<{ names: string[] } | null> {
+  /**
+   * The commands of a repository that its last checks visit skipped, and for the ones that passed before on the same
+   * files the reason, by name.
+   */
+  async skippedChecks(key: string, repo: string): Promise<{ names: string[]; passed?: Record<string, string> } | null> {
     const stored = await this.repository.latestBody(key, `checks_skipped:${repo}`);
-    return stored ? (JSON.parse(stored) as { names: string[] }) : null;
+    return stored ? (JSON.parse(stored) as { names: string[]; passed?: Record<string, string> }) : null;
   }
 
   /** An explicit rebase adopts the new trusted base environment, never the agent's edited manifest. */

@@ -18,6 +18,7 @@ import type { ProjectLaunch } from '../sandbox/sandbox-launch';
 import { agentImage, prepareStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { addCheckRows } from './check-rows';
+import { recordPasses, visitStart, type VisitStart } from './check-passes';
 import { checkRun, originHosts, readEnvironmentConfig } from './environment-config';
 import { failuresOf, withCommand, type FailureDeps } from './check-failures';
 import { checksFingerprint } from './checks-fingerprint';
@@ -159,11 +160,13 @@ export class ProjectEnvironments {
   /**
    * Server-owned completion gate. Each repository uses its own frozen commands and image. Every command runs, up to
    * CHECKS_PARALLEL at once, and a failure of one does not stop the others: the error names all of them. A command
-   * with `paths` that the run's diff does not touch is skipped, unless the last return named it (`named`).
+   * with `paths` is skipped, unless the last return named it (`named`), when the run's diff does not touch them or when
+   * it passed earlier in this run on the same files under them; a change outside every `paths` list runs all.
    */
   async check(input: EnvironmentInput, named: FailedCommand[] = []): Promise<{ passed: number; total: number }> {
     const attemptId = input.run.activeAttempt ?? '';
     const repos: CheckedRepo[] = [];
+    const starts = new Map<CheckedRepo, VisitStart>();
     let passed = 0;
     let total = 0;
     for (const mount of input.mounts) {
@@ -174,19 +177,25 @@ export class ProjectEnvironments {
       }
       const fingerprint = await this.fingerprint(input, prepared);
       const skipped = await this.skipIfPassed(input, prepared, fingerprint);
+      const start = skipped ? null : await visitStart(mount, prepared, (args, ms) => this.sandbox.run(args, ms));
       const { rows, byPaths } = await addCheckRows(
         { documents: this.documents, commands: this.commands, live: this.live },
-        { input, mount, prepared, named, skipped, offset: total },
+        { input, mount, prepared, named, skipped, offset: total, start },
       );
       total += entries.length;
       passed += skipped ? entries.length : byPaths;
       if (!skipped && rows.length > 0) {
-        repos.push({ mount, prepared, fingerprint, rows, results: [] });
+        const repo: CheckedRepo = { mount, prepared, fingerprint, rows, results: [] };
+        repos.push(repo);
+        if (start) {
+          starts.set(repo, start);
+        }
       }
     }
     await this.pool.runAll(input, attemptId, repos);
     const failures: CheckFailure[] = [];
     for (const repo of repos) {
+      await recordPasses({ clock: this.clock, documents: this.documents }, input, repo, starts.get(repo) ?? null);
       const own = await failuresOf(this.failureDeps(), input, repo);
       failures.push(...own);
       if (own.length === 0) {
