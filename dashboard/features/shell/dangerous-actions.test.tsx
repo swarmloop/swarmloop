@@ -20,6 +20,7 @@ import {
   listProjects,
   listRemote,
   listRuns,
+  ticketKeys,
   rebaseRun,
   removeRun,
   replaceApp,
@@ -54,7 +55,7 @@ vi.mock('../../lib/endpoints', () => ({
   skipTask: vi.fn(),
   startReviewer: vi.fn(),
   replayStep: vi.fn(),
-  ticketKeys: vi.fn().mockResolvedValue({ keys: [] }),
+  ticketKeys: vi.fn(),
   removeRun: vi.fn(),
   getSession: vi.fn(),
   logout: vi.fn(),
@@ -258,6 +259,7 @@ beforeEach(() => {
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
+  vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
   vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
   vi.mocked(getSession).mockResolvedValue({ user: 'alice' });
