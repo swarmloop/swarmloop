@@ -37,6 +37,7 @@ import type { SubtaskPort } from './subtask-port';
 import type { LimitRelease } from '../steps/shared/limit-release';
 import { storedAnswerErrors } from '../steps/shared/stored-answer-errors';
 import type { ReportRefresh } from '../steps/shared/report-refresh';
+import type { PlannerTurns } from './planner-turns';
 
 const HOP_LIMIT = STEPS.length * 3;
 
@@ -55,6 +56,7 @@ export class RunDriver {
     private readonly subtasks?: SubtaskPort,
     private readonly limits?: LimitRelease,
     private readonly reportRefresh?: ReportRefresh,
+    private readonly turns?: PlannerTurns,
   ) {}
 
   async savedStep(
@@ -90,6 +92,7 @@ export class RunDriver {
     let manual = options.auto !== true;
     let result: PipelineResult = { exitCode: 0, message: `${key} started` };
     let ran = false;
+    const declined = new Set<string>();
     for (let hop = 0; hop < HOP_LIMIT; hop += 1) {
       if (this.runStop.halted(key)) {
         return { exitCode: ran ? 0 : 1, message: `${key} stopped` };
@@ -98,6 +101,11 @@ export class RunDriver {
       const blocked = await this.stopBefore(key, step);
       if (blocked) {
         return { exitCode: ran ? 0 : 1, message: blocked };
+      }
+      const amended = await this.takeTurn(key, declined);
+      if (amended) {
+        step = amended;
+        stepOptions = { auto: true };
       }
       result = await this.execute(step, key, stepOptions);
       ran = true;
@@ -144,6 +152,20 @@ export class RunDriver {
       stepOptions = { auto: true };
     }
     return result;
+  }
+
+  /**
+   * Between two steps, the planner takes the person's message that waits, and nothing in flight is stopped. A plan it
+   * changed goes to plan-improve, and the flow goes on from there as after any return. Otherwise the run goes on as it was.
+   */
+  private async takeTurn(key: string, declined: Set<string>): Promise<StepName | null> {
+    const run = await this.runs.findRun(key);
+    if (!run || !this.turns?.amends(run)) return null;
+    const outcome = await this.turns.take(key, () => this.execute('plan', key, { auto: true }), declined);
+    if (outcome !== 'changed') return null;
+    const fresh = await this.runs.findRun(key);
+    if (fresh) await this.runs.release(fresh, { status: 'waiting', currentStep: 'plan-improve' });
+    return 'plan-improve';
   }
 
   async spendStop(key: string, step: StepName): Promise<string | null> {

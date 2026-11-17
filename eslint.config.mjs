@@ -243,6 +243,7 @@ export default tseslint.config(
       'server/src/steps/step.ts', // checks the stored plan and the required kind before a step starts
       'server/src/steps/run-rebase.ts', // a rebase of a stopped run has no visit to write through
       'server/src/steps/shared/current-plan.ts', // reads the newest plan result of the run
+      'server/src/steps/shared/amendment.ts', // reads the plan chat revisions written after the latest implement visit
       'server/src/steps/shared/stored-answer-errors.ts', // reads the validation errors attached to the agent's latest failed visit
       'server/src/steps/shared/handoff.ts', // reads and merges the handoff document
       'server/src/steps/shared/rebased-publisher.ts', // records the refs it pushed for the implement step

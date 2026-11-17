@@ -32,6 +32,7 @@ import { reviewDocuments } from './code-review-record';
 import type { Opinion } from './code-review-record';
 import type { Exchange } from './review-exchange';
 import { fixNotes, withKeep } from './review-input';
+import { planChangesOf, type PlanChangesSection } from '../shared/plan-changes';
 import { requirementsCheck } from './requirements-check';
 import { closeReview, recordAngle } from './review-report';
 import type { Finished, Reviewer, ReviewDeps, Usage } from './reviewer';
@@ -67,7 +68,8 @@ interface RoundInput {
 /** Runs every pending angle together, then stores their visits once all of them have finished. */
 export async function runRound(deps: ReviewDeps, input: RoundInput): Promise<Finished[]> {
   const documents = await deps.documents.listDocuments(input.opened.run.id);
-  const jobs = input.pending.map((reviewer) => reviewJob(reviewer, input));
+  const changes = planChangesOf(documents);
+  const jobs = input.pending.map((reviewer) => reviewJob(reviewer, input, changes));
   const fix = fixNotes(documents, input.handoff);
   const finished = await Promise.all(
     jobs.map((job) =>
@@ -78,7 +80,7 @@ export async function runRound(deps: ReviewDeps, input: RoundInput): Promise<Fin
         input.env,
         job,
         fix,
-        input.plan,
+        changes ? `${input.plan}\n\n${changes.heading}:\n${changes.body}` : input.plan,
         input.returned,
         input.auto,
         input.fresh,
@@ -183,7 +185,7 @@ export async function routeReview(
   );
 }
 
-function reviewJob(reviewer: Reviewer, input: RoundInput) {
+function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSection | null) {
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
   const listSection = input.list ? [requirementsSection(input.list)] : [];
@@ -192,7 +194,10 @@ function reviewJob(reviewer: Reviewer, input: RoundInput) {
     withContract(
       withImpact(
         withHandoff(
-          withReturnNotes([input.diff, ...notesSection, ...listSection, ...planSection], input.returned),
+          withReturnNotes(
+            [input.diff, ...notesSection, ...listSection, ...planSection, ...(changes ? [changes] : [])],
+            input.returned,
+          ),
           input.handoff,
         ),
         input.impact,

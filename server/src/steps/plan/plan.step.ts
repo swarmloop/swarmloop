@@ -25,7 +25,7 @@ import { withNamedFileLines } from './named-file-lines';
 import { completePlan, plan, planFor, type PlanResult } from '../../agent-result/definitions/plan';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { needsWait } from '../shared/needs';
-import { planChatFollowUp, planContinue, planFollowUp, subtaskDecides } from './plan.prompts';
+import { planChatAmends, planChatFollowUp, planContinue, planFollowUp, subtaskDecides } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { Requirement } from '../../contract/requirement-list';
 import { correctCoverage, gapLines, requirementsSection } from '../shared/coverage-correction';
@@ -240,11 +240,14 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const limits = splitLimits(run, this.config.env.SPLIT_MAX_TASKS);
     const subtask = isSubtask(run);
     const asked = planReplyFor({ split: limits.maySplit, subtask });
+    // A run that does not split and already implemented gets its plan amended: done items stay done.
+    const amending = !limits.maySplit && !subtask && (await this.visits.hasAgentVisit(run.id, 'implement'));
+    const followUp = amending ? planChatAmends : planChatFollowUp;
     const received = chat.resultName ?? null;
     const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
     const launched = await ctx.launch({
       prompt: finished(
-        appendImpact(planChatFollowUp(pending, resultPromptFor(asked, received)), impact),
+        appendImpact(followUp(pending, resultPromptFor(asked, received)), impact),
         await ctx.reread(ARTIFACTS.addedRepos),
       ),
       mounts,
