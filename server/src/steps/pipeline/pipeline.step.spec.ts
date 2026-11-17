@@ -249,7 +249,7 @@ describe('pipeline step', () => {
   });
 
   describe('a failed job named like a command that the paths of the checks visit skipped', () => {
-    async function failedJob(key: string, skipped?: { names: string[] }) {
+    async function failedJob(key: string, skipped?: { names: string[]; passed?: Record<string, string> }) {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-skipped-'));
       const read = jest.fn(() =>
         Promise.resolve({ snapshot: shot('failed', [job(7, 'Unit', false)]), httpCalls: [call('GET')] }),
@@ -274,6 +274,13 @@ describe('pipeline step', () => {
       expect(body).toContain('log 7');
       expect(body).toContain('unit tests was skipped by its paths');
       expect(body).not.toContain('lint was skipped');
+    });
+
+    it('names the reason of a command that passed on the same files', async () => {
+      const reason = 'passed on these files at 2026-11-17T08:00:00.000Z';
+      const body = await failedJob('PROJ-312', { names: ['unit tests'], passed: { 'unit tests': reason } });
+      expect(body).toContain(`unit tests was skipped: ${reason}`);
+      expect(body).not.toContain('was skipped by its paths');
     });
 
     it.each([
