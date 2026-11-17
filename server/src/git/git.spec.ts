@@ -144,6 +144,22 @@ describe('withSafeDirectory', () => {
     expect(withSafeDirectory(['-C', directory, 'status'], [checkouts])).toEqual(['-C', directory, 'status']);
   });
 
+  it('trusts the checkout the caller names, for a command that has no -C', () => {
+    const directory = join(checkouts, 'billing-api');
+    const args = ['clone', '--', directory, join(root, 'snapshot')];
+    expect(withSafeDirectory(args, [checkouts, worktrees], directory)).toEqual([
+      '-c',
+      `safe.directory=${realpathSync(directory)}`,
+      ...args,
+    ]);
+  });
+
+  it('does not trust a named checkout outside the mounts', () => {
+    const args = ['clone', '--', 'x', 'y'];
+    expect(withSafeDirectory(args, [checkouts], join(root, 'outside'))).toEqual(args);
+    expect(withSafeDirectory(args, [checkouts], join(root, 'checkouts-evil', 'billing-api'))).toEqual(args);
+  });
+
   it('does not trust a missing directory', () => {
     const directory = join(checkouts, 'missing');
     expect(withSafeDirectory(['-C', directory, 'status'], [checkouts])).toEqual(['-C', directory, 'status']);

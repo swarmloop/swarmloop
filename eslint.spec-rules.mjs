@@ -19,6 +19,14 @@ export const RUN_STATE_WRITE = {
   message: 'Write the state of a run through history/run-state.ts (writeRunState, claim, release or finalize).',
 };
 
+// Git runs on a checkout through the runners that trust it: git.ts, worktree-tree.ts and sandbox/project-git.ts.
+export const GIT_PROCESS = {
+  // Any call that takes 'git' first: execFile, spawn, or a promisified alias such as run('git', ...).
+  selector: "CallExpression[arguments.0.value='git']",
+  message:
+    'Run git through server/src/git/git.ts, worktree-tree.ts or sandbox/project-git.ts, which trust the checkout.',
+};
+
 const TIMER_MODULE = '/^(node:)?timers\\/promises$/';
 const PROCESS_MODULE = '/^(node:)?child_process$/';
 const CLOCK_READ = "CallExpression[callee.object.name=/^(Date|performance)$/][callee.property.name='now']";

@@ -6,7 +6,7 @@ import { basename, isAbsolute, join, resolve } from 'path';
 import { rawEnv } from '../config/process-env';
 import { delay } from '../core/delay';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { GIT_LIMITS, git as recordedGit } from './git';
+import { checkoutRoots, GIT_LIMITS, git as recordedGit, withSafeDirectory } from './git';
 
 /** A git call that records no command span. It has a limit (a short one unless the caller names one), so a hung git ends as a failure. */
 export function git(
@@ -18,7 +18,7 @@ export function git(
   return new Promise((resolve, reject) => {
     execFile(
       'git',
-      ['-C', repo, ...args],
+      withSafeDirectory(['-C', repo, ...args], checkoutRoots()),
       { env: { ...rawEnv(), ...extra }, timeout: timeoutMs },
       (error, stdout, stderr) => {
         if (error) {

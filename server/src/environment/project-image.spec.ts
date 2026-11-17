@@ -1,10 +1,18 @@
-import { existsSync, readFileSync } from 'fs';
-import { dirname } from 'path';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { dirname, join } from 'path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { DockerRunner } from '../sandbox/sandbox.service';
 import { commitFiles, makeRepo, runGit } from '../git/git-repo.spec-helpers';
+import { clearGitFaults, distrustGit } from '../testing/git-fault.spec-helpers';
 import type { EnvironmentConfig } from './environment-config';
 import { DEFAULT_PATH, imagePath, resolveProjectImage } from './project-image';
+
+import type * as GitFault from '../testing/git-fault.spec-helpers';
+
+jest.mock('child_process', () =>
+  jest.requireActual<typeof GitFault>('../testing/git-fault.spec-helpers').faultyChildProcess(),
+);
 
 function fakeDocker(local: string[] = [], listed: string[] = []) {
   const images = new Set(local);
@@ -112,5 +120,39 @@ describe('imagePath', () => {
     expect(await imagePath(broken, 'x')).toBe(DEFAULT_PATH);
     const odd: DockerRunner = () => Promise.resolve('["PATH=/a b;rm"]');
     expect(await imagePath(odd, 'x')).toBe(DEFAULT_PATH);
+  });
+});
+
+describe('resolveProjectImage in a checkout the server user does not own', () => {
+  let root: string;
+  let saved: string | undefined;
+
+  beforeEach(() => {
+    saved = process.env.SWARMLOOP_ROOT;
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'swarmloop-root-')));
+    process.env.SWARMLOOP_ROOT = root;
+  });
+
+  afterEach(() => {
+    clearGitFaults();
+    if (saved === undefined) {
+      delete process.env.SWARMLOOP_ROOT;
+    } else {
+      process.env.SWARMLOOP_ROOT = saved;
+    }
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('builds the image from a worktree under the roots', async () => {
+    const source = makeRepo({ '.swarmloop/Dockerfile': 'FROM node:22\n' });
+    const tree = join(root, 'worktrees', 'PROJ-1', 'app');
+    mkdirSync(join(root, 'worktrees', 'PROJ-1'), { recursive: true });
+    runGit(source, ['worktree', 'add', '--detach', tree]);
+    distrustGit(join(root, 'worktrees'));
+    const fake = fakeDocker();
+
+    await resolveProjectImage(fake.docker, tree, 'demo', own);
+
+    expect(fake.count('build')).toBe(1);
   });
 });

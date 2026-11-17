@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, join } from 'path';
 import * as delays from '../core/delay';
-import { clearGitFaults, failGit } from '../testing/git-fault.spec-helpers';
+import { clearGitFaults, distrustGit, failGit } from '../testing/git-fault.spec-helpers';
 import { git } from '../testing/git-fixture';
 import { captureTree, ownsRepo, requireTree } from './worktree-tree';
 
@@ -123,6 +123,52 @@ describe('the git probe', () => {
     writeFileSync(join(repo, 'a.txt'), 'a\n');
     return repo;
   }
+
+  describe('under the checkout roots', () => {
+    let root: string;
+    let saved: string | undefined;
+
+    beforeEach(() => {
+      saved = process.env.SWARMLOOP_ROOT;
+      root = realpathSync(mkdtempSync(join(tmpdir(), 'swarmloop-root-')));
+      process.env.SWARMLOOP_ROOT = root;
+    });
+
+    afterEach(() => {
+      if (saved === undefined) {
+        delete process.env.SWARMLOOP_ROOT;
+      } else {
+        process.env.SWARMLOOP_ROOT = saved;
+      }
+      rmSync(root, { recursive: true, force: true });
+    });
+
+    function repoAt(path: string): string {
+      mkdirSync(path, { recursive: true });
+      git(path, ['init', '-q']);
+      git(path, ['config', 'user.email', 'dev@example.com']);
+      git(path, ['config', 'user.name', 'Dev']);
+      writeFileSync(join(path, 'a.txt'), 'a\n');
+      git(path, ['add', '-A']);
+      git(path, ['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'base']);
+      return path;
+    }
+
+    it('trusts a worktree whose owner is not the process user', async () => {
+      const repo = repoAt(join(root, 'worktrees', 'PROJ-1', 'app'));
+      distrustGit(join(root, 'worktrees'));
+
+      expect(await ownsRepo(repo)).toBe(true);
+      expect((await captureTree(repo))?.head).toBe(git(repo, ['rev-parse', 'HEAD']));
+    });
+
+    it('does not trust a repository outside the roots', async () => {
+      const repo = repoAt(join(root, 'elsewhere', 'app'));
+      distrustGit(join(root, 'elsewhere'));
+
+      await expect(captureTree(repo)).rejects.toThrow('dubious ownership');
+    });
+  });
 
   it("fails with git's text when the probe fails on both tries", async () => {
     const repo = plainRepo();
