@@ -29,7 +29,6 @@ import {
   startReviewer,
   skipTask,
   stopRun,
-  ticketKeys,
 } from '../../lib/endpoints';
 import { receive } from '../../test/fake-socket';
 import { QueryWrapper } from '../../test/query-wrapper';
@@ -263,7 +262,6 @@ beforeEach(() => {
   vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
   vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
-  vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(getSession).mockResolvedValue({ user: 'alice' });
   vi.mocked(getOwner).mockResolvedValue({ owner: 'acme', others: [] });
   vi.mocked(getConnections).mockResolvedValue(host);
