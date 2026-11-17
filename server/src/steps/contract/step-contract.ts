@@ -1,6 +1,6 @@
 import type { EffortFields } from '../../contract/effort';
 import type { ErrorCode } from '../../contract/error-codes';
-import type { LimitState } from '../../contract/run-state';
+import type { LimitState, REASON } from '../../contract/run-state';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { StepName } from '../../contract/steps';
 import type { ErrorCategory } from '../../core/swarmloop-error';
@@ -52,7 +52,7 @@ export type Route =
   | { to: 'next' }
   | { to: 'jump'; step: StepName }
   | { to: 'return'; step: StepName; issues: Issue[] }
-  | { to: 'wait'; reason: string; code?: ErrorCode; limit?: LimitState; retryAt?: string }
+  | { to: 'wait'; reason: string; code?: ErrorCode | typeof REASON.asksPlanner; limit?: LimitState; retryAt?: string }
   | { to: 'block'; reason: string; code?: ErrorCode }
   | { to: 'fail'; error: StepFailure };
 

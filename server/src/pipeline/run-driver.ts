@@ -29,7 +29,7 @@ import { root } from '../history/run-paths';
 import { assertInsideWork, workRoots } from '../sandbox/allowed-path';
 import { flagError } from './flag-error';
 import { snapshotRun } from './worktree-snapshot';
-import { writeRunState } from '../history/run-state';
+import { deriveState, writeRunState } from '../history/run-state';
 import type { WorkspaceGuard } from './workspace-guard';
 import { workspaceBlock } from './workspace-guard';
 import type { DiskGuard } from './disk-guard';
@@ -106,6 +106,9 @@ export class RunDriver {
       if (amended) {
         step = amended;
         stepOptions = { auto: true };
+      } else if (await this.turns?.hasQuestion(key)) {
+        // The planner could not settle the question: the step keeps waiting and nothing runs.
+        return result;
       }
       result = await this.execute(step, key, stepOptions);
       ran = true;
@@ -120,6 +123,11 @@ export class RunDriver {
       const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
       const stats = run ? await this.visits.listStats(run.id) : [];
       const env = this.config.env;
+      if (run && run.currentStep === step && asksPlanner(run)) {
+        // The next hop takes the question to the planner; the step goes on with its answer.
+        stepOptions = { auto: true };
+        continue;
+      }
       if (result.resume && run?.status === 'waiting' && run.currentStep === step) {
         stepOptions = { auto: true };
         continue;
@@ -155,17 +163,27 @@ export class RunDriver {
   }
 
   /**
-   * Between two steps, the planner takes the person's message that waits, and nothing in flight is stopped. A plan it
-   * changed goes to plan-improve, and the flow goes on from there as after any return. Otherwise the run goes on as it was.
+   * Between two steps, the planner takes what waits for it, one turn at a time in the order it came: a person's message,
+   * and the question of a step that waits for the answer. A plan a message changed goes to plan-improve, and the flow
+   * goes on from there as after any return. Otherwise the run goes on as it was.
    */
   private async takeTurn(key: string, declined: Set<string>): Promise<StepName | null> {
     const run = await this.runs.findRun(key);
-    if (!run || !this.turns?.takesMessages(run)) return null;
-    const outcome = await this.turns.take(key, () => this.execute('plan', key, { auto: true }), declined);
-    if (outcome !== 'changed') return null;
-    const fresh = await this.runs.findRun(key);
-    if (fresh) await this.runs.release(fresh, { status: 'waiting', currentStep: 'plan-improve' });
-    return 'plan-improve';
+    if (!run || !this.turns) return null;
+    for (let next = await this.turns.next(run, declined); next; next = await this.turns.next(run, declined)) {
+      if (next === 'question') {
+        await this.turns.answer(key, declined);
+        continue;
+      }
+      const outcome = await this.turns.take(key, () => this.execute('plan', key, { auto: true }), declined);
+      if (outcome === 'none') return null;
+      if (outcome === 'changed') {
+        const fresh = await this.runs.findRun(key);
+        if (fresh) await this.runs.release(fresh, { status: 'waiting', currentStep: 'plan-improve' });
+        return 'plan-improve';
+      }
+    }
+    return null;
   }
 
   async spendStop(key: string, step: StepName): Promise<string | null> {
@@ -321,6 +339,11 @@ export class RunDriver {
     if (unfit) return { exitCode: 1, message: unfit };
     return this.execute(name, key, options);
   }
+}
+
+/** The run waits with the reason that its step asked the planner. */
+function asksPlanner(run: RunEntity): boolean {
+  return run.status === 'waiting' && deriveState(run).reason?.code === REASON.asksPlanner;
 }
 
 function targetError(path: string | undefined): string | null {

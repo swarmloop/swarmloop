@@ -99,4 +99,39 @@ describe('PlanChatStore', () => {
       await db.close();
     }
   });
+  it('keeps a step question and its answer apart from the person messages, and gives an answer once', async () => {
+    const db = await repositoryDatabase();
+    try {
+      await db.app.get(RunRepository).openWaiting('run-1', '/target');
+      const store = db.app.get(PlanChatStore);
+      const asked = (key: string, at: string): PlanChatEntry => ({
+        ...entry(key, at),
+        role: 'planner',
+        kind: 'question',
+        from: 'implement',
+      });
+      await store.appendEntry('run-1', entry('message-a', '2026-01-01T00:00:01.000Z'));
+      await store.appendEntry('run-1', asked('ask-implement-2', '2026-01-01T00:00:03.000Z'));
+      await store.appendEntry('run-1', asked('ask-implement-1', '2026-01-01T00:00:02.000Z'));
+      await store.appendEntry('run-1', asked('ask-implement-1', '2026-01-01T00:00:09.000Z'));
+      expect((await store.pending('run-1')).map((item) => item.key)).toEqual(['message-a']);
+      expect((await store.pendingQuestions('run-1')).map((item) => item.key)).toEqual([
+        'ask-implement-1',
+        'ask-implement-2',
+      ]);
+      expect(await store.answerFor('run-1', 'implement')).toBeNull();
+      await store.appendEntry('run-1', {
+        ...entry('answer-1', '2026-01-01T00:00:04.000Z'),
+        role: 'planner',
+        kind: 'answer',
+        from: 'implement',
+      });
+      expect((await store.answerFor('run-1', 'implement'))?.key).toBe('answer-1');
+      expect(await store.answerFor('run-1', 'code-review-quality')).toBeNull();
+      await store.markTaken('run-1', ['answer-1']);
+      expect(await store.answerFor('run-1', 'implement')).toBeNull();
+    } finally {
+      await db.close();
+    }
+  });
 });

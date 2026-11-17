@@ -47,6 +47,20 @@ export class PlanChatStore {
       .sort((a, b) => a.at.localeCompare(b.at));
   }
 
+  /** The questions of steps that wait for the planner, oldest first. */
+  async pendingQuestions(key: string): Promise<PlanChatEntry[]> {
+    const { entries } = await this.read(key);
+    return entries
+      .filter((entry) => entry.kind === 'question' && entry.state === 'pending')
+      .sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  /** The planner's answer to the step's question that the step did not read yet, if there is one. */
+  async answerFor(key: string, step: string): Promise<PlanChatEntry | null> {
+    const { entries } = await this.read(key);
+    return entries.find((entry) => entry.kind === 'answer' && entry.from === step && entry.state === 'pending') ?? null;
+  }
+
   /** Marks the entries with these keys as taken. A taken or unknown key is left alone, and nothing is written for none. */
   markTaken(key: string, entryKeys: readonly string[]): Promise<void> {
     return this.change(key, (log) =>

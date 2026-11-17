@@ -3,6 +3,8 @@ import type { PipelineResult } from '../core/pipeline-result';
 import type { DocumentRepository } from '../history/document.repository';
 import type { PlanChatEntry } from '../contract/plan-chat';
 import type { PlanChatStore } from '../history/plan-chat.store';
+import type { RunRepository } from '../history/run.repository';
+import type { PlanConversation } from '../steps/shared/plan-conversation';
 import { PlannerTurns, type PlannerTurn } from './planner-turns';
 
 const turn = (id: string, at: string): PlannerTurn => ({ id, at, text: `text of ${id}` });
@@ -155,5 +157,117 @@ describe('PlannerTurns background passes', () => {
     const turns = new PlannerTurns();
     turns.background(() => Promise.reject(new Error('host down')));
     await expect(turns.onModuleDestroy()).resolves.toBeUndefined();
+  });
+});
+
+const question = (key: string, at: string): PlanChatEntry => ({
+  key,
+  role: 'planner',
+  kind: 'question',
+  from: 'implement',
+  text: 'Keep the cursor or the page number?',
+  at,
+  state: 'pending',
+});
+
+/** A plan chat held in memory, and a planner that gives `reply` to the prompts it is asked. */
+function asked(entries: PlanChatEntry[], reply: unknown) {
+  const held = [...entries];
+  const prompts: string[] = [];
+  const chat = {
+    pending: () => Promise.resolve(held.filter((entry) => entry.role === 'person' && entry.state === 'pending')),
+    pendingQuestions: () =>
+      Promise.resolve(held.filter((entry) => entry.kind === 'question' && entry.state === 'pending')),
+    appendEntry: (_key: string, entry: PlanChatEntry) => {
+      if (!held.some((known) => known.key === entry.key)) held.push(entry);
+      return Promise.resolve();
+    },
+    markTaken: (_key: string, keys: string[]) => {
+      for (const entry of held) if (keys.includes(entry.key)) entry.state = 'taken';
+      return Promise.resolve();
+    },
+  } as unknown as PlanChatStore;
+  const conversation = {
+    visit: (_opened: unknown, prompt: (received: string | null) => string) => {
+      prompts.push(prompt(null));
+      return Promise.resolve(reply === null ? null : { value: reply });
+    },
+  } as unknown as PlanConversation;
+  const runs = { findRun: () => Promise.resolve({ key: 'run-1', currentStep: 'implement', status: 'waiting' }) };
+  const clock = { now: () => 0, iso: () => '2026-01-01T00:01:00.000Z' };
+  const turns = new PlannerTurns(chat, undefined, conversation, runs as unknown as RunRepository, clock);
+  return { turns, held, prompts };
+}
+
+describe('PlannerTurns answering a step question', () => {
+  const implementing = { split: false, currentStep: 'implement', workspace: 'ready', parentRunId: null } as RunEntity;
+
+  it('puts a question and a message in the order they came, and leaves out what was declined', async () => {
+    const { turns } = asked(
+      [question('ask-1', '2026-01-01T00:00:05.000Z'), message('message-1', '2026-01-01T00:00:01.000Z')],
+      null,
+    );
+    expect(await turns.next(implementing, new Set())).toBe('message');
+    expect(await turns.next(implementing, new Set(['message-1']))).toBe('question');
+    expect(await turns.next(implementing, new Set(['message-1', 'ask-1']))).toBeNull();
+    const earlier = asked(
+      [question('ask-1', '2026-01-01T00:00:00.000Z'), message('message-1', '2026-01-01T00:00:01.000Z')],
+      null,
+    );
+    expect(await earlier.turns.next(implementing, new Set())).toBe('question');
+  });
+
+  it('records the planner answer for the step that asked and takes the question', async () => {
+    const { turns, held, prompts } = asked([question('ask-1', '2026-01-01T00:00:05.000Z')], {
+      reply: 'Cursor, as in the brief.',
+    });
+    const declined = new Set<string>();
+
+    expect(await turns.answer('run-1', declined)).toBe(true);
+
+    expect(held.find((entry) => entry.kind === 'answer')).toMatchObject({
+      key: 'answer-ask-1',
+      from: 'implement',
+      role: 'planner',
+      text: 'Cursor, as in the brief.',
+      state: 'pending',
+    });
+    expect(held.find((entry) => entry.key === 'ask-1')?.state).toBe('taken');
+    expect(prompts[0]).toContain('The implement step asks:\nKeep the cursor or the page number?');
+    expect(prompts[0]).toContain('escalate');
+    expect(prompts[0]).not.toContain('- plan (array');
+    expect(await turns.hasQuestion('run-1')).toBe(false);
+    expect(turns.replying('run-1')).toBe(false);
+  });
+
+  it('keeps the question waiting when the planner escalates, and does not ask again in the same drive', async () => {
+    const { turns, held } = asked([question('ask-1', '2026-01-01T00:00:05.000Z')], {
+      reply: 'This is a product decision.',
+      escalate: 'Which pagination do you want?',
+    });
+    const declined = new Set<string>();
+
+    expect(await turns.answer('run-1', declined)).toBe(false);
+
+    expect(held.some((entry) => entry.kind === 'answer')).toBe(false);
+    expect(held.find((entry) => entry.key === 'ask-1')?.state).toBe('pending');
+    expect(held.find((entry) => entry.key === 'escalate-ask-1')).toMatchObject({
+      role: 'planner',
+      text: 'This is a product decision.',
+    });
+    expect([...declined]).toEqual(['ask-1']);
+    expect(await turns.hasQuestion('run-1')).toBe(true);
+    expect(await turns.answer('run-1', declined)).toBe(false);
+  });
+
+  it('keeps the question when the planner gave no usable answer', async () => {
+    const { turns, held } = asked([question('ask-1', '2026-01-01T00:00:05.000Z')], null);
+    const declined = new Set<string>();
+
+    expect(await turns.answer('run-1', declined)).toBe(false);
+
+    expect(held.filter((entry) => entry.kind !== 'question')).toEqual([]);
+    expect([...declined]).toEqual(['ask-1']);
+    expect(turns.replying('run-1')).toBe(false);
   });
 });
