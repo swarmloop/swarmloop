@@ -177,8 +177,13 @@ export class AuthController {
   async me(@Req() request: { headers: { cookie?: string } }): Promise<MeView> {
     const session = await this.sessions.find(sessionIdOf(request.headers.cookie));
     return session
-      ? { user: session.user, provider: session.provider, avatarUrl: session.avatarUrl ?? null }
-      : { user: null };
+      ? { user: session.user, provider: session.provider, avatarUrl: session.avatarUrl ?? null, ...this.build() }
+      : { user: null, ...this.build() };
+  }
+
+  private build(): Pick<MeView, 'version' | 'sourceUrl'> {
+    const { SWARMLOOP_BUILD_VERSION: version, SWARMLOOP_SOURCE_URL: source } = this.config.env;
+    return { version: version || 'dev', sourceUrl: /^https?:\/\//.test(source) ? source : null };
   }
 
   @Get(':provider/login')

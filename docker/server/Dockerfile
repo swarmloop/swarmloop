@@ -39,6 +39,7 @@ ARG VERSION=dev
 LABEL org.opencontainers.image.source=$SOURCE_URL \
       org.opencontainers.image.revision=$REVISION \
       org.opencontainers.image.version=$VERSION
+ENV SWARMLOOP_BUILD_VERSION=$VERSION SWARMLOOP_SOURCE_URL=$SOURCE_URL
 
 ENV SWARMLOOP_ROOT=/app
 EXPOSE 3920
