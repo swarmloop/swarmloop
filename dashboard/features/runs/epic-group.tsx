@@ -14,10 +14,9 @@ import { epicFigures } from '@contract/epic-figures';
 import { taskGroup } from '@contract/task-order';
 import { DisclosureIcon } from '../../components/ui/disclosure-icon';
 import { duration, money } from '../../lib/format';
-import { toneColor } from '../run';
+import { runWord, toneColor } from '../run';
 import { needsLook, orderedTasks, statusOf, taskCountsOf } from './epic-tasks';
 import { RunRow } from './run-row';
-import { runWord } from './run-word';
 import { TaskLine } from './task-line';
 
 type Group = ReturnType<typeof taskGroup>;

@@ -16,6 +16,7 @@ function header(flow: ReturnType<typeof flowView>) {
       rebaseError={null}
       onRebase={vi.fn()}
       onStop={vi.fn()}
+      onOpenRequirements={vi.fn()}
     />,
   );
 }

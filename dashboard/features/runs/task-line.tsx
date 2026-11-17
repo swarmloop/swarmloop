@@ -8,10 +8,9 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { money } from '../../lib/format';
-import { RunStateIcon, toneColor } from '../run';
+import { RunStateIcon, runWord, toneColor } from '../run';
 import { RowDelete, useRowReveal } from './row-delete';
 import { rowButtonSx } from './row-style';
-import { runWord } from './run-word';
 
 /** One task of an epic as a smaller, muted line. A task that needs a person or has failed keeps its tone color. */
 export function TaskLine({

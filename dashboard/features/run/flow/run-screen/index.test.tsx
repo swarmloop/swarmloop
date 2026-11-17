@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFlow, getStep, getStepEvents, listProjects, listRemote, skipTask } from '../../../../lib/endpoints';
 import { LiveBridgeProvider } from '../../../shell';
 import { QueryWrapper } from '../../../../test/query-wrapper';
-import { flowView, stepView } from '../../../../test/fixtures';
+import { flowView, stepView, visitView } from '../../../../test/fixtures';
 import { RunScreen } from './index';
 
 vi.mock('../../../../lib/endpoints', () => ({
@@ -203,10 +203,10 @@ describe('RunScreen', () => {
     expect(container.firstElementChild).toHaveStyle({ minWidth: '0' });
   });
 
-  it('shows Loading the run. until the flow loads, then the flow name and board', async () => {
+  it('shows a skeleton until the flow loads, then the flow title and board', async () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
-    expect(screen.getByText('Loading the run.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Loading the run')).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Run one' })).toBeInTheDocument();
     expect(screen.getByText('implementation')).toBeInTheDocument();
   });
@@ -215,9 +215,81 @@ describe('RunScreen', () => {
     const user = userEvent.setup({ delay: null });
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
+    await user.click(await screen.findByRole('button', { name: /^implement/ }));
     await user.click(await screen.findByRole('button', { name: 'Run again' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('heading', { name: 'implement' })).toBeInTheDocument();
+  });
+
+  it('opens a finished run on the summary with the review report and the cost, not on the done step', async () => {
+    vi.mocked(getStep).mockResolvedValue(stepView({ report: '## Verdict\n\nReady to merge.' }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    const summary = await screen.findByRole('region', { name: 'Summary' });
+    expect(await within(summary).findByRole('heading', { name: 'Verdict' })).toBeInTheDocument();
+    expect(summary).toHaveTextContent('Cost $0');
+    expect(getStep).toHaveBeenCalledWith('run-1', 'code-review');
+    expect(getStep).not.toHaveBeenCalledWith('run-1', 'done');
+    expect(screen.queryByText('This step has not run.')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the latest stored review report, then to a plain line', async () => {
+    const document = {
+      kind: 'review_report',
+      attempt: 1,
+      body: 'Stored report text',
+      createdAt: '2026-11-08T10:00:00.000Z',
+    };
+    vi.mocked(getStep).mockResolvedValueOnce(stepView({ visits: [visitView({ documents: [document] })] }));
+    const { unmount } = render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    expect(await screen.findByText('Stored report text')).toBeInTheDocument();
+    unmount();
+
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [] }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    expect(await screen.findByText('The review report is not available.')).toBeInTheDocument();
+  });
+
+  it('shows the tasks of a finished split run once, in the summary', async () => {
+    const tasks = [
+      { id: 't1', index: 0, title: 'First task', files: [], proof: 'passes', depends: [], status: 'merged' as const },
+    ];
+    vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'done', tasks }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    await screen.findByRole('region', { name: 'Summary' });
+    expect(screen.getAllByRole('region', { name: 'Tasks' })).toHaveLength(1);
+    expect(
+      within(screen.getByRole('region', { name: 'Summary' })).getByRole('region', { name: 'Tasks' }),
+    ).toBeInTheDocument();
+  });
+
+  it('opens the requirements step from the title of a finished run', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    await user.click(await screen.findByRole('button', { name: 'Run one' }));
+
+    await waitFor(() => expect(getStep).toHaveBeenCalledWith('run-1', 'requirements'));
+    expect(screen.queryByRole('region', { name: 'Summary' })).not.toBeInTheDocument();
+  });
+
+  it('says what failed when the run does not load, and loads it on Retry', async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.mocked(getFlow).mockRejectedValueOnce(new Error('server is down'));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    expect(await screen.findByText('The run could not be loaded: server is down')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByRole('heading', { name: 'Run one' })).toBeInTheDocument();
+  });
+
+  it('titles the tab with the run title', async () => {
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    await screen.findByRole('heading', { name: 'Run one' });
+    expect(document.title).toBe('Run one · swarmloop');
   });
 });
