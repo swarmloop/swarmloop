@@ -1,6 +1,6 @@
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import { agentFor } from '../../config/agents';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type {
   AgentProfile,
   InputSpec,
@@ -38,6 +38,7 @@ import { renderImplementation } from '../implement/implement-record';
 import { storedImpact } from '../shared/research-reads';
 import { ARTIFACTS, REVIEW_RESULTS } from '../contract/artifacts';
 import { CODE_REVIEWERS } from '../../contract/steps';
+import { PlanChatStore } from '../../history/plan-chat.store';
 
 const INPUTS = {
   implementationResult: { artifact: ARTIFACTS.implementationResult, need: 'optional' },
@@ -83,9 +84,10 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     private readonly sandbox: SandboxService,
     private readonly launcher: AgentLauncher,
     private readonly runReport: RunReport,
+    @Optional() private readonly planChat?: PlanChatStore,
   ) {
     super(kernel);
-    this.settling = new ReviewSettle(this.documents, events);
+    this.settling = new ReviewSettle(this.documents, events, planChat);
   }
 
   private prepareDeps(): PrepareDeps {
@@ -178,6 +180,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       root: root(this.config),
       launcher: this.launcher,
       runReport: this.runReport,
+      chat: this.planChat,
     };
     const {
       requirements,

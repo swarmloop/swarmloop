@@ -15,6 +15,8 @@ import { textDocument } from '../shared/handoff';
 import { ARTIFACTS } from '../contract/artifacts';
 import { opinionSummary } from './code-review-round-result';
 import { askPerson, reviewAsks } from './review-ask';
+import type { PlanChatStore } from '../../history/plan-chat.store';
+import { waitForPlanner } from '../implement/implement-question';
 import type { Exchange } from './review-exchange';
 import { closeReview, failed, noteHandoff, writeReport } from './review-report';
 import { othersOpen, routeReview, tallyRound } from './review-round';
@@ -47,6 +49,7 @@ export class ReviewSettle {
   constructor(
     private readonly documents: DocumentRepository,
     private readonly events: EventRepository,
+    private readonly chat?: PlanChatStore,
   ) {}
 
   async settle(input: SettleInput): Promise<PipelineResult> {
@@ -64,6 +67,24 @@ export class ReviewSettle {
     }
     if (errors.length > 0) {
       const closed = await closeReview(ctx, failed(errors[0]), `${opened.startedAt} ${errors[0]}`, stored, []);
+      await this.stamp(opened.run, stored, fingerprint);
+      return closed;
+    }
+    const asking = finished.filter((item) => item.asked);
+    if (this.chat && asking.length > 0) {
+      // The reviewers that answered keep their answers; the ones that asked run again with the planner's answer.
+      const ask = { chat: this.chat, clock: ctx.clock, attemptId: opened.attemptId, startedAt: opened.startedAt };
+      const waits = [];
+      for (const item of asking) {
+        waits.push(
+          await waitForPlanner(opened.run, {
+            ...ask,
+            step: `code-review-${item.reviewer.name}`,
+            question: item.asked ?? '',
+          }),
+        );
+      }
+      const closed = await closeReview(ctx, waits[0].route, waits[0].summary, stored, []);
       await this.stamp(opened.run, stored, fingerprint);
       return closed;
     }

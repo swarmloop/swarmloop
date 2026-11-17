@@ -1,6 +1,6 @@
 import { agentFor } from '../../config/agents';
 import type { RunEntity } from '../../history/entities';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
@@ -39,9 +39,19 @@ import { settleRebase, type RebaseDeps } from './implement-rebase';
 import { assertUncommitted, featureHeads, worktreeSnapshot, worktreeStatus } from '../../git/worktree-git';
 import { unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { rerunFailed } from './failed-commands';
-import { checksStillRed, implementAsk, implementFollowUp, planAmendment } from './implement.prompts';
+import { checksStillRed, implementAsk, implementFollowUp, planAmendment, resultTextFor } from './implement.prompts';
 import { amendmentOf } from '../shared/amendment';
 import { implementNeedsWait } from './implement-needs';
+import {
+  answerFollowUp,
+  answerSection,
+  mayAsk,
+  readAnswer,
+  takeAnswer,
+  waitForPlanner,
+  withAssumed,
+} from './implement-question';
+import { PlanChatStore } from '../../history/plan-chat.store';
 import { renderCause, renderImplementation, withReturnNotes } from './implement-record';
 import { retryUnchangedPipeline } from './implement-pipeline-return';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -96,6 +106,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
     private readonly split: SplitImplementStep,
+    @Optional() private readonly planChat?: PlanChatStore,
   ) {
     super(kernel, sandbox, launcher);
   }
@@ -157,9 +168,11 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         : []),
       ...planAmendment(await amendmentOf(this.documents, this.visits, ctx.opened.run)),
     ];
+    const answer = await readAnswer(this.planChat, key, this.name);
     const sections = [
       ...withHandoff(withReturnNotes([{ heading: 'Plan', body: plan }], notes), await ctx.reread(ARTIFACTS.handoff)),
       ...merged,
+      ...(answer ? [answerSection(answer)] : []),
     ];
     const branch = branchName(key, summaryForBranch(input.requirements, key));
     const markerBody = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim();
@@ -192,10 +205,10 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     }
     const continued = await resumableChat(root(this.config), key, 'implement', runtime);
     const received = continued?.chatId ? (continued.resultName ?? null) : null;
-    const basePrompt = withAddedRepos(
-      continued?.chatId ? implementFollowUp(plan, notes, merged, received) : full,
-      added,
-    );
+    const followUp = answer
+      ? answerFollowUp(answer, resultTextFor(ask, received))
+      : implementFollowUp(plan, notes, merged, received);
+    const basePrompt = withAddedRepos(continued?.chatId ? followUp : full, added);
     const heads = await featureHeads(mounts, branch);
     const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
     const reproject = projectFor(this.environments, place);
@@ -205,7 +218,9 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       basePrompt,
     );
     const before = await worktreeSnapshot(mounts);
-    const asked = (value: unknown): string[] => implementErrors(ctx.opened.run, value as ImplementationResult);
+    const mayQuestion = !answer && mayAsk(ctx.opened.run, this.planChat);
+    const asked = (value: unknown): string[] =>
+      implementErrors(ctx.opened.run, value as ImplementationResult, mayQuestion);
     const first = await ctx.launch({
       prompt,
       mounts,
@@ -219,10 +234,16 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });
     await assertUncommitted(mounts, branch, heads);
+    await takeAnswer(this.planChat, key, answer);
     let value = first.resultValue as ImplementationResult;
     const waiting = implementNeedsWait(ctx.opened.run, ctx.opened.startedAt, value);
     if (waiting) {
       return { ...waiting, outputs: [...waiting.outputs, { artifact: ARTIFACTS.implementationResult, value }] };
+    }
+    if (mayQuestion && value.question?.trim() && this.planChat) {
+      const { startedAt, attemptId } = ctx.opened;
+      const ask = { chat: this.planChat, clock: this.clock, step: this.name, attemptId, startedAt };
+      return waitForPlanner(ctx.opened.run, { ...ask, question: value.question });
     }
     if (isSubtask(ctx.opened.run)) await ctx.write(ARTIFACTS.needs, '');
     // The newest checklist an answer of this visit corrected.
@@ -280,7 +301,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const change = correctedPlan(input.requirements, corrected, current?.items ?? []);
     const reasons = renderSummary(value.summary, value.implementation);
     const why = change ? `${reasons.trimEnd()}\n${change.handoff}` : reasons;
-    const summary = value.cause?.length ? `${renderCause(value.cause)}${why}` : why;
+    const summary = withAssumed(value.cause?.length ? `${renderCause(value.cause)}${why}` : why, value.question);
     const status = await worktreeStatus(mounts);
     return {
       route: { to: 'next' },
@@ -308,10 +329,11 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
   }
 }
 
-/** What the server checks on an implement answer after its schema: it changed something, or a subtask waits for a sibling. */
-function implementErrors(run: RunEntity, value: ImplementationResult): string[] {
+/** What the server checks on an implement answer after its schema: it changed something, or a subtask waits for a sibling, or the step asks the planner. */
+function implementErrors(run: RunEntity, value: ImplementationResult, mayQuestion: boolean): string[] {
   const errors: string[] = [];
-  if (value.implementation.length === 0 && !(isSubtask(run) && value.needs?.length)) {
+  const asking = mayQuestion && Boolean(value.question?.trim());
+  if (value.implementation.length === 0 && !asking && !(isSubtask(run) && value.needs?.length)) {
     errors.push('implementation: must list what you changed');
   }
   return errors;

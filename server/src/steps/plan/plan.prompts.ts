@@ -80,3 +80,16 @@ export function subtaskAsks(task: Subtask, questions: string, contract: string, 
     resultPromptFor(subtaskAnswer, received),
   ].join('\n');
 }
+
+/** What the planner is asked in its own chat when a step of the run has a question it could not settle. */
+export function planAnswersStep(step: string, question: string, resultText: string): string {
+  return [
+    `The ${step} step asks:`,
+    question.trim(),
+    '',
+    'Answer from the brief, the requirements, the plan and the decisions you already hold, as one decision the step follows. Do not change the plan and do not add requirements.',
+    'When it is a product decision you cannot settle from them, do not invent one: escalate it, and say what whoever started the run must decide.',
+    '',
+    resultText,
+  ].join('\n');
+}

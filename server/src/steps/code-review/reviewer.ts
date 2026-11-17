@@ -4,6 +4,10 @@ import { effortFields } from '../../contract/effort';
 import type { EffortFields } from '../../contract/effort';
 import type { SwarmloopEnv } from '../../config/env';
 import type { DocumentRepository } from '../../history/document.repository';
+import type { PlanChatEntry } from '../../contract/plan-chat';
+import type { PlanChatStore } from '../../history/plan-chat.store';
+import { answerFollowUp, takeAnswer } from '../implement/implement-question';
+import { resultPromptFor } from '../../agent-result/result-prompt';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SampleDraft } from '../../history/visit';
 import type { AgentRunResult } from '../../agent/agent-runner';
@@ -43,6 +47,8 @@ export interface Finished extends EffortFields {
   answerErrors?: string[];
   /** The reviewer's launch ended on a provider limit and no agent of the role was left. */
   limit?: RuntimeLimit;
+  /** The reviewer's question to the planner. Its decision is not taken: the round waits for the answer. */
+  asked?: string;
 }
 
 /** One reviewer launch. `briefFor` is the full prompt for another runtime, whatever `prompt` is. */
@@ -58,6 +64,10 @@ interface ReviewLaunch extends EffortFields {
   answerErrors?: string[];
   /** The server's check of the answer, made before it is accepted. */
   check?: (value: unknown) => string[];
+  /** The planner's answer to the reviewer's last question, read once when the launch has returned. */
+  answer: PlanChatEntry | null;
+  /** The reviewer may ask the planner: it has no answer yet and the run has a planner of its own. */
+  mayAsk: boolean;
 }
 
 export interface Usage {
@@ -73,6 +83,7 @@ export interface ReviewDeps {
   root: string;
   launcher: AgentLauncher;
   runReport: RunReport;
+  chat?: PlanChatStore;
 }
 
 export const REVIEWERS: Reviewer[] = [...CODE_REVIEWERS.map((name) => ({ name, kind: REVIEWS.of(name) }))];
@@ -97,19 +108,22 @@ export async function runJob(
   const session = await resumableChat(deps.root, key, step, job.runtime);
   const full = fresh || !session?.chatId;
   const received = session?.resultName ?? null;
+  const definition = job.exchange ? reviewAnswerDefinition(job.reviewer.name) : reviewDefinition(job.reviewer.name);
   const chosen = full
     ? job.prompt
-    : retry
-      ? reviewContinue(job.reviewer.name, received)
-      : reviewResume(
-          job.reviewer.name,
-          fix.implement,
-          fix.reviewed,
-          plan,
-          returned,
-          received,
-          job.exchange ?? undefined,
-        );
+    : job.answer
+      ? answerFollowUp(job.answer, resultPromptFor(definition, received))
+      : retry
+        ? reviewContinue(job.reviewer.name, received)
+        : reviewResume(
+            job.reviewer.name,
+            fix.implement,
+            fix.reviewed,
+            plan,
+            returned,
+            received,
+            job.exchange ?? undefined,
+          );
   return one(
     deps,
     opened,
@@ -126,6 +140,8 @@ export async function runJob(
       answering: job.exchange !== null,
       answerErrors: await storedAnswerErrors(deps, opened.run.id, step),
       check: job.check,
+      answer: job.answer,
+      mayAsk: job.mayAsk,
     },
     auto,
     fresh,
@@ -164,7 +180,12 @@ async function one(
     if (!result.resultValue) {
       throw new SwarmloopError('decision is missing');
     }
-    return { ...ran, result, parsed: opinionOf(job.reviewer.kind, result.resultValue as ReviewResult) };
+    await takeAnswer(deps.chat, key, job.answer);
+    const value = result.resultValue as ReviewResult;
+    if (job.mayAsk && value.question?.trim()) {
+      return { ...ran, result, asked: value.question };
+    }
+    return { ...ran, result, parsed: opinionOf(job.reviewer.kind, value) };
   } catch (error) {
     if (error instanceof ResultInvalid) {
       refused = refusedWrite(error.output);

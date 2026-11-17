@@ -10,6 +10,7 @@ export interface ImplementationResult {
   plan?: string[];
   needs?: Need[];
   rejected?: RejectedFinding[];
+  question?: string;
 }
 
 /** A code review finding the step leaves unfixed, and why it does not hold. */
@@ -18,6 +19,11 @@ export interface RejectedFinding {
   finding: string;
   reason: string;
 }
+
+/** One choice the step cannot settle itself. The server takes it to the planner of the run and the step waits for the answer. */
+export const QUESTION = Joi.string().description(
+  'One choice you cannot settle from the brief, the requirements, the plan and the decisions; leave out when none',
+);
 
 const base = Joi.object({
   implementation: Joi.array()
@@ -39,6 +45,7 @@ const base = Joi.object({
       }),
     )
     .description('Sibling tasks this task waits for; leave out when none'),
+  question: QUESTION,
 });
 
 export const implementation = defineResult('implementation', base);

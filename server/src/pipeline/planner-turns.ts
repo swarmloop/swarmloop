@@ -3,10 +3,14 @@ import type { PipelineResult } from '../core/pipeline-result';
 import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
+import { RunRepository } from '../history/run.repository';
+import { Clock } from '../core/clock';
+import { PlanConversation } from '../steps/shared/plan-conversation';
 import { isSubtask } from '../contract/subtask';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { readPlan } from '../steps/plan/plan-record';
 import { messageTurn } from './plan-chat-route';
+import { askPlanner } from './planner-question';
 
 /** One thing the planner is asked: a person's message now, other kinds later. */
 export interface PlannerTurn {
@@ -34,6 +38,9 @@ export class PlannerTurns implements OnModuleDestroy {
   constructor(
     @Optional() private readonly chat?: PlanChatStore,
     @Optional() private readonly documents?: DocumentRepository,
+    @Optional() private readonly conversation?: PlanConversation,
+    @Optional() private readonly runs?: RunRepository,
+    @Optional() private readonly clock?: Clock,
   ) {}
 
   /** True when the planner takes a message to this run between steps: it is no subtask and reached implement, so its plan is amended or gains tasks. */
@@ -67,6 +74,51 @@ export class PlannerTurns implements OnModuleDestroy {
     } finally {
       this.end(key);
     }
+  }
+
+  /**
+   * What comes first for the planner of the run: a person's message it takes between steps, or the question of a
+   * step that waits for it, by the time of their entries. Turns in `declined` are not asked for again in this drive.
+   */
+  async next(run: RunEntity, declined: ReadonlySet<string>): Promise<'message' | 'question' | null> {
+    const messages = this.takesMessages(run) ? ((await this.chat?.pending(run.key)) ?? []) : [];
+    const questions = (await this.chat?.pendingQuestions(run.key)) ?? [];
+    const first = [
+      ...messages.map((entry) => ({ kind: 'message' as const, entry })),
+      ...questions.map((entry) => ({ kind: 'question' as const, entry })),
+    ]
+      .filter(({ entry }) => !declined.has(entry.key))
+      .sort((a, b) => a.entry.at.localeCompare(b.entry.at))[0];
+    return first?.kind ?? null;
+  }
+
+  /**
+   * Answers the oldest question that waits, one turn at a time with the person's messages. True when the planner
+   * answered it. Otherwise the question stays, is added to `declined`, and the reason is logged: the step keeps waiting.
+   */
+  async answer(key: string, declined: Set<string>): Promise<boolean> {
+    const question = ((await this.chat?.pendingQuestions(key)) ?? []).find((entry) => !declined.has(entry.key));
+    if (!question) return false;
+    declined.add(question.key);
+    const run = await this.runs?.findRun(key);
+    if (!run || !this.chat || !this.conversation || !this.clock) return false;
+    this.offer(key, { id: question.key, at: question.at, text: question.text });
+    if (!this.begin(key)) return false;
+    try {
+      const deps = { chat: this.chat, conversation: this.conversation, clock: this.clock };
+      const outcome = await askPlanner(deps, run, question);
+      if (outcome === 'answered') declined.delete(question.key);
+      else
+        this.logger.warn(`${key}: the planner did not answer the question of ${question.from ?? 'a step'}: ${outcome}`);
+      return outcome === 'answered';
+    } finally {
+      this.end(key);
+    }
+  }
+
+  /** True while a step's question waits for the planner. */
+  async hasQuestion(key: string): Promise<boolean> {
+    return ((await this.chat?.pendingQuestions(key)) ?? []).length > 0;
   }
 
   /** Runs `work` as a pass of its own. It ends before the module closes. */

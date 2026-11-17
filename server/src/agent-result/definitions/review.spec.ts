@@ -29,6 +29,17 @@ describe('review result', () => {
     expect(readResult(reviewDefinition('quality'), block(REVIEW))).toEqual({ ok: true, value: REVIEW });
   });
 
+  it.each(CODE_REVIEWERS)('lets review_%s ask one question, and refuses one that is not a text', (name) => {
+    const asked = { ...REVIEW, question: 'Keep the cursor or the page number?' };
+    expect(readResult(reviewDefinition(name), block(asked))).toEqual({ ok: true, value: asked });
+    expect(readResult(reviewDefinition(name), block({ ...REVIEW, question: 3 })).ok).toBe(false);
+    expect(resultPrompt(reviewDefinition(name))).toContain('- question (string, optional)');
+  });
+
+  it('gives the report definition no question', () => {
+    expect(resultPrompt(reviewReport)).not.toContain('question');
+  });
+
   it('asks for a reason only in the answer definition, under the same result name', () => {
     expect(reviewAnswerDefinition('quality').name).toBe(reviewDefinition('quality').name);
     expect(resultPrompt(reviewDefinition('quality'))).not.toContain('reason');

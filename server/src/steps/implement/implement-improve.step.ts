@@ -1,6 +1,6 @@
 import { agentFor } from '../../config/agents';
 import type { RunEntity } from '../../history/entities';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
@@ -26,7 +26,17 @@ import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
-import { implementImproveAsk, implementImproveFollowUp } from './implement.prompts';
+import { implementImproveAsk, implementImproveFollowUp, resultTextFor } from './implement.prompts';
+import {
+  answerFollowUp,
+  answerSection,
+  mayAsk,
+  readAnswer,
+  takeAnswer,
+  waitForPlanner,
+  withAssumed,
+} from './implement-question';
+import { PlanChatStore } from '../../history/plan-chat.store';
 import { firstPass, renderCause, renderImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
@@ -59,6 +69,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     sandbox: SandboxService,
     launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
+    @Optional() private readonly planChat?: PlanChatStore,
   ) {
     super(kernel, sandbox, launcher);
   }
@@ -98,16 +109,20 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       };
     }
     const returned = await returnedNotes(this.documents, ctx.opened.run.id);
-    const sections = withHandoff(
-      withReturnNotes(
-        [
-          { heading: 'Plan', body: plan },
-          { heading: 'Implementation', body: notes },
-        ],
-        returned,
+    const answer = await readAnswer(this.planChat, key, this.name);
+    const sections = [
+      ...withHandoff(
+        withReturnNotes(
+          [
+            { heading: 'Plan', body: plan },
+            { heading: 'Implementation', body: notes },
+          ],
+          returned,
+        ),
+        await ctx.reread(ARTIFACTS.handoff),
       ),
-      await ctx.reread(ARTIFACTS.handoff),
-    );
+      ...(answer ? [answerSection(answer)] : []),
+    ];
     const branch = branchName(key, summaryForBranch(input.requirements, key));
     const heads = await featureHeads(mounts, branch);
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
@@ -124,7 +139,10 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
         resultPromptFor(ask.definition, null),
       ].join('\n\n');
     const full = fullFor(runtime);
-    const chosen = continued?.chatId ? implementImproveFollowUp(returned, received) : full;
+    const followUp = answer
+      ? answerFollowUp(answer, resultTextFor(ask, received))
+      : implementImproveFollowUp(returned, received);
+    const chosen = continued?.chatId ? followUp : full;
     const added = await ctx.reread(ARTIFACTS.addedRepos);
     const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
     const reproject = projectFor(this.environments, place);
@@ -145,7 +163,13 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });
     await assertUncommitted(mounts, branch, heads);
+    await takeAnswer(this.planChat, key, answer);
     const value = agentResult.resultValue as ImplementationImproveResult;
+    if (!answer && value.question?.trim() && this.planChat && mayAsk(ctx.opened.run, this.planChat)) {
+      const { startedAt, attemptId } = ctx.opened;
+      const ask = { chat: this.planChat, clock: this.clock, step: this.name, attemptId, startedAt };
+      return waitForPlanner(ctx.opened.run, { ...ask, question: value.question });
+    }
     // An empty implementation means this pass left the first pass as it was.
     const items = value.implementation?.length ? value.implementation : pass.implementation;
     const body = renderImplementation(items);
@@ -154,7 +178,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const corrected = correctedPlan(input.requirements, value.plan, current?.items ?? []);
     const reasons = renderSummary(value.summary, ['checked the first pass']);
     const why = corrected ? `${reasons.trimEnd()}\n${corrected.handoff}` : reasons;
-    const handoffBody = value.cause?.length ? `${renderCause(value.cause)}${why}` : why;
+    const handoffBody = withAssumed(value.cause?.length ? `${renderCause(value.cause)}${why}` : why, value.question);
     const status = await worktreeStatus(mounts);
     const line = `${ctx.opened.startedAt} implement-improve done\n${body.trimEnd()}\n${status}`;
     return {

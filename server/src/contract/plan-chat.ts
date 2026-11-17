@@ -19,6 +19,10 @@ export interface PlanChatEntry {
   version?: number;
   /** The files sent with the message. */
   attachments?: AttachmentRef[];
+  /** `question` is a step's question to the planner; `answer` is the planner's answer to it. Missing for a message and a reply. */
+  kind?: 'question' | 'answer';
+  /** The step that asked, for a `question` and its `answer`. */
+  from?: string;
 }
 
 /** What one change of the plan added, changed and dropped, and why. */

@@ -3,6 +3,7 @@ import type { ReviewReportResult } from '../../agent-result/definitions/review-r
 import type { DocumentDraft } from '../../history/visit';
 import { ARTIFACTS, REVIEWS, reviewResultOf } from '../contract/artifacts';
 import { textDocument } from '../shared/handoff';
+import { assumedLine } from '../implement/implement-question';
 
 /** What one reviewer decided: its stored result, and the document text a person and the next prompts read. */
 export interface Opinion {
@@ -48,5 +49,6 @@ export function reportDocuments(text: string, result: ReviewReportResult): Docum
 /** The handoff note of a review: its summary list, or its decision when it gave none. */
 export function summaryNote(result: ReviewResult): string {
   const lines = result.summary.length > 0 ? result.summary : [result.decision];
-  return `${lines.map((line) => `- ${line}`).join('\n')}\n`;
+  const assumed = result.question?.trim() ? [`- ${assumedLine(result.question)}`] : [];
+  return `${[...lines.map((line) => `- ${line}`), ...assumed].join('\n')}\n`;
 }

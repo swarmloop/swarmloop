@@ -63,7 +63,7 @@ export function implementImproveAsk(notes: string | null): { definition: ResultD
 }
 
 /** The result text of a chat: full when the pass asks for `rejected`, which the chat's earlier result text lacks. */
-function resultTextFor(ask: { definition: ResultDefinition; lines: string[] }, received: string | null): string {
+export function resultTextFor(ask: { definition: ResultDefinition; lines: string[] }, received: string | null): string {
   return resultPromptFor(ask.definition, ask.lines.length > 0 ? null : received);
 }
 
