@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { listRuns, removeRun as deleteRun } from '../../lib/endpoints';
 import { useLiveActions, useLiveBridge } from '../shell';
 import type { RunSummary } from '@contract/api';
@@ -10,34 +10,44 @@ const IDLE_TICK_MS = 30_000;
 
 export function useRuns(): {
   runs: RunSummary[];
+  loaded: boolean;
   now: number;
   error: string | null;
   connected: boolean;
+  /** Lists the runs again after a failed load. */
+  retry: () => void;
   removeRun: (key: string) => Promise<void>;
 } {
   const runs = useLiveBridge((snapshot) => snapshot.runs);
   const connected = useLiveBridge((snapshot) => snapshot.connected);
+  const loaded = useLiveBridge((snapshot) => snapshot.loaded);
   const { setRuns } = useLiveActions();
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
 
-  useEffect(() => {
-    let stopped = false;
+  const reload = useCallback((): void => {
+    setError(null);
     listRuns()
       .then((body) => {
-        if (!stopped) {
+        if (mounted.current) {
           setRuns(body.runs);
         }
       })
       .catch((cause: unknown) => {
-        if (!stopped) {
+        if (mounted.current) {
           setError(cause instanceof Error ? cause.message : 'api is not reachable');
         }
       });
-    return () => {
-      stopped = true;
-    };
   }, [setRuns]);
+
+  useEffect(() => {
+    mounted.current = true;
+    reload();
+    return () => {
+      mounted.current = false;
+    };
+  }, [reload]);
 
   useEffect(() => {
     setError(null);
@@ -56,5 +66,5 @@ export function useRuns(): {
     setRuns((current) => current.filter((run) => run.key !== key));
   }
 
-  return { runs, now, error, connected, removeRun };
+  return { runs, loaded, now, error, connected, retry: reload, removeRun };
 }

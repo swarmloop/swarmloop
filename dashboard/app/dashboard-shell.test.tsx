@@ -118,6 +118,21 @@ describe('Shell', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/'));
     expect(removeRun).toHaveBeenCalledWith('run-1');
   });
+
+  it('shows the list error with Retry, and lists the runs again on Retry', async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.mocked(listRuns).mockRejectedValueOnce(new Error('api is down'));
+    renderShell();
+
+    expect(await screen.findByText('Runs could not be loaded: api is down')).toBeInTheDocument();
+    expect(screen.queryByText('No runs yet.')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Run one')).toBeInTheDocument();
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
+  });
+
   describe('run filter', () => {
     const fixture = () => [
       runSummary(),
@@ -125,6 +140,7 @@ describe('Shell', () => {
         ...runSummary(),
         key: `f-${n}`,
         name: `Failed ${n}`,
+        title: `Failed ${n}`,
         status: 'failed',
         state: 'failed' as const,
       })),
@@ -132,6 +148,7 @@ describe('Shell', () => {
         ...runSummary(),
         key: `m-${n}`,
         name: `Merged ${n}`,
+        title: `Merged ${n}`,
         state: 'merged' as const,
       })),
     ];
@@ -182,7 +199,7 @@ describe('Shell', () => {
     });
 
     describe('keeps the chosen part when it leaves the list page', () => {
-      const merged = { ...runSummary(), key: 'm-0', name: 'Merged 0', state: 'merged' as const };
+      const merged = { ...runSummary(), key: 'm-0', name: 'Merged 0', title: 'Merged 0', state: 'merged' as const };
       const showing = (show: string) =>
         vi
           .mocked(useSearchParams)
@@ -237,8 +254,8 @@ describe('Shell', () => {
     it('counts an epic with a running task once, in Active', async () => {
       vi.mocked(listRuns).mockResolvedValue({
         runs: [
-          { ...runSummary(), key: 'e-1', name: 'Epic', status: 'waiting', state: 'waiting' as const },
-          { ...runSummary(), key: 'e-1-A', name: 'Epic task', parentKey: 'e-1' },
+          { ...runSummary(), key: 'e-1', name: 'Epic', title: 'Epic', status: 'waiting', state: 'waiting' as const },
+          { ...runSummary(), key: 'e-1-A', name: 'Epic task', title: 'Epic task', parentKey: 'e-1' },
         ],
       });
       renderShell();

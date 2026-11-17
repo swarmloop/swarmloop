@@ -50,7 +50,9 @@ function renderRunList(runs: RunSummary[]): void {
       onPart={vi.fn()}
       selected=""
       now={0}
+      loaded
       error={null}
+      onRetry={vi.fn()}
       onOpen={vi.fn()}
       onRemove={vi.fn()}
     />,
@@ -219,11 +221,18 @@ describe('TaskLayers', () => {
 
   it('gives the same task order in the run list and in the Tasks section', async () => {
     // The plan is A, B (needs A), C; the page keeps plan order inside a group however the tasks arrive.
-    const parent = { ...runSummary(), key: 'e-1', name: 'Epic parent', taskCounts: { merged: 1, running: 2 } };
+    const parent = {
+      ...runSummary(),
+      key: 'e-1',
+      name: 'Epic parent',
+      title: 'Epic parent',
+      taskCounts: { merged: 1, running: 2 },
+    };
     const subtask = (id: string, index: number, status: SubtaskStatus, state: RunState) => ({
       ...runSummary(),
       key: `e-1-${id}`,
       name: `Task ${id}`,
+      title: `Task ${id}`,
       parentKey: 'e-1',
       taskId: id,
       state,
@@ -258,11 +267,18 @@ describe('TaskLayers', () => {
   });
 
   it('gives the same task order when a task waits for a person, and none to one that waits for a limit', () => {
-    const parent = { ...runSummary(), key: 'e-1', name: 'Epic parent', taskCounts: { running: 3 } };
+    const parent = {
+      ...runSummary(),
+      key: 'e-1',
+      name: 'Epic parent',
+      title: 'Epic parent',
+      taskCounts: { running: 3 },
+    };
     const subtask = (id: string, index: number, state: RunState, stateReason: RunSummary['stateReason'] = null) => ({
       ...runSummary(),
       key: `e-1-${id}`,
       name: `Task ${id}`,
+      title: `Task ${id}`,
       parentKey: 'e-1',
       taskId: id,
       state,
