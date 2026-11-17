@@ -102,6 +102,9 @@ export const setRunProjects = (key: string, name: string): Promise<ProjectsView>
   api<ProjectsView>(`${run(key)}/projects`, post({ name } satisfies AddProjectBody));
 export const sendAnswers = (key: string, body: AnswersBody): Promise<FlowView> =>
   api<FlowView>(`${run(key)}/answers`, post(body));
+/** Sends a message to the planner of the run, with the ids of the uploaded files; returns the run as it is now. */
+export const sendPlanChat = (key: string, message: string, attachments: string[] = []): Promise<FlowView> =>
+  api<FlowView>(`${run(key)}/plan-chat`, post({ message, ...(attachments.length > 0 ? { attachments } : {}) }));
 export const resumeRun = (key: string): Promise<unknown> => api(`${run(key)}/resume`, post());
 export const stopRun = (key: string): Promise<unknown> => api(`${run(key)}/stop`, post());
 export const skipTask = (key: string, taskId: string): Promise<unknown> =>

@@ -33,3 +33,21 @@ export function overflowing(root: HTMLElement, longWord = 40): HTMLElement[] {
     return long && !wraps(element);
   });
 }
+
+/** Makes `matchMedia` answer `min-width` and `max-width` queries for a window `width` px wide, for each test of the file. */
+export function mediaWidth(width: number): void {
+  let before = window.matchMedia.bind(window);
+  beforeEach(() => {
+    before = window.matchMedia.bind(window);
+    window.matchMedia = (query: string) => {
+      const min = /min-width:\s*(\d+)px/.exec(query);
+      const max = /max-width:\s*(\d+)px/.exec(query);
+      const matches = (min ? width >= Number(min[1]) : true) && (max ? width <= Number(max[1]) : true);
+      return { ...before(query), matches };
+    };
+  });
+  afterEach(() => {
+    cleanup();
+    window.matchMedia = before;
+  });
+}
