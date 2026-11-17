@@ -203,11 +203,11 @@ describe('settings', () => {
     const { app, repo, controller } = await world();
     try {
       await repo.save('machine', MINE);
-      const view = await controller.read('machine');
+      const view = await controller.read(null);
       expect(view.settings).toEqual({});
       expect(view.defaults.agents.main.plan).toEqual(['claude:opus', 'cursor:grok', 'codex:gpt']);
       expect(view.runtimes.map((entry) => entry.runtime)).toEqual(['cursor', 'claude']);
-      expect(() => controller.save('machine', MINE)).toThrow(ForbiddenException);
+      expect(() => controller.save(null, MINE)).toThrow(ForbiddenException);
     } finally {
       await app.close();
     }

@@ -111,7 +111,7 @@ export class RunEntity {
   @Column({ type: 'boolean', default: false })
   split!: boolean;
 
-  /** Who started the run: a login name, or `machine` for the token. Null for a run the CLI started and for old rows. */
+  /** Who started the run: a login name, or `machine` for runs from before personal tokens. Null for a run the CLI started and for old rows. */
   @Column({ name: 'started_by', type: 'text', nullable: true })
   startedBy!: string | null;
 

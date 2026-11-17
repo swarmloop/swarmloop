@@ -5,7 +5,7 @@ import { result } from '../steps/plan/plan.step.spec-helpers';
 import { resultAnswer } from './result-answer';
 import type { FakeAgentRunner } from './test-app';
 
-/** What a default-only app takes from the harness and not from `defaults.env`: its own root, a free port and the machine token. */
+/** What a default-only app takes from the harness and not from `defaults.env`: its own root, a free port and the token of the first admin. */
 export const ISOLATION_KEYS = ['SWARMLOOP_ROOT', 'SWARMLOOP_API_PORT', 'SWARMLOOP_TOKEN'] as const;
 
 /** Settings of `defaults.env` that `AppConfig` does not carry: sandbox and git settings that other code reads from the process. */

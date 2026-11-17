@@ -8,6 +8,10 @@ import { join } from 'path';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { PeopleService } from '../auth/people.service';
+import { PersonalTokens } from '../auth/personal-tokens.service';
+import { SESSION_COOKIE, SessionService } from '../auth/session.service';
+import type { Role } from '../contract/people';
 import { CommandHandlers } from '../api/command-handlers';
 import { ChatService } from '../api/chat.service';
 import { HealthController } from '../api/health.controller';
@@ -57,7 +61,7 @@ import { FakeCodeHost, ScriptedFakeAgentRunner, ScriptedStep, seededStep } from 
 
 export { ScriptedFakeAgentRunner, ScriptedStep };
 
-const MACHINE_TOKEN = 'test-machine-token';
+const ADMIN_TOKEN = 'test-admin-token';
 /** The steps whose agent answers in result blocks. */
 const BLOCK_STEPS = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve'];
 
@@ -112,8 +116,12 @@ export interface TestApp {
   blocks: BlockAgentRunner;
   pipeline: PipelineService;
   url: string;
-  /** The machine token as a bearer: the API takes no request without a session or this. */
+  /** The first admin's token, `SWARMLOOP_TOKEN` imported for `test-admin`, as a bearer: the API takes no request without a session or a token. */
   auth: { authorization: string };
+  /** A bearer header for a personal token of `login`, a member unless `role` says admin. The person is made when new. */
+  personToken(login: string, role?: Role): Promise<{ authorization: string }>;
+  /** A cookie header for a live session of `login`. */
+  sessionCookie(login: string): Promise<{ cookie: string }>;
   close(): Promise<void>;
   /** A restart: this app stops and a new one starts on the same root and database. The new app owns the root. */
   restart(): Promise<TestApp>;
@@ -248,6 +256,10 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     throw new Error('test app did not bind to a TCP port');
   }
 
+  const people = app.get(PeopleService);
+  const admin = 'test-admin';
+  await people.seen(admin);
+
   return {
     app,
     root,
@@ -257,7 +269,17 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     blocks,
     pipeline: app.get(PipelineService),
     url: `http://127.0.0.1:${address.port}`,
-    auth: { authorization: `Bearer ${options.env?.SWARMLOOP_TOKEN ?? MACHINE_TOKEN}` },
+    auth: { authorization: `Bearer ${options.env?.SWARMLOOP_TOKEN ?? ADMIN_TOKEN}` },
+    personToken: async (login, role = 'member') => {
+      await people.seen(login);
+      if (role === 'admin') await people.setRole(admin, login, 'admin');
+      const { value } = await app.get(PersonalTokens).create(login, 'test', null);
+      return { authorization: `Bearer ${value}` };
+    },
+    sessionCookie: async (login) => {
+      const session = await app.get(SessionService).create(login, 'gitlab');
+      return { cookie: `${SESSION_COOKIE}=${session.id}` };
+    },
     close: async () => {
       try {
         await app.close();
@@ -272,13 +294,13 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
   };
 }
 
-/** What keeps one app apart from the machine and from other apps: its root, loopback, a free port and the machine token. */
+/** What keeps one app apart from the machine and from other apps: its root, loopback, a free port and the token of the first admin. */
 function isolationEnv(root: string, overrides: Record<string, string> = {}): Record<string, string> {
   return {
     SWARMLOOP_API_PORT: '0',
     SWARMLOOP_API_HOST: '127.0.0.1',
     SWARMLOOP_ROOT: root,
-    SWARMLOOP_TOKEN: MACHINE_TOKEN,
+    SWARMLOOP_TOKEN: ADMIN_TOKEN,
     ...overrides,
   };
 }

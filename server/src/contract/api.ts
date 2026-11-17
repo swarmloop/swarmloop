@@ -4,6 +4,7 @@ import type { InterruptionNote } from './interruption';
 import type { TaskEntry } from './task-entry';
 import type { SubtaskStatus } from './subtask';
 import type { RunBacklog } from './backlog';
+import type { Role } from './people';
 
 export type { SettingsBody, StoredAgents } from './settings';
 export type {
@@ -376,6 +377,8 @@ export interface ConnectionView {
   missingOwners?: string[];
   /** People connected through the app; only for who may replace it. */
   connected?: string[];
+  /** True when the viewer may replace the app: its maker, or an admin. */
+  mayReplace: boolean;
 }
 
 export interface ConnectionsView {
@@ -404,4 +407,5 @@ export interface MeView {
   user: string | null;
   provider?: string;
   avatarUrl?: string | null;
+  role?: Role;
 }

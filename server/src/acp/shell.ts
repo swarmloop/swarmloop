@@ -3,7 +3,6 @@ import { createInterface } from 'readline';
 import { existsSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, join, resolve } from 'path';
-import { machineToken } from '../auth/machine-token';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SystemClock } from '../core/clock';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
@@ -38,7 +37,7 @@ import { withEgress } from '../sandbox/egress-launch';
 
 export async function runShell(argv: string[], cwd = process.cwd()): Promise<void> {
   const root = resolve(__dirname, '../../..');
-  const api = new HttpServerApi(readApiUrl(envFilePath(root)), machineToken(root, rawEnv().SWARMLOOP_TOKEN));
+  const api = new HttpServerApi(readApiUrl(envFilePath(root)), rawEnv().SWARMLOOP_TOKEN ?? '');
   try {
     await dispatch(argv, cwd, root, api);
   } catch (error) {

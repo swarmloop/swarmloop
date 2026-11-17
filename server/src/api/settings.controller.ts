@@ -1,5 +1,6 @@
-import { Body, Controller, ForbiddenException, Get, Put } from '@nestjs/common';
+import { Body, Controller, Get, Put } from '@nestjs/common';
 import { Actor } from '../auth/actor.decorator';
+import { requirePerson } from '../auth/connection-catalog';
 import type { SettingsView } from '../contract/settings';
 import { SettingsService } from './settings.service';
 
@@ -14,9 +15,6 @@ export class SettingsController {
 
   @Put()
   save(@Actor() actor: string | null, @Body() body: unknown): Promise<SettingsView> {
-    if (!actor || actor === 'machine') {
-      throw new ForbiddenException('the machine token has no personal settings');
-    }
-    return this.settings.save(actor, body);
+    return this.settings.save(requirePerson(actor), body);
   }
 }

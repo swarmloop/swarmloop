@@ -12,11 +12,14 @@ import {
 } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import type { ConnectionView, ConnectionsView } from '../contract/api';
+import { personLabel } from '../contract/people';
 import { Actor } from './actor.decorator';
 import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsService } from './connections.service';
 import { startState, type CookieResponse } from './cookies';
 import { AuthService } from './auth.service';
+import { FIRST_RUN_MAKER } from './first-run-maker';
+import { PeopleService } from './people.service';
 import { appFlowApps, appFlowRoutes, routeHost } from './host-routes';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
@@ -35,6 +38,7 @@ export class ConnectionsController {
     private readonly auth: AuthService,
     private readonly states: LoginStates,
     private readonly repos: CheckoutRepos,
+    private readonly people: PeopleService,
   ) {}
 
   @Get()
@@ -62,7 +66,7 @@ export class ConnectionsController {
     };
   }
 
-  /** Starts the manifest flow for a new app of the host. The old app and its connections stay until the host returns the new one. Only its maker, or the machine token. */
+  /** Starts the manifest flow for a new app of the host. The old app and its connections stay until the host returns the new one. Only its maker, or an admin. */
   @Post(appFlowRoutes('app'))
   async replaceApp(
     @Query('org') org: string | undefined,
@@ -75,10 +79,14 @@ export class ConnectionsController {
     if (!app) {
       throw new BadRequestException(`there is no ${provider.label} ${provider.appLabel} to replace`);
     }
-    if (actor !== 'machine' && actor !== app.madeBy) {
-      throw new ForbiddenException(`Only ${app.madeBy ?? 'the machine token'} can replace this app`);
+    // An app nobody has signed in through yet has no maker to name.
+    const maker = app.madeBy === FIRST_RUN_MAKER ? null : app.madeBy;
+    if (!actor || !(await this.mayReplace(actor, maker))) {
+      throw new ForbiddenException(
+        maker ? `Only ${personLabel(maker)} or an admin can replace this app` : 'Only an admin can replace this app',
+      );
     }
-    const { state } = startState(this.states, this.config, provider.name, response, true, actor as string);
+    const { state } = startState(this.states, this.config, provider.name, response, true, actor);
     return provider.appFlow.manifest(org?.trim() || (await this.repos.owners(provider.name).catch(() => []))[0], state);
   }
 
@@ -88,6 +96,10 @@ export class ConnectionsController {
       await this.connections.disconnect(this.host(host), actor);
     }
     return { ok: true };
+  }
+
+  private async mayReplace(actor: string, madeBy: string | null | undefined): Promise<boolean> {
+    return actor === madeBy || (await this.people.isAdmin(actor));
   }
 
   private host(name: string): ProviderName {
@@ -127,9 +139,9 @@ export class ConnectionsController {
   private async view(host: ProviderName, actor: string | null): Promise<ConnectionView> {
     const stored = this.apps.find(host);
     const credentials = this.apps.credentials(host);
-    const health = actor && actor !== 'machine' ? await this.connections.health(host, actor) : null;
+    const health = actor ? await this.connections.health(host, actor) : null;
     const { appLabel, installs } = this.connections.endpoints(host);
-    const mayReplace = installs && stored && (actor === 'machine' || actor === stored.madeBy);
+    const mayReplace = Boolean(installs && stored && actor && (await this.mayReplace(actor, stored.madeBy)));
     const repositories = installs && health ? await this.connections.repositories(actor as string).catch(() => []) : [];
     return {
       host,
@@ -139,7 +151,7 @@ export class ConnectionsController {
         ? {
             name: stored?.slug || `OAuth ${appLabel.toLowerCase()}`,
             clientId: credentials.clientId,
-            madeBy: stored?.madeBy ?? null,
+            madeBy: stored?.madeBy === FIRST_RUN_MAKER ? null : (stored?.madeBy ?? null),
             settingsUrl: this.settingsUrl(host, stored?.slug),
           }
         : null,
@@ -148,6 +160,7 @@ export class ConnectionsController {
       missingOwners: installs && health ? await this.missingOwners(host, repositories) : [],
       selection: health?.selection === 'selected' ? 'selected' : health?.selection === 'all' ? 'all' : null,
       health: health && { status: health.status, expiresAt: health.expiresAt, refreshedAt: health.refreshedAt },
+      mayReplace,
       connected: mayReplace ? await this.connections.loginsOn(host) : [],
     };
   }

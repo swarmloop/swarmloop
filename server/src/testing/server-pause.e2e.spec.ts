@@ -19,6 +19,9 @@ describe('a paused server', () => {
   it('answers the pause routes only to a caller that is let in, and says so on /health', async () => {
     app = await createTestApp();
     expect((await send('POST', '/server/pause', {})).status).toBe(401);
+    expect((await send('POST', '/server/pause', await app.personToken('mia'))).status).toBe(403);
+    expect((await send('DELETE', '/server/pause', await app.personToken('mia'))).status).toBe(403);
+    expect(await health()).toEqual({ status: 'ok', paused: false, containers: 0 });
     expect(await health()).toEqual({ status: 'ok', paused: false, containers: 0 });
 
     const paused = await send('POST', '/server/pause');
