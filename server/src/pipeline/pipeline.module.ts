@@ -46,6 +46,7 @@ import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
+import { PlannerTurns } from './planner-turns';
 import { BacklogActions } from './backlog/backlog-actions';
 import { BacklogActionSupport } from './backlog/backlog-action-support';
 import { BacklogTaskActions } from './backlog/backlog-task-actions';
@@ -105,6 +106,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommandService,
     MergeWatch,
     Reconciler,
+    PlannerTurns,
     BacklogActionSupport,
     BacklogTaskActions,
     BacklogActions,
@@ -124,6 +126,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PipelineService,
     CommandService,
     Reconciler,
+    PlannerTurns,
     BacklogActions,
     BacklogQueries,
     BacklogScheduler,

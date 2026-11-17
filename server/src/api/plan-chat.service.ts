@@ -1,0 +1,81 @@
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { Clock } from '../core/clock';
+import type { CommandReceipt } from '../contract/command';
+import type { FlowView } from '../contract/api';
+import type { PlanChatEntry } from '../contract/plan-chat';
+import { PlanChatStore } from '../history/plan-chat.store';
+import { RunRepository } from '../history/run.repository';
+import { CommandService } from '../pipeline/command.service';
+import { PlannerTurns } from '../pipeline/planner-turns';
+import { messageTurn } from '../pipeline/plan-chat-route';
+import { requireRun, RunQueriesService } from './run-queries.service';
+
+/** What a message of a person is stored as: its text and the login that sent it. */
+interface MessagePayload extends Record<string, unknown> {
+  message: string;
+  author?: string;
+}
+
+/** A person's message to the planner of a run: where it goes is decided by the run's place. */
+@Injectable()
+export class PlanChatService {
+  constructor(
+    private readonly runs: RunRepository,
+    private readonly queries: RunQueriesService,
+    private readonly commands: CommandService,
+    private readonly store: PlanChatStore,
+    private readonly turns: PlannerTurns,
+    private readonly clock: Clock,
+  ) {}
+
+  /** Checks the message against the run, then sends it as the command for its place. */
+  async send(
+    key: string,
+    message: string | undefined,
+    author: string | null,
+    idempotencyKey?: string,
+  ): Promise<FlowView & CommandReceipt> {
+    const text = message?.trim();
+    if (!text) {
+      throw new BadRequestException('message is missing');
+    }
+    const run = await requireRun(this.runs, key);
+    const view = await this.queries.flow(key);
+    const turn = messageTurn(run, { state: view.state, parentKey: view.parentKey, openItems: view.items.length });
+    if (turn === 'subtask') {
+      throw new ConflictException(`${key} is a subtask: talk to the planner of ${view.parentKey}`);
+    }
+    if (turn === 'follow-up') {
+      const ended = view.state === 'merged' || view.state === 'closed' ? view.state : 'removed';
+      throw new ConflictException(`${key} is ${ended}: start a follow-up run`);
+    }
+    const payload: MessagePayload = { message: text, ...(author ? { author } : {}) };
+    const options = { idempotencyKey: idempotencyKey?.trim() || undefined };
+    if (turn === 'answer') {
+      const sent = await this.commands.submit<FlowView>('answer', key, payload, options);
+      await this.store.appendEntry(key, this.entry(sent.receipt.commandId, payload, 'taken'));
+      return { ...sent.value, ...sent.receipt };
+    }
+    const sent = await this.commands.submit<FlowView>('plan-chat', key, payload, options);
+    return { ...sent.value, ...sent.receipt };
+  }
+
+  /** The `plan-chat` command: stores the message as pending and offers it to the planner's turns. */
+  async record(key: string, payload: Record<string, unknown>, commandId: string): Promise<FlowView> {
+    const entry = this.entry(commandId, payload as MessagePayload, 'pending');
+    await this.store.appendEntry(key, entry);
+    this.turns.offer(key, { id: entry.key, at: entry.at, text: entry.text });
+    return this.queries.flow(key);
+  }
+
+  private entry(commandId: string, payload: MessagePayload, state: PlanChatEntry['state']): PlanChatEntry {
+    return {
+      key: `message-${commandId}`,
+      role: 'person',
+      ...(payload.author ? { author: payload.author } : {}),
+      text: payload.message,
+      at: this.clock.iso(),
+      state,
+    };
+  }
+}

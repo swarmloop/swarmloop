@@ -19,6 +19,7 @@ import { reviewReportCodec } from '../../agent-result/review-report-codec';
 import { reviewDefinition, reviewStoredDefinition, type ReviewResult } from '../../agent-result/definitions/review';
 import { legacyReview } from '../../agent-result/legacy/review';
 import { resultArtifactCodec } from '../../agent-result/result-codec';
+import { PLAN_CHAT_KIND, readPlanChat, type PlanChatLog } from '../../contract/plan-chat';
 import { requirementsView } from '../../contract/requirements-view';
 import {
   artifact,
@@ -298,6 +299,14 @@ export const ARTIFACTS = {
     external: true,
     codec: jsonArrayCodec<string>(),
     summarize: (errors) => (errors.length === 0 ? '' : `${errors.length} errors in the agent's answer`),
+  }),
+  // The plan chat of a run: the person's messages, the planner's replies and the plan revisions.
+  planChat: artifact(PLAN_CHAT_KIND, {
+    writers: [],
+    readers: [],
+    external: true,
+    codec: { parse: readPlanChat, format: (log: PlanChatLog) => `${JSON.stringify(log)}\n` },
+    summarize: (log) => `${log.entries.length} messages, ${log.revisions.length} plan revisions`,
   }),
   error: artifact('error', { writers: [], readers: [], external: true, summarize: firstLine }),
   log: artifact(LOG_KIND, { writers: [], readers: [], external: true, summarize: firstLine }),

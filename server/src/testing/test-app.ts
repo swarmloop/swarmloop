@@ -10,6 +10,7 @@ import type { INestApplication } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CommandHandlers } from '../api/command-handlers';
 import { ChatService } from '../api/chat.service';
+import { PlanChatService } from '../api/plan-chat.service';
 import { HealthController } from '../api/health.controller';
 import { LiveGateway } from '../api/live.gateway';
 import { SubtaskClose } from '../api/subtask-close';
@@ -162,6 +163,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       SubtaskClose,
       RunRebaseService,
       ChatService,
+      PlanChatService,
       ShellService,
       CommandHandlers,
       LiveGateway,

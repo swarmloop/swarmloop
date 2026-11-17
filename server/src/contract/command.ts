@@ -6,6 +6,7 @@ export const COMMAND_TYPES = [
   'replay',
   'rebase',
   'answer',
+  'plan-chat',
   'stop',
   'step',
   'chat',
