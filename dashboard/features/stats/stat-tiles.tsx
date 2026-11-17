@@ -8,9 +8,28 @@ import type { StatsTotals } from '@contract/api';
 import { CHART, OUTCOMES } from './chart-parts';
 import { big, hours, percent, returnsByKind, usd } from './stats-format';
 
-function Tile({ label, value, children }: { label: string; value: string; children?: ReactNode }): ReactElement {
+/** The columns of the tile grid from md up; the tiles' spans add up to whole rows of them. */
+export const TILE_COLUMNS = 4;
+
+function Tile({
+  label,
+  value,
+  span = 1,
+  children,
+}: {
+  label: string;
+  value: string;
+  /** How many columns the tile takes from md up. */
+  span?: number;
+  children?: ReactNode;
+}): ReactElement {
   return (
-    <Paper variant="outlined" sx={{ p: 2, minWidth: 0 }} aria-label={`${label}: ${value}`}>
+    <Paper
+      variant="outlined"
+      sx={{ p: 2, minWidth: 0, gridColumn: { md: `span ${span}` } }}
+      aria-label={`${label}: ${value}`}
+      data-span={span}
+    >
       <Typography variant="body2" color="text.secondary" noWrap>
         {label}
       </Typography>
@@ -65,8 +84,7 @@ export function StatTiles({ totals, days }: { totals: StatsTotals; days: number 
         display: 'grid',
         gridTemplateColumns: {
           xs: 'repeat(2, minmax(0, 1fr))',
-          md: 'repeat(3, minmax(0, 1fr))',
-          xl: 'repeat(6, minmax(0, 1fr))',
+          md: `repeat(${TILE_COLUMNS}, minmax(0, 1fr))`,
         },
         gap: 2,
       }}
@@ -91,17 +109,21 @@ export function StatTiles({ totals, days }: { totals: StatsTotals; days: number 
       <Tile label="Spend" value={usd(totals.usd)}>
         {totals.done > 0 ? `${usd(totals.usd / totals.done)} per done run` : 'no run is done'}
       </Tile>
-      <Tile label="Returns" value={totals.tasks > 0 ? `${percent(totals.tasksBack, totals.tasks)} came back` : '—'}>
+      <Tile
+        label="Returns"
+        span={2}
+        value={totals.tasks > 0 ? `${percent(totals.tasksBack, totals.tasks)} came back` : '—'}
+      >
         {totals.tasks > 0
           ? `${mostTasks(totals.medianReturnsPerTask)} · ${returns} ${returns === 1 ? 'return' : 'returns'} in ${days} ${days === 1 ? 'day' : 'days'}: ${returnsByKind(totals.returnsByKind, ', ')}`
           : 'no task is done'}
       </Tile>
-      <Tile label="Agent time" value={hours(totals.agentMs)}>
+      <Tile label="Agent time" span={2} value={hours(totals.agentMs)}>
         {totals.medianDoneMs !== null
           ? `median run ${hours(totals.medianDoneMs)}`
           : `${big(totals.tokensIn + totals.tokensOut)} tokens`}
       </Tile>
-      <Tile label="Usage limits" value={String(totals.limits)}>
+      <Tile label="Usage limits" span={2} value={String(totals.limits)}>
         {totals.limits > 0 ? 'launches that hit a provider limit' : 'no launch hit a provider limit'}
       </Tile>
     </Box>

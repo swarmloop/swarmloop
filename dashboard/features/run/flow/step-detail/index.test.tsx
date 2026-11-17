@@ -120,6 +120,27 @@ describe('StepDetail', () => {
     expect(await screen.findByText('step is gone')).toBeInTheDocument();
   });
 
+  it('shows a skeleton and no empty text while the step loads', async () => {
+    vi.mocked(getStep).mockReturnValue(new Promise(() => undefined));
+
+    detail();
+
+    expect(await screen.findByLabelText('Loading the step')).toBeInTheDocument();
+    expect(screen.queryByText('This step has not run.')).toBeNull();
+  });
+
+  it('offers Retry after an error and loads the step again', async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.mocked(getStep).mockRejectedValueOnce(new Error('step is gone'));
+
+    detail();
+
+    expect(await screen.findByText('step is gone')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('implement')).toBeInTheDocument();
+    expect(screen.queryByText('step is gone')).toBeNull();
+  });
+
   it('calls onReplay from Run again', async () => {
     const user = userEvent.setup({ delay: null });
     const onReplay = vi.fn();
@@ -127,7 +148,7 @@ describe('StepDetail', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Run again' }));
 
-    expect(onReplay).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
+    expect(onReplay).toHaveBeenCalledTimes(1);
   });
 
   it('shows Resume only when onResume is passed', async () => {
@@ -320,13 +341,16 @@ describe('StepDetail', () => {
       vi.mocked(getStep).mockResolvedValue(
         stepView({
           visits: [
-            visitView({ samples: [{ at: '2026-01-01T00:00:00.000Z', cpu: 12, memory: 1024, source: 'agent' }] }),
+            visitView({
+              durationMs: 180_000,
+              samples: [{ at: '2026-01-01T00:00:00.000Z', cpu: 12, memory: 1024, source: 'agent' }],
+            }),
           ],
         }),
       );
       detail();
 
-      expect(await screen.findByRole('img', { name: 'CPU and memory' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /^Resources:/ })).toBeInTheDocument();
     });
 
     it('says so when the step started no container', async () => {
@@ -340,7 +364,7 @@ describe('StepDetail', () => {
       detail({ step: 'branch' });
 
       expect(await screen.findByText('This step started no container.')).toBeInTheDocument();
-      expect(screen.queryByRole('img', { name: 'CPU and memory' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Resources:/ })).not.toBeInTheDocument();
     });
   });
 

@@ -27,6 +27,10 @@ function header(overrides: Partial<ComponentProps<typeof StepHeader>> = {}) {
   return props;
 }
 
+/** Matches the line of a step's runtime, model and effort, whose model id sits in its own element. */
+const modelLine = (text: string) => (_: string, element: Element | null) =>
+  element?.tagName === 'P' && element.textContent === text;
+
 describe('StepHeader', () => {
   it('shows the step label', () => {
     header();
@@ -114,7 +118,7 @@ describe('StepHeader', () => {
     await user.click(screen.getByRole('button', { name: 'Run again' }));
     await user.click(screen.getByRole('button', { name: 'Resume' }));
 
-    expect(props.onReplay).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
+    expect(props.onReplay).toHaveBeenCalledTimes(1);
     expect(props.onResume).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
   });
 
@@ -129,7 +133,7 @@ describe('StepHeader', () => {
       }),
     });
 
-    expect(screen.getByText('claude · opus')).toBeInTheDocument();
+    expect(screen.getByText(modelLine('claude · opus'))).toBeInTheDocument();
     expect(screen.queryByText(/agent/)).not.toBeInTheDocument();
   });
 
@@ -154,19 +158,19 @@ describe('StepHeader', () => {
     it('shows the effort after the model', () => {
       shown({ effort: 'high' });
 
-      expect(screen.getByText('claude · claude-opus-5-5 · high')).toBeInTheDocument();
+      expect(screen.getByText(modelLine('claude · claude-opus-5-5 · high'))).toBeInTheDocument();
     });
 
     it('marks an effort the epic raised', () => {
       shown({ effort: 'xhigh', effortNote: 'epic' });
 
-      expect(screen.getByText('claude · claude-opus-5-5 · xhigh (epic)')).toBeInTheDocument();
+      expect(screen.getByText(modelLine('claude · claude-opus-5-5 · xhigh (epic)'))).toBeInTheDocument();
     });
 
     it('adds nothing for a capped note', () => {
       shown({ effort: 'max', effortNote: 'capped:max' });
 
-      expect(screen.getByText('claude · claude-opus-5-5 · max')).toBeInTheDocument();
+      expect(screen.getByText(modelLine('claude · claude-opus-5-5 · max'))).toBeInTheDocument();
     });
   });
 
@@ -222,5 +226,43 @@ describe('StepHeader', () => {
     header();
 
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('offers Retry on a failed step and no button on a returned one', () => {
+    const onReplay = vi.fn();
+    header({ onReplay, label: 'failed' });
+
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('offers no way to run a returned step again', () => {
+    header({ onReplay: vi.fn(), label: 'returned' });
+
+    expect(screen.queryByRole('button', { name: /Retry|Run again/ })).toBeNull();
+  });
+
+  it('shows a returned attempt number in the error color with the undo icon', () => {
+    const view = stepView({
+      visits: [visitView({ id: 1, attempt: 1, status: 'waiting' }), visitView({ id: 2, attempt: 2, status: 'done' })],
+    });
+    header({ step: 'checks', view, visit: view.visits[0], attempt: 0, label: 'returned' });
+
+    const first = screen.getByRole('button', { name: '1' });
+    expect(first).toHaveStyle({ color: createTheme().palette.error.main });
+    expect(first.querySelector('[data-testid="UndoIcon"]')).not.toBeNull();
+  });
+
+  it('keeps the model id in mono and the rest of the line in the UI font', () => {
+    const view = stepView({
+      descriptor: {
+        name: 'implement',
+        kind: 'agent',
+        agent: { runtime: 'claude', model: 'opus', mode: 'agent', tools: 'write', timeLimitMs: 1, session: 'fresh' },
+      },
+    });
+    header({ view, visit: view.visits[0], attempt: 0, attempts: 1 });
+
+    expect(screen.getByText('opus')).toHaveStyle({ fontFamily: 'var(--font-mono)' });
+    expect(screen.getByText('implement')).not.toHaveStyle({ fontFamily: 'var(--font-mono)' });
   });
 });

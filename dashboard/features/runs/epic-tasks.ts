@@ -3,7 +3,7 @@ import { needsPerson } from '@contract/run-state';
 import { orderTasks, taskGroup } from '@contract/task-order';
 import { runTaskStatus } from '@contract/subtask';
 import type { SubtaskStatus } from '@contract/subtask';
-import { runWord } from './run-word';
+import { runWord } from '../run';
 
 /** The plan status of a task run: the server's when the task is in the plan, else the one its own run's state gives it. */
 export function statusOf(run: RunSummary): SubtaskStatus {

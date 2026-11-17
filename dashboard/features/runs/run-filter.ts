@@ -31,7 +31,7 @@ export function filterRuns(
   const { tops, children } = nested(runs);
   const needle = query.trim().toLowerCase();
   const matches = (run: RunSummary): boolean =>
-    run.name.toLowerCase().includes(needle) || run.key.toLowerCase().includes(needle);
+    [run.title, run.name, run.key].some((text) => text.toLowerCase().includes(needle));
   const groups = tops.map((top) => {
     const tasks = children.get(top.key) ?? [];
     return {

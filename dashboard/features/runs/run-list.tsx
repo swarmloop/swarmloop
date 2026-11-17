@@ -2,8 +2,10 @@
 
 import type { KeyboardEvent, ReactElement, ReactNode } from 'react';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Link from '@mui/material/Link';
 import List from '@mui/material/List';
+import Skeleton from '@mui/material/Skeleton';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
@@ -25,6 +27,16 @@ function moveFocus(event: KeyboardEvent<HTMLElement>): void {
     event.preventDefault();
     next.focus();
   }
+}
+
+function RowSkeletons(): ReactElement {
+  return (
+    <Box aria-label="Loading runs" sx={{ px: 1.5, pt: 2 }}>
+      {[0, 1, 2, 3].map((index) => (
+        <Skeleton key={index} variant="rounded" height={40} sx={{ mb: 1 }} />
+      ))}
+    </Box>
+  );
 }
 
 const OTHER: Record<'active' | 'done', { part: Part; word: string; label: string }> = {
@@ -81,7 +93,9 @@ export function RunList({
   control,
   selected,
   now,
+  loaded,
   error,
+  onRetry,
   onOpen,
   onRemove,
 }: {
@@ -95,7 +109,10 @@ export function RunList({
   control?: ReactNode;
   selected: string;
   now: number;
+  /** False until the first runs list arrived; the list shows placeholders, never the empty text. */
+  loaded: boolean;
   error: string | null;
+  onRetry: () => void;
   onOpen: (key: string) => void;
   onRemove: (run: RunSummary) => void;
 }): ReactElement {
@@ -112,7 +129,8 @@ export function RunList({
         />
         {control ? <Box sx={{ pt: 1 }}>{control}</Box> : null}
       </Box>
-      {visible.length === 0 ? (
+      {!loaded && !error ? <RowSkeletons /> : null}
+      {loaded && visible.length === 0 ? (
         <Typography variant="body2" color="text.secondary" component="div" sx={{ px: 2, pt: 2 }}>
           {runs.length === 0 ? (
             'No runs yet.'
@@ -156,9 +174,14 @@ export function RunList({
         ))}
       </Box>
       {error ? (
-        <Typography variant="body2" color="error" sx={{ px: 2 }}>
-          {error}
-        </Typography>
+        <Box sx={{ px: 2, pt: 1 }}>
+          <Typography variant="body2" color="error">
+            {`Runs could not be loaded: ${error}`}
+          </Typography>
+          <Button size="small" onClick={onRetry} sx={{ mt: 0.5 }}>
+            Retry
+          </Button>
+        </Box>
       ) : null}
     </Box>
   );

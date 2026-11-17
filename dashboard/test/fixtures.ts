@@ -10,6 +10,7 @@ export function runSummary(): RunSummary {
   return {
     key: 'run-1',
     name: 'Run one',
+    title: 'Run one',
     status: 'running',
     currentStep: 'implement',
     createdAt: at,
@@ -33,6 +34,8 @@ export function flowView(overrides: Partial<FlowView> = {}): FlowView {
   return {
     key: 'run-1',
     name: 'Run one',
+    title: 'Run one',
+    mergeRequests: [],
     status: 'running',
     currentStep: 'implement',
     updatedAt: at,
@@ -193,6 +196,7 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
       {
         key: 'run-d',
         name: 'One pass',
+        title: 'One pass',
         status: 'done',
         outcome: 'done',
         usd: 0.25,
@@ -204,6 +208,7 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
       {
         key: 'run-c',
         name: 'Fix the bug',
+        title: 'Fix the bug',
         status: 'waiting',
         outcome: 'active',
         usd: 1,
@@ -215,6 +220,7 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
       {
         key: 'run-a',
         name: 'Add a stats page',
+        title: 'Add a stats page',
         status: 'done',
         outcome: 'done',
         usd: 3,

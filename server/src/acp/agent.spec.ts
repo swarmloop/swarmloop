@@ -72,6 +72,7 @@ describe('sloop', () => {
           {
             key: 'PROJ-1',
             name: 'PROJ-1',
+            title: 'PROJ-1',
             status: 'running',
             currentStep: 'research',
             createdAt: '2026-10-17T19:00:00.000Z',
@@ -109,6 +110,7 @@ describe('sloop', () => {
           {
             key: 'PROJ-2',
             name: 'PROJ-2',
+            title: 'PROJ-2',
             status: 'waiting',
             currentStep: 'research',
             createdAt: '2026-10-17T19:00:00.000Z',
@@ -122,6 +124,7 @@ describe('sloop', () => {
           {
             key: 'PROJ-1',
             name: 'PROJ-1',
+            title: 'PROJ-1',
             status: 'failed',
             currentStep: 'branch',
             createdAt: '2026-10-18T10:00:00.000Z',
@@ -589,6 +592,8 @@ type FlowFixture = Pick<FlowView, 'key' | 'status' | 'currentStep' | 'updatedAt'
 function flowView(view: FlowFixture): FlowView {
   return {
     name: view.key,
+    title: view.key,
+    mergeRequests: [],
     stepStartedAt: null,
     resume: 'running',
     state: 'running',

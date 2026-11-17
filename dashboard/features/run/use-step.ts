@@ -20,19 +20,30 @@ export function useStep(
   attempt: number;
   setAttempt: Dispatch<SetStateAction<number>>;
   error: string | null;
+  /** The step is being fetched: there is neither a view nor an error yet. */
+  loading: boolean;
+  /** Fetch the step again after an error. */
+  retry: () => void;
   follow: RefObject<boolean>;
 } {
   const [view, setView] = useState<StepView | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
   const follow = useRef(true);
   const logs = useLiveBridge((snapshot) => snapshot.logs);
+  // The load effect reads the current logs without refetching each time one arrives.
+  const currentLogs = useRef(logs);
   const seenLogs = useRef(new WeakSet<LiveLog>());
   const latestLog = useRef<{
     body: string;
     samples: StepView['visits'][number]['samples'];
     usage?: LiveUsage;
   } | null>(null);
+
+  useEffect(() => {
+    currentLogs.current = logs;
+  });
 
   useEffect(() => {
     follow.current = true;
@@ -44,7 +55,7 @@ export function useStep(
   useEffect(() => {
     let stopped = false;
     latestLog.current = null;
-    logs.forEach((entry) => seenLogs.current.add(entry));
+    currentLogs.current.forEach((entry) => seenLogs.current.add(entry));
     if (live) {
       follow.current = true;
     }
@@ -84,7 +95,7 @@ export function useStep(
     return () => {
       stopped = true;
     };
-  }, [runKey, step, live, revision, attempts]);
+  }, [runKey, step, live, revision, attempts, reload]);
 
   useEffect(() => {
     const fresh = logs.filter((entry) => !seenLogs.current.has(entry));
@@ -124,5 +135,10 @@ export function useStep(
     setAttempt((current) => (current === last ? current : last));
   }, [view]);
 
-  return { view, attempt, setAttempt, error, follow };
+  const retry = (): void => {
+    setError(null);
+    setReload((count) => count + 1);
+  };
+
+  return { view, attempt, setAttempt, error, loading: view === null && error === null, retry, follow };
 }

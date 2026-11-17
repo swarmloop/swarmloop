@@ -28,7 +28,6 @@ export function ChecksProgress({ commands }: { commands: CheckCommandView[] }): 
             display: 'inline-flex',
             alignItems: 'center',
             gap: 0.5,
-            fontFamily: 'var(--font-mono)',
             fontSize: 11,
             color: statusColor('failed'),
           }}
@@ -37,7 +36,7 @@ export function ChecksProgress({ commands }: { commands: CheckCommandView[] }): 
           {counts.failed} failed
         </Box>
       ) : (
-        <Box component="span" sx={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'text.secondary' }}>
+        <Box component="span" sx={{ fontSize: 11, color: 'text.secondary' }}>
           {counts.passed}/{counts.total}
         </Box>
       )}

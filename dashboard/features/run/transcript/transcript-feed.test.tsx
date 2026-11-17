@@ -336,4 +336,32 @@ describe('TranscriptFeed', () => {
     expect(stripeColor(card)).toBe(createTheme().palette.error.main);
     expect(screen.getByText('1 problem')).toBeInTheDocument();
   });
+
+  it('shows a step label in the UI font and a command with its path in the monospace font', () => {
+    feed([
+      stepEvent(1, {
+        kind: 'agent.launched',
+        runtime: 'claude',
+        model: 'opus',
+        tools: 'write',
+        chatId: null,
+        resumed: false,
+      }),
+      stepEvent(2, { kind: 'agent.message', text: 'Looking around', chars: 14 }),
+      stepEvent(3, {
+        kind: 'agent.tool',
+        tool: 'Read',
+        target: 'src/app/main.ts',
+        status: 'ok',
+        durationMs: 5,
+        resultLine: '',
+      }),
+    ]);
+
+    const fontOf = (element: HTMLElement) => getComputedStyle(element).fontFamily;
+    expect(fontOf(screen.getByText('Looking around'))).not.toContain('--font-mono');
+    const toolLine = screen.getByText(/^Read/, { selector: 'div' });
+    expect(toolLine).toHaveTextContent(/^Read src\/app\/main\.ts/);
+    expect(fontOf(toolLine)).toContain('var(--font-mono)');
+  });
 });

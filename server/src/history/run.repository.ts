@@ -7,7 +7,7 @@ import { AppConfig } from '../config/env';
 import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
 import { SERVER_INSTANCE } from '../core/server-instance';
-import { claimedColumns, deriveState, stateColumns } from './run-state';
+import { claimedColumns, deriveState, stateColumns, titleColumns } from './run-state';
 import type { RunStateChange } from './run-state';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -83,6 +83,13 @@ export class RunRepository {
   /** Stores the fingerprint without a run change: no revision, no update time, no notice. */
   async recordSubtaskFingerprint(parent: RunEntity, subtaskFingerprint: string): Promise<void> {
     await this.runs.update({ id: parent.id }, { subtaskFingerprint });
+  }
+
+  /** Stores the title in a single statement and on the given copy, so the save at the end of the step keeps it. */
+  async recordTitle(run: RunEntity, title: string): Promise<void> {
+    Object.assign(run, titleColumns(title));
+    await this.runs.update({ id: run.id }, titleColumns(title));
+    this.live?.changed(run.key);
   }
 
   async findSubtask(parent: RunEntity, taskId: string): Promise<RunEntity | null> {

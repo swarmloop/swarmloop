@@ -4,7 +4,6 @@ import { Fragment, type ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { MONO } from './chart-parts';
 
 export interface BarRow {
   name: string;
@@ -63,7 +62,7 @@ export function BarList({
                 '&:hover .bar, &:focus-visible .bar': { filter: 'brightness(1.12)' },
               }}
             >
-              <Typography noWrap sx={{ fontFamily: MONO, fontSize: 12.5, color: 'text.secondary' }}>
+              <Typography noWrap sx={{ fontSize: 12.5, color: 'text.secondary' }}>
                 {row.name}
               </Typography>
               <Box sx={{ height: 10, position: 'relative' }}>
@@ -96,7 +95,7 @@ export function BarList({
             <Box component="li" sx={{ listStyle: 'none', pl: 1.5, mt: -0.25 }}>
               {row.parts.map((part) => (
                 <Box key={part.name} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5, fontSize: 12 }}>
-                  <Typography noWrap sx={{ fontFamily: MONO, fontSize: 12, color: 'text.secondary' }}>
+                  <Typography noWrap sx={{ fontSize: 12, color: 'text.secondary' }}>
                     {part.name}
                   </Typography>
                   <Typography sx={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{part.label}</Typography>

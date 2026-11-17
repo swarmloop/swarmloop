@@ -4,21 +4,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { emitted, fakeSocket, receive } from '../../test/fake-socket';
 import { flowView, runSummary } from '../../test/fixtures';
 import { LiveBridgeProvider, useLiveActions, useLiveBridge } from './use-live-bridge';
+import type { RunSummary } from '@contract/api';
 
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 
 let watch: (key: string | null) => void = () => undefined;
+let setList: (runs: RunSummary[]) => void = () => undefined;
 
 function Probe() {
-  const { runs, flow, logs, events, connected, paused } = useLiveBridge((snapshot) => snapshot);
-  const { watchRun } = useLiveActions();
+  const { runs, loaded, flow, logs, events, connected, paused } = useLiveBridge((snapshot) => snapshot);
+  const { watchRun, setRuns } = useLiveActions();
   useEffect(() => {
     watch = watchRun;
-  }, [watchRun]);
+    setList = setRuns;
+  }, [watchRun, setRuns]);
   return (
     <div>
       <p>{connected ? 'live' : 'offline'}</p>
       <p>{paused ? 'paused' : 'running'}</p>
+      <p>{loaded ? 'loaded' : 'not loaded'}</p>
       {runs.map((run) => (
         <p key={run.key}>{run.name}</p>
       ))}
@@ -78,6 +82,19 @@ describe('useLiveBridge', () => {
     act(() => receive('runs', { runs: [{ ...runSummary(), key: 'run-2', name: 'Run two' }] }));
     expect(screen.getByText('Run two')).toBeInTheDocument();
     expect(screen.queryByText('Run one')).not.toBeInTheDocument();
+  });
+
+  it('is loaded after the first runs list from the socket or from the API', () => {
+    const socket = render(<Probe />, { wrapper: LiveBridgeProvider });
+    expect(screen.getByText('not loaded')).toBeInTheDocument();
+    act(() => receive('runs', { runs: [] }));
+    expect(screen.getByText('loaded')).toBeInTheDocument();
+    socket.unmount();
+
+    render(<Probe />, { wrapper: LiveBridgeProvider });
+    expect(screen.getByText('not loaded')).toBeInTheDocument();
+    act(() => setList([]));
+    expect(screen.getByText('loaded')).toBeInTheDocument();
   });
 
   it('keeps the flow of the watched run and ignores another one', () => {

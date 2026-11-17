@@ -4,14 +4,16 @@ import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import Undo from '@mui/icons-material/Undo';
 import { restartWaitSentence } from '@contract/restart-wait';
 import { localTime } from '../../../lib/format';
 import { phaseLabel } from '../../../lib/phase-label';
 import { stepLabel, withReport } from '../phases';
 import type { CheckCommandView, FlowView } from '@contract/api';
 import { ChecksProgress } from './checks-progress';
-import { statusColor } from '../../../theme/theme';
+import { stateWord, type StateReason } from '@contract/run-state';
+import { stepState } from '@contract/step-state';
+import { StepStateIcon } from '../step-state-icon';
+import { toneColor } from '../run-state-word';
 
 export function FlowBoard({
   phases,
@@ -19,6 +21,7 @@ export function FlowBoard({
   selected,
   onSelect,
   checkCommands = [],
+  stateReason = null,
 }: {
   phases: FlowView['phases'];
   returns: FlowView['returns'];
@@ -26,6 +29,8 @@ export function FlowBoard({
   onSelect: (name: string) => void;
   /** The commands of the latest checks attempt: the checks card shows how far they are. */
   checkCommands?: CheckCommandView[];
+  /** Why the run waits: it says what a waiting current step waits for. */
+  stateReason?: StateReason | null;
 }): ReactElement {
   const columns = Math.max(phases.length, 1);
   return (
@@ -43,17 +48,16 @@ export function FlowBoard({
             <Box sx={{ display: 'grid', gap: 0.75 }}>
               {withReport(phase.steps).map((step) => {
                 const active = step.name === selected;
-                const returned = step.status === 'returned';
+                const state = stepState(step.status, step.current ? stateReason : null);
+                const tone = toneColor(state.tone);
+                const isError = state.tone === 'error';
+                const marker = step.name === 'done';
                 return (
-                  <Tooltip
-                    key={step.name}
-                    describeChild
-                    title={returned ? `returned to ${returnTarget(returns, step.name)}` : ''}
-                  >
+                  <Tooltip key={step.name} describeChild title={cardTip(step, returns, stateReason)}>
                     <Box
-                      component="button"
-                      type="button"
-                      onClick={() => onSelect(step.name)}
+                      component={marker ? 'div' : 'button'}
+                      type={marker ? undefined : 'button'}
+                      onClick={marker ? undefined : () => onSelect(step.name)}
                       aria-current={step.current ? 'step' : undefined}
                       sx={{
                         display: 'flex',
@@ -62,83 +66,68 @@ export function FlowBoard({
                         gap: 1,
                         width: '100%',
                         textAlign: 'left',
-                        cursor: 'pointer',
+                        cursor: marker ? 'default' : 'pointer',
                         font: 'inherit',
                         color: step.status === 'idle' ? 'text.secondary' : 'text.primary',
                         bgcolor: active ? 'background.default' : 'background.paper',
                         border: '1px solid',
-                        borderColor: failedStep(step.status)
-                          ? statusColor(step.status)
-                          : step.current
-                            ? 'primary.main'
-                            : 'divider',
+                        borderColor: isError ? tone : step.current ? 'primary.main' : 'divider',
                         borderRadius: 1.5,
                         transition: 'border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease',
                         boxShadow: (theme) =>
                           step.current
-                            ? `0 0 0 3px rgba(${failedStep(step.status) ? theme.vars?.palette.error.mainChannel : theme.vars?.palette.primary.mainChannel} / 0.14)`
+                            ? `0 0 0 3px rgba(${isError ? theme.vars?.palette.error.mainChannel : theme.vars?.palette.primary.mainChannel} / 0.14)`
                             : 'none',
                         px: 1.25,
                         py: 1,
                       }}
                     >
-                      {returned ? (
-                        <Undo sx={{ fontSize: 12, color: statusColor('returned'), flexShrink: 0 }} />
-                      ) : (
-                        <Box
-                          component="span"
-                          sx={{
-                            width: 7,
-                            height: 7,
-                            borderRadius: '50%',
-                            bgcolor: statusColor(step.status),
-                            flexShrink: 0,
-                            animation:
-                              step.status === 'running' || step.status === 'preparing'
-                                ? 'swarmloop-pulse 1.6s ease-in-out infinite'
-                                : 'none',
-                          }}
-                        />
-                      )}
                       <Box
                         component="span"
-                        sx={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.3, overflowWrap: 'anywhere' }}
+                        sx={{
+                          display: 'inline-flex',
+                          animation:
+                            step.status === 'running' || step.status === 'preparing'
+                              ? 'swarmloop-pulse 1.6s ease-in-out infinite'
+                              : 'none',
+                        }}
                       >
+                        <StepStateIcon state={state} />
+                      </Box>
+                      <Box component="span" sx={{ fontSize: 11, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
                         {stepLabel(step.name)}
                       </Box>
                       {step.status === 'preparing' ? (
-                        <Box component="span" sx={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'info.main' }}>
+                        <Box component="span" sx={{ fontSize: 10, color: 'info.main' }}>
                           preparing
                         </Box>
                       ) : null}
                       {step.note || step.restartedAt ? (
-                        <Box
-                          component="span"
-                          sx={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'text.secondary' }}
-                        >
+                        <Box component="span" sx={{ fontSize: 10, color: 'text.secondary' }}>
                           {step.note ??
                             (step.restartedAt ? restartWaitSentence(step.restartedAt, localTime) : undefined)}
                         </Box>
                       ) : null}
                       {step.attempts > 0 ? (
-                        <Box
-                          component="span"
-                          sx={{
-                            ml: 'auto',
-                            minWidth: 18,
-                            height: 18,
-                            px: 0.5,
-                            borderRadius: 9,
-                            bgcolor: statusColor(step.status),
-                            color: 'primary.contrastText',
-                            fontFamily: 'var(--font-mono)',
-                            fontSize: 11,
-                            lineHeight: '18px',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {step.attempts}
-                        </Box>
+                        <Tooltip describeChild title={`ran ${step.attempts === 1 ? 'once' : `${step.attempts} times`}`}>
+                          <Box
+                            component="span"
+                            sx={{
+                              ml: 'auto',
+                              minWidth: 18,
+                              height: 18,
+                              px: 0.5,
+                              borderRadius: 9,
+                              bgcolor: tone,
+                              color: 'primary.contrastText',
+                              fontSize: 11,
+                              lineHeight: '18px',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {step.attempts}
+                          </Box>
+                        </Tooltip>
                       ) : null}
                       {step.name === 'checks' && checkCommands.length > 0 ? (
                         <ChecksProgress commands={checkCommands} />
@@ -168,22 +157,16 @@ export function FlowBoard({
                   height: 12,
                   borderLeft: '1px solid',
                   borderBottom: '1px solid',
-                  borderColor: 'divider',
+                  borderColor: 'error.main',
                   borderBottomLeftRadius: 8,
                 }}
               >
                 <Typography
                   component="span"
-                  sx={{
-                    position: 'absolute',
-                    right: 0,
-                    top: 14,
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    color: 'text.secondary',
-                  }}
+                  variant="body2"
+                  sx={{ position: 'absolute', right: 0, top: 14, color: 'error.main' }}
                 >
-                  {edge.from} → implement · {edge.counter} × {edge.count}
+                  {returnLabel(edge)}
                 </Typography>
               </Box>
             );
@@ -200,8 +183,19 @@ function returnTarget(returns: FlowView['returns'], step: string): string {
   return returns.find((edge) => edge.from === from)?.to ?? 'implement';
 }
 
-function failedStep(status: string): boolean {
-  return status === 'failed' || status === 'blocked';
+function returnLabel(edge: FlowView['returns'][number]): string {
+  const base = `${edge.from} → ${edge.to} · ${edge.count === 1 ? 'once' : `${edge.count} times`}`;
+  return edge.why ? `${base} (${edge.why})` : base;
+}
+
+type Step = FlowView['phases'][number]['steps'][number];
+
+/** What the hover on a card says: why a step went back, or what the run waits for. */
+function cardTip(step: Step, returns: FlowView['returns'], stateReason: StateReason | null): string {
+  if (step.status === 'returned')
+    return `returned: ${step.returnNote ?? `returned to ${returnTarget(returns, step.name)}`}`;
+  if (step.status === 'waiting' && step.current) return stateWord('waiting', stateReason, {}, localTime).word;
+  return '';
 }
 
 function phaseIndex(phases: FlowView['phases'], step: string): number {

@@ -204,7 +204,10 @@ describe('ConnectionsPage', () => {
     expect(claude).toHaveTextContent('Connected as alice@acme.test');
 
     vi.mocked(getIntegrationCards).mockResolvedValue({ cards });
-    await userEvent.setup({ delay: null }).click(within(claude).getByRole('button', { name: 'Disconnect' }));
+    const user = userEvent.setup({ delay: null });
+    await user.click(within(claude).getByRole('button', { name: 'Disconnect' }));
+    expect(disconnectIntegration).not.toHaveBeenCalled();
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disconnect' }));
 
     expect(disconnectIntegration).toHaveBeenCalledWith('claude');
     await waitFor(() => expect(screen.getByRole('region', { name: 'Claude' })).toHaveTextContent('Not connected'));

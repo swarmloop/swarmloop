@@ -46,12 +46,10 @@ function DashboardFrame({
 }): ReactElement {
   const pathname = usePathname();
   const router = useRouter();
-  const { runs, now, error, connected, removeRun } = useRuns();
+  const { runs, loaded, now, error, retry, connected, removeRun } = useRuns();
   const openNewRun = useNewRun();
   const { blocker } = useReadiness();
   const [pendingRemove, setPendingRemove] = useState<{ run: RunSummary; search: string } | null>(null);
-  const [removing, setRemoving] = useState(false);
-  const [removeError, setRemoveError] = useState<string | null>(null);
   const matched = pathname.match(/^\/runs\/([^/]+)/)?.[1] ?? '';
   let selected = matched;
   try {
@@ -60,32 +58,14 @@ function DashboardFrame({
     selected = matched;
   }
 
-  function closeRemove(): void {
-    if (removing) {
-      return;
-    }
-    setPendingRemove(null);
-    setRemoveError(null);
-  }
-
   async function confirmRemove(): Promise<void> {
     if (!pendingRemove) {
       return;
     }
     const { run, search } = pendingRemove;
-    const key = run.key;
-    setRemoving(true);
-    setRemoveError(null);
-    try {
-      await removeRun(key);
-      setPendingRemove(null);
-      if (selected === key) {
-        router.push(`/${search}` as Route);
-      }
-    } catch (cause: unknown) {
-      setRemoveError(cause instanceof Error ? cause.message : 'remove failed');
-    } finally {
-      setRemoving(false);
+    await removeRun(run.key);
+    if (selected === run.key) {
+      router.push(`/${search}` as Route);
     }
   }
 
@@ -168,12 +148,11 @@ function DashboardFrame({
               runs={runs}
               selected={selected}
               now={now}
+              loaded={loaded}
               error={error}
+              onRetry={retry}
               onOpen={(key, search) => router.push(`/runs/${key}${search}` as Route)}
-              onRemove={(run, search) => {
-                setRemoveError(null);
-                setPendingRemove({ run, search });
-              }}
+              onRemove={(run, search) => setPendingRemove({ run, search })}
             />
           </Suspense>
         </Box>
@@ -188,10 +167,8 @@ function DashboardFrame({
       </Box>
       <RemoveRunDialog
         run={pendingRemove?.run ?? null}
-        removing={removing}
-        error={removeError}
-        onClose={closeRemove}
-        onConfirm={() => void confirmRemove()}
+        onClose={() => setPendingRemove(null)}
+        onConfirm={confirmRemove}
       />
       <NewRunDialog
         open={open}

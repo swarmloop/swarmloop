@@ -57,6 +57,37 @@ describe('useRuns', () => {
     expect(await screen.findByText('boom')).toBeInTheDocument();
   });
 
+  it('lists again on retry, clears the error and is loaded once a list arrived', async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.mocked(listRuns)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValue({ runs: [runSummary()] });
+    function RetryProbe() {
+      const { runs, loaded, error, retry } = useRuns();
+      return (
+        <div>
+          <p>{loaded ? 'loaded' : 'not loaded'}</p>
+          {error ? <p>{error}</p> : null}
+          {runs.map((run) => (
+            <p key={run.key}>{run.name}</p>
+          ))}
+          <button type="button" onClick={retry}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+    render(<RetryProbe />, { wrapper: LiveBridgeProvider });
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+    expect(screen.getByText('not loaded')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Run one')).toBeInTheDocument();
+    expect(screen.queryByText('boom')).not.toBeInTheDocument();
+    expect(screen.getByText('loaded')).toBeInTheDocument();
+  });
+
   it('says the api is not reachable when the rejection is not an Error', async () => {
     vi.mocked(listRuns).mockRejectedValue('down');
 

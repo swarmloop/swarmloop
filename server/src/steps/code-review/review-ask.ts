@@ -6,6 +6,7 @@ import { ARTIFACTS } from '../contract/artifacts';
 import { withInstructions } from '../plan/plan-record';
 import { renderQuestions } from '../research/research-record';
 import { answered, openQuestions } from '../shared/answers';
+import { reviewParts, type StoredQuestion } from '../shared/question-parts';
 import { askedReviewer } from '../shared/reviewer-labels';
 import { issueOf, returnNotes, textDocument } from '../shared/handoff';
 import type { Exchange } from './review-exchange';
@@ -20,38 +21,50 @@ function questionFor(reviewer: string, exchange: Exchange, askedAt: string): str
 }
 
 /**
- * One question per reviewer that saw an answer of implement and decided return again in this round, on a diff that did not change.
+ * One ask per reviewer that saw an answer of implement and decided return again in this round, on a diff that did not change.
  * A kept or recovered opinion is not asked about: only a decision this round made counts.
  */
-export function reviewQuestions(
+export function reviewAsks(
   exchanges: ReadonlyMap<string, Exchange>,
   finished: Finished[],
   same: boolean,
   askedAt: string,
-): string[] {
+): StoredQuestion[] {
   if (!same) {
     return [];
   }
   return finished.flatMap((item) => {
     const exchange = exchanges.get(item.reviewer.name);
-    return exchange && item.parsed?.decision === 'return' ? [questionFor(item.reviewer.name, exchange, askedAt)] : [];
+    const result = item.parsed?.decision === 'return' ? item.parsed.result : null;
+    return exchange && result
+      ? [
+          {
+            question: questionFor(item.reviewer.name, exchange, askedAt),
+            parts: reviewParts(item.reviewer.name, exchange, result, askedAt),
+          },
+        ]
+      : [];
   });
 }
 
 /** Waits for the person: the reviews as the reviewers gave them, and the questions as the document the answers close. */
 export function askPerson(
   ctx: StepContext,
-  questions: string[],
+  asks: StoredQuestion[],
   documents: DocumentDraft[],
   exchanges: ExchangeDraft[],
   usage: Usage,
 ): Promise<PipelineResult> {
-  const body = renderQuestions(questions);
+  const body = renderQuestions(asks.map((ask) => ask.question));
   return closeReview(
     ctx,
     { to: 'wait', reason: 'questions are open' },
     `${ctx.opened.startedAt} code-review waiting\n${body}`,
-    [...documents, textDocument(ARTIFACTS.reviewQuestions.kind, body)],
+    [
+      ...documents,
+      textDocument(ARTIFACTS.reviewQuestions.kind, body),
+      textDocument(ARTIFACTS.questionParts.kind, ARTIFACTS.questionParts.format(asks)),
+    ],
     exchanges,
     usage,
   );

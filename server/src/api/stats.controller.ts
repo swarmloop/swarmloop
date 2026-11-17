@@ -1,8 +1,10 @@
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import type { StatsView } from '../contract/api';
 import { Clock } from '../core/clock';
+import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { StatsRepository } from '../history/stats.repository';
+import { requirementBodies } from './run-view/run-title';
 import { buildStats, rangeStart, type StatsRange } from './stats';
 
 const MAX_DAYS = 3650;
@@ -24,6 +26,7 @@ export class StatsController {
   constructor(
     private readonly stats: StatsRepository,
     private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
     private readonly clock: Clock,
   ) {}
 
@@ -36,6 +39,7 @@ export class StatsController {
     };
     const now = this.clock.now();
     const rows = await this.stats.rows(rangeStart(now, range));
-    return buildStats(rows, await this.runs.durationByRun(), now, range);
+    const requirements = await requirementBodies(this.documents, rows.runs);
+    return buildStats(rows, await this.runs.durationByRun(), now, range, requirements);
   }
 }

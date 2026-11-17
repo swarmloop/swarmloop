@@ -8,6 +8,7 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import type { ConnectionCard as Card, ConnectionFlow } from '@contract/connections';
+import { ConfirmDialog } from '../shell';
 import { CardHeading } from './card-heading';
 import { FlowDialog } from './flows/flow-dialog';
 import { RedirectFlow } from './flows/redirect-flow';
@@ -36,6 +37,7 @@ function hasOwnCredential(card: Card): boolean {
 /** One integration, drawn from its description alone: logo, purpose, status, and its flows. */
 export function ConnectionCard({ card, onChanged }: { card: Card; onChanged: () => void }): ReactElement {
   const [flow, setFlow] = useState<ConnectionFlow | null>(null);
+  const [asking, setAsking] = useState(false);
   const { result, test, remove } = useCardActions(card, onChanged);
   const connected = card.status !== 'not-connected';
   const single = card.flows.length === 1;
@@ -71,11 +73,20 @@ export function ConnectionCard({ card, onChanged }: { card: Card; onChanged: () 
           </Button>
         ) : null}
         {hasOwnCredential(card) ? (
-          <Button variant="outlined" size="small" color="error" onClick={() => void remove()}>
+          <Button variant="outlined" size="small" color="error" onClick={() => setAsking(true)}>
             Disconnect
           </Button>
         ) : null}
       </Box>
+      <ConfirmDialog
+        open={asking}
+        title={`Disconnect ${card.label}?`}
+        body="The stored credential is deleted. Your runs that use it wait until you connect again."
+        verb="Disconnect"
+        tone="danger"
+        onConfirm={remove}
+        onClose={() => setAsking(false)}
+      />
       {flow ? <FlowDialog card={card} flow={flow} onClose={() => setFlow(null)} onSaved={onChanged} /> : null}
     </Paper>
   );

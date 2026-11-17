@@ -15,7 +15,8 @@ export const TODAY = new Date(2026, 10, 12, 11).toISOString();
 export const YESTERDAY = new Date(2026, 10, 11, 15).toISOString();
 
 export function listRun(overrides: Partial<RunSummary> = {}): RunSummary {
-  return { ...runSummary(), updatedAt: TODAY, createdAt: TODAY, ...overrides };
+  const run = { ...runSummary(), updatedAt: TODAY, createdAt: TODAY, ...overrides };
+  return { ...run, title: overrides.title ?? run.name };
 }
 
 const MERGED_FACT = { sha: 'abcdef123456', by: 'ada', at: '2026-05-01T10:00:00.000Z', url: null };
@@ -167,7 +168,9 @@ function listProps(runs: RunSummary[], overrides: Partial<ComponentProps<typeof 
     onPart: vi.fn(),
     selected: '',
     now: NOW,
+    loaded: true,
     error: null,
+    onRetry: vi.fn(),
     onOpen: vi.fn(),
     onRemove: vi.fn(),
     ...overrides,

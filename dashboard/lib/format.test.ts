@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { dayLabel, relative, tokens } from './format.ts';
+import { cores, dayLabel, memory, relative, tokens } from './format.ts';
 
 describe('tokens', () => {
   it('shows an integer under 1,000 and the nearest thousand as k', () => {
@@ -49,5 +49,35 @@ describe('relative and dayLabel', () => {
     assert.equal(dayLabel(at(10, 12, 1), now), 'Today');
     assert.equal(dayLabel(at(10, 11, 23, 59), now), 'Yesterday');
     assert.equal(dayLabel(at(10, 10, 12), now), 'Nov 10');
+  });
+});
+
+describe('cores', () => {
+  it('is percent of one core divided by 100 with one decimal', () => {
+    assert.equal(cores(262), '2.6');
+    assert.equal(cores(680), '6.8');
+    assert.equal(cores(0), '0.0');
+  });
+});
+
+describe('memory', () => {
+  const mb = 1024 * 1024;
+
+  it('reads KB below one megabyte', () => {
+    assert.equal(memory(512 * 1024), '512 KB');
+  });
+
+  it('reads MB below 1024 MB with at most one decimal', () => {
+    assert.equal(memory(900.3 * mb), '900.3 MB');
+    assert.equal(memory(1.5 * mb), '1.5 MB');
+    assert.equal(memory(200 * mb), '200 MB');
+  });
+
+  it('reads GB from 1024 MB up with at most one decimal', () => {
+    assert.equal(memory(1024 * mb), '1 GB');
+    assert.equal(memory(4107.3 * mb), '4 GB');
+    assert.equal(memory(1536 * mb), '1.5 GB');
+    assert.equal(memory(1023.96 * mb), '1 GB');
+    assert.equal(memory(1023.9 * mb), '1023.9 MB');
   });
 });

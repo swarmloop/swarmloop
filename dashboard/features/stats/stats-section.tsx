@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Skeleton from '@mui/material/Skeleton';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
@@ -14,7 +15,7 @@ import { MergeShare, TimeToMerge } from './merge-charts';
 import { MoneyBreakdown, Returns } from './money-and-returns';
 import { RunsPerDay } from './runs-per-day';
 import { SpendPerDay } from './spend-per-day';
-import { StatTiles } from './stat-tiles';
+import { StatTiles, TILE_COLUMNS } from './stat-tiles';
 import { dayLabel } from './stats-format';
 import { TopRuns } from './top-runs';
 
@@ -67,7 +68,14 @@ export function StatsSection({ version }: { version: string }): ReactElement {
         ) : null}
       </Box>
       {query.error ? (
-        <Alert severity="warning">
+        <Alert
+          severity="warning"
+          action={
+            <Button color="inherit" size="small" onClick={() => void query.refetch()}>
+              Retry
+            </Button>
+          }
+        >
           Statistics are not available: {query.error instanceof Error ? query.error.message : 'api is not reachable'}
         </Alert>
       ) : null}
@@ -110,8 +118,14 @@ function localOffset(): number {
 function Loading(): ReactElement {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }} aria-busy="true">
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', xl: 'repeat(6, 1fr)' }, gap: 2 }}>
-        {[0, 1, 2, 3, 4, 5].map((index) => (
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: `repeat(${TILE_COLUMNS}, 1fr)` },
+          gap: 2,
+        }}
+      >
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => (
           <Skeleton key={index} variant="rounded" height={112} />
         ))}
       </Box>
