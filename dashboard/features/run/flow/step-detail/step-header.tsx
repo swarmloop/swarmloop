@@ -3,10 +3,8 @@
 import type { ReactElement } from 'react';
 import DataUsage from '@mui/icons-material/DataUsage';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
-import MemoryIcon from '@mui/icons-material/Memory';
 import Paid from '@mui/icons-material/Paid';
 import Schedule from '@mui/icons-material/Schedule';
-import Speed from '@mui/icons-material/Speed';
 import Undo from '@mui/icons-material/Undo';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -35,8 +33,6 @@ const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   spend: Paid,
   'tokens-in': DataUsage,
   'tokens-out': DataUsage,
-  cpu: Speed,
-  memory: MemoryIcon,
 };
 
 /** `<runtime> · <model> · <effort>` for an agent step, and the reviewers of code review. The model id is code. */
@@ -212,10 +208,6 @@ export function StepHeader({
             tokensIn: visit.tokensIn,
             tokensOut: visit.tokensOut,
             usd: visit.usd,
-            cpuAvg: visit.cpuAvg,
-            cpuPeak: visit.cpuPeak,
-            memAvg: visit.memAvg,
-            memPeak: visit.memPeak,
           }).map((item) => {
             const Icon = item.kind === 'status' && label === 'returned' ? Undo : stepMetricIcon[item.kind];
             return (
@@ -226,7 +218,12 @@ export function StepHeader({
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 0.5,
-                    color: item.kind === 'status' ? statusColor(label) : undefined,
+                    color:
+                      item.kind === 'status'
+                        ? label === 'returned'
+                          ? toneColor(stepState(label, null).tone)
+                          : statusColor(label)
+                        : undefined,
                   }}
                 >
                   {Icon ? <Icon sx={{ fontSize: 16 }} /> : null}

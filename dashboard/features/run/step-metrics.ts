@@ -1,7 +1,6 @@
-import { count, duration, memory, money } from '../../lib/format';
+import { count, duration, money } from '../../lib/format';
 
-export type StepMetricKind =
-  'status' | 'duration' | 'attempt' | 'spend' | 'tokens-in' | 'tokens-out' | 'cpu' | 'memory';
+export type StepMetricKind = 'status' | 'duration' | 'attempt' | 'spend' | 'tokens-in' | 'tokens-out';
 
 interface StepMetric {
   kind: StepMetricKind;
@@ -16,10 +15,6 @@ export function stepMetrics(input: {
   tokensIn: number;
   tokensOut: number;
   usd: number;
-  cpuAvg: number;
-  cpuPeak: number;
-  memAvg: number;
-  memPeak: number;
   /** A server step spends nothing and has no model: it keeps status, time and attempt. */
   server?: boolean;
 }): StepMetric[] {
@@ -37,8 +32,6 @@ export function stepMetrics(input: {
     { kind: 'spend', text: money(input.usd), tip: 'Spend for this attempt' },
     { kind: 'tokens-in', text: `${count(input.tokensIn)} in`, tip: 'Input tokens' },
     { kind: 'tokens-out', text: `${count(input.tokensOut)} out`, tip: 'Output tokens' },
-    { kind: 'cpu', text: `cpu ${input.cpuAvg.toFixed(0)}/${input.cpuPeak.toFixed(0)}%`, tip: 'CPU average and peak' },
-    { kind: 'memory', text: `mem ${memory(input.memAvg)}/${memory(input.memPeak)}`, tip: 'Memory average and peak' },
   );
   return items;
 }

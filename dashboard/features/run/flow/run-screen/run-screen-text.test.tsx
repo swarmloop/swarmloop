@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFlow, getStep, getStepEvents, listProjects, listRemote } from '../../../../lib/endpoints';
 import { LiveBridgeProvider } from '../../../shell';
@@ -73,6 +73,9 @@ describe('the run screen text', () => {
     const { container } = render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     await screen.findByRole('heading', { name: 'Run one' });
+    await waitFor(() => expect(getStep).toHaveBeenCalled());
+    await screen.findByText(/\d+ in$/);
+    expect(container.textContent).not.toMatch(/\d\s*%|\bcpu\b|\bmem\b/i);
     expect(container.textContent).not.toMatch(/\btotal\b|this run/);
     expect(screen.queryByText('planning')).not.toBeInTheDocument();
     expect(screen.queryByText('code review')).not.toBeInTheDocument();
