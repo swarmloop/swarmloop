@@ -68,7 +68,7 @@ describe('TaskLayers', () => {
     for (let id = 1; id <= 7; id += 1) {
       expect(region).toHaveTextContent(`Title t${id}`);
     }
-    expect(region).toHaveTextContent('running · code review');
+    expect(region).toHaveTextContent('Working · code review');
     expect(region).toHaveTextContent('after t1');
     expect(region).toHaveTextContent('5s · $0.25');
     expect(within(region).getByRole('link', { name: 'Open run Title t3' })).toHaveAttribute('href', '/runs/run-1-t3');
@@ -173,6 +173,17 @@ describe('TaskLayers', () => {
     await userEvent.setup({ delay: null }).hover(screen.getByText('7 tasks · 4 merged · $6.25'));
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent('agents worked 4m 25s');
+  });
+
+  it('shows a running task and a task waiting for another with the working look of the run list', () => {
+    const waiting = task('t6', { status: 'waiting', waitsFor: ['Title t3'], run: undefined });
+    render(<TaskLayers tasks={[tasks[2], waiting]} onSkip={vi.fn()} />);
+
+    const region = screen.getByRole('region', { name: 'Tasks' });
+    const running = within(region).getByRole('img', { name: 'Working' });
+    const pending = within(region).getByRole('img', { name: 'Waiting to start' });
+    expect(running).toHaveStyle({ color: getComputedStyle(pending).color });
+    expect(getComputedStyle(pending).color).not.toBe('');
   });
 
   it('says once what a waiting task waits for, not the note the split stored as well', () => {

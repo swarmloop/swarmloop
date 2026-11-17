@@ -65,6 +65,8 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     CHECKOUTS_ROOT: undefined,
     SWARMLOOP_API_PORT: 3920,
     SWARMLOOP_API_HOST: '127.0.0.1',
+    SWARMLOOP_BUILD_VERSION: '',
+    SWARMLOOP_SOURCE_URL: '',
     SWARMLOOP_PUBLIC_URL: 'http://127.0.0.1:3921',
     SWARMLOOP_REPOS: [],
     GITHUB_OAUTH_CLIENT_ID: '',

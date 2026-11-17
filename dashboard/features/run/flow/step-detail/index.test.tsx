@@ -14,6 +14,14 @@ import { localTime } from '../../../../lib/format';
 import { restartWaitSentence, NO_SAMPLES_AFTER_RESTART } from '@contract/restart-wait';
 import { StepDetail } from './index';
 
+const input = stepEvent(1, {
+  kind: 'input.received',
+  name: 'pipelineRef',
+  inputKind: 'pipeline_ref',
+  documentId: 'absent',
+  summary: 'absent',
+});
+
 vi.mock('../../../../lib/endpoints', () => ({ getStep: vi.fn(), getStepEvents: vi.fn(), getRunLog: vi.fn() }));
 vi.mock('../../../../lib/live', async () => (await import('../../../../test/fake-socket')).fakeLive());
 
@@ -159,6 +167,51 @@ describe('StepDetail', () => {
     await user.click(await screen.findByRole('button', { name: 'Resume' }));
 
     expect(onResume).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
+  });
+
+  it('shows a failed server step with one filled action, tooltips, no agent numbers and a plain divider', async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        descriptor: { name: 'pipeline', kind: 'server' },
+        eventsCursor: 5,
+        visits: [visitView({ status: 'failed', usd: 2, tokensIn: 5, tokensOut: 6, cpuPeak: 70 })],
+      }),
+    );
+    vi.mocked(getStepEvents).mockResolvedValue({
+      events: [
+        input,
+        ...commandEvents(2, 's', { executable: 'make', exitCode: 2, actor: 'server' }),
+        stepEvent(9, { kind: 'attempt.finished', route: 'return', summary: 'HTTP 503' }),
+      ],
+      next: null,
+    });
+    detail({
+      step: 'pipeline',
+      runStatus: 'failed',
+      onReplay: vi.fn(),
+      onResume: vi.fn(),
+      resumeTip: 'Starts the CI pipeline again',
+    });
+
+    const resume = await screen.findByRole('button', { name: 'Resume' });
+    const again = screen.getByRole('button', { name: /^(Retry|Run again)$/ });
+    expect(resume).toHaveClass('MuiButton-contained');
+    expect(again).toHaveClass('MuiButton-outlined');
+    expect(document.querySelectorAll('.MuiButton-contained')).toHaveLength(1);
+    await user.hover(resume);
+    expect(await screen.findByText('Starts the CI pipeline again')).toBeInTheDocument();
+    await user.hover(again);
+    expect(await screen.findByText('Starts this step again from the beginning')).toBeInTheDocument();
+
+    expect(screen.queryByText(/\$/)).toBeNull();
+    expect(screen.queryByText(/ in$| out$/)).toBeNull();
+    expect(screen.queryByText(/cpu/i)).toBeNull();
+    expect(screen.queryByText(/pipelineRef/)).toBeNull();
+    expect(screen.getByRole('link', { name: '1 problem' })).toHaveStyle({ color: 'rgb(211, 47, 47)' });
+    const divider = screen.getByRole('separator');
+    expect(divider).not.toHaveStyle({ borderRadius: '999px' });
+    expect(divider.children[0]).not.toHaveStyle({ borderStyle: 'solid' });
   });
 
   it('hides Resume without onResume', async () => {

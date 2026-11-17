@@ -1,4 +1,4 @@
-import type { RunState } from './run-state';
+import type { RunState, SubtaskStatus } from './run-state';
 
 /** One task in the `subtasks` document of a parent run. */
 export interface Subtask {
@@ -18,8 +18,7 @@ export interface Subtask {
   merged?: Record<string, string>;
 }
 
-/** `pending` is what the plan writes; every reader sees it as `waiting`. `green`: the subtask is done, its merge request into the feature branch has green CI. */
-export type SubtaskStatus = 'pending' | 'waiting' | 'running' | 'green' | 'merged' | 'blocked' | 'skipped';
+export type { SubtaskStatus };
 
 /** The kinds a subtask reads from its parent: the task list, and the decisions that bind every subtask. */
 export const SUBTASKS_KIND = 'subtasks';

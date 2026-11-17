@@ -404,4 +404,8 @@ export interface MeView {
   user: string | null;
   provider?: string;
   avatarUrl?: string | null;
+  /** Release version of the server; `dev` when the image sets none. */
+  version?: string;
+  /** Source repository URL of the server image; null when it is not an http(s) address. */
+  sourceUrl?: string | null;
 }

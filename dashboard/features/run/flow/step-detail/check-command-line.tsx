@@ -11,6 +11,7 @@ import SkipNext from '@mui/icons-material/SkipNext';
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import type { CheckCommandView, StepView } from '@contract/api';
+import { DisclosureIcon } from '../../../../components/ui/disclosure-icon';
 import { duration } from '../../../../lib/format';
 import { statusColor } from '../../../../theme/theme';
 import { useLiveBridge } from '../../../shell';
@@ -77,6 +78,7 @@ export function CheckCommandLine({
         onClick={() => setToggled(!open)}
         sx={{ width: '100%', justifyContent: 'flex-start', gap: 1.5, py: 0.5, textAlign: 'left', fontSize: 13 }}
       >
+        <DisclosureIcon open={open} />
         <Icon aria-hidden sx={{ fontSize: 18, color }} />
         <Box component="span" sx={{ fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0 }}>
           {commandLabel(command)}

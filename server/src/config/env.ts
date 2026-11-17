@@ -69,6 +69,8 @@ export interface SwarmloopEnv extends CodeHostServerEnv, CodeHostLoginEnv {
   CHECKOUTS_ROOT: string | undefined;
   SWARMLOOP_API_PORT: number;
   SWARMLOOP_API_HOST: string;
+  SWARMLOOP_BUILD_VERSION: string;
+  SWARMLOOP_SOURCE_URL: string;
   SWARMLOOP_PUBLIC_URL: string;
   SWARMLOOP_REPOS: string[];
   SWARMLOOP_ALLOW: string;
@@ -186,6 +188,8 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
     CHECKOUTS_ROOT: checkoutsRoot ? checkoutsRoot : undefined,
     SWARMLOOP_API_PORT: config.getOrThrow<number>('SWARMLOOP_API_PORT'),
     SWARMLOOP_API_HOST: config.getOrThrow<string>('SWARMLOOP_API_HOST'),
+    SWARMLOOP_BUILD_VERSION: config.getOrThrow<string>('SWARMLOOP_BUILD_VERSION'),
+    SWARMLOOP_SOURCE_URL: config.getOrThrow<string>('SWARMLOOP_SOURCE_URL'),
     SWARMLOOP_PUBLIC_URL: config.getOrThrow<string>('SWARMLOOP_PUBLIC_URL'),
     SWARMLOOP_REPOS: splitList(config.get<string>('SWARMLOOP_REPOS')),
     ...readStrings(config, hostKeys.login),

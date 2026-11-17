@@ -16,7 +16,7 @@ import { DocumentBody } from '../../transcript/document-detail';
 import { TranscriptFeed } from '../../transcript/transcript-feed';
 import type { IssueLinks } from '../../transcript/transcript-model';
 import { CheckCommands } from './check-commands';
-import { StepChart } from './step-chart';
+import { NO_CONTAINER, StepChart, startedNoContainer } from './step-chart';
 
 /** The documents of a visit from before events were kept, once each. The log, the review documents and, in a window that lists its commands, the checks result have their own place. */
 function legacyDocuments(
@@ -89,6 +89,7 @@ export function StepDocuments({
 }): ReactElement {
   const interruptions = useStableNotes(visits);
   const recorded = events !== null && events.length > 0;
+  const feed = events === null || recorded;
   const agentStep = Boolean(visit?.model) || (visit?.exchanges.length ?? 0) > 0;
   const launched = events?.some((event) => event.kind === 'agent.launched') ?? false;
   const agent: AgentLog = { logs, running: visit?.status === 'running', exchanges: visit?.exchanges ?? [] };
@@ -119,9 +120,9 @@ export function StepDocuments({
           })}
         </Box>
       ) : null}
-      <StepChart visit={visit} total={commands !== undefined} restarted={restarted} />
+      <StepChart visit={visit} total={commands !== undefined} restarted={restarted} feed={feed} />
       {commands ? <CheckCommands runKey={runKey} commands={commands} visit={visit} now={now} /> : null}
-      {events === null || recorded ? (
+      {feed ? (
         <TranscriptFeed
           runKey={runKey}
           events={events}
@@ -132,6 +133,7 @@ export function StepDocuments({
           live={visit?.status === 'running'}
           now={now}
           activities={commands === undefined}
+          note={startedNoContainer(visit, restarted) ? NO_CONTAINER : undefined}
         />
       ) : null}
       {recorded && agentStep && !launched ? <AgentLogPanel agent={agent} tools={false} open /> : null}

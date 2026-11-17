@@ -32,4 +32,17 @@ describe('stepMetrics', () => {
       ['running', '0s', '$0', '0 in', '0 out'],
     );
   });
+
+  it('lists status, time, attempt and memory for a server step, and no memory when none was measured', () => {
+    const server = { ...example, server: true, tokensIn: 9, tokensOut: 8, usd: 3 };
+
+    assert.deepEqual(
+      stepMetrics({ ...server, memPeak: 3 * 1024 * 1024 }).map((item) => item.text),
+      ['running', '1m 7s', 'attempt 1', '3 MB'],
+    );
+    assert.deepEqual(
+      stepMetrics({ ...server, memPeak: 0 }).map((item) => item.kind),
+      ['status', 'duration', 'attempt'],
+    );
+  });
 });

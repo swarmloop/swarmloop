@@ -6,6 +6,12 @@
   },
   "forbidOutside": [
     {
+      "include": "dashboard/",
+      "exclude": "\\.test\\.tsx?$|^dashboard/test/",
+      "allowFiles": ["dashboard/features/run/run-state-word.tsx"],
+      "pattern": "Record<(RunState|SubtaskStatus|StateIcon|TaskEntry\\['status'\\]),\\s*(typeof\\s|[^>]*\\b(Icon|SvgIconProps|ComponentType|ElementType)\\b)"
+    },
+    {
       "include": "server/src/",
       "allowFiles": ["server/src/core/free-bytes.ts"],
       "pattern": "bsize"

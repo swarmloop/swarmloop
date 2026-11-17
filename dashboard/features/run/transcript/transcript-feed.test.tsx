@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { getHistory } from '../../../lib/endpoints';
-import { createTheme } from '@mui/material/styles';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { theme } from '../../../theme/theme';
 import { stripeColor } from '../../../test/card-stripe';
 import { historyView } from '../../../test/fixtures';
 import { QueryWrapper } from '../../../test/query-wrapper';
@@ -189,6 +190,29 @@ describe('TranscriptFeed', () => {
     expect(screen.getByText(/tool4/)).toBeInTheDocument();
   });
 
+  it('turns the actions arrow 90 degrees when the group opens', async () => {
+    const user = userEvent.setup({ delay: null });
+    const events = Array.from({ length: 7 }, (_, index) =>
+      commandEvents(index * 3 + 1, `s${index}`, { executable: `tool${index}` }),
+    ).flat();
+    render(
+      <ThemeProvider theme={theme}>
+        <TranscriptFeed runKey="run-1" events={events} />
+      </ThemeProvider>,
+      { wrapper: QueryWrapper },
+    );
+
+    const toggle = screen.getByRole('button', { name: '7 actions' });
+    const wrapper = () => toggle.querySelector('.MuiAccordionSummary-expandIconWrapper')!;
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(getComputedStyle(wrapper()).transform).not.toBe('rotate(90deg)');
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(getComputedStyle(wrapper()).transform).toBe('rotate(90deg)');
+  });
+
   it('follows new events while the reader is at the bottom', () => {
     const { again } = feed([input]);
     const box = scrollBox();
@@ -363,5 +387,25 @@ describe('TranscriptFeed', () => {
     const toolLine = screen.getByText(/^Read/, { selector: 'div' });
     expect(toolLine).toHaveTextContent(/^Read src\/app\/main\.ts/);
     expect(fontOf(toolLine)).toContain('var(--font-mono)');
+  });
+
+  it('shows the note in the top line beside the problems chip', () => {
+    render(
+      <TranscriptFeed
+        runKey="run-1"
+        events={commandEvents(1, 's', { executable: 'make', args: ['test'], exitCode: 2, actor: 'server' })}
+        note="This step started no container."
+      />,
+      { wrapper: QueryWrapper },
+    );
+
+    const note = screen.getByText('This step started no container.');
+    expect(note.parentElement).toContainElement(screen.getByRole('button', { name: /problem/ }));
+  });
+
+  it('shows no note line when none is given', () => {
+    feed([input]);
+
+    expect(screen.queryByText('This step started no container.')).toBeNull();
   });
 });

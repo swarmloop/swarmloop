@@ -111,6 +111,22 @@ describe('StepHeader', () => {
     expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
   });
 
+  it('keeps a lone Run again contained', () => {
+    header({ onReplay: vi.fn() });
+
+    expect(screen.getByRole('button', { name: 'Run again' })).toHaveClass('MuiButton-contained');
+  });
+
+  it('shows the peak memory of a server step when it was measured', () => {
+    const view = stepView({
+      descriptor: { name: 'checks', kind: 'server' },
+      visits: [visitView({ memPeak: 3 * 1024 * 1024 })],
+    });
+    header({ view, visit: view.visits[0], attempt: 0, attempts: 1 });
+
+    expect(screen.getByText('3 MB')).toBeInTheDocument();
+  });
+
   it('calls onReplay and onResume from their buttons', async () => {
     const user = userEvent.setup({ delay: null });
     const props = header({ onReplay: vi.fn(), onResume: vi.fn() });

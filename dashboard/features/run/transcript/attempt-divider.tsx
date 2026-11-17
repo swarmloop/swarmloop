@@ -1,12 +1,12 @@
 import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import { RADIUS, SIZE, SPACE } from './tokens';
+import { SIZE, SPACE } from './tokens';
 import type { AttemptGroup } from './transcript-model';
 
 /**
- * A pill on a hairline with the attempt on it: why it ran, with which model, and how it ended. It sticks under the top
- * bar while its attempt is in view. The text wraps, so a long line never widens the feed.
+ * A thin rule with the attempt on it as a plain caption: why it ran, with which model, and how it ended. It sticks under
+ * the top bar while its attempt is in view. The text wraps, so a long line never widens the feed.
  */
 export function AttemptDivider({ group }: { group: AttemptGroup }): ReactElement {
   const head = ['Attempt ' + group.number, group.why, group.modelName].filter(Boolean).join(' · ');
@@ -22,28 +22,15 @@ export function AttemptDivider({ group }: { group: AttemptGroup }): ReactElement
         minWidth: 0,
         display: 'flex',
         justifyContent: 'center',
-        bgcolor: 'background.default',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '50%',
-          borderTop: 1,
-          borderColor: 'divider',
-        },
+        bgcolor: 'background.paper',
+        borderBottom: 1,
+        borderColor: 'divider',
       }}
     >
       <Box
         sx={{
           position: 'relative',
           maxWidth: '100%',
-          px: SPACE.pad,
-          py: SPACE.group,
-          border: 1,
-          borderColor: 'divider',
-          borderRadius: RADIUS.pill,
-          bgcolor: 'background.paper',
           textAlign: 'center',
         }}
       >

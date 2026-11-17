@@ -232,7 +232,7 @@ describe('the step window for a fixture run', () => {
     expect(screen.getByText('From pipeline: 1 issues')).toBeInTheDocument();
     expect(screen.getByText(/Resolved in attempt 1: pipeline passed/)).toBeInTheDocument();
     expect(screen.getByText('returned to implement')).toBeInTheDocument();
-    expect(screen.getByText('pipelineRef is not available')).toBeInTheDocument();
+    expect(screen.getByText('Watched branch is not available')).toBeInTheDocument();
   });
 
   it('folds the session and the context into the agent card, and shows the cost in its footer', async () => {
@@ -340,7 +340,7 @@ describe('the requirements input card', () => {
     vi.mocked(getHistory).mockResolvedValue(history);
     feed(fixtureRun().slice(0, 3));
 
-    expect(screen.getAllByText('requirements').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Requirements').length).toBeGreaterThan(0);
     expect(screen.getByText('PROJ-30 Ship the field')).toBeInTheDocument();
     expect(screen.getByText('1 tickets · plan: 2 items · plan approved')).toBeInTheDocument();
     expect(screen.getByText('document 12112')).toBeInTheDocument();

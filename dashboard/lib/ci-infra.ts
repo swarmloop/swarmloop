@@ -11,6 +11,11 @@ export function resumeLabel(code: string | null | undefined): string {
   return isCiInfra(code) ? 'Re-run CI' : 'Resume';
 }
 
+/** The one-line tip of the resume action. */
+export function resumeTip(code: string | null | undefined): string {
+  return isCiInfra(code) ? 'Starts the CI pipeline again' : 'Goes on from where the run stopped';
+}
+
 /** The reason line and the job names of a blocked CI log, or null for any other run. */
 export function ciInfra(flow: FlowView): { reason: string; jobs: string[] } | null {
   if (!isCiInfra(flow.stateReason?.code) || !flow.reason) {
