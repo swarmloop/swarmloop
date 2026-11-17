@@ -28,6 +28,7 @@ import {
   startReviewer,
   skipTask,
   stopRun,
+  ticketKeys,
 } from '../../lib/endpoints';
 import { receive } from '../../test/fake-socket';
 import { QueryWrapper } from '../../test/query-wrapper';
@@ -257,6 +258,7 @@ beforeEach(() => {
   vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => undefined);
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
+  vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
   vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
   vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
