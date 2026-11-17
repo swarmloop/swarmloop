@@ -49,6 +49,32 @@ describe('task actions', () => {
       expect(tasks[2]).toMatchObject({ madeBy: 'person', status: 'waiting', runKey: null, milestoneId: null });
     }));
 
+  it('refuses a batch whose shared-file chain would close a cycle through a requirement, and writes nothing', () =>
+    withActions(async (harness) => {
+      const backlog = (await harness.backlogs.findBacklog('shop')) as { id: number };
+      const milestone = await harness.backlogs.saveMilestone({
+        backlogId: backlog.id,
+        number: 1,
+        title: 'M1',
+        goal: '',
+        status: 'active',
+        createdAt: '2026-11-12T10:00:00Z',
+      });
+      await harness.backlogs.saveRequirement({
+        milestoneId: milestone.id as number,
+        ref: 'M1.R1',
+        text: 'one',
+        status: 'open',
+      });
+      await expect(
+        harness.actions.addTasks('ada', 'shop', [
+          task('a', { files: ['x.ts'], depends: ['M1.R1'] }),
+          task('b', { files: ['x.ts'], covers: ['M1.R1'] }),
+        ]),
+      ).rejects.toThrow('circle');
+      expect(await tasksOf(harness)).toEqual([]);
+    }));
+
   it('refuses invalid scope, ids and statuses and writes nothing', () =>
     withActions(async (harness) => {
       await harness.actions.addTasks('ada', 'shop', [task('base')]);

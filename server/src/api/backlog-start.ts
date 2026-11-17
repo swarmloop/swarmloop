@@ -25,6 +25,7 @@ export class BacklogStart implements OnModuleInit {
         { ...plan },
         { create: { targetPath: null, startedBy: owner, agents } },
       );
+      return plan.key;
     });
   }
 }

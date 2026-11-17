@@ -77,3 +77,30 @@ describe('task rules', () => {
     expect(() => checkNotSettled({ slug: 'one', status: 'running' })).not.toThrow();
   });
 });
+
+describe('task rules through requirements', () => {
+  const scope: TaskScope = { repositories: ['web'], refs: ['M1.R1', 'M1.R2'], others: [] };
+  const a = task({ slug: 'a', covers: ['M1.R1'], depends: ['M1.R2'] });
+  const b = task({ slug: 'b', covers: ['M1.R2'], depends: ['M1.R1'] });
+
+  it('refuses a dependency cycle through requirements, with the cycle named', () => {
+    const circle = 'the tasks depend on each other in a circle: a -> M1.R2 (b) -> M1.R1 (a)';
+    expect(() => checkTasks([a, b], scope)).toThrow(circle);
+    expect(() => checkTasks([b], { ...scope, others: [a] })).toThrow(circle);
+  });
+
+  it('ignores settled tasks when it looks for a cycle', () => {
+    const merged = { status: 'merged' as const };
+    const others = [
+      { slug: 'setup-db', covers: ['M1.R1'], depends: [], ...merged },
+      { slug: 'api', covers: ['M1.R2'], depends: ['M1.R1'], ...merged },
+    ];
+    expect(() =>
+      checkTasks([task({ slug: 'db-index', covers: ['M1.R1'], depends: ['M1.R2'] })], { ...scope, others }),
+    ).not.toThrow();
+  });
+
+  it('accepts a task that depends on a requirement it covers itself', () => {
+    expect(() => checkTasks([task({ covers: ['M1.R1'], depends: ['M1.R1'] })], scope)).not.toThrow();
+  });
+});
