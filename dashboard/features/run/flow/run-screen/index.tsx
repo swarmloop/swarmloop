@@ -4,7 +4,10 @@ import type { ReactElement } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
+import { useDocumentTitle } from '../../../../lib/document-title';
 import { useRunFlow } from '../../use-run-flow';
 import { NewRunDialog } from '../../../new-run';
 import { expandReviewPhases, replaySelection } from '../../phases';
@@ -16,6 +19,7 @@ import { StepDetail } from '../step-detail';
 import { GitAuthBanner } from '../git-auth-banner';
 import { LimitBanner } from '../limit-banner';
 import { WaitingPanel } from '../waiting-panel';
+import { FinishedSummary } from './finished-summary';
 import { RunDialogs } from './run-dialogs';
 import { RunHeader } from './run-header';
 import { TaskLayers } from './task-layers';
@@ -39,6 +43,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
     now,
     openMs,
     selectStep,
+    reload,
     applyWaiting,
     stopRun,
     rebaseRun,
@@ -47,8 +52,22 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
     resumeRun,
   } = useRunFlow(runKey);
 
+  useDocumentTitle(flow?.title ?? null);
+
   if (!flow) {
-    return <Typography color={error ? 'error' : 'text.secondary'}>{error ?? 'Loading the run.'}</Typography>;
+    return error ? (
+      <Box>
+        <Typography color="error">{`The run could not be loaded: ${error}`}</Typography>
+        <Button onClick={reload} sx={{ mt: 1 }}>
+          Retry
+        </Button>
+      </Box>
+    ) : (
+      <Box aria-label="Loading the run">
+        <Skeleton variant="text" width={320} height={40} />
+        <Skeleton variant="rounded" height={120} sx={{ mt: 1 }} />
+      </Box>
+    );
   }
 
   const phases = expandReviewPhases(flow.phases);
@@ -59,6 +78,21 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   const original = launches.find((launch) => launch.fromStep === null)?.phases ?? [...PHASES];
   const latest = launches.at(-1)?.phases ?? original;
   const choice = replay ? replaySelection(original, latest, replay) : null;
+  const tasks = flow.tasks?.length ? (
+    <TaskLayers
+      tasks={flow.tasks}
+      epic={flow.epic}
+      ownUsd={flow.metrics.usd}
+      mergeQueue={flow.mergeQueue}
+      decisions={flow.decisions}
+      onSkip={(taskId) =>
+        void skipTask(flow.key, taskId).catch((reason: unknown) =>
+          setError(reason instanceof Error ? reason.message : 'Skip task failed.'),
+        )
+      }
+    />
+  ) : null;
+  const summary = flow.status === 'done' && selected === null;
   return (
     <Box sx={{ minWidth: 0 }}>
       {flow.parentKey ? (
@@ -76,6 +110,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         rebaseError={rebaseError}
         onRebase={rebaseRun}
         onStop={() => setConfirmStop(true)}
+        onOpenRequirements={() => selectStep('requirements')}
       />
       <FlowBoard
         phases={phases}
@@ -84,23 +119,11 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         onSelect={selectStep}
         checkCommands={flow.checkCommands}
       />
-      {flow.tasks?.length ? (
-        <TaskLayers
-          tasks={flow.tasks}
-          epic={flow.epic}
-          ownUsd={flow.metrics.usd}
-          mergeQueue={flow.mergeQueue}
-          decisions={flow.decisions}
-          onSkip={(taskId) =>
-            void skipTask(flow.key, taskId).catch((reason: unknown) =>
-              setError(reason instanceof Error ? reason.message : 'Skip task failed.'),
-            )
-          }
-        />
-      ) : null}
+      {summary ? null : tasks}
       {flow.status === 'waiting' || flow.status === 'blocked' || flow.status === 'failed' ? (
         <WaitingPanel flow={flow} onChange={applyWaiting} />
       ) : null}
+      {summary ? <FinishedSummary flow={flow} tasks={tasks} /> : null}
       {selected ? (
         <StepDetail
           key={selected}

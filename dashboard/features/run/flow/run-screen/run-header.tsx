@@ -4,20 +4,20 @@ import type { ReactElement } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import DataUsage from '@mui/icons-material/DataUsage';
-import MemoryIcon from '@mui/icons-material/Memory';
+import OpenInNew from '@mui/icons-material/OpenInNew';
 import Paid from '@mui/icons-material/Paid';
 import Schedule from '@mui/icons-material/Schedule';
-import Speed from '@mui/icons-material/Speed';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import MuiLink from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { duration, memory, money, tokens } from '../../../../lib/format';
-import { latestPhaseLabels } from '../../phases';
-import { RunStateLabel } from '../../run-state-label';
+import { duration, money, tokens } from '../../../../lib/format';
+import { runWord } from '../../run-word';
+import { RunStateIcon, toneColor } from '../../run-state-word';
 import type { FlowView } from '@contract/api';
-import { statusColor } from '../../../../theme/theme';
+import { epicFigures } from '@contract/epic-figures';
 
 export function RunHeader({
   flow,
@@ -27,6 +27,7 @@ export function RunHeader({
   rebaseError,
   onRebase,
   onStop,
+  onOpenRequirements,
 }: {
   flow: FlowView;
   openMs: number;
@@ -35,37 +36,75 @@ export function RunHeader({
   rebaseError: string | null;
   onRebase: () => void;
   onStop: () => void;
+  onOpenRequirements: () => void;
 }): ReactElement {
   const metric = flow.metrics;
-  const epic = flow.epic;
-  const metricItems: { Icon?: typeof Schedule; text: string; tip: string; color?: string }[] = [
-    { text: metric.status, tip: 'Run status', color: statusColor(metric.status) },
+  const figures = flow.epic
+    ? epicFigures(
+        {
+          epicUsd: flow.epic.usd,
+          ownUsd: metric.usd,
+          epicMs: flow.epic.durationMs,
+          taskCount: flow.tasks?.length ?? 0,
+          workedMs: null,
+        },
+        { money, duration },
+      )
+    : null;
+  const word = runWord(flow);
+  const metricItems: { Icon: typeof Schedule; text: string; tip: string }[] = [
     {
       Icon: Schedule,
-      text: epic
-        ? `${duration(epic.durationMs)} total · ${duration(metric.durationMs + openMs)} this run`
-        : duration(metric.durationMs + openMs),
-      tip: 'Total time the steps have run. Reviewers that run together count as the slowest one, then the report and the remaining time in that step. Time waiting on a person, and time sitting idle after a failure, is not included.',
+      text: figures ? figures.time : duration(metric.durationMs + openMs),
+      tip: figures
+        ? figures.timeTip
+        : 'Total time the steps have run. Reviewers that run together count as the slowest one, then the report and the remaining time in that step. Time waiting on a person, and time sitting idle after a failure, is not included.',
     },
     {
       Icon: Paid,
-      text: epic ? `${money(epic.usd)} total · ${money(metric.usd)} this run` : money(metric.usd),
-      tip: 'Session spend',
+      text: figures ? figures.money : money(metric.usd),
+      tip: figures ? figures.moneyTip : 'Session spend',
     },
     { Icon: DataUsage, text: `${tokens(metric.tokens)} tok`, tip: 'Session tokens' },
-    { Icon: Speed, text: `cpu ${metric.cpuPeak.toFixed(0)}%`, tip: 'Highest CPU in the session' },
-    { Icon: MemoryIcon, text: `mem ${memory(metric.memPeak)}`, tip: 'Highest memory in the session' },
   ];
-  const launches = flow.launches ?? [];
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
         <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
-          <Tooltip title={flow.name}>
-            <Typography variant="h5" noWrap>
-              {flow.name}
-            </Typography>
+          {flow.mergeRequests.length > 0 ? (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 0.5 }}>
+              {flow.mergeRequests.map((request) => (
+                <MuiLink
+                  key={request.url}
+                  href={request.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  variant="body2"
+                  sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
+                >
+                  {`${request.repo} · ${request.state}`}
+                  <OpenInNew sx={{ fontSize: 14 }} />
+                </MuiLink>
+              ))}
+            </Box>
+          ) : null}
+          <Tooltip title={flow.title}>
+            <Button
+              color="inherit"
+              onClick={onOpenRequirements}
+              sx={{ p: 0, minWidth: 0, textTransform: 'none', justifyContent: 'flex-start', maxWidth: '100%' }}
+            >
+              <Typography variant="h5" noWrap>
+                {flow.title}
+              </Typography>
+            </Button>
           </Tooltip>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, color: toneColor(word.tone) }}>
+            <RunStateIcon view={word} />
+            <Typography variant="body2" sx={{ color: 'inherit' }}>
+              {word.word}
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75 }}>
             <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: 13 }} color="text.secondary">
               {flow.key}
@@ -118,43 +157,19 @@ export function RunHeader({
           alignItems: 'center',
           columnGap: 2,
           rowGap: 0.75,
-          fontFamily: 'var(--font-mono)',
           fontSize: 13,
           color: 'text.secondary',
         }}
       >
-        {metricItems.map(({ Icon, text, tip, color }) => (
+        {metricItems.map(({ Icon, text, tip }) => (
           <Tooltip key={tip} title={tip}>
-            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color }}>
-              {Icon ? <Icon sx={{ fontSize: 16 }} /> : null}
+            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+              <Icon sx={{ fontSize: 16 }} />
               {text}
             </Box>
           </Tooltip>
         ))}
       </Box>
-      {flow.status === 'done' ? (
-        <Box sx={{ mt: 0.75 }}>
-          <RunStateLabel
-            status={flow.status}
-            merge={flow.merge}
-            subtask={Boolean(flow.parentKey)}
-            mergeWait={flow.mergeWait}
-          />
-        </Box>
-      ) : null}
-      {launches.length > 0 ? (
-        <Box sx={{ mt: 0.75, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-          {latestPhaseLabels(launches).map((label) => (
-            <Chip
-              key={label}
-              size="small"
-              variant="outlined"
-              label={label}
-              sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }}
-            />
-          ))}
-        </Box>
-      ) : null}
     </>
   );
 }

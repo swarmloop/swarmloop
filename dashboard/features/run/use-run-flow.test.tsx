@@ -116,4 +116,44 @@ describe('useRunFlow', () => {
 
     expect(await screen.findByText('run not found')).toBeInTheDocument();
   });
+
+  it('selects no step on a finished run, and still selects one the person picks', async () => {
+    vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'done', currentStep: 'done' }));
+    function SelectProbe() {
+      const { flow, selected, selectStep } = useRunFlow('run-1');
+      return (
+        <div>
+          <p>{flow ? `selected: ${selected ?? 'none'}` : 'Loading'}</p>
+          <button onClick={() => selectStep('requirements')}>pick</button>
+        </div>
+      );
+    }
+
+    render(<SelectProbe />, { wrapper: LiveBridgeProvider });
+    expect(await screen.findByText('selected: none')).toBeInTheDocument();
+    act(() => screen.getByRole('button', { name: 'pick' }).click());
+
+    expect(await screen.findByText('selected: requirements')).toBeInTheDocument();
+  });
+
+  it('loads the flow again on reload after a failed load', async () => {
+    vi.mocked(getFlow).mockRejectedValueOnce(new Error('run is gone')).mockResolvedValue(flowView());
+    function ReloadProbe() {
+      const { flow, error, reload } = useRunFlow('run-1');
+      return (
+        <div>
+          {flow ? <p>{flow.name}</p> : null}
+          {error ? <p>{error}</p> : null}
+          <button onClick={reload}>again</button>
+        </div>
+      );
+    }
+
+    render(<ReloadProbe />, { wrapper: LiveBridgeProvider });
+    await screen.findByText('run is gone');
+    act(() => screen.getByRole('button', { name: 'again' }).click());
+
+    expect(await screen.findByText('Run one')).toBeInTheDocument();
+    expect(screen.queryByText('run is gone')).not.toBeInTheDocument();
+  });
 });

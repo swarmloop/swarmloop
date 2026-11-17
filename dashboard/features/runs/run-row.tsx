@@ -11,10 +11,9 @@ import type { RunSummary } from '@contract/api';
 import { openRunMs } from '../../lib/elapsed';
 import type { epicFigures } from '@contract/epic-figures';
 import { duration, money, relative, when } from '../../lib/format';
-import { RunStateIcon } from '../run';
+import { RunStateIcon, runWord } from '../run';
 import { RowDelete, useRowReveal } from './row-delete';
 import { rowButtonSx } from './row-style';
-import { runWord } from './run-word';
 
 const ELLIPSIS = {
   display: '-webkit-box',
