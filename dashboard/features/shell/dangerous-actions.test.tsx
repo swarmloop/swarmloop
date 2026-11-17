@@ -28,6 +28,7 @@ import {
   startReviewer,
   skipTask,
   stopRun,
+  ticketKeys,
 } from '../../lib/endpoints';
 import { receive } from '../../test/fake-socket';
 import { QueryWrapper } from '../../test/query-wrapper';
@@ -54,7 +55,7 @@ vi.mock('../../lib/endpoints', () => ({
   skipTask: vi.fn(),
   startReviewer: vi.fn(),
   replayStep: vi.fn(),
-  ticketKeys: vi.fn().mockResolvedValue({ keys: [] }),
+  ticketKeys: vi.fn(),
   removeRun: vi.fn(),
   getSession: vi.fn(),
   logout: vi.fn(),
@@ -255,6 +256,7 @@ function mount(name: string): void {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => undefined);
+  vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
