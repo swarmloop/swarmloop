@@ -1,10 +1,10 @@
 'use client';
 
 import type { ReactElement, ReactNode } from 'react';
+import { DisclosureIcon } from '../../components/ui/disclosure-icon';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -105,7 +105,7 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
             elevation={0}
             sx={{ bgcolor: 'transparent', borderTop: 1, borderColor: 'divider' }}
           >
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>{kind}</AccordionSummary>
+            <AccordionSummary expandIcon={<DisclosureIcon />}>{kind}</AccordionSummary>
             <AccordionDetails>
               {documents.map((document, index) => (
                 <Box key={`${kind}-${index}`} sx={{ mb: 2 }}>
@@ -163,7 +163,7 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
             elevation={0}
             sx={{ bgcolor: 'transparent', borderTop: 1, borderColor: 'divider' }}
           >
-            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <AccordionSummary expandIcon={<DisclosureIcon />}>
               {exchange.model} · {duration(exchange.durationMs)}
             </AccordionSummary>
             <AccordionDetails>
@@ -241,7 +241,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       elevation={0}
       sx={{ bgcolor: 'transparent', border: 1, borderColor: 'divider', mb: 1 }}
     >
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+      <AccordionSummary expandIcon={<DisclosureIcon />}>
         <Typography>{title}</Typography>
       </AccordionSummary>
       <AccordionDetails>{children}</AccordionDetails>
@@ -267,7 +267,7 @@ function LogAccordion({ runKey, stat }: { runKey: string; stat: HistoryView['sta
       slotProps={{ transition: { unmountOnExit: true } }}
       sx={{ bgcolor: 'transparent', borderTop: 1, borderColor: 'divider' }}
     >
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+      <AccordionSummary expandIcon={<DisclosureIcon />}>
         log · {stat.step} · attempt {stat.attempt}
       </AccordionSummary>
       <AccordionDetails>{raw === null ? 'Loading log.' : <LogTranscript raw={raw} />}</AccordionDetails>

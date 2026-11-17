@@ -567,10 +567,13 @@ describe('RunList', () => {
       const toggle = screen.getByRole('button', { name: 'Expand subtasks of Epic parent' });
       expect(toggle).toHaveAttribute('aria-expanded', 'false');
       expect(toggle.querySelector('[data-direction="right"]')).not.toBeNull();
+      expect(getComputedStyle(toggle.querySelector('svg')!).transform).toBe('none');
 
       await user.click(toggle);
 
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
       expect(toggle.querySelector('[data-direction="down"]')).not.toBeNull();
+      expect(getComputedStyle(toggle.querySelector('svg')!).transform).toBe('rotate(90deg)');
     });
   });
 });
