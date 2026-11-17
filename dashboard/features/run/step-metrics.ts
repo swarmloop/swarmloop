@@ -1,6 +1,6 @@
-import { count, duration, money } from '../../lib/format';
+import { count, duration, memory, money } from '../../lib/format';
 
-export type StepMetricKind = 'status' | 'duration' | 'attempt' | 'spend' | 'tokens-in' | 'tokens-out';
+export type StepMetricKind = 'status' | 'duration' | 'attempt' | 'memory' | 'spend' | 'tokens-in' | 'tokens-out';
 
 interface StepMetric {
   kind: StepMetricKind;
@@ -17,6 +17,8 @@ export function stepMetrics(input: {
   usd: number;
   /** A server step spends nothing and has no model: it keeps status, time and attempt. */
   server?: boolean;
+  /** The peak memory of the attempt in bytes: a server step shows it when it was measured. */
+  memPeak?: number;
 }): StepMetric[] {
   const items: StepMetric[] = [
     { kind: 'status', text: input.status, tip: 'Step status' },
@@ -26,6 +28,9 @@ export function stepMetrics(input: {
     items.push({ kind: 'attempt', text: `attempt ${input.attempt}`, tip: 'Attempt' });
   }
   if (input.server) {
+    if (input.memPeak) {
+      items.push({ kind: 'memory', text: memory(input.memPeak), tip: 'Peak memory of this attempt' });
+    }
     return items;
   }
   items.push(

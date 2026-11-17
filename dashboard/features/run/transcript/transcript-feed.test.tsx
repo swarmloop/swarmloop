@@ -388,4 +388,24 @@ describe('TranscriptFeed', () => {
     expect(toolLine).toHaveTextContent(/^Read src\/app\/main\.ts/);
     expect(fontOf(toolLine)).toContain('var(--font-mono)');
   });
+
+  it('shows the note in the top line beside the problems chip', () => {
+    render(
+      <TranscriptFeed
+        runKey="run-1"
+        events={commandEvents(1, 's', { executable: 'make', args: ['test'], exitCode: 2, actor: 'server' })}
+        note="This step started no container."
+      />,
+      { wrapper: QueryWrapper },
+    );
+
+    const note = screen.getByText('This step started no container.');
+    expect(note.parentElement).toContainElement(screen.getByRole('button', { name: /problem/ }));
+  });
+
+  it('shows no note line when none is given', () => {
+    feed([input]);
+
+    expect(screen.queryByText('This step started no container.')).toBeNull();
+  });
 });

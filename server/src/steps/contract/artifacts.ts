@@ -21,6 +21,7 @@ import { legacyReview } from '../../agent-result/legacy/review';
 import { subtaskAnswer, type SubtaskAnswerResult } from '../../agent-result/definitions/subtask-answer';
 import { resultArtifactCodec } from '../../agent-result/result-codec';
 import { requirementsView } from '../../contract/requirements-view';
+import { pipelineRefSummary } from './pipeline-ref-summary';
 import {
   artifact,
   artifactFamily,
@@ -258,7 +259,7 @@ export const ARTIFACTS = {
   pipelineRef: artifact('pipeline_ref', {
     writers: ['commit', 'implement'],
     readers: ['branch', 'implement', 'pipeline'],
-    summarize: firstLine,
+    summarize: pipelineRefSummary,
   }),
   pipelineLog: artifact('pipeline_log', {
     writers: ['pipeline'],

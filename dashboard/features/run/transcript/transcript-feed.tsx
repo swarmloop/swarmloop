@@ -143,6 +143,7 @@ export function TranscriptFeed({
   live = false,
   now = 0,
   activities = true,
+  note,
 }: {
   runKey: string;
   /** What the step recorded. Null while it is read: the feed shows placeholders. */
@@ -161,6 +162,8 @@ export function TranscriptFeed({
   now?: number;
   /** Whether the activity cards show. The checks window leaves them out: it lists its commands itself. */
   activities?: boolean;
+  /** A quiet sentence for the top line, beside the problems chip. */
+  note?: string;
 }): ReactElement {
   const [unseen, setUnseen] = useState(false);
   const width = useBubbleWidth();
@@ -232,22 +235,27 @@ export function TranscriptFeed({
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: SPACE.part,
-              bgcolor: 'background.default',
+              bgcolor: 'background.paper',
             }}
           >
-            {problems.length > 0 ? (
-              <Chip
-                size="small"
-                color="error"
-                variant="outlined"
-                label={problemsLabel(problems.length)}
-                onClick={() =>
-                  document.getElementById(problemId(problems[0].event.eventId))?.scrollIntoView({ block: 'center' })
-                }
-              />
-            ) : (
-              <span />
-            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: SPACE.part, minWidth: 0 }}>
+              {note ? (
+                <Typography variant="caption" color="text.secondary">
+                  {note}
+                </Typography>
+              ) : null}
+              {problems.length > 0 ? (
+                <Chip
+                  size="small"
+                  color="error"
+                  variant="outlined"
+                  label={problemsLabel(problems.length)}
+                  onClick={() =>
+                    document.getElementById(problemId(problems[0].event.eventId))?.scrollIntoView({ block: 'center' })
+                  }
+                />
+              ) : null}
+            </Box>
             <Typography variant="caption" color="text.secondary">
               {statusLine(live, now, lastTime)}
             </Typography>

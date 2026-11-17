@@ -30,6 +30,7 @@ export function StepDetail({
   runStatus,
   onResume,
   resumeLabel,
+  resumeTip,
   attempts,
   liveCommands,
   restartedAt,
@@ -43,6 +44,7 @@ export function StepDetail({
   runStatus?: string;
   onResume?: () => void;
   resumeLabel?: string;
+  resumeTip?: string;
   attempts: number;
   /** The rows of the latest checks attempt from the live flow: they replace the step view's rows of that attempt. */
   liveCommands?: CheckCommandView[];
@@ -110,6 +112,7 @@ export function StepDetail({
         onReplay={onReplay}
         onResume={onResume}
         resumeLabel={resumeLabel}
+        resumeTip={resumeTip}
         view={view}
         attempt={attempt}
         setAttempt={setAttempt}

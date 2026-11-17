@@ -13,7 +13,7 @@ import { NewRunDialog } from '../../../new-run';
 import { expandReviewPhases, replaySelection } from '../../phases';
 import { PHASES, pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
 import { FlowBoard } from '../flow-board';
-import { resumeLabel } from '../../../../lib/ci-infra';
+import { resumeLabel, resumeTip } from '../../../../lib/ci-infra';
 import { skipTask } from '../../../../lib/endpoints';
 import { StepDetail } from '../step-detail';
 import { GitAuthBanner } from '../git-auth-banner';
@@ -147,6 +147,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
               : undefined
           }
           resumeLabel={resumeLabel(flow.stateReason?.code)}
+          resumeTip={resumeTip(flow.stateReason?.code)}
         />
       ) : null}
       <NewRunDialog

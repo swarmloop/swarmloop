@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import DataUsage from '@mui/icons-material/DataUsage';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
+import Memory from '@mui/icons-material/Memory';
 import Paid from '@mui/icons-material/Paid';
 import Schedule from '@mui/icons-material/Schedule';
 import Undo from '@mui/icons-material/Undo';
@@ -30,6 +31,7 @@ const PREPARED_SHOWN_MS = 30_000;
 
 const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   duration: Schedule,
+  memory: Memory,
   spend: Paid,
   'tokens-in': DataUsage,
   'tokens-out': DataUsage,
@@ -67,6 +69,7 @@ export function StepHeader({
   onReplay,
   onResume,
   resumeLabel = 'Resume',
+  resumeTip = 'Goes on from where the run stopped',
   view,
   attempt,
   setAttempt,
@@ -87,6 +90,7 @@ export function StepHeader({
   onReplay?: () => void;
   onResume?: () => void;
   resumeLabel?: string;
+  resumeTip?: string;
   view: StepView;
   attempt: number;
   setAttempt: (value: number) => void;
@@ -108,6 +112,8 @@ export function StepHeader({
   slowestPrepared?: { command: string; ms: number } | null;
 }): ReactElement {
   const server = view.descriptor.kind === 'server';
+  const replay = Boolean(onReplay) && step !== 'done' && label !== 'returned';
+  const both = replay && Boolean(onResume);
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, minWidth: 0 }}>
@@ -116,15 +122,19 @@ export function StepHeader({
           {!step.startsWith('code-review-') && (runStatus === 'failed' || runStatus === 'blocked') ? (
             <Typography sx={{ fontSize: 12, color: statusColor(runStatus) }}>{runStatus}</Typography>
           ) : null}
-          {onReplay && step !== 'done' && label !== 'returned' ? (
-            <Button size="small" variant="contained" onClick={onReplay}>
-              {label === 'failed' ? 'Retry' : 'Run again'}
-            </Button>
+          {replay ? (
+            <Tooltip describeChild title="Starts this step again from the beginning">
+              <Button size="small" variant={both ? 'outlined' : 'contained'} onClick={onReplay}>
+                {label === 'failed' ? 'Retry' : 'Run again'}
+              </Button>
+            </Tooltip>
           ) : null}
           {onResume ? (
-            <Button size="small" variant="contained" onClick={onResume}>
-              {resumeLabel}
-            </Button>
+            <Tooltip describeChild title={resumeTip}>
+              <Button size="small" variant="contained" onClick={onResume}>
+                {resumeLabel}
+              </Button>
+            </Tooltip>
           ) : null}
         </Box>
         {view.visits.length > 1 || attempts > 0 ? (
@@ -164,7 +174,6 @@ export function StepHeader({
       {problem ? (
         <Link
           href={`#${problemId(problem)}`}
-          underline="always"
           onClick={(event) => {
             event.preventDefault();
             document.getElementById(problemId(problem))?.scrollIntoView({ block: 'center' });
@@ -208,6 +217,7 @@ export function StepHeader({
             tokensIn: visit.tokensIn,
             tokensOut: visit.tokensOut,
             usd: visit.usd,
+            memPeak: visit.memPeak,
           }).map((item) => {
             const Icon = item.kind === 'status' && label === 'returned' ? Undo : stepMetricIcon[item.kind];
             return (

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { visitView } from '../../../../test/fixtures';
 import type { CheckCommandView } from '@contract/api';
 import { NO_SAMPLES_AFTER_RESTART } from '@contract/restart-wait';
-import { CommandChart, StepChart } from './step-chart';
+import { CommandChart, StepChart, startedNoContainer } from './step-chart';
 
 const row = (overrides: Partial<CheckCommandView>): CheckCommandView => ({
   attempt: 'att-1',
@@ -194,5 +194,27 @@ describe('CommandChart', () => {
     render(<CommandChart command={row({ status: 'running' })} visit={visitView({ status: 'running', samples: [] })} />);
 
     expect(screen.queryByText(NO_SAMPLES_AFTER_RESTART)).toBeNull();
+  });
+
+  it('leaves the no-container sentence to the transcript when the feed is shown', () => {
+    const { container } = render(<StepChart feed visit={visitView({ status: 'done', samples: [] })} />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('startedNoContainer', () => {
+  it('is true for a finished visit without container samples', () => {
+    expect(startedNoContainer(visitView({ status: 'done', samples: [] }), false)).toBe(true);
+  });
+
+  it('is false for a running visit, a restart, a visit with samples and no visit', () => {
+    expect(startedNoContainer(visitView({ status: 'running', samples: [] }), false)).toBe(false);
+    expect(startedNoContainer(visitView({ status: 'failed', samples: [] }), true)).toBe(false);
+    expect(startedNoContainer(visitView({ status: 'failed', killReason: 'process died', samples: [] }), false)).toBe(
+      false,
+    );
+    expect(startedNoContainer(visitView({ status: 'done', samples: minute(1) }), false)).toBe(false);
+    expect(startedNoContainer(undefined, false)).toBe(false);
   });
 });

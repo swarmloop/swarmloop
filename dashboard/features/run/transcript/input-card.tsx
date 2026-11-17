@@ -3,12 +3,13 @@ import type { StepEvent } from '@contract/step-events';
 import Link from '@mui/material/Link';
 import { Bubble } from './bubble';
 import { DocumentDetail } from './document-detail';
+import { inputTitle } from './input-title';
 import { problemId } from './problem-card';
 import type { IssueLinks } from './transcript-model';
 
 /** What the card says about an input: the summary, or that the step found nothing. */
 function inputText(event: Extract<StepEvent, { kind: 'input.received' }>): string {
-  return event.summary === 'absent' ? `${event.name} is not available` : event.summary;
+  return event.summary === 'absent' ? `${inputTitle(event.inputKind)} is not available` : event.summary;
 }
 
 export function InputCard({
@@ -26,7 +27,7 @@ export function InputCard({
         <Bubble
           side="right"
           type="input"
-          title={event.name}
+          title={inputTitle(event.inputKind)}
           meta={event.documentId === 'absent' ? undefined : `document ${event.documentId}`}
           detail={event.documentId === 'absent' ? undefined : <DocumentDetail runKey={runKey} kind={event.inputKind} />}
           detailLabel="document"
