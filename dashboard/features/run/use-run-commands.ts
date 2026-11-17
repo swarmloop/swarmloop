@@ -1,7 +1,6 @@
 'use client';
 
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import { useState } from 'react';
 import {
   rebaseRun as rebaseEndpoint,
   replayStep,
@@ -22,88 +21,68 @@ interface CommandContext {
   setError: Dispatch<SetStateAction<string | null>>;
   setNow: Dispatch<SetStateAction<number>>;
   setSelected: Dispatch<SetStateAction<string | null>>;
-  setConfirmStop: Dispatch<SetStateAction<boolean>>;
   setReplay: Dispatch<SetStateAction<string | null>>;
   setPending: Dispatch<SetStateAction<{ prompt: string; phases: PhaseName[] } | null>>;
   memory: MutableRefObject<FlowMemory>;
   followStep: MutableRefObject<boolean>;
 }
 
-/** The commands of a run (stop, rebase, replay, reviewer, resume) with their busy and error state. */
+/** The commands of a run (stop, rebase, replay, reviewer, resume). Stop, rebase, replay and the reviewer start return their promise, so the confirm that asked for them shows a failure. */
 export function useRunCommands({
   flow,
   setFlow,
   setError,
   setNow,
   setSelected,
-  setConfirmStop,
   setReplay,
   setPending,
   memory,
   followStep,
 }: CommandContext): {
-  stopping: boolean;
-  rebasing: boolean;
-  rebaseError: string | null;
-  stopRun: () => void;
-  rebaseRun: () => void;
+  stopRun: () => Promise<void>;
+  rebaseRun: () => Promise<void>;
   startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
-  startReviewer: (step: string) => void;
+  startReviewer: (step: string) => Promise<void>;
   resumeRun: () => void;
 } {
-  const [stopping, setStopping] = useState(false);
-  const [rebasing, setRebasing] = useState(false);
-  const [rebaseError, setRebaseError] = useState<string | null>(null);
-
-  const stopRun = (): void => {
+  const stopRun = (): Promise<void> => {
     if (!flow) {
-      return;
+      return Promise.resolve();
     }
-    setStopping(true);
-    setError(null);
-    stopEndpoint(flow.key)
-      .then(() => {
-        setConfirmStop(false);
-        setFlow((current) => {
-          if (!current) {
-            return current;
-          }
-          memory.current = {
-            ...memory.current,
-            heldMs: current.stepStartedAt ? openElapsed(current.stepStartedAt, Date.now()) : 0,
-            heldStart: current.stepStartedAt,
-          };
-          return { ...inState(current, 'stopped'), status: 'failed', resume: 'ready' };
-        });
-        setNow(Date.now());
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'stop failed'))
-      .finally(() => setStopping(false));
+    return stopEndpoint(flow.key).then(() => {
+      setFlow((current) => {
+        if (!current) {
+          return current;
+        }
+        memory.current = {
+          ...memory.current,
+          heldMs: current.stepStartedAt ? openElapsed(current.stepStartedAt, Date.now()) : 0,
+          heldStart: current.stepStartedAt,
+        };
+        return { ...inState(current, 'stopped'), status: 'failed', resume: 'ready' };
+      });
+      setNow(Date.now());
+    });
   };
 
-  const rebaseRun = (): void => {
+  const rebaseRun = (): Promise<void> => {
     if (!flow) {
-      return;
+      return Promise.resolve();
     }
-    setRebasing(true);
-    setRebaseError(null);
-    rebaseEndpoint(flow.key)
-      .then(() => {
-        followStep.current = true;
-        setFlow((current) =>
-          current
-            ? {
-                ...inState(current, 'running'),
-                status: 'running',
-                resume: 'running',
-                stepStartedAt: null,
-                currentStep: current.status === 'done' ? 'code-review' : current.currentStep,
-              }
-            : current,
-        );
-      })
-      .catch((cause: unknown) => setRebaseError(cause instanceof Error ? cause.message : 'rebase failed'))
-      .finally(() => setRebasing(false));
+    return rebaseEndpoint(flow.key).then(() => {
+      followStep.current = true;
+      setFlow((current) =>
+        current
+          ? {
+              ...inState(current, 'running'),
+              status: 'running',
+              resume: 'running',
+              stepStartedAt: null,
+              currentStep: current.status === 'done' ? 'code-review' : current.currentStep,
+            }
+          : current,
+      );
+    });
   };
 
   const startReplay = (step: string, prompt: string, phases: PhaseName[]): Promise<void> => {
@@ -131,30 +110,27 @@ export function useRunCommands({
     });
   };
 
-  const startReviewer = (step: string): void => {
+  const startReviewer = (step: string): Promise<void> => {
     if (!flow) {
-      return;
+      return Promise.resolve();
     }
     const run = flow;
-    setError(null);
-    reviewerEndpoint(run.key, step)
-      .then(() => {
-        followStep.current = true;
-        setSelected(step);
-        memory.current = { ...memory.current, pinnedAt: run.updatedAt };
-        setFlow((current) =>
-          current
-            ? {
-                ...inState(current, 'running'),
-                status: 'running',
-                currentStep: 'code-review',
-                resume: 'running',
-                stepStartedAt: null,
-              }
-            : current,
-        );
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'start failed'));
+    return reviewerEndpoint(run.key, step).then(() => {
+      followStep.current = true;
+      setSelected(step);
+      memory.current = { ...memory.current, pinnedAt: run.updatedAt };
+      setFlow((current) =>
+        current
+          ? {
+              ...inState(current, 'running'),
+              status: 'running',
+              currentStep: 'code-review',
+              resume: 'running',
+              stepStartedAt: null,
+            }
+          : current,
+      );
+    });
   };
 
   const resumeRun = (): void => {
@@ -175,5 +151,5 @@ export function useRunCommands({
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'resume failed'));
   };
 
-  return { stopping, rebasing, rebaseError, stopRun, rebaseRun, startReplay, startReviewer, resumeRun };
+  return { stopRun, rebaseRun, startReplay, startReviewer, resumeRun };
 }

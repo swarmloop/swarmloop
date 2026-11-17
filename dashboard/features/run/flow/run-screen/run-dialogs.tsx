@@ -1,93 +1,56 @@
 'use client';
 
 import type { ReactElement } from 'react';
-import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogTitle from '@mui/material/DialogTitle';
-import Typography from '@mui/material/Typography';
 import type { PhaseName } from '@contract/steps';
 import type { FlowView } from '@contract/api';
+import { ConfirmDialog } from '../../../shell';
 
+/** The confirms of Stop and of Replay. Replay asks after its instructions form; it is Stop and start when another step is running. */
 export function RunDialogs({
   flow,
-  error,
-  stopping,
   confirmStop,
   setConfirmStop,
   pending,
   setPending,
   replay,
+  runningElsewhere,
   stopRun,
   startReplay,
-  setError,
 }: {
   flow: FlowView;
-  error: string | null;
-  stopping: boolean;
   confirmStop: boolean;
   setConfirmStop: (open: boolean) => void;
   pending: { prompt: string; phases: PhaseName[] } | null;
   setPending: (pending: { prompt: string; phases: PhaseName[] } | null) => void;
   replay: string | null;
-  stopRun: () => void;
+  runningElsewhere: boolean;
+  stopRun: () => Promise<void>;
   startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
-  setError: (error: string | null) => void;
 }): ReactElement {
   return (
     <>
-      <Dialog open={confirmStop} onClose={() => (stopping ? undefined : setConfirmStop(false))} fullWidth maxWidth="xs">
-        <DialogTitle>Stop {flow.currentStep}?</DialogTitle>
-        <DialogContent>
-          <Typography>
-            The agent for {flow.key} is killed and this run is marked failed. Files already written stay in the
-            worktree.
-          </Typography>
-          {error ? (
-            <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-              {error}
-            </Typography>
-          ) : null}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setConfirmStop(false)} disabled={stopping}>
-            Keep running
-          </Button>
-          <Button color="error" variant="contained" disabled={stopping} onClick={stopRun}>
-            Stop
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={pending !== null} onClose={() => setPending(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Stop {flow.currentStep}?</DialogTitle>
-        <DialogContent>
-          <Typography>
-            {flow.currentStep} is running. Starting {replay} again stops it.
-          </Typography>
-          {error ? (
-            <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-              {error}
-            </Typography>
-          ) : null}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setPending(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={() => {
-              if (replay && pending) {
-                startReplay(replay, pending.prompt, pending.phases).catch((cause: unknown) =>
-                  setError(cause instanceof Error ? cause.message : 'replay failed'),
-                );
-              }
-            }}
-          >
-            Stop and start
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={confirmStop}
+        title={`Stop ${flow.key}?`}
+        body="The agent stops now. Its commits, its pushes and an open merge request stay, and CI on the host keeps running."
+        verb="Stop"
+        tone="danger"
+        onConfirm={stopRun}
+        onClose={() => setConfirmStop(false)}
+      />
+      <ConfirmDialog
+        open={pending !== null}
+        title={runningElsewhere ? `Stop ${flow.currentStep}?` : `Replay from ${replay}?`}
+        body={
+          runningElsewhere
+            ? `${flow.currentStep} is running. It stops now, then ${replay} starts again.`
+            : `Everything after ${replay} is done again. For a split run's plan, the subtasks are removed.`
+        }
+        verb={runningElsewhere ? 'Stop and start' : 'Replay'}
+        tone="danger"
+        onConfirm={() => (replay && pending ? startReplay(replay, pending.prompt, pending.phases) : Promise.resolve())}
+        onClose={() => setPending(null)}
+      />
     </>
   );
 }

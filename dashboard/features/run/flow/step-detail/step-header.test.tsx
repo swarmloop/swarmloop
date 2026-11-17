@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { createTheme } from '@mui/material/styles';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
@@ -116,9 +116,12 @@ describe('StepHeader', () => {
     const props = header({ onReplay: vi.fn(), onResume: vi.fn() });
 
     await user.click(screen.getByRole('button', { name: 'Run again' }));
+    expect(props.onReplay).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Run again' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await user.click(screen.getByRole('button', { name: 'Resume' }));
 
-    expect(props.onReplay).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
+    expect(props.onReplay).toHaveBeenCalledTimes(1);
     expect(props.onResume).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
   });
 

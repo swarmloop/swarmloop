@@ -39,7 +39,7 @@ export function StepDetail({
   live: boolean;
   revision: string;
   now: number;
-  onReplay?: () => void;
+  onReplay?: () => void | Promise<void>;
   runStatus?: string;
   onResume?: () => void;
   resumeLabel?: string;

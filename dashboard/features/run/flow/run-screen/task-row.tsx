@@ -8,6 +8,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { TaskEntry } from '@contract/api';
 import { interruptionSentence } from '@contract/interruption';
+import { ConfirmDialog } from '../../../shell';
 import { duration, localTime, money } from '../../../../lib/format';
 import { TaskDetails } from './task-details';
 import { TASK_STATUS } from './task-status';
@@ -26,9 +27,10 @@ export function TaskRow({
 }: {
   task: TaskEntry;
   dependents: string[];
-  onSkip: (taskId: string, dependents: string[]) => void;
+  onSkip: (taskId: string) => Promise<unknown>;
 }): ReactElement {
   const [open, setOpen] = useState(false);
+  const [skipping, setSkipping] = useState(false);
   const { Icon, color, word } = TASK_STATUS[task.status];
   const step = task.status === 'running' && task.run ? ` · ${task.run.currentStep.replaceAll('-', ' ')}` : '';
   const hasDetails = task.files.length > 0 || task.proof !== '' || task.run?.result !== undefined;
@@ -105,11 +107,24 @@ export function TaskRow({
           </Button>
         ) : null}
         {task.status === 'blocked' ? (
-          <Button size="small" onClick={() => onSkip(task.id, dependents)}>
+          <Button size="small" onClick={() => setSkipping(true)}>
             Skip task
           </Button>
         ) : null}
       </Box>
+      <ConfirmDialog
+        open={skipping}
+        title={`Skip task ${task.id}?`}
+        body={`Its subtask run stops and its work is not merged. ${
+          dependents.length > 0
+            ? `${dependents.join(', ')} go on as if it were merged.`
+            : 'No other task depends on it.'
+        } The epic's final review checks the whole result.`}
+        verb="Skip task"
+        tone="danger"
+        onConfirm={() => onSkip(task.id)}
+        onClose={() => setSkipping(false)}
+      />
       <Collapse in={open} unmountOnExit>
         <TaskDetails files={task.files} proof={task.proof} result={task.run?.result} />
       </Collapse>
