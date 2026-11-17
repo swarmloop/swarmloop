@@ -50,9 +50,11 @@ export class BacklogTaskActions {
     );
     const last = existing.reduce((top, task) => Math.max(top, task.position), 0);
     const added = body.map((task, index) => this.newTask(backlog, slugs[index], task, last + index + 1, milestones));
-    checkTasks(added, await this.scope(backlog, existing));
+    const scope = await this.scope(backlog, existing);
+    checkTasks(added, scope);
     added.forEach(checkRunnable);
     this.chain(added);
+    checkTasks(added, scope);
     await this.backlogs.transaction(async (writers) => {
       for (const task of added) await writers.saveTask(task);
       await this.support.record(writers, backlog.id as number, who, 'add tasks', { tasks: slugs.join(', ') });

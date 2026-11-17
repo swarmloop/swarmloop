@@ -3,7 +3,7 @@ import type { RunState } from '../../contract/run-state';
 import type { Subtask } from '../../contract/subtask';
 import { readyTasks, settled, shownTaskState, unmetDepends, waitNote } from '../../contract/subtask';
 import type { BacklogTaskRecord } from '../../history/backlog.repository';
-import { REQUIREMENT_REF } from './task-rules';
+import { cycleFrom, dependencyEdges } from './task-graph';
 
 /** A backlog task as the epic's functions read it, with what the layer adds. */
 export interface BacklogTask extends Subtask {
@@ -13,6 +13,8 @@ export interface BacklogTask extends Subtask {
   covers: string[];
   /** The requirements among its depends, before they stand for tasks. */
   refs: string[];
+  /** The dependency cycle among unsettled tasks that this task is in, in words. */
+  cycle: string | null;
   /** In an active milestone, or the owner asked to run it now. */
   mayStart: boolean;
 }
@@ -28,38 +30,28 @@ export interface RunFacts {
   currentStep: string;
 }
 
-function refOf(id: string): boolean {
-  return REQUIREMENT_REF.test(id);
-}
-
-/** A requirement a task depends on stands for the tasks that cover it; one that no task covers stays as it is, and so keeps the task waiting. */
-function expandDepends(depends: string[], records: BacklogTaskRecord[]): string[] {
-  return depends.flatMap((id) => {
-    if (!refOf(id)) return [id];
-    const covering = records.filter((record) => record.covers.includes(id)).map((record) => record.slug);
-    return covering.length > 0 ? covering : [id];
-  });
-}
-
 /** Every task of a backlog as a task with its shown status: a merged or skipped task keeps its status, any other shows its run. */
 export function backlogTasks(
   records: BacklogTaskRecord[],
   activeMilestones: ReadonlySet<number>,
   runs: ReadonlyMap<string, RunFacts>,
 ): BacklogTask[] {
+  const unsettled = records.filter((record) => !settled(record));
   return records.map((record) => {
+    const edges = dependencyEdges(record, records);
     const task: BacklogTask = {
       id: record.slug,
       title: record.title,
       description: record.description,
-      depends: expandDepends(record.depends, records),
+      depends: edges.map((edge) => edge.id),
       files: record.files,
       proof: record.proof.join(', '),
       status: record.status,
       merged: record.merged,
       repositories: record.repositories,
       covers: record.covers,
-      refs: record.depends.filter(refOf),
+      refs: [...new Set(edges.flatMap((edge) => (edge.ref === null ? [] : [edge.ref])))],
+      cycle: settled(record) ? null : cycleFrom(record.slug, unsettled),
       fixesMain: record.fixesMain,
       runKey: record.runKey,
       mayStart: record.runNow || (record.milestoneId !== null && activeMilestones.has(record.milestoneId)),
@@ -104,7 +96,7 @@ export function mainWait(
 /** The requirements this task depends on whose tasks are not all settled, or that no task covers yet. */
 function waitedRefs(task: BacklogTask, tasks: BacklogTask[]): string[] {
   return task.refs.filter((ref) => {
-    const covering = tasks.filter((other) => other.covers.includes(ref));
+    const covering = tasks.filter((other) => other.id !== task.id && other.covers.includes(ref));
     return covering.length === 0 || covering.some((other) => !settled(other));
   });
 }
@@ -112,6 +104,7 @@ function waitedRefs(task: BacklogTask, tasks: BacklogTask[]): string[] {
 /** What a task waits for in its dependencies, in words, or null when none holds it. A requirement is named as `<ref>'s tasks`. */
 export function dependencyWait(task: BacklogTask, tasks: BacklogTask[]): string | null {
   if (unmetDepends(task, tasks).length === 0) return null;
+  if (task.cycle !== null) return `waits in a cycle: ${task.cycle}`;
   const note = waitNote(task, tasks);
   const refs = waitedRefs(task, tasks);
   if (refs.length === 0 || note.endsWith(', which is blocked')) return note;

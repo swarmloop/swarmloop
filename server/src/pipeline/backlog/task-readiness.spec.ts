@@ -186,3 +186,26 @@ describe('placeWait and repositoriesOf', () => {
     expect(repositoriesOf(list)).toEqual(['web', 'server']);
   });
 });
+
+describe('requirement cycles', () => {
+  const a = record('a', { covers: ['M1.R1'], depends: ['M1.R2'] });
+  const b = record('b', { covers: ['M1.R2'], depends: ['M1.R1'] });
+
+  it('does not make a task wait for the requirement it covers itself', () => {
+    const tasks = tasksOf([record('a', { covers: ['M1.R1'], depends: ['M1.R1'] })]);
+    expect(tasks[0].depends).toEqual([]);
+    expect(candidates(tasks).map((task) => task.id)).toEqual(['a']);
+  });
+
+  it('names a stored cycle on each of its tasks and starts none of them', () => {
+    const tasks = tasksOf([a, b]);
+    expect(dependencyWait(tasks[0], tasks)).toBe('waits in a cycle: a -> M1.R2 (b) -> M1.R1 (a)');
+    expect(dependencyWait(tasks[1], tasks)).toBe('waits in a cycle: b -> M1.R1 (a) -> M1.R2 (b)');
+    expect(candidates(tasks)).toEqual([]);
+  });
+
+  it('keeps a task waiting for a requirement that no task covers', () => {
+    const tasks = tasksOf([record('a', { depends: ['M1.R3'] })]);
+    expect(dependencyWait(tasks[0], tasks)).toBe("waits for M1.R3's tasks");
+  });
+});

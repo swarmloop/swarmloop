@@ -241,3 +241,60 @@ describe('BacklogScheduler', () => {
       }));
   });
 });
+
+describe('BacklogScheduler run keys and requirement cycles', () => {
+  it('gives each of two backlogs that start the same slug at the same time its own run', () =>
+    withHarness(async (h) => {
+      const first = await activeBacklog(h, 'one');
+      const second = await activeBacklog(h, 'two');
+      await h.seedTask(first.id, 'setup', { milestoneId: first.milestoneId });
+      await h.seedTask(second.id, 'setup', { milestoneId: second.milestoneId });
+      await h.tick();
+      const keys = [(await h.task(first.id, 'setup')).runKey, (await h.task(second.id, 'setup')).runKey] as string[];
+      expect(new Set(keys).size).toBe(2);
+      expect(keys[1]).toMatch(/--2$/);
+      await h.moveRun(keys[0], { status: 'failed', currentStep: 'implement' });
+      await h.tick();
+      expect(await h.task(first.id, 'setup')).toMatchObject({ status: 'blocked' });
+      expect(await h.task(second.id, 'setup')).not.toMatchObject({ status: 'blocked' });
+    }));
+
+  it('stores the --2 key the server opened when the key is taken, and follows that run', () =>
+    withHarness(async (h) => {
+      const { id, milestoneId } = await activeBacklog(h);
+      const taken = `a-${h.db.clock.now().toString(36)}`;
+      await h.runs.saveRun(h.runs.newWaitingRun(taken, null, 'ada'));
+      await h.seedTask(id, 'a', { milestoneId });
+      await h.tick();
+      expect((await h.task(id, 'a')).runKey).toBe(`${taken}--2`);
+      await h.moveRun(`${taken}--2`, { status: 'failed', currentStep: 'implement' });
+      await h.tick();
+      expect(await h.task(id, 'a')).toMatchObject({ status: 'blocked' });
+    }));
+
+  it('shows a stored cycle through requirements on its tasks and starts none of them', () =>
+    withHarness(async (h) => {
+      const { id, milestoneId } = await activeBacklog(h);
+      await h.seedTask(id, 'a', { milestoneId, covers: ['M1.R1'], depends: ['M1.R2'] });
+      await h.seedTask(id, 'b', { milestoneId, covers: ['M1.R2'], depends: ['M1.R1'] });
+      await h.tick();
+      await h.tick();
+      expect(h.started()).toEqual([]);
+      expect(await h.task(id, 'a')).toMatchObject({
+        status: 'waiting',
+        note: 'waits in a cycle: a -> M1.R2 (b) -> M1.R1 (a)',
+      });
+      expect(await h.task(id, 'b')).toMatchObject({
+        status: 'waiting',
+        note: 'waits in a cycle: b -> M1.R1 (a) -> M1.R2 (b)',
+      });
+    }));
+
+  it('starts a task that depends on a requirement it covers itself', () =>
+    withHarness(async (h) => {
+      const { id, milestoneId } = await activeBacklog(h);
+      await h.seedTask(id, 'a', { milestoneId, covers: ['M1.R1'], depends: ['M1.R1'] });
+      await h.tick();
+      expect(h.started()).toEqual(['a']);
+    }));
+});

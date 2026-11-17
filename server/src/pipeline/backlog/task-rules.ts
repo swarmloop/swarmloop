@@ -1,10 +1,9 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { settled } from '../../contract/subtask';
 import type { BacklogTaskRecord } from '../../history/backlog.repository';
+import { findCycle, REQUIREMENT_REF } from './task-graph';
 
 const SLUG = /^[a-z][a-z0-9-]{0,38}$/;
-/** A requirement ref, `M<milestone number>.R<n>`. */
-export const REQUIREMENT_REF = /^M\d+\.R\d+$/;
 
 /** The fields of a task that these checks read. */
 export type CheckedTask = Pick<BacklogTaskRecord, 'slug' | 'repositories' | 'covers' | 'depends' | 'fixesMain'>;
@@ -13,7 +12,7 @@ export type CheckedTask = Pick<BacklogTaskRecord, 'slug' | 'repositories' | 'cov
 export interface TaskScope {
   repositories: string[];
   refs: string[];
-  others: Pick<BacklogTaskRecord, 'slug' | 'depends'>[];
+  others: (Pick<BacklogTaskRecord, 'slug' | 'depends'> & Partial<Pick<BacklogTaskRecord, 'covers' | 'status'>>)[];
 }
 
 /** A task has started when it holds a run key. */
@@ -65,27 +64,6 @@ function checkList(values: unknown, what: string): string[] {
   return values as string[];
 }
 
-/** The ids of one cycle through the tasks, or null. Requirement refs are ends of the walk. */
-function findCycle(tasks: Pick<BacklogTaskRecord, 'slug' | 'depends'>[]): string[] | null {
-  const byId = new Map(tasks.map((task) => [task.slug, task.depends]));
-  const done = new Set<string>();
-  const walk = (id: string, path: string[]): string[] | null => {
-    if (path.includes(id)) return [...path.slice(path.indexOf(id)), id];
-    if (done.has(id)) return null;
-    for (const next of byId.get(id) ?? []) {
-      const found = walk(next, [...path, id]);
-      if (found) return found;
-    }
-    done.add(id);
-    return null;
-  };
-  for (const task of tasks) {
-    const found = walk(task.slug, []);
-    if (found) return found;
-  }
-  return null;
-}
-
 /** A task in a milestone, or run now, is started on its repositories, so it names at least one. A backlog item may wait without one until it is planned. */
 export function checkRunnable(task: Pick<BacklogTaskRecord, 'slug' | 'repositories' | 'milestoneId' | 'runNow'>): void {
   if ((task.milestoneId !== null || task.runNow) && task.repositories.length === 0) {
@@ -117,6 +95,10 @@ export function checkTasks(tasks: CheckedTask[], scope: TaskScope): void {
     }
   }
   const batch = new Set(tasks.map((task) => task.slug));
-  const cycle = findCycle([...scope.others.filter((task) => !batch.has(task.slug)), ...tasks]);
-  if (cycle) throw new BadRequestException(`the tasks depend on each other in a circle: ${cycle.join(' -> ')}`);
+  // A settled task holds nothing up, so only unsettled ones can close a cycle, as in readiness.
+  const open = scope.others.filter(
+    (task) => !batch.has(task.slug) && !(task.status && settled({ status: task.status })),
+  );
+  const cycle = findCycle([...open, ...tasks]);
+  if (cycle) throw new BadRequestException(`the tasks depend on each other in a circle: ${cycle}`);
 }

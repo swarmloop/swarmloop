@@ -186,11 +186,17 @@ export class BacklogScheduler implements OnModuleDestroy {
     }
   }
 
-  /** Saves the key of the run, then starts it. A start that throws keeps the key, so the next tick asks the server whether it arrived. */
+  /** Saves the key of the run, then starts it, and keeps the key the server opened when it differs. A start that throws keeps the first key, so the next tick asks the server whether it arrived. */
   private async start(pass: BacklogPass, task: BacklogTask, key: string): Promise<void> {
     await this.update(pass, task.id, { runKey: key });
     try {
-      await this.port.start({ key, prompt: task.description, projects: task.repositories, owner: pass.owner });
+      const opened = await this.port.start({
+        key,
+        prompt: task.description,
+        projects: task.repositories,
+        owner: pass.owner,
+      });
+      await this.update(pass, task.id, { runKey: opened });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       await this.update(pass, task.id, { note: `could not start: ${reason}; next try on the next tick` });

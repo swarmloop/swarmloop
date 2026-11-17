@@ -10,7 +10,7 @@ export interface BacklogStart {
   owner: string;
 }
 
-type BacklogStartFunction = (start: BacklogStart) => Promise<void>;
+type BacklogStartFunction = (start: BacklogStart) => Promise<string>;
 
 /** The start of a task's run. The API layer registers the function, so the pipeline layer does not import it. */
 @Injectable()
@@ -21,7 +21,8 @@ export class BacklogStartPort {
     this.starter = starter;
   }
 
-  start(start: BacklogStart): Promise<void> {
+  /** Resolves to the key of the run the server opened, which differs from the asked key when that key was taken. */
+  start(start: BacklogStart): Promise<string> {
     if (!this.starter) {
       return Promise.reject(new SwarmloopError('the server cannot start a backlog task here'));
     }

@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { nextSessionKey } from '../../core/pipeline-result';
 import type { MergeMode, MilestoneStatus, RequirementStatus } from '../../contract/backlog';
 import type { PipelineCheck } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
@@ -98,8 +99,13 @@ export async function backlogHarness(parallel = 3) {
   port.register(async (start) => {
     starts.push(start);
     if (mode.current === 'lost') throw new Error('start request failed');
-    await runs.saveRun(runs.newWaitingRun(start.key, null, start.owner));
+    const key = nextSessionKey(
+      start.key,
+      (await runs.listRuns()).map((run) => run.key),
+    );
+    await runs.saveRun(runs.newWaitingRun(key, null, start.owner));
     if (mode.current === 'timeout') throw new Error('start request timed out');
+    return key;
   });
   let position = 0;
   const { actions, stops } = actionParts(db, config);

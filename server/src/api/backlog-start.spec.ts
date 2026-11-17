@@ -74,6 +74,30 @@ describe('BacklogStart', () => {
   });
 });
 
+describe('BacklogStart key', () => {
+  it('returns the key of the session the server opened', async () => {
+    const test = doubles();
+    test.runs.plan.mockResolvedValue({
+      key: 'task-1--2',
+      prompt: 'Ship it',
+      phases: [],
+      phasesGiven: false,
+      projects: ['web'],
+    });
+    const port = new BacklogStartPort();
+    new BacklogStart(
+      port,
+      test.runs as unknown as RunCommandsService,
+      test.commands as unknown as CommandService,
+      test.settings as unknown as UserSettingRepository,
+    ).onModuleInit();
+    await expect(port.start({ key: 'task-1', prompt: 'Ship it', projects: ['web'], owner: 'ada' })).resolves.toBe(
+      'task-1--2',
+    );
+    expect(test.commands.submit.mock.calls[0]?.[1]).toBe('task-1--2');
+  });
+});
+
 describe('BacklogStartPort', () => {
   it('refuses a start until the API registers its function', async () => {
     await expect(new BacklogStartPort().start({ key: 'a', prompt: 'p', projects: [], owner: 'ada' })).rejects.toThrow(
