@@ -83,6 +83,10 @@ export class RunEntity {
   @Column({ name: 'done_at', type: 'text', nullable: true })
   doneAt!: string | null;
 
+  /** When a person took the run over from `machine`. Null for a run nobody took over. */
+  @Column({ name: 'owner_since', type: 'text', nullable: true })
+  ownerSince!: string | null;
+
   @Column({ type: 'text', nullable: true })
   prompt!: string | null;
 

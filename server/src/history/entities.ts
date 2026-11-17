@@ -8,6 +8,7 @@ import {
   RequirementEntity,
 } from './backlog.entities';
 import { CredentialCooldownEntity } from './credential-cooldown.entity';
+import { PersonEntity, PersonalTokenEntity } from './people-entities';
 import { RunEntity } from './run.entity';
 import { FlakyTestEntity } from './flaky-test.entity';
 import { SessionEntity } from './session.entity';
@@ -353,4 +354,6 @@ export const entities = [
   BacklogTaskEntity,
   DecisionEntity,
   BacklogEventEntity,
+  PersonEntity,
+  PersonalTokenEntity,
 ];
