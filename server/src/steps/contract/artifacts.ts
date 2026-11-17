@@ -215,7 +215,7 @@ export const ARTIFACTS = {
   }),
   ...SPLIT_ARTIFACTS,
   requirementList: artifact('requirement_list', {
-    writers: ['research', 'plan-improve'],
+    writers: ['research', 'plan', 'plan-improve'],
     readers: ['research', 'plan', 'plan-improve', 'code-review'],
     codec: jsonArrayCodec<Requirement>(),
     summarize: (list) => listSummary(list.length, 'requirements', list[0]?.text),

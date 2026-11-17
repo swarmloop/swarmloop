@@ -25,6 +25,8 @@ import { RunRebase } from '../steps/run-rebase';
 import { CommandService } from './command.service';
 import { SubtaskWorktrees } from './subtask-worktrees';
 import { SubtaskAsks } from './subtask-asks';
+import { PlanConversation } from '../steps/shared/plan-conversation';
+import { PlanChatStore } from '../history/plan-chat.store';
 
 /** What the api layer does for the subtasks of a parent. It registers itself at init, so `pipeline` never imports `api`. */
 interface SubtaskStarter {
@@ -53,10 +55,17 @@ export class SubtaskPort extends SubtaskOps {
     @Optional() publisher?: RebasedPublisher,
     @Optional() private readonly rebaser?: RunRebase,
     @Optional() private readonly reportRefresh?: ReportRefresh,
+    @Optional() conversation?: PlanConversation,
   ) {
     super();
     this.worktrees = new SubtaskWorktrees(config, clock, publisher);
-    this.asks = new SubtaskAsks(documents, commands, launcher, visits, config, clock);
+    this.asks = new SubtaskAsks(
+      documents,
+      commands,
+      conversation ??
+        new PlanConversation(launcher, visits, documents, config, clock, new PlanChatStore(runs, documents)),
+      visits,
+    );
   }
 
   register(starter: SubtaskStarter): void {

@@ -1,6 +1,6 @@
 import { agentFor } from '../../config/agents';
 import type { RunEntity } from '../../history/entities';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { AgentProfile, ArtifactValue, InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
@@ -16,6 +16,7 @@ import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { projectRules } from '../shared/project-rules';
 import { AgentLauncher } from '../shared/agent-launcher';
+import { PlanChatStore } from '../../history/plan-chat.store';
 import { appendImpact, withHandoff, withImpact } from '../shared/handoff';
 import { PLAN_EXECUTION_RULE, skillPrompt } from '../shared/skill-prompt';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
@@ -78,7 +79,12 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.requirementCoverage,
   ];
 
-  constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
+  constructor(
+    kernel: StepKernel,
+    sandbox: SandboxService,
+    launcher: AgentLauncher,
+    @Optional() private readonly planChat?: PlanChatStore,
+  ) {
     super(kernel, sandbox, launcher);
   }
 
@@ -188,12 +194,13 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     const graph = isSplit(value) ? buildGraph(value) : null;
     const items = graph ? planItemsFromTasks(graph.tasks) : value.plan;
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
+    const route = this.epicRoute(
+      ctx.opened.run,
+      !!graph,
+      (agentResult.agent ?? this.profile(this.config.env, ctx.opened.run)).effort,
+    );
     return {
-      route: this.epicRoute(
-        ctx.opened.run,
-        !!graph,
-        (agentResult.agent ?? this.profile(this.config.env, ctx.opened.run)).effort,
-      ),
+      route: await this.takingMessage(route, ctx.opened.run),
       summary: `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
       outputs: [
         { artifact: ARTIFACTS.requirements, value: withPlan(requirements, next) },
@@ -204,6 +211,18 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       handoff:
         [renderSummary(value.summary, next.items).trimEnd(), ...gapLines(coverage?.problems ?? [])].join('\n') + '\n',
     };
+  }
+
+  /**
+   * A plan that checked ok while a person's message waits goes back to the plan step, whose next visit takes it. The
+   * plan step takes it in its own chat, so a run without that chat goes on and the message waits.
+   */
+  private async takingMessage(route: Route, run: RunEntity): Promise<Route> {
+    if (route.to !== 'next' || ((await this.planChat?.pending(run.key))?.length ?? 0) === 0) return route;
+    const { runtime } = agentFor(this.config.env, run, 'plan');
+    return (await resumableChat(root(this.config), run.key, 'plan', runtime))?.chatId
+      ? { to: 'jump', step: 'plan' }
+      : route;
   }
 
   /**

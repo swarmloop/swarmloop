@@ -37,6 +37,15 @@ function seriesOf(list: readonly Requirement[]): string {
   return list.some((requirement) => requirement.id === 'T1') ? 'T' : 'R';
 }
 
+/** The id the list gives its next requirement: one more than its highest number in its series. */
+export function nextRequirementId(list: readonly Requirement[]): string {
+  const series = seriesOf(list);
+  const numbers = list
+    .filter((requirement) => requirement.id.startsWith(series))
+    .map((requirement) => Number(requirement.id.slice(series.length)));
+  return `${series}${Math.max(0, ...numbers) + 1}`;
+}
+
 /**
  * Applies changes to a list: an id the list holds gets its text corrected, the next id of the list's series is added,
  * and any other id or an empty text is rejected. An id is never removed or renumbered.
@@ -44,14 +53,10 @@ function seriesOf(list: readonly Requirement[]): string {
 export function mergeRequirements(list: readonly Requirement[], changes: readonly Requirement[]): MergedRequirements {
   const merged = list.map((requirement) => ({ ...requirement }));
   const problems: string[] = [];
-  const series = seriesOf(list);
   for (const change of changes) {
     const text = change.text.trim();
     const existing = merged.find((requirement) => requirement.id === change.id);
-    const numbers = merged
-      .filter((requirement) => requirement.id.startsWith(series))
-      .map((requirement) => Number(requirement.id.slice(series.length)));
-    const next = `${series}${Math.max(0, ...numbers) + 1}`;
+    const next = nextRequirementId(merged);
     if (text === '') {
       problems.push(`${change.id} has no text`);
     } else if (existing) {

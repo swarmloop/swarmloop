@@ -1,25 +1,12 @@
-import { join } from 'path';
 import { Logger } from '@nestjs/common';
-import { agentFor } from '../config/agents';
-import type { AppConfig } from '../config/env';
-import { resumableChat } from '../agent/agent-session';
-import { visitStatus } from '../core/pipeline-result';
-import { SwarmloopError } from '../core/swarmloop-error';
-import type { Clock } from '../core/clock';
-import { mountsForStep, repoNames } from '../git/repo-names';
-import { root } from '../history/run-paths';
+import type { PlanConversation } from '../steps/shared/plan-conversation';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
 import type { Subtask } from '../contract/subtask';
 import type { DocumentRepository } from '../history/document.repository';
 import type { VisitRepository } from '../history/visit.repository';
-import type { LaunchResult } from '../steps/shared/result-exchange';
-import type { AgentLauncher } from '../steps/shared/agent-launcher';
-import { agentFailure } from '../steps/shared/agent-result';
 import { openQuestions, unanswered } from '../steps/shared/answers';
 import { storedAsks } from './stored-research';
-import { modelVisit } from '../steps/shared/model-visit';
-import { StepStopped } from '../agent/step-stopped';
 import { subtaskAsks } from '../steps/plan/plan.prompts';
 import { subtaskAnswer, type SubtaskAnswerResult } from '../agent-result/definitions/subtask-answer';
 import type { OpenedStep } from '../steps/step-run';
@@ -36,10 +23,8 @@ export class SubtaskPlannerAnswer {
   constructor(
     private readonly documents: DocumentRepository,
     private readonly commands: CommandService,
-    private readonly launcher: AgentLauncher,
+    private readonly conversation: PlanConversation,
     private readonly visits: VisitRepository,
-    private readonly config: AppConfig,
-    private readonly clock: Clock,
   ) {}
 
   async asking(run: RunEntity): Promise<boolean> {
@@ -99,63 +84,19 @@ export class SubtaskPlannerAnswer {
    * already holds the parent, so nothing else uses the chat meanwhile. Null when the planner gave no usable answer.
    */
   async askAbout(opened: OpenedStep, task: Subtask, questions: string, contract: string): Promise<string | null> {
-    const parent = opened.run;
-    const env = this.config.env;
-    const { runtime, model, ...effort } = agentFor(env, parent, 'plan');
-    const dir = root(this.config);
-    const chat = await resumableChat(dir, parent.key, 'plan', runtime);
-    if (!chat?.chatId) return null;
-    const prompt = subtaskAsks(task, questions, contract, chat.resultName ?? null);
-    let result: LaunchResult | null = null;
-    let failure: string | null = null;
-    try {
-      const names = repoNames((await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind)) ?? '');
-      result = await this.launcher.launch({
-        root: dir,
-        run: parent,
-        key: parent.key,
-        step: 'plan',
-        mode: 'plan',
-        tools: 'plan',
-        runtime,
-        model,
-        ...effort,
-        timeLimitMs: env.PLAN_TIMEOUT_MS,
-        prompt,
-        result: subtaskAnswer,
-        workspace: join(dir, 'worktrees', parent.key),
-        mounts: mountsForStep(dir, parent.key, names, parent.targetPath),
-      });
-      failure = agentFailure(result, 'plan', 'plan');
-    } catch (error) {
-      if (error instanceof StepStopped) throw error;
-      failure = error instanceof SwarmloopError ? error.message : 'plan failed';
-    }
-    const given = failure ? null : (result?.resultValue as SubtaskAnswerResult | undefined);
-    const answer = (given?.answer ?? '').trim();
-    await this.visits.finishVisit(
-      parent,
-      modelVisit({
-        opened,
-        now: this.clock.now(),
-        step: 'plan',
-        mode: 'plan',
-        runtime,
-        model,
-        ...effort,
-        agent: result,
-        prompt,
-        status: visitStatus(answer ? 'ok' : 'failed'),
-        exitCode: answer ? 0 : 1,
-      }),
+    const visit = await this.conversation.visit(
+      opened,
+      (received) => subtaskAsks(task, questions, contract, received),
+      subtaskAnswer,
+      (value) => ((value as SubtaskAnswerResult).answer.trim() ? [] : ['answer: give the decisions']),
     );
-    if (given && answer) {
-      await this.documents.putDocument(
-        parent,
-        ARTIFACTS.subtaskAnswerResult.kind,
-        ARTIFACTS.subtaskAnswerResult.format(given),
-      );
-    }
-    return answer || null;
+    if (!visit) return null;
+    const given = visit.value as SubtaskAnswerResult;
+    await this.documents.putDocument(
+      opened.run,
+      ARTIFACTS.subtaskAnswerResult.kind,
+      ARTIFACTS.subtaskAnswerResult.format(given),
+    );
+    return given.answer.trim();
   }
 }

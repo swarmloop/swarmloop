@@ -39,6 +39,28 @@ export class PlanChatStore {
     );
   }
 
+  /** The person's messages that wait for the planner, oldest first. */
+  async pending(key: string): Promise<PlanChatEntry[]> {
+    const { entries } = await this.read(key);
+    return entries
+      .filter((entry) => entry.role === 'person' && entry.state === 'pending')
+      .sort((a, b) => a.at.localeCompare(b.at));
+  }
+
+  /** Marks the entries with these keys as taken. A taken or unknown key is left alone, and nothing is written for none. */
+  markTaken(key: string, entryKeys: readonly string[]): Promise<void> {
+    return this.change(key, (log) =>
+      log.entries.some((entry) => entry.state === 'pending' && entryKeys.includes(entry.key))
+        ? {
+            ...log,
+            entries: log.entries.map((entry) =>
+              entry.state === 'pending' && entryKeys.includes(entry.key) ? { ...entry, state: 'taken' } : entry,
+            ),
+          }
+        : log,
+    );
+  }
+
   /** Runs after every earlier change of the same run, and ends before the returned promise does. */
   private change(key: string, edit: (log: PlanChatLog) => PlanChatLog): Promise<void> {
     const run = (this.tails.get(key) ?? Promise.resolve()).then(async () => {

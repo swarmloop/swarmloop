@@ -258,6 +258,7 @@ export default tseslint.config(
       'server/src/steps/shared/run-report.ts', // reads the stored parts of the report the merge request shows
       'server/src/steps/shared/rebase-journal.ts', // keeps the rebase journal as a document of the run
       'server/src/steps/shared/report-refresh.ts', // a step end refreshes the merge request report of a run with no visit of its own to write through
+      'server/src/steps/shared/plan-conversation.ts', // a planner visit outside the plan step reads the repos of the run it mounts
       'server/src/steps/merge-request/merge-request-draft.ts', // a Rebase or Replay turns the merge requests back into drafts with no visit to write through
     ],
     ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],
