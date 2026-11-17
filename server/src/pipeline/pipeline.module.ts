@@ -59,6 +59,7 @@ import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
+import { PlanConversation } from '../steps/shared/plan-conversation';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 @Module({
@@ -107,6 +108,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     MergeWatch,
     Reconciler,
     PlannerTurns,
+    PlanConversation,
     BacklogActionSupport,
     BacklogTaskActions,
     BacklogActions,

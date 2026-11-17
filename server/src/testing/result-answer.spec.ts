@@ -1,3 +1,4 @@
+import { planChatFollowUp } from '../steps/plan/plan.prompts';
 import Joi from 'joi';
 import { readResult } from '../agent-result/read-result';
 import { defineResult } from '../agent-result/result-definition';
@@ -27,5 +28,13 @@ describe('BlockAgentRunner', () => {
     expect(texts[1]).toBe('prose only');
     expect(readResult(definition, texts[2])).toEqual({ ok: true, value: { items: ['default'] } });
     expect(runner.steps).toEqual(['plan', 'plan', 'plan']);
+  });
+
+  it('answers a plan visit for a person with a reply that keeps the plan, and any other plan visit with the plan', async () => {
+    const runner = new BlockAgentRunner({}, { plan: { items: ['default'] } });
+    const person = await runner.run({ step: 'plan', prompt: planChatFollowUp([{ text: 'hello' }], 'RESULT') });
+    const first = await runner.run({ step: 'plan', prompt: 'plan it' });
+    expect(person.responseText).toContain('"reply":"Noted."');
+    expect(first.responseText).toContain('"items":["default"]');
   });
 });

@@ -1,9 +1,7 @@
-import type { AppConfig } from '../config/env';
-import type { Clock } from '../core/clock';
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
 import type { VisitRepository } from '../history/visit.repository';
-import type { AgentLauncher } from '../steps/shared/agent-launcher';
+import type { PlanConversation } from '../steps/shared/plan-conversation';
 import type { OpenedStep } from '../steps/step-run';
 import type { Subtask } from '../contract/subtask';
 import type { CommandService } from './command.service';
@@ -20,12 +18,10 @@ export class SubtaskAsks {
   constructor(
     private readonly documents: DocumentRepository,
     private readonly commands: CommandService,
-    launcher: AgentLauncher,
+    conversation: PlanConversation,
     private readonly visits: VisitRepository,
-    config: AppConfig,
-    clock: Clock,
   ) {
-    this.planner = new SubtaskPlannerAnswer(documents, commands, launcher, visits, config, clock);
+    this.planner = new SubtaskPlannerAnswer(documents, commands, conversation, visits);
   }
 
   asking(run: RunEntity): Promise<boolean> {

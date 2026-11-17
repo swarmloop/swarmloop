@@ -44,7 +44,7 @@ describe('artifact catalog', () => {
   it('registers the requirement list and its coverage with their writers and readers', () => {
     expect(ARTIFACTS.requirementList).toMatchObject({
       kind: 'requirement_list',
-      writers: ['research', 'plan-improve'],
+      writers: ['research', 'plan', 'plan-improve'],
       readers: ['research', 'plan', 'plan-improve', 'code-review'],
     });
     expect(ARTIFACTS.requirementCoverage).toMatchObject({

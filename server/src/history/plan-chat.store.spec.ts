@@ -79,4 +79,24 @@ describe('PlanChatStore', () => {
       await db.close();
     }
   });
+
+  it('lists pending person messages in order of time, and marks them taken once', async () => {
+    const db = await repositoryDatabase();
+    try {
+      await db.app.get(RunRepository).openWaiting('run-1', '/target');
+      const store = db.app.get(PlanChatStore);
+      await store.appendEntry('run-1', entry('message-late', '2026-01-01T00:00:05.000Z'));
+      await store.appendEntry('run-1', entry('message-early', '2026-01-01T00:00:01.000Z'));
+      await store.appendEntry('run-1', { ...entry('reply-1', '2026-01-01T00:00:02.000Z'), role: 'planner' });
+      expect((await store.pending('run-1')).map((item) => item.key)).toEqual(['message-early', 'message-late']);
+      await store.markTaken('run-1', ['message-early', 'unknown']);
+      expect((await store.pending('run-1')).map((item) => item.key)).toEqual(['message-late']);
+      const once = await store.read('run-1');
+      await store.markTaken('run-1', ['message-early']);
+      expect(await store.read('run-1')).toEqual(once);
+      expect(once.entries.find((item) => item.key === 'message-early')?.state).toBe('taken');
+    } finally {
+      await db.close();
+    }
+  });
 });
