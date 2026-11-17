@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,6 +62,18 @@ describe('DashboardShell readiness', () => {
     renderShell();
     await screen.findByText('page content');
     expect(screen.getByRole('button', { name: 'New run' })).toBeEnabled();
+  });
+
+  it('shows Needs attention on Connections in the open account menu when a readiness item fails', async () => {
+    vi.mocked(getSession).mockResolvedValue({ user: 'octocat', provider: 'github' });
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
+      checkedAt: null,
+    });
+    renderShell();
+    await userEvent.setup({ delay: null }).click(await screen.findByRole('button', { name: /octocat/ }));
+
+    expect(await screen.findByRole('menuitem', { name: 'Connections' })).toHaveTextContent('Needs attention');
   });
 
   it.each(['/', '/runs/x'])('shows the readiness status in the header on %s', async (path) => {

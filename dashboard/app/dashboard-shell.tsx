@@ -17,6 +17,7 @@ import { NewRunDialog } from '../features/new-run';
 import { ReadinessStatus, useReadiness } from '../features/readiness';
 import { RemoveRunDialog, RunColumn, useRuns } from '../features/runs';
 import { Account, PauseBanner, Shell, useNewRun } from '../features/shell';
+import { hostOf } from './login/hosts';
 
 const DrawerWidth = 280;
 
@@ -157,7 +158,7 @@ function DashboardFrame({
           </Suspense>
         </Box>
         <Box sx={{ borderTop: 1, borderColor: 'divider' }}>
-          <Account />
+          <Account hostOf={hostOf} needsAttention={blocker !== null} />
         </Box>
       </Drawer>
       <Box component="main" sx={{ ml: `${DrawerWidth}px`, minHeight: '100vh', minWidth: 0 }}>
