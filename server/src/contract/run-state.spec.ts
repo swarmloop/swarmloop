@@ -10,6 +10,7 @@ import {
   RUN_STATES,
   STATE_WORDS,
   stateWord,
+  taskStateWord,
   TIMED_RETRY_CODES,
 } from './run-state';
 
@@ -209,6 +210,44 @@ describe('stateWord', () => {
       'stopping',
       'recovering',
     ]);
+  });
+});
+
+describe('taskStateWord', () => {
+  const time = (iso: string): string => `T(${iso})`;
+
+  it('gives a task with a running run the word of that run', () => {
+    const view = taskStateWord({ status: 'running', run: { state: 'running' } }, time);
+
+    expect(view).toMatchObject({ word: 'Working', tone: 'working', icon: 'working' });
+  });
+
+  it('gives a task whose run waits for a person the run list word', () => {
+    const run = { state: 'waiting' as const, stateReason: { code: NEEDS_ANSWERS, message: 'why' } };
+
+    expect(taskStateWord({ status: 'waiting', run }, time)).toMatchObject({ word: 'Waiting for you', tone: 'person' });
+  });
+
+  it.each(['pending', 'waiting'] as const)(
+    'reads a %s task with no run as waiting to start, in the working tone',
+    (status) => {
+      expect(taskStateWord({ status }, time)).toEqual({
+        word: 'Waiting to start',
+        tone: 'working',
+        icon: 'pending',
+        tip: '',
+      });
+    },
+  );
+
+  it.each([
+    ['blocked', 'Blocked', 'error'],
+    ['skipped', 'Skipped', 'neutral'],
+    ['merged', 'Merged', 'done'],
+    ['green', 'Queued to merge into the epic', 'working'],
+    ['running', 'Working', 'working'],
+  ] as const)('reads a %s task with no run as %s', (status, word, tone) => {
+    expect(taskStateWord({ status }, time)).toMatchObject({ word, tone, tip: '' });
   });
 });
 

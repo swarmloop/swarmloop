@@ -8,10 +8,11 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { TaskEntry } from '@contract/api';
 import { interruptionSentence } from '@contract/interruption';
+import { taskStateWord } from '@contract/run-state';
 import { ConfirmDialog } from '../../../shell';
 import { duration, localTime, money } from '../../../../lib/format';
+import { RunStateIcon, toneColor } from '../../run-state-word';
 import { TaskDetails } from './task-details';
-import { TASK_STATUS } from './task-status';
 
 /** The row's button: the plan before the task has a result, the changes after. */
 function detailsLabel(task: TaskEntry): string {
@@ -31,15 +32,16 @@ export function TaskRow({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const [skipping, setSkipping] = useState(false);
-  const { Icon, color, word } = TASK_STATUS[task.status];
+  const word = taskStateWord(task, localTime);
+  const color = toneColor(word.tone);
   const step = task.status === 'running' && task.run ? ` · ${task.run.currentStep.replaceAll('-', ' ')}` : '';
   const hasDetails = task.files.length > 0 || task.proof !== '' || task.run?.result !== undefined;
   const summary = (
     <>
       <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color, flexShrink: 0 }}>
-        <Icon sx={{ fontSize: 16 }} />
+        <RunStateIcon view={word} size={16} />
         <Typography component="span" variant="caption" sx={{ color }}>
-          {word}
+          {word.word}
           {step}
         </Typography>
       </Box>

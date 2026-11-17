@@ -19,6 +19,9 @@ export const RUN_STATES = [
 ] as const;
 export type RunState = (typeof RUN_STATES)[number];
 
+/** `pending` is what the plan writes; every reader sees it as `waiting`. `green`: the subtask is done, its merge request into the feature branch has green CI. */
+export type SubtaskStatus = 'pending' | 'waiting' | 'running' | 'green' | 'merged' | 'blocked' | 'skipped';
+
 /** What a person may ask of a run in its state. The server decides, the dashboard follows. */
 export type RunAction = 'resume' | 'replay' | 'rebase' | 'stop' | 'answer';
 
@@ -193,6 +196,7 @@ export type StateIcon =
   | 'retrying'
   | 'subtasks'
   | 'queued'
+  | 'pending'
   | 'blocked'
   | 'failed'
   | 'stopped'
@@ -282,6 +286,17 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
 
 const QUEUED: WordShape = { word: 'Queued to merge into the epic', tone: 'working', icon: 'queued' };
 
+/** How a task that has no run reads. Waiting for another task is the server's turn. */
+const NOT_STARTED: Readonly<Record<SubtaskStatus, WordShape>> = {
+  pending: { word: 'Waiting to start', tone: 'working', icon: 'pending' },
+  waiting: { word: 'Waiting to start', tone: 'working', icon: 'pending' },
+  blocked: STATE_WORDS.blocked,
+  skipped: STATE_WORDS.skipped,
+  merged: STATE_WORDS.merged,
+  green: QUEUED,
+  running: STATE_WORDS.running,
+};
+
 function kindOf(code: string): ReasonKind {
   return (REASON_WORDS as Readonly<Record<string, ReasonKind | undefined>>)[code] ?? 'state';
 }
@@ -352,4 +367,15 @@ export function stateWord(
 /** Whether a run reads `Waiting for you`: it waits for a person, not for something that ends by itself. */
 export function needsPerson(state: RunState, reason: StateReason | null | undefined): boolean {
   return stateWord(state, reason ?? null, {}, (iso) => iso).tone === 'person';
+}
+
+/** The word of a task row: its run's word, the one the run list shows, or the not-started word when it has no run. */
+export function taskStateWord(
+  task: { status: SubtaskStatus; run?: { state: RunState; stateReason?: StateReason | null } },
+  time: (iso: string) => string,
+): StateWord {
+  if (task.run) {
+    return stateWord(task.run.state, task.run.stateReason ?? null, { subtask: true }, time);
+  }
+  return { ...NOT_STARTED[task.status], tip: '' };
 }

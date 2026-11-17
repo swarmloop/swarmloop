@@ -9,6 +9,7 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
 import ChatBubbleOutline from '@mui/icons-material/ChatBubbleOutline';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
+import HourglassEmpty from '@mui/icons-material/HourglassEmpty';
 import HighlightOff from '@mui/icons-material/HighlightOff';
 import PauseCircleOutline from '@mui/icons-material/PauseCircleOutline';
 import Replay from '@mui/icons-material/Replay';
@@ -35,6 +36,7 @@ const ICONS: Record<StateIcon, typeof Autorenew> = {
   retrying: Replay,
   subtasks: AccountTree,
   queued: CallMerge,
+  pending: HourglassEmpty,
   blocked: Block,
   failed: ErrorOutline,
   stopped: StopCircleOutlined,
