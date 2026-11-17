@@ -56,6 +56,15 @@ describe('PersonalTokens', () => {
       expect(await tokens.personOf(expiring.value)).toBeNull();
     }));
 
+  it('names the person and name of a live token and gives null for an unknown or expired one', () =>
+    withTokens({}, async (tokens, db) => {
+      const { id, value } = await tokens.create('ann', 'laptop', 30);
+      expect(await tokens.currentOf(value)).toEqual({ id, login: 'ann', name: 'laptop' });
+      expect(await tokens.currentOf('sl_unknown')).toBeNull();
+      db.clock.advance(30 * DAY);
+      expect(await tokens.currentOf(value)).toBeNull();
+    }));
+
   it('updates last used at most once a minute', () =>
     withTokens({}, async (tokens, db) => {
       const { value } = await tokens.create('ann', 'laptop', null);
