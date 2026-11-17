@@ -12,7 +12,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { root } from '../../history/run-paths';
 import { VisitRepository } from '../../history/visit.repository';
-import { isSubtask } from '../../contract/subtask';
+import { isSubtask, type Subtask } from '../../contract/subtask';
 import type { Requirement } from '../../contract/requirement-list';
 import { completePlan, type PlanResult } from '../../agent-result/definitions/plan';
 import { replyHasPlan, planReplyFor, type PlanReplyResult } from '../../agent-result/definitions/plan-reply';
@@ -21,13 +21,25 @@ import { ARTIFACTS } from '../contract/artifacts';
 import type { ArtifactValue } from '../contract/step-contract';
 import type { ModelStepContext } from '../model-step-context';
 import { planFields, readPlan, renderSummary, withPlan } from '../plan/plan-record';
-import { buildGraph, isSplit, planItemsFromTasks, splitLimits, splitOutputs } from '../plan/plan-tasks';
+import { coverageUnits } from '../plan/plan-coverage';
+import {
+  addTasksCheck,
+  buildGraph,
+  isSplit,
+  planItemsFromTasks,
+  splitLimits,
+  splitOutputs,
+  startedTasks,
+  withAddedTasks,
+  type StoredGraph,
+} from '../plan/plan-tasks';
 import { improveUnits } from '../plan-improve/plan-improve-coverage';
 import type { OpenedStep } from '../step-run';
 import { agentFailure } from './agent-result';
 import { AgentLauncher } from './agent-launcher';
 import { correctCoverage } from './coverage-correction';
 import { currentPlan } from './current-plan';
+import { storedGraph } from './stored-graph';
 import { modelVisit } from './model-visit';
 import { planErrors } from './plan-errors';
 import { buildRevision } from './plan-revision';
@@ -129,7 +141,8 @@ export class PlanConversation {
       await this.record(ctx, reply, reason, null);
       return { outputs: [] };
     }
-    const coverage = grown.length > 0 ? await this.checkedCoverage(ctx, reply, grown) : null;
+    const stored = await this.startedGraph(ctx);
+    const coverage = grown.length > 0 ? await this.checkedCoverage(ctx, reply, grown, stored) : null;
     const final = coverage?.value ?? reply;
     const kept = [
       ...(grew ? [{ artifact: ARTIFACTS.requirementList, value: grown }] : []),
@@ -141,7 +154,7 @@ export class PlanConversation {
       await this.record(ctx, reply, reason, null);
       return { outputs: kept };
     }
-    const changed = await this.changedPlan(ctx, completePlan(final), reply, reason);
+    const changed = await this.changedPlan(ctx, completePlan(final), reply, reason, stored);
     return { outputs: [...changed.outputs, ...kept], handoff: changed.handoff };
   }
 
@@ -151,9 +164,10 @@ export class PlanConversation {
     result: PlanResult,
     reply: PlanReplyResult,
     reason: string,
+    stored: StoredGraph | null,
   ): Promise<Required<AppliedReply>> {
     const run = ctx.opened.run;
-    const graph = isSplit(result) ? buildGraph(result) : null;
+    const graph = stored ? this.merged(stored, result) : isSplit(result) ? buildGraph(result) : null;
     const body = (await ctx.reread(ARTIFACTS.requirements)) ?? '';
     const before = readPlan(body);
     const fields = graph
@@ -164,7 +178,7 @@ export class PlanConversation {
     return {
       outputs: [
         { artifact: ARTIFACTS.requirements, value: withPlan(body, fields) },
-        { artifact: ARTIFACTS.planResult, value: result },
+        { artifact: ARTIFACTS.planResult, value: graph && stored ? withTasksOf(result, graph.tasks) : result },
         ...(splitLimits(run, this.config.env.SPLIT_MAX_TASKS).maySplit ? splitOutputs(graph) : []),
       ],
       handoff: renderSummary(result.summary, fields.items),
@@ -172,24 +186,49 @@ export class PlanConversation {
   }
 
   /** The reply checked against the requirement list as it grew: a gap goes back once, in the same chat, with the same check. */
-  private async checkedCoverage(ctx: ModelStepContext, reply: PlanReplyResult, grown: Requirement[]) {
+  private async checkedCoverage(
+    ctx: ModelStepContext,
+    reply: PlanReplyResult,
+    grown: Requirement[],
+    stored: StoredGraph | null,
+  ) {
     const run = ctx.opened.run;
     const limits = splitLimits(run, this.config.env.SPLIT_MAX_TASKS);
     const subtask = isSubtask(run);
-    const stored = (await ctx.reread(ARTIFACTS.requirementCoverage)) ?? [];
+    const coverage = (await ctx.reread(ARTIFACTS.requirementCoverage)) ?? [];
     const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     return correctCoverage(
       ctx,
       {
         mounts: mountsForStep(root(this.config), run.key, names, run.targetPath),
-        result: planReplyFor({ split: limits.maySplit, subtask }),
-        check: (value) => planErrors(completePlan(value as Partial<PlanResult>), limits, subtask),
+        result: planReplyFor({ split: limits.maySplit, subtask, ...(stored ? { addTasksOnly: true } : {}) }),
+        check: stored
+          ? addTasksCheck(stored, limits)
+          : (value) => planErrors(completePlan(value as Partial<PlanResult>), limits, subtask),
         read: (value) => ({ ...(value as PlanReplyResult), requirements: reply.requirements }),
         listOf: () => grown,
-        unitsOf: (value) => improveUnits(completePlan(value), stored),
+        unitsOf: (value) =>
+          stored
+            ? coverageUnits({ ...completePlan({}), tasks: this.merged(stored, completePlan(value)).tasks })
+            : improveUnits(completePlan(value), coverage),
       },
       reply,
     );
+  }
+
+  /** The stored graph of a split run whose tasks started: a reply to it only adds tasks. Null for any other run. */
+  private async startedGraph(ctx: ModelStepContext): Promise<StoredGraph | null> {
+    const run = ctx.opened.run;
+    if (!splitLimits(run, this.config.env.SPLIT_MAX_TASKS).maySplit) return null;
+    const stored = await storedGraph(ctx);
+    return startedTasks(stored.tasks).length > 0 ? stored : null;
+  }
+
+  /** The stored graph with the tasks of a checked reply appended. */
+  private merged(stored: StoredGraph, reply: PlanResult) {
+    const { graph, errors } = withAddedTasks(stored, reply, { maySplit: true, maxTasks: Number.POSITIVE_INFINITY });
+    if (!graph) throw new SwarmloopError(`added tasks are not valid: ${errors.join('; ')}`);
+    return graph;
   }
 
   /** The reply entry, and the revision when the plan items changed. A reply of an event that was recorded is not written again. */
@@ -216,4 +255,20 @@ export class PlanConversation {
       ...(revision ? { version: revision.version } : {}),
     });
   }
+}
+
+/** The plan result with the whole task list of the merged graph, as the planner writes tasks. */
+function withTasksOf(result: PlanResult, tasks: Subtask[]): PlanResult {
+  return {
+    ...result,
+    tasks: tasks.map(({ id, title, depends, files, proof, description, covers }) => ({
+      id,
+      title,
+      depends,
+      files,
+      proof,
+      description,
+      covers,
+    })),
+  };
 }

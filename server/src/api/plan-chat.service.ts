@@ -83,10 +83,8 @@ export class PlanChatService {
     this.turns.offer(key, { id: entry.key, at: entry.at, text: entry.text });
     const view = await this.queries.flow(key);
     const run = await this.runs.findRun(key);
-    // A split run's messages are for the add-tasks turn, which this pass does not run.
     if (
       run &&
-      !run.split &&
       messageTurn(run, { state: view.state, parentKey: view.parentKey, openItems: view.items.length }) === 'reopen'
     ) {
       await this.reopen(key, view.state);

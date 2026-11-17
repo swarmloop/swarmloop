@@ -160,7 +160,7 @@ export class RunDriver {
    */
   private async takeTurn(key: string, declined: Set<string>): Promise<StepName | null> {
     const run = await this.runs.findRun(key);
-    if (!run || !this.turns?.amends(run)) return null;
+    if (!run || !this.turns?.takesMessages(run)) return null;
     const outcome = await this.turns.take(key, () => this.execute('plan', key, { auto: true }), declined);
     if (outcome !== 'changed') return null;
     const fresh = await this.runs.findRun(key);

@@ -1,3 +1,4 @@
+import type { RunEntity } from '../history/entities';
 import type { PipelineResult } from '../core/pipeline-result';
 import type { DocumentRepository } from '../history/document.repository';
 import type { PlanChatEntry } from '../contract/plan-chat';
@@ -64,6 +65,23 @@ function amending(pending: PlanChatEntry[], decision: 'approve' | null) {
   const documents = { latestBody: () => Promise.resolve(body) } as unknown as DocumentRepository;
   return { turns: new PlannerTurns(chat, documents), take: () => left.splice(0) };
 }
+
+describe('PlannerTurns.takesMessages', () => {
+  const run = (split: boolean, currentStep: string, parent = false) =>
+    ({ split, currentStep, workspace: 'ready', parentRunId: parent ? 7 : null }) as unknown as RunEntity;
+
+  it('takes the message of a run after implement started, split or not', () => {
+    const { turns } = amending([], null);
+    expect(turns.takesMessages(run(true, 'implement'))).toBe(true);
+    expect(turns.takesMessages(run(false, 'checks'))).toBe(true);
+  });
+
+  it('does not take it before implement or for a subtask', () => {
+    const { turns } = amending([], null);
+    expect(turns.takesMessages(run(true, 'plan'))).toBe(false);
+    expect(turns.takesMessages(run(true, 'implement', true))).toBe(false);
+  });
+});
 
 describe('PlannerTurns taking a turn', () => {
   it('runs the visit for the messages that wait and tells whether the plan changed', async () => {

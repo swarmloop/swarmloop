@@ -20,12 +20,28 @@ import { storedImpact } from '../shared/research-reads';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { planFields, readPlan, renderSummary, withPlan } from './plan-record';
 import { renderQuestions } from '../research/research-record';
-import { buildGraph, isSplit, planItemsFromTasks, splitLimits, splitOutputs } from './plan-tasks';
+import {
+  addTasksCheck,
+  buildGraph,
+  isSplit,
+  planItemsFromTasks,
+  splitLimits,
+  splitOutputs,
+  startedTasks,
+  type TaskLimits,
+} from './plan-tasks';
 import { withNamedFileLines } from './named-file-lines';
 import { completePlan, plan, planFor, type PlanResult } from '../../agent-result/definitions/plan';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { needsWait } from '../shared/needs';
-import { planChatAmends, planChatFollowUp, planContinue, planFollowUp, subtaskDecides } from './plan.prompts';
+import {
+  planChatAddsTasks,
+  planChatAmends,
+  planChatFollowUp,
+  planContinue,
+  planFollowUp,
+  subtaskDecides,
+} from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { Requirement } from '../../contract/requirement-list';
 import { correctCoverage, gapLines, requirementsSection } from '../shared/coverage-correction';
@@ -33,6 +49,7 @@ import { coverageOf } from '../shared/requirement-coverage';
 import { coverageUnits } from './plan-coverage';
 import { decidedErrors, planErrors } from '../shared/plan-errors';
 import { PlanConversation } from '../shared/plan-conversation';
+import { storedGraph } from '../shared/stored-graph';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { planReplyFor, type PlanReplyResult } from '../../agent-result/definitions/plan-reply';
 
@@ -223,6 +240,21 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     };
   }
 
+  /** What a message is asked and checked with: tasks only for a split run whose tasks started, an amendment for a run that implemented without splitting. */
+  private async replyRoute(ctx: ModelStepContext, limits: TaskLimits, subtask: boolean) {
+    const { run } = ctx.opened;
+    const graph = await storedGraph(ctx);
+    const adding = limits.maySplit && !subtask && startedTasks(graph.tasks).length > 0;
+    const amending = !limits.maySplit && !subtask && (await this.visits.hasAgentVisit(run.id, 'implement'));
+    return {
+      asked: planReplyFor({ split: limits.maySplit, subtask, ...(adding ? { addTasksOnly: true } : {}) }),
+      followUp: adding ? planChatAddsTasks : amending ? planChatAmends : planChatFollowUp,
+      check: adding
+        ? addTasksCheck(graph, limits)
+        : (value: unknown) => planErrors(completePlan(value as Partial<PlanResult>), limits, subtask),
+    };
+  }
+
   /**
    * The messages a person sent are answered in the plan's own chat, with the reply the planner gives. Null when none is
    * waiting, or when there is no plan or no plan chat yet: the message then waits for the first plan, and plan-improve sends the run back.
@@ -239,10 +271,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const mounts = mountsForStep(root(this.config), run.key, names, run.targetPath);
     const limits = splitLimits(run, this.config.env.SPLIT_MAX_TASKS);
     const subtask = isSubtask(run);
-    const asked = planReplyFor({ split: limits.maySplit, subtask });
-    // A run that does not split and already implemented gets its plan amended: done items stay done.
-    const amending = !limits.maySplit && !subtask && (await this.visits.hasAgentVisit(run.id, 'implement'));
-    const followUp = amending ? planChatAmends : planChatFollowUp;
+    const { asked, followUp, check } = await this.replyRoute(ctx, limits, subtask);
     const received = chat.resultName ?? null;
     const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
     const launched = await ctx.launch({
@@ -252,7 +281,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       ),
       mounts,
       result: asked,
-      check: (value) => planErrors(completePlan(value as Partial<PlanResult>), limits, subtask),
+      check,
     });
     const reason = pending.map((message) => message.text.trim()).join('\n\n');
     const applied = await this.conversation.applyReply(ctx, launched.resultValue as PlanReplyResult, reason);
