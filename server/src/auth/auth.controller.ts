@@ -23,6 +23,8 @@ import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
 import { problemOf, problemUrl, safeNext, type ProblemBase } from './login-problem';
 import type { MeView } from '../contract/api';
+import { FIRST_RUN_MAKER, takesOverApp } from './first-run-maker';
+import { PeopleService } from './people.service';
 import type { AppFlow, LoginProvider, ManifestForm, ProviderName } from '../integrations/code-host/login-provider';
 import { Public } from './public.decorator';
 import { cookieValue, SESSION_COOKIE, SESSION_DAYS, SessionService, sessionIdOf } from './session.service';
@@ -43,6 +45,7 @@ export class AuthController {
     private readonly connections: ConnectionsService,
     private readonly apps: HostAppsService,
     private readonly repos: CheckoutRepos,
+    private readonly people: PeopleService,
   ) {}
 
   /** `login` is false until the first app is connected: the dashboard then shows the first-run screen. */
@@ -58,7 +61,7 @@ export class AuthController {
     @Req() request: RoutedRequest,
     @Res({ passthrough: true }) response: CookieResponse,
   ): Promise<ManifestForm> {
-    await this.assertFirstRun(request.headers);
+    this.assertFirstRun(request.headers);
     const provider = this.flowProvider(request);
     const { state } = this.startState(provider.name, response);
     return provider.appFlow.manifest(org?.trim() || undefined, state);
@@ -67,7 +70,7 @@ export class AuthController {
   /** First run only: who owns the repositories this server works on, to fill in the owner of the app. */
   @Get(appFlowRoutes('owner'))
   async owner(@Req() request: RoutedRequest): Promise<{ owner: string; others: string[] }> {
-    await this.assertFirstRun(request.headers);
+    this.assertFirstRun(request.headers);
     const [owner = '', ...others] = await this.repos.owners(this.flowProvider(request).name);
     return { owner, others };
   }
@@ -78,9 +81,7 @@ export class AuthController {
     @Req() request: RoutedRequest,
     @Res({ passthrough: true }) response: CookieResponse,
   ): Promise<{ url: string }> {
-    const onMachine =
-      (await this.auth.actorOf(request.headers)) === 'machine' || this.auth.onThisMachine(request.headers);
-    if (!onMachine || (await this.connections.anyConnected())) {
+    if (!this.auth.onThisMachine(request.headers) || (await this.connections.anyConnected())) {
       throw new ForbiddenException('a login exists, or this is not the machine the server runs on');
     }
     const provider = this.flowProvider(request);
@@ -100,10 +101,10 @@ export class AuthController {
     @Res() response: CookieResponse,
   ): Promise<void> {
     const host = routeHost(request);
-    const firstRun = await this.auth.firstRunOpen(request.headers);
+    const firstRun = this.auth.firstRunOpen(request.headers);
     const pending = this.takeState(request.headers, state, response);
-    // First run opens only on this machine or with the machine token, so there is no person to name yet.
-    const madeBy = firstRun ? (pending ? 'machine' : undefined) : pending?.replaceBy;
+    // First run opens only on this machine, so there is no person to name yet.
+    const madeBy = firstRun ? (pending ? FIRST_RUN_MAKER : undefined) : pending?.replaceBy;
     const base = firstRun ? '/login' : await this.replaceBase(pending, request.headers);
     try {
       if (!code || madeBy === undefined) {
@@ -149,7 +150,7 @@ export class AuthController {
     @Body() body: { clientId?: string; clientSecret?: string },
     @Req() request: RoutedRequest,
   ): Promise<{ ok: true }> {
-    await this.assertFirstRun(request.headers);
+    this.assertFirstRun(request.headers);
     const provider = this.anyProvider(routeHost(request));
     const clientId = body.clientId?.trim() ?? '';
     const clientSecret = body.clientSecret?.trim() ?? '';
@@ -163,7 +164,7 @@ export class AuthController {
       clientId,
       clientSecret,
       privateKey: '',
-      madeBy: 'machine',
+      madeBy: FIRST_RUN_MAKER,
     });
     return { ok: true };
   }
@@ -177,7 +178,13 @@ export class AuthController {
   async me(@Req() request: { headers: { cookie?: string } }): Promise<MeView> {
     const session = await this.sessions.find(sessionIdOf(request.headers.cookie));
     return session
-      ? { user: session.user, provider: session.provider, avatarUrl: session.avatarUrl ?? null, ...this.build() }
+      ? {
+          user: session.user,
+          provider: session.provider,
+          avatarUrl: session.avatarUrl ?? null,
+          role: await this.people.roleOf(session.user),
+          ...this.build(),
+        }
       : { user: null, ...this.build() };
   }
 
@@ -271,10 +278,11 @@ export class AuthController {
       );
       return;
     }
+    await this.people.seen(identity.user);
     if (identity.grant) {
       // The first person to sign in through an app made on this machine is the one who made it.
       const app = this.apps.find(provider.name);
-      if (app?.madeBy === 'machine' && (await this.connections.noneOn(provider.name))) {
+      if (app && takesOverApp(app.madeBy) && (await this.connections.noneOn(provider.name))) {
         await this.apps.save({ ...app, madeBy: identity.user });
       }
       await this.connections.connect(provider.name, identity.user, identity.grant).catch((error: unknown) => {
@@ -303,8 +311,8 @@ export class AuthController {
     return { ok: true };
   }
 
-  private async assertFirstRun(headers: Headers): Promise<void> {
-    if (!(await this.auth.firstRunOpen(headers))) {
+  private assertFirstRun(headers: Headers): void {
+    if (!this.auth.firstRunOpen(headers)) {
       throw new ForbiddenException('a login exists, or this is not the machine the server runs on');
     }
   }

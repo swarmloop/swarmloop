@@ -15,6 +15,7 @@ import type {
   SnapshotsView,
   StartStepBody,
 } from '../contract/api';
+import type { CliLoginPoll, CliLoginStarted, CurrentTokenView } from '../contract/people';
 
 export interface ServerApi {
   list(): Promise<RunsView>;
@@ -96,13 +97,29 @@ export class HttpServerApi implements ServerApi {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/rewind`, { id });
   }
 
+  startCliLogin(machine: string): Promise<CliLoginStarted> {
+    return this.send('POST', '/auth/cli/logins', { machine });
+  }
+
+  pollCliLogin(id: string): Promise<CliLoginPoll> {
+    return this.send('GET', `/auth/cli/logins/${encodeURIComponent(id)}`);
+  }
+
+  currentToken(): Promise<CurrentTokenView> {
+    return this.send('GET', '/tokens/current');
+  }
+
+  revokeCurrent(): Promise<void> {
+    return this.send('DELETE', '/tokens/current');
+  }
+
   private async send<T>(method: string, path: string, body?: unknown): Promise<T> {
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.base}${path}`, {
         method,
         headers: {
-          authorization: `Bearer ${this.token}`,
+          ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
           ...(method === 'GET' ? {} : { 'content-type': 'application/json', 'x-swarmloop': '1' }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),

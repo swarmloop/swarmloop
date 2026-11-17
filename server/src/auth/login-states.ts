@@ -10,7 +10,7 @@ export const MAX_PENDING = 1000;
 interface LoginState {
   provider: ProviderName;
   verifier: string;
-  /** Set when the maker of the app started a replace: their login, or `machine`. */
+  /** Set when the maker of the app started a replace: their login. */
   replaceBy?: string;
   /** The same-origin path the person opened before the login: the callback returns there. */
   next?: string;

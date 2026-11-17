@@ -1,33 +1,41 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { AppConfig } from '../config/env';
-import { resolveRepoRoot } from '../config/repo-root';
 import { registerSecretSource } from '../core/secret-sources';
 import { isLoopback } from './bind-check';
-import { machineToken, tokenMatches } from './machine-token';
+import { PersonalTokens } from './personal-tokens.service';
 import type { LoginProvider } from '../integrations/code-host/login-provider';
 import { SessionService, sessionIdOf } from './session.service';
 
 export const OAUTH_PROVIDERS = 'OAUTH_PROVIDERS';
+
+/** How a request proved who it is. */
+export type Via = 'session' | 'token';
+
+/** The token of an `Authorization: Bearer` header, or undefined. */
+export function bearerOf(authorization: string | undefined): string | undefined {
+  return /^Bearer (.+)$/i.exec(authorization ?? '')?.[1];
+}
 
 export interface Credentials {
   cookie?: string;
   authorization?: string;
 }
 
-/** Who is acting: a session or the machine token. Nothing else is let in. */
+/** Who is acting: a session or a personal token. Nothing else is let in. */
 @Injectable()
 export class AuthService implements OnModuleInit, OnModuleDestroy {
-  private readonly token: string;
+  private readonly envToken: string | undefined;
   private unregisterSecrets: (() => void) | undefined;
   private readonly publicUrl: string;
 
   constructor(
     config: AppConfig,
     private readonly sessions: SessionService,
+    private readonly tokens: PersonalTokens,
     @Inject(OAUTH_PROVIDERS) private readonly providers: LoginProvider[],
   ) {
     this.publicUrl = config.env.SWARMLOOP_PUBLIC_URL;
-    this.token = machineToken(resolveRepoRoot(config.env.SWARMLOOP_ROOT, __dirname), config.env.SWARMLOOP_TOKEN);
+    this.envToken = config.env.SWARMLOOP_TOKEN || undefined;
   }
 
   onModuleInit(): void {
@@ -38,9 +46,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     this.unregisterSecrets?.();
   }
 
-  /** The machine token this service holds. */
+  /** The `SWARMLOOP_TOKEN` value, when set: it must never reach a log. */
   secrets(): string[] {
-    return [this.token];
+    return this.envToken ? [this.envToken] : [];
   }
 
   /** Every provider, configured or not. */
@@ -52,32 +60,29 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return this.providers.filter((provider) => provider.configured());
   }
 
-  /** The login name of a live session, `machine` for the token, or null. */
+  /** The login of a live session, else the person a Bearer personal token acts for, or null. */
   async actorOf(credentials: Credentials): Promise<string | null> {
-    const bearer = /^Bearer (.+)$/i.exec(credentials.authorization ?? '')?.[1];
-    if (bearer && tokenMatches(this.token, bearer)) {
-      return 'machine';
-    }
-    return (await this.sessions.find(sessionIdOf(credentials.cookie)))?.user ?? null;
+    return (await this.resolve(credentials)).actor;
   }
 
-  async check(credentials: Credentials): Promise<{ allowed: boolean; actor: string | null }> {
-    const actor = await this.actorOf(credentials);
-    return { allowed: actor !== null, actor };
+  async check(credentials: Credentials): Promise<{ allowed: boolean; actor: string | null; via: Via | null }> {
+    const { actor, via } = await this.resolve(credentials);
+    return { allowed: actor !== null, actor, via };
   }
 
-  /**
-   * The first-run routes answer while no login exists, and only to this machine: a request whose host and the public
-   * URL are loopback, or one that holds the machine token. Once a login exists nobody can replace the app.
-   */
-  async firstRunOpen(request: Credentials & { host?: string; 'x-forwarded-host'?: string }): Promise<boolean> {
-    if (this.configured().length > 0) {
-      return false;
+  private async resolve(credentials: Credentials): Promise<{ actor: string | null; via: Via | null }> {
+    const session = (await this.sessions.find(sessionIdOf(credentials.cookie)))?.user;
+    if (session) {
+      return { actor: session, via: 'session' };
     }
-    if ((await this.actorOf(request)) === 'machine') {
-      return true;
-    }
-    return this.onThisMachine(request);
+    const bearer = bearerOf(credentials.authorization);
+    const person = bearer ? await this.tokens.personOf(bearer) : null;
+    return person ? { actor: person, via: 'token' } : { actor: null, via: null };
+  }
+
+  /** The first-run routes answer while no login exists, and only to this machine. Once a login exists nobody can replace the app. */
+  firstRunOpen(request: { host?: string; 'x-forwarded-host'?: string }): boolean {
+    return this.configured().length === 0 && this.onThisMachine(request);
   }
 
   /** True when the request's host and the public URL are both loopback. */

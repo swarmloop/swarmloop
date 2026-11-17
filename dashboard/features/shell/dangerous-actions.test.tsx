@@ -29,6 +29,7 @@ import {
   startReviewer,
   skipTask,
   stopRun,
+  ticketKeys,
 } from '../../lib/endpoints';
 import { receive } from '../../test/fake-socket';
 import { QueryWrapper } from '../../test/query-wrapper';
@@ -101,6 +102,7 @@ const host: ConnectionsView = {
       installs: true,
       app: { name: 'swarmloop-app', clientId: 'Iv.fake', madeBy: 'alice', settingsUrl: null },
       missingOwners: [],
+      mayReplace: true,
       account: 'alice',
       repositories: ['alice/site'],
       selection: 'selected',
@@ -256,6 +258,7 @@ function mount(name: string): void {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => undefined);
+  vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });

@@ -33,7 +33,7 @@ export interface ServerSetting {
 
 /** What `GET /settings` and `PUT /settings` answer. */
 export interface SettingsView {
-  /** The person's own settings; empty for the machine token and for a person with none. */
+  /** The person's own settings; empty for nobody signed in and for a person with none. */
   settings: SettingsBody;
   defaults: {
     /** Each agent as `runtime:model[:effort]`. */

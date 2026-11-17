@@ -9,6 +9,7 @@ import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import type { ConnectionView } from '@contract/api';
+import { personLabel } from '@contract/people';
 import type { ConnectionCard } from '@contract/connections';
 import { reconnectUrl } from '../../lib/endpoints';
 import { localTime } from '../../lib/format';
@@ -54,12 +55,11 @@ function RepositoryList({ connection }: { connection: ConnectionView }): ReactEl
 function HostActions({
   card,
   connection,
-  maker,
   onReplace,
   onInstall,
   onDisconnect,
   onTest,
-}: Handlers & { card: ConnectionCard; connection: ConnectionView; maker: boolean; onTest: () => void }): ReactElement {
+}: Handlers & { card: ConnectionCard; connection: ConnectionView; onTest: () => void }): ReactElement {
   return (
     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
       {connection.installs && connection.account ? (
@@ -72,8 +72,8 @@ function HostActions({
           {connection.account ? 'Reconnect' : `Connect ${card.label}`}
         </Button>
       ) : null}
-      {connection.installs && connection.app ? (
-        <Button variant="outlined" size="small" disabled={!maker} onClick={onReplace}>
+      {connection.installs && connection.app && connection.mayReplace ? (
+        <Button variant="outlined" size="small" onClick={onReplace}>
           Replace app
         </Button>
       ) : null}
@@ -95,17 +95,14 @@ function HostActions({
 export function HostCard({
   card,
   connection,
-  login,
   onChanged,
   ...handlers
 }: Handlers & {
   card: ConnectionCard;
   connection: ConnectionView;
-  login: string | null;
   onChanged: () => void;
 }): ReactElement {
   const { health } = connection;
-  const maker = login !== null && connection.app?.madeBy === login;
   const { result, test } = useCardActions(card, onChanged);
   return (
     <Paper
@@ -135,16 +132,16 @@ export function HostCard({
           {health.refreshedAt ? ` · refreshed ${localTime(health.refreshedAt)}` : ''}
         </Typography>
       ) : null}
-      {connection.installs && connection.app && !maker ? (
+      {connection.installs && connection.app && !connection.mayReplace ? (
         <Typography variant="body2" color="text.secondary">
           {connection.app.madeBy
-            ? `Only ${connection.app.madeBy} can replace this app`
-            : 'Only the person who made this app can replace it, and it has no recorded maker'}
+            ? `Only ${personLabel(connection.app.madeBy)} or an admin can replace this app`
+            : 'Only an admin can replace this app'}
         </Typography>
       ) : null}
       {connection.installs && connection.account ? <RepositoryList connection={connection} /> : null}
       {result ? <Alert severity={result.severity}>{result.text}</Alert> : null}
-      <HostActions card={card} connection={connection} maker={maker} onTest={() => void test()} {...handlers} />
+      <HostActions card={card} connection={connection} onTest={() => void test()} {...handlers} />
     </Paper>
   );
 }

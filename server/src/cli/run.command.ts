@@ -4,6 +4,7 @@ import { CommandService } from '../pipeline/command.service';
 import { PERSON_RESUME } from '../pipeline/resume-sender';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, StepOptions } from '../core/pipeline-result';
+import { CliPersons, isRefusal } from './cli-person';
 
 @Command({
   name: 'run',
@@ -15,12 +16,18 @@ export class RunCommand extends CommandRunner {
     private readonly pipeline: PipelineService,
     private readonly commands: CommandService,
     private readonly flows: FlowRepository,
+    private readonly persons: CliPersons,
   ) {
     super();
   }
 
   async run(passed: string[], options: StepOptions = {}): Promise<void> {
     const key = passed[0] ?? '';
+    const person = await this.persons.resolve();
+    if (isRefusal(person)) {
+      await report(person);
+      return;
+    }
     if (options.phases?.length) {
       try {
         assertKey(key);
@@ -31,8 +38,12 @@ export class RunCommand extends CommandRunner {
       }
     }
     await report(
-      await this.commands.inProcess('resume', key, { ...options, ...PERSON_RESUME }, () =>
-        this.pipeline.runThrough(key, options),
+      await this.commands.inProcess(
+        'resume',
+        key,
+        { ...options, ...PERSON_RESUME },
+        () => this.pipeline.runThrough(key, options),
+        person,
       ),
     );
   }

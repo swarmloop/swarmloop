@@ -3,11 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsView } from '@contract/settings';
 import { ApiError } from '../../lib/api';
-import { getSettings, saveSettings } from '../../lib/endpoints';
+import { getSession, getSettings, saveSettings } from '../../lib/endpoints';
 import { SettingsPage } from './settings-page';
 
-vi.mock('../../lib/endpoints', () => ({ getSettings: vi.fn(), saveSettings: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({ getSettings: vi.fn(), saveSettings: vi.fn(), getSession: vi.fn() }));
 vi.mock('../connections', () => ({ ConnectionsPage: () => <p>connections page</p> }));
+vi.mock('./api-tokens-section', () => ({ ApiTokensSection: () => <p>tokens section</p> }));
+vi.mock('./people-section', () => ({ PeopleSection: () => <p>people section</p> }));
 vi.mock('../shell', () => ({ ThemeModeSwitch: () => <p>theme switch</p> }));
 
 const roles = { plan: ['claude:opus'], implement: ['claude:sonnet'], review: ['claude:sonnet'] };
@@ -32,6 +34,7 @@ const ownHigh: SettingsView['settings'] = {
 };
 
 beforeEach(() => {
+  vi.mocked(getSession).mockReset().mockResolvedValue({ user: 'alice', role: 'member' });
   vi.mocked(getSettings).mockReset().mockResolvedValue(view());
   vi.mocked(saveSettings)
     .mockReset()
@@ -253,5 +256,20 @@ describe('SettingsPage', () => {
     expect(screen.getByText('.env')).toBeInTheDocument();
     expect(screen.getByText('environment')).toBeInTheDocument();
     expect(screen.getByText('SWARMLOOP_SECRET').nextElementSibling).toHaveTextContent('setenvironment');
+  });
+
+  it('lists API tokens for a member and People only for an admin', async () => {
+    const user = userEvent.setup({ delay: null });
+    const { unmount } = render(<SettingsPage />);
+    await screen.findAllByLabelText('Server default for main plan');
+    expect(screen.queryByRole('button', { name: 'People' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'API tokens' }));
+    expect(screen.getByText('tokens section')).toBeInTheDocument();
+    unmount();
+
+    vi.mocked(getSession).mockResolvedValue({ user: 'alice', role: 'admin' });
+    render(<SettingsPage />);
+    await user.click(await screen.findByRole('button', { name: 'People' }));
+    expect(screen.getByText('people section')).toBeInTheDocument();
   });
 });

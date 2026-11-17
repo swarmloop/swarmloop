@@ -4,6 +4,7 @@ import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import type { ErrorCode } from '../contract/error-codes';
 import { isStopNote, REASON } from '../contract/run-state';
 import type { MergeOutcome, RunState, StateReason } from '../contract/run-state';
+import type { StoredAgents } from '../contract/api';
 import type { RunEntity } from './entities';
 
 /** What the run row alone cannot say. */
@@ -241,4 +242,13 @@ export function recoveringSince(run: RunEntity): number | null {
   if (run.state !== 'recovering' || !run.stateReason) return null;
   const since = Date.parse((JSON.parse(run.stateReason) as { message?: string }).message ?? '');
   return Number.isFinite(since) ? since : null;
+}
+
+/** The columns a person takes over a run from `machine` with: the person, their agent lists and when. */
+export function ownerColumns(
+  login: string,
+  agents: StoredAgents | null,
+  at: string,
+): Pick<RunEntity, 'startedBy' | 'agents' | 'ownerSince'> {
+  return { startedBy: login, agents, ownerSince: at };
 }

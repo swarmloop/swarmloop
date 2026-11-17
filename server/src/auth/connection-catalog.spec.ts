@@ -128,7 +128,7 @@ describe('the integration cards, with a fake connection', () => {
   });
 
   it('refuses a write from the machine or nobody, and an unknown connection', async () => {
-    for (const actor of ['machine', null]) {
+    for (const actor of [null]) {
       for (const [path, method] of [
         ['fakeai', 'PUT'],
         ['fakeai/test', 'POST'],

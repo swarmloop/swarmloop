@@ -53,7 +53,7 @@ export class ReadinessService {
   /** The last full report at once; one that is stale starts a refresh in the background. The first call waits at most 1 s. */
   async report(login: string | null = null): Promise<ReadinessView> {
     const report = await this.envReport();
-    const own = login && login !== 'machine' ? await this.person?.outcome(login) : undefined;
+    const own = login ? await this.person?.outcome(login) : undefined;
     if (!own || !report.items.some((item) => item.id === 'model-credential')) {
       return report;
     }

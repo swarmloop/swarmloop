@@ -229,6 +229,7 @@ describe('LiveGateway', () => {
       const check = jest.fn(async ({ cookie }: { cookie?: string }) => ({
         allowed: cookie === 'swarmloop_session=abc',
         actor: null,
+        via: null,
       }));
       expect((await connect(check, {}))?.message).toBe('log in first');
       expect(await connect(check, { cookie: 'swarmloop_session=abc' })).toBeUndefined();
