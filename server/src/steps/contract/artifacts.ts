@@ -1,7 +1,7 @@
 import { CODE_REVIEWERS, STEPS, type StepName } from '../../contract/steps';
 import { REBASE_CONFLICT, REBASE_JOURNAL } from '../../git/rebase';
 import type { Issue } from './step-contract';
-import { CONTRACT_KIND, SUBTASKS_KIND, type Subtask } from '../../contract/subtask';
+import { SPLIT_ARTIFACTS } from './artifacts-split';
 import type { CoveredRequirement, Requirement } from '../../contract/requirement-list';
 import type { KeepLine } from '../shared/keep-lines';
 import type { StoredQuestion } from '../shared/question-parts';
@@ -18,7 +18,6 @@ import { reviewReport, isLegacyReport } from '../../agent-result/definitions/rev
 import { reviewReportCodec } from '../../agent-result/review-report-codec';
 import { reviewDefinition, reviewStoredDefinition, type ReviewResult } from '../../agent-result/definitions/review';
 import { legacyReview } from '../../agent-result/legacy/review';
-import { subtaskAnswer, type SubtaskAnswerResult } from '../../agent-result/definitions/subtask-answer';
 import { resultArtifactCodec } from '../../agent-result/result-codec';
 import { requirementsView } from '../../contract/requirements-view';
 import {
@@ -182,11 +181,6 @@ export const ARTIFACTS = {
     readers: ['implement'],
     summarize: firstLine,
   }),
-  subtaskQuestions: artifact('subtask_questions', {
-    writers: ['implement'],
-    readers: ['implement'],
-    summarize: firstLine,
-  }),
   // The open questions of review_questions and subtask_questions in parts; the text of a question is the key to its parts.
   questionParts: artifact('question_parts', {
     writers: ['code-review', 'implement'],
@@ -218,20 +212,7 @@ export const ARTIFACTS = {
     codec: resultArtifactCodec<PlanImproveResult>(planImprove),
     summarize: (result) => listSummary(result.plan.length || result.tasks.length, 'plan items', result.plan[0]),
   }),
-  // The parent planner's answer to a subtask, written by the pipeline and not by a step.
-  subtaskAnswerResult: artifact(subtaskAnswer.kind, {
-    writers: [],
-    readers: [],
-    external: true,
-    codec: resultArtifactCodec<SubtaskAnswerResult>(subtaskAnswer),
-    summarize: (result) => firstLine(result.answer),
-  }),
-  subtasks: artifact(SUBTASKS_KIND, {
-    writers: ['plan', 'plan-improve', 'implement'],
-    readers: ['plan-improve', 'branch', 'implement', 'implement-improve'],
-    codec: jsonArrayCodec<Subtask>(),
-    summarize: (tasks) => listSummary(tasks.length, 'tasks', tasks[0]?.title),
-  }),
+  ...SPLIT_ARTIFACTS,
   requirementList: artifact('requirement_list', {
     writers: ['research', 'plan-improve'],
     readers: ['research', 'plan', 'plan-improve', 'code-review'],
@@ -249,11 +230,6 @@ export const ARTIFACTS = {
     readers: ['plan-improve', 'code-review'],
     codec: jsonArrayCodec<KeepLine>(),
     summarize: (lines) => listSummary(lines.length, 'kept capabilities', lines[0]?.capability),
-  }),
-  contract: artifact(CONTRACT_KIND, {
-    writers: ['plan', 'plan-improve', 'implement'],
-    readers: ['plan-improve', 'implement', 'implement-improve'],
-    summarize: firstLine,
   }),
   pipelineRef: artifact('pipeline_ref', {
     writers: ['commit', 'implement'],
@@ -285,8 +261,6 @@ export const ARTIFACTS = {
     readers: ['merge-request'],
     summarize: firstLine,
   }),
-  /** The files a merged task changed, one path per line, read from its merge into the feature branch. */
-  mergedFiles: artifact('merged_files', { writers: [], readers: [], external: true, summarize: firstLine }),
   pendingRebase: artifact('pending_rebase', { writers: [], readers: [], external: true, summarize: firstLine }),
   commit: artifact('commit', { writers: ['commit', 'merge-request'], readers: ['commit'], summarize: firstLine }),
   mergeRequest: artifact('merge_request', {

@@ -1,0 +1,304 @@
+import { ERROR_CODES } from '../../contract/error-codes';
+import { HOST_RETRY_MS } from '../../integrations/http';
+import { deriveState } from '../../history/run-state';
+import type { RunEntity } from '../../history/entities';
+import type { AppConfig } from '../../config/env';
+import type { Clock } from '../../core/clock';
+import type { FlowRepository } from '../../history/flow.repository';
+import type { VisitRepository } from '../../history/visit.repository';
+import {
+  readyTasks,
+  settled,
+  statusLine,
+  unmetDepends,
+  waitNote,
+  withStatuses,
+  type Subtask,
+} from '../../contract/subtask';
+import { sampleSelf } from '../../history/visit';
+import { withDecision } from '../shared/handoff';
+import { openQuestions } from '../shared/answers';
+import { keepOpen, type StoredQuestion } from '../shared/question-parts';
+import { renderQuestions } from '../research/research-record';
+import type { SubtaskOps } from '../shared/subtask-ops';
+import type { StepContext } from '../base-step';
+import type { InputReader } from '../contract/input-reader';
+import type { StepResult } from '../contract/step-contract';
+import { ARTIFACTS } from '../contract/artifacts';
+import { renderImplementation } from './implement-record';
+import type { SplitMerge } from './split-merge';
+import { REBASED_PREFIX } from './split-rebase';
+import type { SplitNeeds } from './split-needs';
+import { askedQuestion, SplitQuestions } from './split-questions';
+import { earliestRetry } from './subtask-retry';
+
+const BLOCKED_ACTION = 'Resume, Replay or Skip task clears it';
+
+function blockedNames(blocked: Subtask[]): string {
+  return blocked.map((task) => `subtask ${task.id} is blocked`).join('; ');
+}
+
+export const NO_CI_NOTE = 'no CI on the feature branch';
+
+/** What one pass over the task graph reads and writes through. */
+interface SplitPassDeps {
+  subtasks: SubtaskOps;
+  merges: SplitMerge;
+  needs: SplitNeeds;
+  reader: InputReader;
+  clock: Clock;
+  config: AppConfig;
+  flows: FlowRepository;
+  visits: VisitRepository;
+}
+
+/** One scheduling pass of a split run's implement: answers, merges, starts what is ready and says what the parent waits for. */
+export class SplitPass {
+  private readonly questions: SplitQuestions;
+
+  constructor(private readonly deps: SplitPassDeps) {
+    this.questions = new SplitQuestions(deps.subtasks);
+  }
+
+  async run(subtasks: Subtask[], ctx: StepContext): Promise<StepResult> {
+    const { run } = ctx.opened;
+    const before = JSON.stringify(withStatuses(subtasks));
+    const read = (await ctx.reread(ARTIFACTS.contract)) ?? '';
+    const asked = (await ctx.reread(ARTIFACTS.subtaskQuestions)) ?? '';
+    const answers = (await ctx.reread(ARTIFACTS.answers)) ?? '';
+    const delivered = await this.questions.deliver(run, read, asked, answers);
+    const held = this.questions.pending(delivered.body, answers);
+    const answered = await this.answer(ctx, withStatuses(subtasks), delivered.contract, held);
+    const needed = await this.deps.needs.run(ctx.opened, withStatuses(subtasks), answered.contract, held);
+    const carried = openQuestions(delivered.body, []);
+    const asks = [...answered.asks, ...needed.asks];
+    const open = [...carried, ...asks.map((ask) => ask.question)];
+    const questions = renderQuestions(open);
+    const storedParts = (await ctx.reread(ARTIFACTS.questionParts)) ?? [];
+    const parts = keepOpen(storedParts, carried, asks);
+    const followed = await this.refresh(run, needed.tasks);
+    const { tasks: merged, refusal, unfetched } = await this.deps.merges.run(run, followed);
+    const tasks = await this.explain(run, await this.start(run, merged));
+    const outputs: StepResult['outputs'] = [
+      ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
+      ...(needed.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: needed.contract }]),
+      ...(questions === asked ? [] : [{ artifact: ARTIFACTS.subtaskQuestions, value: questions }]),
+      ...(JSON.stringify(parts) === JSON.stringify(storedParts)
+        ? []
+        : [{ artifact: ARTIFACTS.questionParts, value: parts }]),
+    ];
+    return this.route(ctx, tasks, open, outputs, { refusal, unfetched });
+  }
+
+  /** What the parent does after the pass: wait with the reason, block, or finish when every task is settled. */
+  private async route(
+    ctx: StepContext,
+    tasks: Subtask[],
+    open: string[],
+    outputs: StepResult['outputs'],
+    { refusal, unfetched }: { refusal: string | null; unfetched: string | null },
+  ): Promise<StepResult> {
+    const { run, startedAt } = ctx.opened;
+    const line = statusLine(tasks);
+    const blocked = tasks.filter((task) => task.status === 'blocked');
+    const action = blocked.length > 0 ? `${blockedNames(blocked)}; ${BLOCKED_ACTION}` : null;
+    if (unfetched && !tasks.some((task) => task.status === 'running')) {
+      const retryAt = new Date(this.deps.clock.now() + HOST_RETRY_MS).toISOString();
+      const text = `${line}; ${unfetched}; next try at ${retryAt}${action ? `; ${action}` : ''}`;
+      return {
+        route: { to: 'wait', reason: text, code: ERROR_CODES.HOST_UNAVAILABLE, retryAt },
+        summary: `${startedAt} ${text}`,
+        outputs,
+      };
+    }
+    if ((blocked.length > 0 || refusal) && !this.canMove(tasks, refusal)) {
+      const text = `${startedAt} ${refusal ?? blockedNames(blocked)}: ${line}${blocked.length > 0 ? `; ${BLOCKED_ACTION}` : ''}`;
+      return { route: { to: 'block', reason: text, code: ERROR_CODES.SUBTASK_BLOCKED }, summary: text, outputs };
+    }
+    if (tasks.every(settled)) {
+      return this.finish(run, tasks, ctx, outputs);
+    }
+    if (open.length > 0) {
+      const text = `questions are open: ${open[0]}`;
+      return { route: { to: 'wait', reason: 'questions are open' }, summary: `${startedAt} ${text}`, outputs };
+    }
+    const retryAt = earliestRetry(await this.openChildren(run, tasks));
+    if (retryAt) {
+      const text = `${line}; next try at ${retryAt}${action ? `; ${action}` : ''}`;
+      return {
+        route: { to: 'wait', reason: text, code: ERROR_CODES.SUBTASK_WAITING, retryAt },
+        summary: `${startedAt} ${text}`,
+        outputs,
+      };
+    }
+    const running = tasks.some((task) => task.status === 'running');
+    const waiting = running ? null : this.missing(tasks);
+    const code = waiting ? ERROR_CODES.SUBTASK_WAITING : ERROR_CODES.SUBTASKS_RUNNING;
+    const text = `${waiting ? `${line} · waiting for ${waiting}` : line}${action ? `; ${action}` : ''}`;
+    return { route: { to: 'wait', reason: text, code }, summary: `${startedAt} ${text}`, outputs };
+  }
+
+  /** True when a task runs, or a green one is still to merge: the parent waits, and is blocked only when nothing can move. */
+  private canMove(tasks: Subtask[], refusal: string | null): boolean {
+    return tasks.some((task) => task.status === 'running' || (task.status === 'green' && !refusal));
+  }
+
+  private async openChildren(parent: RunEntity, tasks: Subtask[]): Promise<RunEntity[]> {
+    const children: RunEntity[] = [];
+    for (const task of tasks.filter((item) => !settled(item))) {
+      const child = await this.deps.subtasks.find(parent, task.id);
+      if (child) children.push(child);
+    }
+    return children;
+  }
+
+  /**
+   * Asks the planner the questions of the first subtask that waits in research, one subtask per pass: the next
+   * one is asked by the pass its answered run starts. The answer is a decision in the contract. When the planner gives
+   * none, the question goes to the person who started the run. A task with a question open for the person is left alone.
+   */
+  private async answer(
+    ctx: StepContext,
+    tasks: Subtask[],
+    contract: string,
+    waiting: string[],
+  ): Promise<{ contract: string; asks: StoredQuestion[] }> {
+    const { run, startedAt } = ctx.opened;
+    for (const task of tasks.filter((item) => !settled(item) && !waiting.includes(item.id))) {
+      const child = await this.deps.subtasks.find(run, task.id);
+      if (!child || !(await this.deps.subtasks.asking(child))) continue;
+      const answer = await this.deps.subtasks.answer(ctx.opened, child, task, contract);
+      if (answer !== null) return { contract: withDecision(contract, task.id, answer), asks: [] };
+      if (this.deps.subtasks.replyPending(child)) return { contract, asks: [] };
+      const asked = child.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
+      const questions = (await this.deps.reader.reread(child.key, asked)) ?? '';
+      return { contract, asks: [askedQuestion(task.id, questions, startedAt)] };
+    }
+    return { contract, asks: [] };
+  }
+
+  /** Every task has a run, and its status follows that run. A settled task keeps the status it has. */
+  private async refresh(parent: RunEntity, tasks: Subtask[]): Promise<Subtask[]> {
+    const refreshed: Subtask[] = [];
+    for (const task of tasks) {
+      refreshed.push(settled(task) ? task : await this.follow(parent, task));
+    }
+    return refreshed;
+  }
+
+  private async follow(parent: RunEntity, task: Subtask): Promise<Subtask> {
+    const child = await this.deps.subtasks.open(parent, task);
+    const { state } = deriveState(child);
+    if (state === 'stopped') {
+      // A Stop of the parent stopped this run. Resume goes on where it stopped.
+      await this.deps.subtasks.resume(child);
+    }
+    const delivered = child.status === 'done' ? await this.deps.subtasks.deliveredNote(child) : null;
+    if (delivered) return { ...task, status: 'skipped', note: delivered };
+    const status = this.statusOf(task, child, state);
+    const rebased = status !== 'green' && task.note?.startsWith(REBASED_PREFIX) ? task.note : undefined;
+    const note = status === 'green' && (await this.deps.subtasks.withoutCi(child)) ? NO_CI_NOTE : rebased;
+    return { ...task, status, note };
+  }
+
+  statusOf(task: Subtask, child: RunEntity, state: string): Subtask['status'] {
+    if (child.status === 'done') return 'green';
+    if (state === 'blocked' || state === 'failed') return 'blocked';
+    const launched = child.status !== 'waiting' || child.currentStep !== 'requirements';
+    return task.status === 'running' || launched ? 'running' : 'waiting';
+  }
+
+  /** The tasks that may run at once. A task that waits for a sibling holds no slot, or the sibling could never start. */
+  async slots(parent: RunEntity, tasks: Subtask[]): Promise<number> {
+    return this.deps.config.env.SUBTASKS_PARALLEL + (await this.deps.needs.waiting(parent, tasks));
+  }
+
+  /** Starts the tasks whose dependencies are merged or skipped, up to `SUBTASKS_PARALLEL` at a time. */
+  private async start(parent: RunEntity, tasks: Subtask[]): Promise<Subtask[]> {
+    const ready = readyTasks(tasks, await this.slots(parent, tasks)).map((task) => task.id);
+    for (const task of tasks.filter((item) => ready.includes(item.id))) {
+      await this.deps.subtasks.launch(parent, task);
+    }
+    return tasks.map((task) => (ready.includes(task.id) ? { ...task, status: 'running', note: undefined } : task));
+  }
+
+  /** What a waiting task waits for, on the task and on its run. */
+  private async explain(parent: RunEntity, tasks: Subtask[]): Promise<Subtask[]> {
+    const explained: Subtask[] = [];
+    for (const task of tasks) {
+      if (task.status !== 'waiting') {
+        explained.push(task);
+        continue;
+      }
+      const note = waitNote(task, tasks);
+      const child = await this.deps.subtasks.find(parent, task.id);
+      if (child) await this.deps.subtasks.waitFor(child, note);
+      explained.push({ ...task, note });
+    }
+    return explained;
+  }
+
+  /** The tasks that hold up the waiting ones, when nothing runs yet. */
+  private missing(tasks: Subtask[]): string | null {
+    const unmet = new Set(
+      tasks.filter((task) => task.status === 'waiting').flatMap((task) => unmetDepends(task, tasks)),
+    );
+    return unmet.size > 0 ? [...unmet].join(', ') : null;
+  }
+
+  /**
+   * Every task is merged or skipped: the checks run on the feature branch. The flow keeps its implementation phase,
+   * so a later return of the parent's own implement goes on to implement-improve. Only this merge visit skips it.
+   */
+  private async finish(
+    run: RunEntity,
+    tasks: Subtask[],
+    ctx: StepContext,
+    outputs: StepResult['outputs'],
+  ): Promise<StepResult> {
+    const active = await this.deps.flows.activePhases(run.id);
+    const next = active.includes('checks') ? 'checks' : 'code-review';
+    await this.deps.flows.noteFlow(
+      run.key,
+      next === 'checks' ? ['implementation', 'checks', 'code-review', 'ci'] : ['implementation', 'code-review', 'ci'],
+      next,
+    );
+    await this.skipImprove(ctx);
+    const lines = tasks.map((task) => `${task.title} (${task.status})`);
+    const body = renderImplementation(lines);
+    return {
+      route: { to: 'jump', step: next },
+      summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}`,
+      outputs: [
+        ...outputs,
+        { artifact: ARTIFACTS.implementation, value: body },
+        { artifact: ARTIFACTS.implementationResult, value: { implementation: lines, summary: [] } },
+      ],
+      handoff: `- ${statusLine(tasks)}\n`,
+    };
+  }
+
+  private async skipImprove(ctx: StepContext): Promise<void> {
+    const { run, startedAt, started } = ctx.opened;
+    const finishedAt = this.deps.clock.iso();
+    await this.deps.visits.finishVisit(run, {
+      step: 'implement-improve',
+      model: null,
+      mode: null,
+      startedAt,
+      finishedAt,
+      durationMs: this.deps.clock.now() - started,
+      status: 'skipped',
+      exitCode: 0,
+      killReason: null,
+      tokensIn: 0,
+      tokensOut: 0,
+      usd: 0,
+      samples: [sampleSelf(finishedAt)],
+      exchange: null,
+      httpCalls: [],
+      document: null,
+      resumed: false,
+    });
+  }
+}

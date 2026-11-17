@@ -12,6 +12,7 @@ import { FlowRepository } from '../history/flow.repository';
 import type { IssueTracker } from '../integrations/issue-tracker/issue-tracker';
 import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
 import { PHASES } from '../contract/steps';
+import { RunAnswersService } from './run-answers.service';
 import { RunCommandsService } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { AppConfig } from '../config/env';
@@ -106,7 +107,7 @@ describe('runs api', () => {
       await documents.putDocument(run, 'questions', '- which limit\n');
       const runs = app.get(RunCommandsService);
       await expect(runs.resume('proj-3')).rejects.toBeInstanceOf(BadRequestException);
-      const answered = await runs.answers('proj-3', {
+      const answered = await app.get(RunAnswersService).answers('proj-3', {
         answers: [{ kind: 'question', id: 'which limit', body: 'three' }],
       });
       expect(answered.resume).toBe('running');
