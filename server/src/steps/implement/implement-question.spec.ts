@@ -76,10 +76,12 @@ describe('a step that asks the planner', () => {
     }
   });
 
-  it('lets a run ask only when it has a chat and is no subtask', () => {
+  it('lets a run ask when it has a chat, and a subtask only at the steps that ask its parent', () => {
     const chat = {} as PlanChatStore;
     expect(mayAsk({ parentRunId: null } as RunEntity, chat)).toBe(true);
-    expect(mayAsk({ parentRunId: 4 } as RunEntity, chat)).toBe(false);
+    expect(mayAsk({ parentRunId: 4, currentStep: 'implement' } as RunEntity, chat)).toBe(true);
+    expect(mayAsk({ parentRunId: 4, currentStep: 'implement-improve' } as RunEntity, chat)).toBe(true);
+    expect(mayAsk({ parentRunId: 4, currentStep: 'code-review' } as RunEntity, chat)).toBe(false);
     expect(mayAsk({ parentRunId: null } as RunEntity, undefined)).toBe(false);
   });
 });

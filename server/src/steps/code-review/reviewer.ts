@@ -49,6 +49,8 @@ export interface Finished extends EffortFields {
   limit?: RuntimeLimit;
   /** The reviewer's question to the planner. Its decision is not taken: the round waits for the answer. */
   asked?: string;
+  /** The reviewer read the planner's answer in this launch, so its decision is final for the round. */
+  heard?: boolean;
 }
 
 /** One reviewer launch. `briefFor` is the full prompt for another runtime, whatever `prompt` is. */
@@ -171,6 +173,7 @@ async function one(
       model: agent.model,
       ...effortFields(agent),
       prompt: job.prompt,
+      ...(job.answer ? { heard: true } : {}),
     };
     refused = refusedWrite(result.output);
     const failure = agentFailure(result, 'code-review', 'ask');

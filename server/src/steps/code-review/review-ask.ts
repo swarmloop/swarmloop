@@ -22,7 +22,8 @@ function questionFor(reviewer: string, exchange: Exchange, askedAt: string): str
 
 /**
  * One ask per reviewer that saw an answer of implement and decided return again in this round, on a diff that did not change.
- * A kept or recovered opinion is not asked about: only a decision this round made counts.
+ * A kept or recovered opinion is not asked about: only a decision this round made counts, and a reviewer that read
+ * a planner's answer in this round is not asked again.
  */
 export function reviewAsks(
   exchanges: ReadonlyMap<string, Exchange>,
@@ -36,7 +37,8 @@ export function reviewAsks(
   return finished.flatMap((item) => {
     const exchange = exchanges.get(item.reviewer.name);
     const result = item.parsed?.decision === 'return' ? item.parsed.result : null;
-    return exchange && result
+    // A reviewer that read the planner's answer in this round is not asked again: its return stands.
+    return exchange && result && !item.heard
       ? [
           {
             question: questionFor(item.reviewer.name, exchange, askedAt),

@@ -17,6 +17,8 @@ import { opinionSummary } from './code-review-round-result';
 import { askPerson, reviewAsks } from './review-ask';
 import type { PlanChatStore } from '../../history/plan-chat.store';
 import { waitForPlanner } from '../implement/implement-question';
+import { isSubtask } from '../../contract/subtask';
+import { askedReviewer } from '../shared/reviewer-labels';
 import type { Exchange } from './review-exchange';
 import { closeReview, failed, noteHandoff, writeReport } from './review-report';
 import { othersOpen, routeReview, tallyRound } from './review-round';
@@ -44,6 +46,17 @@ interface SettleInput {
   same: boolean;
 }
 
+/** What the planner is asked: the reviewers' own questions, then the disagreements that implement and a reviewer did not settle. */
+function plannerQuestions(
+  finished: Finished[],
+  disagreed: { question: string }[],
+): { reviewer: string; question: string }[] {
+  return [
+    ...finished.flatMap((item) => (item.asked ? [{ reviewer: item.reviewer.name, question: item.asked }] : [])),
+    ...disagreed.map((item) => ({ reviewer: askedReviewer(item.question) ?? 'code-review', question: item.question })),
+  ];
+}
+
 /** Ends the code-review visit after the reviewers: a limit, an error, a wait, an ask, or the routed report. */
 export class ReviewSettle {
   constructor(
@@ -57,7 +70,8 @@ export class ReviewSettle {
     const { mounts, requirements, notes, impact, list, exchanges, fresh, thirdParty, same } = input;
     const { opened, options } = ctx;
     const { key } = opened.run;
-    const { reportContinued, opinions, stored, errors } = tallyRound(kept, recovered, finished);
+    const tally = tallyRound(kept, recovered, finished);
+    const { reportContinued, opinions, stored, errors } = tally;
     const limited = finished.find((item) => item.limit)?.limit;
     if (limited) {
       // The reviewers that answered keep their answers; the ones the limit stopped run again when the run goes on.
@@ -70,24 +84,11 @@ export class ReviewSettle {
       await this.stamp(opened.run, stored, fingerprint);
       return closed;
     }
-    const asking = finished.filter((item) => item.asked);
-    if (this.chat && asking.length > 0) {
-      // The reviewers that answered keep their answers; the ones that asked run again with the planner's answer.
-      const ask = { chat: this.chat, clock: ctx.clock, attemptId: opened.attemptId, startedAt: opened.startedAt };
-      const waits = [];
-      for (const item of asking) {
-        waits.push(
-          await waitForPlanner(opened.run, {
-            ...ask,
-            step: `code-review-${item.reviewer.name}`,
-            question: item.asked ?? '',
-          }),
-        );
-      }
-      const closed = await closeReview(ctx, waits[0].route, waits[0].summary, stored, []);
-      await this.stamp(opened.run, stored, fingerprint);
-      return closed;
-    }
+    const disagreed = thirdParty ? [] : reviewAsks(exchanges, finished, same, opened.startedAt);
+    // The run's planner is asked first: a subtask has none, its disagreement goes to the person who started the run.
+    const toPlanner = this.chat !== undefined && !isSubtask(opened.run);
+    const questions = plannerQuestions(finished, toPlanner ? disagreed : []);
+    if (this.chat && questions.length > 0) return this.waitForPlanner(this.chat, input, tally.stored, questions);
     const noted = await noteHandoff(this.documents, key, opinions, stored);
     if (only && othersOpen(only, opinions)) {
       const summary = opinionSummary(opinions);
@@ -142,7 +143,7 @@ export class ReviewSettle {
     if (fresh) {
       recorded.push(textDocument(ARTIFACTS.rebaseConflict.kind, 'clear\n'));
     }
-    const asks = thirdParty ? [] : reviewAsks(exchanges, finished, same, opened.startedAt);
+    const asks = toPlanner ? [] : disagreed;
     if (asks.length > 0) {
       const asked = await askPerson(ctx, asks, recorded, reportExchanges, written.usage);
       await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
@@ -159,6 +160,33 @@ export class ReviewSettle {
     );
     await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
     return routed;
+  }
+
+  /**
+   * Closes the review as waiting for the planner. The reviewers that answered keep their answers; the ones that
+   * asked, or whose disagreement is asked, run again with the planner's answer.
+   */
+  private async waitForPlanner(
+    chat: PlanChatStore,
+    input: SettleInput,
+    stored: DocumentDraft[],
+    questions: { reviewer: string; question: string }[],
+  ): Promise<PipelineResult> {
+    const { ctx, finished, fingerprint } = input;
+    const { opened } = ctx;
+    const ask = { chat, clock: ctx.clock, attemptId: opened.attemptId, startedAt: opened.startedAt };
+    const waits = [];
+    for (const { reviewer, question } of questions) {
+      waits.push(await waitForPlanner(opened.run, { ...ask, step: `code-review-${reviewer}`, question }));
+    }
+    const waiting = new Set(questions.map((item) => item.reviewer));
+    const reviewing = new Set(
+      finished.filter((item) => waiting.has(item.reviewer.name)).map((item) => item.reviewer.kind),
+    );
+    const kept = stored.filter((document) => !reviewing.has(document.kind));
+    const closed = await closeReview(ctx, waits[0].route, waits[0].summary, kept, []);
+    await this.stamp(opened.run, kept, fingerprint);
+    return closed;
   }
 
   /** The reviews this round stored count for the generation and the files they judged, once their visit is closed. */

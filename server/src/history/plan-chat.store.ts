@@ -55,6 +55,14 @@ export class PlanChatStore {
       .sort((a, b) => a.at.localeCompare(b.at));
   }
 
+  /** The questions the planner escalated that wait for the person's answer, oldest first. */
+  async pendingEscalations(key: string): Promise<PlanChatEntry[]> {
+    const { entries } = await this.read(key);
+    return entries
+      .filter((entry) => entry.kind === 'escalation' && entry.state === 'pending')
+      .sort((a, b) => a.at.localeCompare(b.at));
+  }
+
   /** The planner's answer to the step's question that the step did not read yet, if there is one. */
   async answerFor(key: string, step: string): Promise<PlanChatEntry | null> {
     const { entries } = await this.read(key);

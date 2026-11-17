@@ -43,6 +43,7 @@ describe('code-review step', () => {
     answer: string | null,
     decision: 'ok' | 'return',
     reason = 'The answer holds.',
+    subtask = false,
   ) {
     mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
     let again: 'ok' | 'return' = 'return';
@@ -62,6 +63,10 @@ describe('code-review step', () => {
     const runs = app.get(RunRepository);
     const documents = app.get(DocumentRepository);
     const run = await runs.findRun(key);
+    if (subtask) {
+      run!.parentRunId = 1;
+      await runs.saveRun(run!);
+    }
     await documents.putDocument(
       run!,
       'requirements',
@@ -95,7 +100,7 @@ describe('code-review step', () => {
   }
 
   it('asks the person when a reviewer returns the same diff again', async () => {
-    const { runs, documents, run, sent } = await returnedOnce('PROJ-98', null, 'return', 'It still holds.');
+    const { runs, documents, run, sent } = await returnedOnce('PROJ-98', null, 'return', 'It still holds.', true);
     const prompt = sent('code-review-requirements')?.prompt ?? '';
     expect(prompt).toContain('Remove the pending rebase catch-up');
     expect(prompt).toContain('Do not return that behavior again');
@@ -114,12 +119,33 @@ describe('code-review step', () => {
     expect(run.attemptsReview).toBe(0);
   });
 
+  it('asks the planner first when a reviewer of a run returns the same diff again, and not the person', async () => {
+    const { runs, documents, sent } = await returnedOnce('PROJ-94', null, 'return', 'It still holds.');
+    expect(sent('code-review-requirements')?.prompt).toContain('Your last finding and the answer of implement');
+    const waiting = await runs.findRun('PROJ-94');
+    expect(waiting?.currentStep).toBe('code-review');
+    expect(waiting?.status).toBe('waiting');
+    expect(await documents.latestBody('PROJ-94', 'review_questions')).toBeNull();
+    const chat = JSON.parse((await documents.latestBody('PROJ-94', 'plan_chat')) ?? '{}');
+    expect(chat.entries).toEqual([
+      expect.objectContaining({
+        kind: 'question',
+        from: 'code-review-requirements',
+        state: 'pending',
+        text: expect.stringContaining(
+          'requirements still returns: code-review-requirements Implement answered: nothing.',
+        ),
+      }),
+    ]);
+  });
+
   it('puts the answer of implement and the decision of the person into the next round', async () => {
     const { app, runs, documents, run, sent, agent } = await returnedOnce(
       'PROJ-96',
       'The plan removes it.',
       'return',
       'It still holds.',
+      true,
     );
     expect(sent('code-review-requirements')?.prompt).toContain('Implement answered: The plan removes it.');
     const question = (await documents.latestBody('PROJ-96', 'review_questions'))!.replace(/^- /, '').trim();

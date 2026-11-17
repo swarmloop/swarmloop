@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Optional } from '@nestjs/common';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { PlannerTurns } from '../pipeline/planner-turns';
 import { AnswersBody, FlowView } from '../contract/api';
 import { requireRun, RunQueriesService } from './run-queries.service';
 import { RunCommandsService } from './run-commands.service';
@@ -17,6 +18,7 @@ export class RunAnswersService {
     private readonly pipeline: PipelineService,
     private readonly queries: RunQueriesService,
     private readonly commands: RunCommandsService,
+    @Optional() private readonly turns?: PlannerTurns,
   ) {}
 
   async answers(key: string, body: AnswersBody): Promise<FlowView> {
@@ -75,6 +77,7 @@ export class RunAnswersService {
   }
 
   private async start(key: string): Promise<FlowView> {
+    await this.turns?.offerAnswers(key);
     this.commands.demandStart(await this.pipeline.startDetached(key));
     return this.queries.flow(key);
   }

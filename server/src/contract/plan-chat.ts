@@ -19,9 +19,12 @@ export interface PlanChatEntry {
   version?: number;
   /** The files sent with the message. */
   attachments?: AttachmentRef[];
-  /** `question` is a step's question to the planner; `answer` is the planner's answer to it. Missing for a message and a reply. */
-  kind?: 'question' | 'answer';
-  /** The step that asked, for a `question` and its `answer`. */
+  /**
+   * `question` is a step's question to the planner; `answer` is the planner's answer to it; `escalation` is what the
+   * planner could not settle and left to whoever started the run. Missing for a message and a reply.
+   */
+  kind?: 'question' | 'answer' | 'escalation';
+  /** The step that asked, for a `question`, its `answer` and its `escalation`. */
   from?: string;
 }
 

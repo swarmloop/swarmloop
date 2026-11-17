@@ -14,11 +14,14 @@ function questionItems(
   documents: DocumentEntity[],
   kind: string,
   results: Parameters<typeof openQuestions>[1],
+  /** Only the questions the server stored parts for: the others are old questions of an earlier step. */
+  withParts = false,
 ): FlowItem[] {
   const stored = answered(latest(documents, 'answers') ?? '');
   const parts = readStoredQuestions(latest(documents, 'question_parts') ?? '');
-  return openQuestions(latest(documents, kind) ?? '', results).map((question) => {
+  return openQuestions(latest(documents, kind) ?? '', results).flatMap((question) => {
     const found = parts.find((item) => item.question === question);
+    if (withParts && !found) return [];
     return {
       kind: 'question',
       id: question,
@@ -28,6 +31,9 @@ function questionItems(
     };
   });
 }
+
+/** The steps whose question the planner may escalate to the person. */
+const ESCALATING_STEPS = ['implement', 'implement-improve', 'code-review'];
 
 function pasteItems(documents: DocumentEntity[], pasteUrls: string[]): FlowItem[] {
   const pending = pendingUrl(latest(documents, 'pending'));
@@ -45,6 +51,10 @@ export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls
         storedResult<PlanResult>(plan, documents),
       ]),
     );
+  }
+  if (ESCALATING_STEPS.includes(run.currentStep)) {
+    // A question the planner escalated to the person who started the run waits in the questions of the step that asked.
+    itemsOut.push(...questionItems(documents, 'questions', [], true));
   }
   if (run.split && run.currentStep === 'implement') {
     itemsOut.push(...questionItems(documents, 'subtask_questions', []));

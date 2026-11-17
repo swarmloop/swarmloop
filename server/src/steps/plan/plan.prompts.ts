@@ -93,3 +93,27 @@ export function planAnswersStep(step: string, question: string, resultText: stri
     resultText,
   ].join('\n');
 }
+
+/** What the planner is asked in its own chat when the person answered the question it escalated for a step. */
+export function planReadsAnswer(
+  step: string,
+  question: string,
+  escalation: string,
+  answer: string,
+  resultText: string,
+): string {
+  return [
+    `You escalated a question of the ${step} step to the person who started the run:`,
+    escalation.trim(),
+    '',
+    `The ${step} step had asked:`,
+    question.trim(),
+    '',
+    'The person answered:',
+    answer.trim(),
+    '',
+    'Give the step the decision the person made, as one decision it follows. Do not change the plan and do not add requirements.',
+    '',
+    resultText,
+  ].join('\n');
+}
