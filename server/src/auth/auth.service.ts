@@ -11,6 +11,11 @@ export const OAUTH_PROVIDERS = 'OAUTH_PROVIDERS';
 /** How a request proved who it is. */
 export type Via = 'session' | 'token';
 
+/** The token of an `Authorization: Bearer` header, or undefined. */
+export function bearerOf(authorization: string | undefined): string | undefined {
+  return /^Bearer (.+)$/i.exec(authorization ?? '')?.[1];
+}
+
 export interface Credentials {
   cookie?: string;
   authorization?: string;
@@ -70,7 +75,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (session) {
       return { actor: session, via: 'session' };
     }
-    const bearer = /^Bearer (.+)$/i.exec(credentials.authorization ?? '')?.[1];
+    const bearer = bearerOf(credentials.authorization);
     const person = bearer ? await this.tokens.personOf(bearer) : null;
     return person ? { actor: person, via: 'token' } : { actor: null, via: null };
   }

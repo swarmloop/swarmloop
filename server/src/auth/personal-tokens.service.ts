@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
-import type { CreatedTokenView, TokenView } from '../contract/people';
+import type { CreatedTokenView, CurrentTokenView, TokenView } from '../contract/people';
 import { PersonalTokenEntity } from '../history/people-entities';
 
 const MIN_LENGTH = 32;
@@ -67,6 +67,15 @@ export class PersonalTokens {
       await this.tokens.update({ id: token.id }, { lastUsedAt: this.clock.iso() });
     }
     return token.login;
+  }
+
+  /** The id, person and name of a live token, or null for an unknown or expired one. Does not touch last used. */
+  async currentOf(value: string): Promise<CurrentTokenView | null> {
+    const token = await this.tokens.findOneBy({ tokenHash: hashOf(value) });
+    if (!token || (token.expiresAt !== null && token.expiresAt <= this.clock.iso())) {
+      return null;
+    }
+    return { id: token.id, login: token.login, name: token.name };
   }
 
   async list(login: string): Promise<TokenView[]> {

@@ -20,6 +20,57 @@ export interface PersonView {
   createdAt: string;
 }
 
+export interface TokensView {
+  tokens: TokenView[];
+}
+
+/** Days until a token expires; null means it never does. */
+export type TokenLifetime = 30 | 90 | null;
+
+export interface CreateTokenBody {
+  name: string;
+  expiresInDays: TokenLifetime;
+}
+
+/** A token value a person made elsewhere, stored under their name. */
+export interface UseTokenBody extends CreateTokenBody {
+  value: string;
+}
+
+/** The token a request was made with, and the person it acts for. */
+export interface CurrentTokenView {
+  id: number;
+  login: string;
+  name: string;
+}
+
+export interface PeopleView {
+  people: PersonView[];
+}
+
+export interface SetRoleBody {
+  role: Role;
+}
+
+export interface CliLoginStart {
+  machine: string;
+}
+
+export interface CliLoginStarted {
+  id: string;
+  code: string;
+  url: string;
+  expiresAt: string;
+}
+
+export type CliLoginPoll = { status: 'waiting' } | { status: 'approved'; token: string } | { status: 'expired' };
+
+/** What the approval page shows of a login code. */
+export interface CliLoginView {
+  machine: string;
+  expiresAt: string;
+}
+
 /** The `madeBy` and `startedBy` of rows recorded while the server had a machine token. */
 export const LEGACY_MACHINE = 'machine';
 
