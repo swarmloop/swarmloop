@@ -2,7 +2,9 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { Clock } from '../core/clock';
 import type { CommandReceipt } from '../contract/command';
 import type { FlowView } from '../contract/api';
+import type { AttachmentRef } from '../contract/attachments';
 import type { PlanChatEntry } from '../contract/plan-chat';
+import { AttachmentStore } from '../history/attachment-store';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
@@ -10,10 +12,11 @@ import { PlannerTurns } from '../pipeline/planner-turns';
 import { messageTurn } from '../pipeline/plan-chat-route';
 import { requireRun, RunQueriesService } from './run-queries.service';
 
-/** What a message of a person is stored as: its text and the login that sent it. */
+/** What a message of a person is stored as: its text, the login that sent it and the files it came with. */
 interface MessagePayload extends Record<string, unknown> {
   message: string;
   author?: string;
+  attachments?: AttachmentRef[];
 }
 
 /** A person's message to the planner of a run: where it goes is decided by the run's place. */
@@ -25,6 +28,7 @@ export class PlanChatService {
     private readonly commands: CommandService,
     private readonly store: PlanChatStore,
     private readonly turns: PlannerTurns,
+    private readonly files: AttachmentStore,
     private readonly clock: Clock,
   ) {}
 
@@ -34,6 +38,7 @@ export class PlanChatService {
     message: string | undefined,
     author: string | null,
     idempotencyKey?: string,
+    attachments?: string[],
   ): Promise<FlowView & CommandReceipt> {
     const text = message?.trim();
     if (!text) {
@@ -49,7 +54,12 @@ export class PlanChatService {
       const ended = view.state === 'merged' || view.state === 'closed' ? view.state : 'removed';
       throw new ConflictException(`${key} is ${ended}: start a follow-up run`);
     }
-    const payload: MessagePayload = { message: text, ...(author ? { author } : {}) };
+    const refs = await this.files.claim(key, attachments);
+    const payload: MessagePayload = {
+      message: text,
+      ...(author ? { author } : {}),
+      ...(refs.length > 0 ? { attachments: refs } : {}),
+    };
     const options = { idempotencyKey: idempotencyKey?.trim() || undefined };
     if (turn === 'answer') {
       const sent = await this.commands.submit<FlowView>('answer', key, payload, options);
@@ -74,6 +84,7 @@ export class PlanChatService {
       role: 'person',
       ...(payload.author ? { author: payload.author } : {}),
       text: payload.message,
+      ...(payload.attachments ? { attachments: payload.attachments } : {}),
       at: this.clock.iso(),
       state,
     };

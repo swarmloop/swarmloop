@@ -26,6 +26,7 @@ import { IntegrationSecretRepository } from './integration-secret.repository';
 import { BacklogRepository } from './backlog.repository';
 import { UserSettingRepository } from './user-setting.repository';
 import { PlanChatStore } from './plan-chat.store';
+import { AttachmentStore } from './attachment-store';
 
 /** A commit is copied into the database file. The default waits for 1000 pages, so a finished status stays only in the WAL. */
 export function configureDatabase(db: { pragma: (statement: string) => unknown }): void {
@@ -82,6 +83,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     IntegrationSecretRepository,
     BacklogRepository,
     PlanChatStore,
+    AttachmentStore,
   ],
   exports: [
     RunRepository,
@@ -100,6 +102,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     IntegrationSecretRepository,
     BacklogRepository,
     PlanChatStore,
+    AttachmentStore,
     TypeOrmModule,
   ],
 })

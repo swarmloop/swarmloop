@@ -4,6 +4,7 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Clock } from '../core/clock';
+import { AttachmentStore } from '../history/attachment-store';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
@@ -41,6 +42,7 @@ async function withPlanChat(
       app.get(CommandService),
       app.get(PlanChatStore),
       turns,
+      app.get(AttachmentStore),
       app.get(Clock),
     );
     new CommandHandlers(
@@ -54,6 +56,7 @@ async function withPlanChat(
       {} as never,
       app.get(SubtaskPort),
       chat,
+      app.get(AttachmentStore),
     ).onModuleInit();
     await test({ app, chat, turns, started });
   } finally {
@@ -165,6 +168,43 @@ describe('PlanChatService', () => {
       const { entries } = await app.get(PlanChatStore).read('proj-6');
       expect(entries).toHaveLength(1);
       expect(entries[0]).not.toHaveProperty('author');
+    });
+  });
+
+  it('records the files sent with a message on its entry, on the plan-chat path and on the answer path', async () => {
+    await withPlanChat(async ({ app, chat }) => {
+      const files = app.get(AttachmentStore);
+      const runs = app.get(RunRepository);
+      await save(runs, 'proj-7', 'plan', 'waiting');
+      const one = await files.stage('shot.png', Buffer.from('png'));
+      const sent = await chat.send('proj-7', 'see the shot', 'ann', undefined, [one.id]);
+      const run = await save(runs, 'proj-8', 'research', 'waiting');
+      await app.get(DocumentRepository).putDocument(run, 'questions', '- which limit\n');
+      const two = await files.stage('limits.txt', Buffer.from('3'));
+      const answered = await chat.send('proj-8', 'three', 'ann', undefined, [two.id]);
+      const store = app.get(PlanChatStore);
+      expect((await store.read('proj-7')).entries[0]).toEqual(
+        expect.objectContaining({ key: `message-${sent.commandId}`, attachments: [one] }),
+      );
+      expect((await store.read('proj-8')).entries[0]).toEqual(
+        expect.objectContaining({ key: `message-${answered.commandId}`, attachments: [two] }),
+      );
+      expect(files.names('proj-7')).toEqual(['shot.png']);
+    });
+  });
+
+  it('keeps the staged files of a message it refuses, and records no files for a message without any', async () => {
+    await withPlanChat(async ({ app, chat }) => {
+      const files = app.get(AttachmentStore);
+      const staged = await files.stage('a.txt', Buffer.from('a'));
+      await expect(chat.send('proj-9', 'hello', 'ann', undefined, [staged.id])).rejects.toThrow(NotFoundException);
+      expect(files.names('proj-9')).toEqual([]);
+      await save(app.get(RunRepository), 'proj-9', 'plan', 'waiting');
+      await chat.send('proj-9', 'hello', 'ann', undefined, [staged.id]);
+      await save(app.get(RunRepository), 'proj-10', 'plan', 'waiting');
+      await chat.send('proj-10', 'plain', 'ann');
+      expect(files.names('proj-9')).toEqual(['a.txt']);
+      expect((await app.get(PlanChatStore).read('proj-10')).entries[0]).not.toHaveProperty('attachments');
     });
   });
 });
