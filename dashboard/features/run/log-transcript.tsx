@@ -57,7 +57,6 @@ function Message({ message }: { message: LogMessage }) {
           py: 0.4,
           bgcolor: (theme) => headerFill(message.type, theme),
           color: 'text.secondary',
-          fontFamily: 'var(--font-mono)',
           fontSize: 11,
           letterSpacing: '0.04em',
         }}
@@ -101,7 +100,6 @@ function Message({ message }: { message: LogMessage }) {
             borderColor: 'divider',
             bgcolor: (theme) => headerFill('thinking', theme),
             color: 'secondary.main',
-            fontFamily: 'var(--font-mono)',
             fontSize: 11,
             letterSpacing: '0.06em',
           }}

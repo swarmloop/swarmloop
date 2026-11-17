@@ -11,6 +11,8 @@ import { resumeRun, sendAnswers } from '../../../lib/endpoints';
 import { ciInfra, resumeLabel } from '../../../lib/ci-infra';
 import { inState } from '../../../lib/run-actions';
 import { answerPresentation } from '../../../lib/answer-field';
+import { MarkdownBody } from '../../../components/ui/markdown-body';
+import { QuestionCard } from './question-card';
 import type { AnswersBody, FlowView } from '@contract/api';
 
 export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (flow: FlowView) => void }): ReactElement {
@@ -61,12 +63,9 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
           </Box>
         </>
       ) : flow.reason ? (
-        <Typography
-          component="pre"
-          sx={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12, mt: 2 }}
-        >
-          {flow.reason}
-        </Typography>
+        <Box sx={{ mt: 2 }}>
+          <MarkdownBody text={flow.reason} />
+        </Box>
       ) : null}
       {flow.paths.length > 0 ? (
         <Box component="ul" sx={{ fontFamily: 'var(--font-mono)', fontSize: 13, pl: 2 }}>
@@ -82,7 +81,7 @@ export function WaitingPanel({ flow, onChange }: { flow: FlowView; onChange: (fl
           const presentation = answerPresentation(item);
           return (
             <Box key={`${item.kind}:${item.id}`} sx={{ display: 'grid', gap: 0.5 }}>
-              {presentation.heading ? <Typography>{presentation.heading}</Typography> : null}
+              {presentation.heading ? <QuestionCard item={item} /> : null}
               <TextField
                 label={presentation.label}
                 slotProps={item.kind === 'question' ? { htmlInput: { 'aria-label': item.label } } : undefined}

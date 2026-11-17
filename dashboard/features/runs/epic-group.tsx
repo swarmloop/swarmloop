@@ -10,12 +10,13 @@ import ListItemButton from '@mui/material/ListItemButton';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import type { StateTone } from '@contract/run-state';
+import { epicFigures } from '@contract/epic-figures';
 import { taskGroup } from '@contract/task-order';
 import { DisclosureIcon } from '../../components/ui/disclosure-icon';
-import { toneColor } from '../run';
+import { duration, money } from '../../lib/format';
+import { runWord, toneColor } from '../run';
 import { needsLook, orderedTasks, statusOf, taskCountsOf } from './epic-tasks';
 import { RunRow } from './run-row';
-import { runWord } from './run-word';
 import { TaskLine } from './task-line';
 
 type Group = ReturnType<typeof taskGroup>;
@@ -58,6 +59,12 @@ export function EpicGroup({
   const open = override ?? tasks.some(needsLook);
   const counts = taskCountsOf(run, tasks);
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  const figures = run.epic
+    ? epicFigures(
+        { epicUsd: run.epic.usd, ownUsd: run.usd, epicMs: run.epic.durationMs, taskCount: total, workedMs: null },
+        { money, duration },
+      )
+    : undefined;
   const blocked = counts.blocked ?? 0;
   const needsYou = tasks.filter((task) => runWord(task).tone === 'person').length;
   const { open: openTasks, settled } = orderedTasks(tasks);
@@ -79,12 +86,13 @@ export function EpicGroup({
           run={run}
           selected={!open && run.key === selected}
           now={now}
+          figures={figures}
           onOpen={onOpen}
           onRemove={onRemove}
           toggle={
             <IconButton
               size="small"
-              aria-label={`${open ? 'Collapse' : 'Expand'} subtasks of ${run.name}`}
+              aria-label={`${open ? 'Collapse' : 'Expand'} subtasks of ${run.title}`}
               aria-expanded={open}
               sx={{ p: 0, width: 22, height: 22, flexShrink: 0 }}
               onClick={(event) => {
@@ -116,7 +124,7 @@ export function EpicGroup({
       {open ? (
         <Box sx={{ ml: 2.5, pl: 1, position: 'relative' }}>
           <Box aria-hidden data-testid="guide-line" sx={GUIDE} />
-          <List disablePadding aria-label={`Tasks of ${run.name}`}>
+          <List disablePadding aria-label={`Tasks of ${run.title}`}>
             {openTasks.map((task) => (
               <TaskLine
                 key={task.key}

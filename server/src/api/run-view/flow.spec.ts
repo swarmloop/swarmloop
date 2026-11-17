@@ -3,8 +3,8 @@ import { reviewLog } from '../../testing/result-answer';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { openItems, phases, reason, resumeState, returns, sentence, stateView } from './flow';
-import { renderQuestions } from '../../steps/research/research-record';
+import type { LoopEventEntity } from '../../history/entities';
+import { phases, reason, returns, sentence } from './flow';
 
 describe('failure reason', () => {
   it('shows the current pipeline error instead of an older failing test', () => {
@@ -32,6 +32,49 @@ describe('return lines', () => {
   it('lists returns from checks, code-review and pipeline in board order', () => {
     const run = { attemptsReview: 1, attemptsPipeline: 2, attemptsChecks: 3 } as RunEntity;
     expect(returns(run).map((edge) => edge.from)).toEqual(['checks', 'code-review', 'pipeline']);
+  });
+});
+
+describe('return reasons', () => {
+  const loops = [
+    { counter: 'checks', reason: 'required checks failed', detail: '{"commands":["lint"]}' },
+    { counter: 'pipeline', reason: 'old\nline', detail: null },
+    { counter: 'pipeline', reason: 'job test failed\nmore', detail: null },
+  ] as LoopEventEntity[];
+
+  it('names the failed command for checks and the first line of the latest reason otherwise', () => {
+    const run = { attemptsPipeline: 2, attemptsChecks: 1 } as RunEntity;
+    expect(returns(run, loops).map((edge) => edge.why)).toEqual(['lint', 'job test failed']);
+  });
+
+  it('gives no reason without loop events', () => {
+    const run = { attemptsChecks: 1 } as RunEntity;
+    expect(returns(run)[0]).not.toHaveProperty('why');
+  });
+});
+
+describe('returned step note', () => {
+  const run = { key: 'r', currentStep: 'implement', status: 'waiting', attemptsChecks: 1 } as RunEntity;
+  const stats = [{ id: 5, step: 'checks', status: 'waiting' }] as StepStatEntity[];
+  const issues = JSON.stringify([{ id: 'a' }, { id: 'b' }]);
+  const documents = [{ stepStatId: 5, kind: 'issues', body: issues }] as DocumentEntity[];
+  const noteOf = (loops: LoopEventEntity[], docs = documents): (string | undefined)[] =>
+    phases(run, stats, docs, '/nonexistent', loops)
+      .flatMap((phase) => phase.steps)
+      .filter((step) => step.name === 'checks')
+      .map((step) => step.returnNote);
+
+  it('counts the notes of the step visit', () => {
+    expect(noteOf([])).toEqual(['2 notes']);
+  });
+
+  it('names the failed command for checks', () => {
+    const loops = [{ counter: 'checks', reason: 'x', detail: '{"commands":["lint"]}' }] as LoopEventEntity[];
+    expect(noteOf(loops)).toEqual(['lint']);
+  });
+
+  it('gives no note without an issues document', () => {
+    expect(noteOf([], [])).toEqual([undefined]);
   });
 });
 
@@ -268,58 +311,5 @@ describe('implement-improve of a split parent', () => {
   it('has no note when it is not skipped', () => {
     const step = chip([{ id: 1, step: 'implement-improve', status: 'ok', attempt: 1 }], 'implement-improve');
     expect(step?.note).toBeUndefined();
-  });
-});
-
-describe('open questions of the run view', () => {
-  const run = { currentStep: 'research' } as RunEntity;
-  const doc = (kind: string, body: string) => ({ kind, body }) as DocumentEntity;
-  const result = (questions: string[]) =>
-    doc('research_result', JSON.stringify({ summary: [], questions, impact: [] }));
-  const ids = (documents: DocumentEntity[]) => openItems(run, documents, []).map((item) => item.id);
-
-  it('lists a multi-line question of the research result whole', () => {
-    const questions = ['Is it ok?\n  - nested: yes\n1. first', 'second?'];
-
-    expect(ids([doc('questions', renderQuestions(questions)), result(questions)])).toEqual(questions);
-  });
-
-  it('lists the questions plan wrote, not the older result of research', () => {
-    expect(ids([result(['from research']), doc('questions', '- from plan\n')])).toEqual(['from plan']);
-  });
-
-  it('lists the questions of a run stored before results, and none for an empty document', () => {
-    expect(ids([doc('questions', '- one?\n- none\n')])).toEqual(['one?']);
-    expect(ids([result(['cleared']), doc('questions', '')])).toEqual([]);
-  });
-
-  it('lists the subtask questions of a split parent at implement, and not its old research questions', () => {
-    const split = { currentStep: 'implement', split: true } as RunEntity;
-    const items = (documents: DocumentEntity[]) => openItems(split, documents, []);
-
-    const [item] = items([
-      doc('questions', '- from research\n'),
-      doc('subtask_questions', '- Subtask a asks: which?\n'),
-    ]);
-    expect(item).toMatchObject({ kind: 'question', id: 'Subtask a asks: which?', answer: '' });
-    expect(items([doc('questions', '- from research\n')])).toEqual([]);
-  });
-
-  it('lists the question of a code review waiting for the person, and is ready once it is answered', () => {
-    const waiting = { currentStep: 'code-review', status: 'waiting' } as RunEntity;
-    const asked = doc(
-      'review_questions',
-      '- quality still returns: x Implement answered: nothing. Which holds? (asked t)\n',
-    );
-    const items = openItems(waiting, [asked], []);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ kind: 'question', answer: '' });
-    expect(stateView(waiting, items, [asked]).reason?.code).toBe('NEEDS_ANSWERS');
-    expect(resumeState(waiting, items, [asked])).toBe('need-answers');
-    const answers = doc('answers', `question: ${items[0].id}\nanswer: keep it\n`);
-    const answered = openItems(waiting, [asked, answers], []);
-    expect(answered[0].answer).toBe('keep it');
-    expect(resumeState(waiting, answered, [asked, answers])).toBe('ready');
-    expect(openItems(waiting, [asked, doc('review_questions', '')], [])).toEqual([]);
   });
 });

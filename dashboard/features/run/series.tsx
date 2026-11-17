@@ -1,7 +1,7 @@
 'use client';
 
 import { useTheme } from '@mui/material/styles';
-import { memory } from '../../lib/format';
+import { cores, memory } from '../../lib/format';
 
 interface Point {
   at?: string;
@@ -15,15 +15,91 @@ export interface SeriesLine {
   samples: Point[];
 }
 
+/** The axis label of a CPU value: percent, or cores when the chart shows CPU alone. */
+function cpuLabel(percent: number, metric: 'cpu' | 'memory' | undefined): string {
+  return metric === 'cpu' ? cores(percent) : `${Math.round(percent)}%`;
+}
+
+/** The legend value of a line's last sample for the metric shown. */
+function legendValue(sample: Point | undefined, metric: 'cpu' | 'memory' | undefined): string {
+  const cpu = sample?.cpu ?? 0;
+  const mem = sample?.memory ?? 0;
+  if (metric === 'cpu') {
+    return `${cores(cpu)} cores`;
+  }
+  return metric === 'memory' ? memory(mem) : `${cpu.toFixed(0)}% · ${memory(mem)}`;
+}
+
+/** The grid lines and the value labels of the axes: one axis for a single metric, else CPU left and memory right. */
+function GridRows({
+  metric,
+  maxCpu,
+  maxMemory,
+  frame,
+}: {
+  metric: 'cpu' | 'memory' | undefined;
+  maxCpu: number;
+  maxMemory: number;
+  /** The plot area: its left and right edge, top and height. */
+  frame: { left: number; right: number; top: number; height: number };
+}): React.ReactElement {
+  const theme = useTheme();
+  const grid = theme.vars?.palette.divider ?? theme.palette.divider;
+  const cpuAxis = theme.vars?.palette.info.main ?? theme.palette.info.main;
+  const memoryAxis = theme.vars?.palette.secondary.main ?? theme.palette.secondary.main;
+  return (
+    <>
+      {[0, 0.5, 1].map((row) => {
+        const y = frame.top + row * frame.height;
+        return (
+          <g key={row}>
+            <line x1={frame.left} x2={frame.right} y1={y} y2={y} stroke={grid} />
+            <text
+              x={frame.left - 8}
+              y={y}
+              textAnchor="end"
+              dominantBaseline="middle"
+              fill={metric === 'memory' ? memoryAxis : cpuAxis}
+              fontSize="11"
+            >
+              {metric === 'memory' ? memory(maxMemory * (1 - row)) : cpuLabel((1 - row) * maxCpu, metric)}
+            </text>
+            {metric ? null : (
+              <text
+                x={frame.right + 8}
+                y={y}
+                textAnchor="start"
+                dominantBaseline="middle"
+                fill={memoryAxis}
+                fontSize="11"
+              >
+                {memory(maxMemory * (1 - row))}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </>
+  );
+}
+
 const COLORS = ['#2f5d73', '#8a5a2a', '#5a7a3a', '#7a3a6a', '#3a6a7a', '#7a5a3a'];
 
-/** CPU and memory over time. With `lines` each line has its own colour and the x axis is time; else one line by sample. */
-export function SeriesChart({ samples, lines }: { samples: Point[]; lines?: SeriesLine[] }): React.ReactElement {
+/** CPU and memory over time. With `lines` each line has its own colour and the x axis is time; else one line by sample. With `metric` (and `lines`) only that metric is drawn, in cores or memory units, on its own axis. */
+export function SeriesChart({
+  samples,
+  lines,
+  metric,
+}: {
+  samples: Point[];
+  lines?: SeriesLine[];
+  metric?: 'cpu' | 'memory';
+}): React.ReactElement {
   const theme = useTheme();
   const width = 640;
   const height = 160;
   const left = 44;
-  const right = 78;
+  const right = metric ? 12 : 78;
   const top = 12;
   const bottom = 12;
   const plotWidth = width - left - right;
@@ -39,17 +115,14 @@ export function SeriesChart({ samples, lines }: { samples: Point[]; lines?: Seri
     (lines && span > 0
       ? ((Date.parse(sample.at ?? '') - first) * plotWidth) / span
       : (index * plotWidth) / Math.max(count - 1, 1));
-  const yCpu = (value: number): number => top + (1 - Math.min(value, 100) / 100) * plotHeight;
+  const maxCpu = metric === 'cpu' ? Math.max(...everyPoint.map((sample) => sample.cpu), 100) : 100;
+  const yCpu = (value: number): number => top + (1 - Math.min(value, maxCpu) / maxCpu) * plotHeight;
   const yMem = (value: number): number => top + (1 - value / maxMemory) * plotHeight;
   const points = (line: SeriesLine, y: (value: number) => number, pick: (sample: Point) => number): string =>
     line.samples.map((sample, index) => `${x(index, line.samples.length, sample)},${y(pick(sample))}`).join(' ');
   const mark = samples.length === 1 ? samples[0] : null;
   const last = samples.at(-1);
-  const font = 'var(--font-mono), ui-monospace, monospace';
   const legend = theme.vars?.palette.text.secondary ?? theme.palette.text.secondary;
-  const grid = theme.vars?.palette.divider ?? theme.palette.divider;
-  const cpuAxis = theme.vars?.palette.info.main ?? theme.palette.info.main;
-  const memoryAxis = theme.vars?.palette.secondary.main ?? theme.palette.secondary.main;
   const color = (index: number): string => COLORS[index % COLORS.length];
   return (
     <div>
@@ -59,7 +132,6 @@ export function SeriesChart({ samples, lines }: { samples: Point[]; lines?: Seri
           flexWrap: 'wrap',
           gap: 16,
           marginBottom: 6,
-          fontFamily: font,
           fontSize: 12,
           color: legend,
         }}
@@ -69,9 +141,7 @@ export function SeriesChart({ samples, lines }: { samples: Point[]; lines?: Seri
             <span key={line.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <i style={{ width: 18, height: 3, background: color(index), display: 'inline-block' }} />
               {line.label}
-              {line.samples.length > 0
-                ? ` ${line.samples.at(-1)?.cpu.toFixed(0)}% · ${memory(line.samples.at(-1)?.memory ?? 0)}`
-                : ''}
+              {line.samples.length > 0 ? ` ${legendValue(line.samples.at(-1), metric)}` : ''}
             </span>
           ))
         ) : (
@@ -90,63 +160,43 @@ export function SeriesChart({ samples, lines }: { samples: Point[]; lines?: Seri
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="CPU and memory"
+        aria-label={metric ? { cpu: 'CPU', memory: 'Memory' }[metric] : 'CPU and memory'}
         style={{ width: '100%', height: 180 }}
       >
-        {[0, 0.5, 1].map((row) => {
-          const y = top + row * plotHeight;
-          return (
-            <g key={row}>
-              <line x1={left} x2={width - right} y1={y} y2={y} stroke={grid} />
-              <text
-                x={left - 8}
-                y={y}
-                textAnchor="end"
-                dominantBaseline="middle"
-                fill={cpuAxis}
-                fontSize="11"
-                fontFamily={font}
-              >
-                {`${Math.round((1 - row) * 100)}%`}
-              </text>
-              <text
-                x={width - right + 8}
-                y={y}
-                textAnchor="start"
-                dominantBaseline="middle"
-                fill={memoryAxis}
-                fontSize="11"
-                fontFamily={font}
-              >
-                {memory(maxMemory * (1 - row))}
-              </text>
-            </g>
-          );
-        })}
+        <GridRows
+          metric={metric}
+          maxCpu={maxCpu}
+          maxMemory={maxMemory}
+          frame={{ left, right: width - right, top, height: plotHeight }}
+        />
         {lines
           ? drawn.map((line, index) =>
               line.samples.length > 1 ? (
                 <g key={line.label}>
-                  <polyline
-                    fill="none"
-                    stroke={color(index)}
-                    strokeWidth="2"
-                    points={points(line, yCpu, (item) => item.cpu)}
-                  />
-                  <polyline
-                    fill="none"
-                    stroke={color(index)}
-                    strokeWidth="1.5"
-                    strokeDasharray="7 4"
-                    points={points(line, yMem, (item) => item.memory)}
-                  />
+                  {metric === 'memory' ? null : (
+                    <polyline
+                      fill="none"
+                      stroke={color(index)}
+                      strokeWidth="2"
+                      points={points(line, yCpu, (item) => item.cpu)}
+                    />
+                  )}
+                  {metric === 'cpu' ? null : (
+                    <polyline
+                      fill="none"
+                      stroke={color(index)}
+                      strokeWidth={metric ? 2 : 1.5}
+                      strokeDasharray={metric ? undefined : '7 4'}
+                      points={points(line, yMem, (item) => item.memory)}
+                    />
+                  )}
                 </g>
               ) : (
                 line.samples.map((sample, point) => (
                   <circle
                     key={`${line.label}-${point}`}
                     cx={x(0, 1, sample)}
-                    cy={yCpu(sample.cpu)}
+                    cy={metric === 'memory' ? yMem(sample.memory) : yCpu(sample.cpu)}
                     r="4"
                     fill={color(index)}
                   />

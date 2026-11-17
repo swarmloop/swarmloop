@@ -301,11 +301,33 @@ describe('stats range', () => {
     const controller = new StatsController(
       { rows: async () => ({ firstRunAt: null, runs: [], steps: [], loops: [] }) } as never,
       { durationByRun: async () => new Map() } as never,
+      { latestDocuments: async () => [] } as never,
       { now: () => NOW, iso: () => new Date(NOW).toISOString() },
     );
     await expect(controller.report('7.5')).rejects.toBeInstanceOf(BadRequestException);
     await expect(controller.report('30', '9999')).rejects.toBeInstanceOf(BadRequestException);
     await expect(controller.report(undefined, '-60')).resolves.toMatchObject({ to: '2026-11-10' });
+  });
+
+  it('titles a run by its stored title, else by its requirements or prompt, and keeps the name', () => {
+    const at = '2026-11-10T08:00:00.000Z';
+    const row = (id: number, extra: Partial<StatsRows['runs'][number]> = {}) => ({
+      id,
+      key: `run-${id}`,
+      prompt: '# Add a field to the list',
+      status: 'done',
+      runtime: 'claude',
+      createdAt: at,
+      ...extra,
+    });
+    const stats = buildStats(
+      { firstRunAt: at, runs: [row(1, { title: 'Stored title' }), row(2)], steps: [], loops: [] },
+      new Map(),
+      NOW,
+      { days: 7, tzOffset: WARSAW },
+    );
+    expect(stats.runs.map((run) => run.title)).toEqual(['Stored title', 'Add a field to the list']);
+    expect(stats.runs[1].name).toBe('# Add a field to the list');
   });
 
   describe('kinds of returns and tasks', () => {

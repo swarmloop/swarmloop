@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,10 +8,8 @@ import { RemoveRunDialog } from './remove-run-dialog';
 function dialog(overrides: Partial<ComponentProps<typeof RemoveRunDialog>> = {}) {
   const props = {
     run: runSummary(),
-    removing: false,
-    error: null,
     onClose: vi.fn(),
-    onConfirm: vi.fn(),
+    onConfirm: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   render(<RemoveRunDialog {...props} />);
@@ -22,7 +20,8 @@ describe('RemoveRunDialog', () => {
   it('titles the dialog with the run name', () => {
     dialog();
 
-    expect(screen.getByRole('heading', { name: 'Remove Run one?' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: `Remove run ${runSummary().title}?` })).toBeInTheDocument();
+    expect(screen.getByText(/This cannot be undone/)).toBeInTheDocument();
   });
 
   it('closes on Cancel and confirms on Remove', async () => {
@@ -30,22 +29,31 @@ describe('RemoveRunDialog', () => {
     const props = dialog();
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(props.onClose).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onConfirm).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: 'Remove' }));
-    expect(props.onConfirm).toHaveBeenCalledWith(expect.objectContaining({ type: 'click' }));
+    await user.click(screen.getByRole('button', { name: 'Remove run' }));
+    await waitFor(() => expect(props.onClose).toHaveBeenCalledTimes(2));
+    expect(props.onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it('disables both buttons while the run is being removed', () => {
-    dialog({ removing: true });
+  it('disables both buttons while the run is being removed', async () => {
+    const user = userEvent.setup({ delay: null });
+    dialog({ onConfirm: () => new Promise(() => undefined) });
+
+    await user.click(screen.getByRole('button', { name: 'Remove run' }));
 
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Remove run/ })).toBeDisabled();
   });
 
-  it('shows the error text', () => {
-    dialog({ error: 'remove refused' });
+  it('shows the error text', async () => {
+    const user = userEvent.setup({ delay: null });
+    const props = dialog({ onConfirm: vi.fn().mockRejectedValue(new Error('remove refused')) });
 
-    expect(screen.getByText('remove refused')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove run' }));
+
+    expect(await screen.findByText('remove refused')).toBeInTheDocument();
+    expect(props.onClose).not.toHaveBeenCalled();
   });
 });

@@ -6,9 +6,9 @@ import HourglassEmpty from '@mui/icons-material/HourglassEmpty';
 import PlayCircleOutline from '@mui/icons-material/PlayCircleOutline';
 import SkipNext from '@mui/icons-material/SkipNext';
 import TaskAlt from '@mui/icons-material/TaskAlt';
-import type { TaskLayer } from '@contract/api';
+import type { TaskEntry } from '@contract/api';
 
-type SubtaskStatus = TaskLayer['tasks'][number]['status'];
+type SubtaskStatus = TaskEntry['status'];
 
 /** The icon, theme color and word of each subtask status. */
 export const TASK_STATUS: Record<SubtaskStatus, { Icon: ComponentType<SvgIconProps>; color: string; word: string }> = {

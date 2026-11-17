@@ -1,93 +1,70 @@
 'use client';
 
 import type { ReactElement } from 'react';
-import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogTitle from '@mui/material/DialogTitle';
-import Typography from '@mui/material/Typography';
 import type { PhaseName } from '@contract/steps';
 import type { FlowView } from '@contract/api';
+import { ConfirmDialog } from '../../../shell';
+import { stepLabel } from '../../phases';
+import { replayBody, reviewerBody, stopAndStartBody, stopBody } from './confirm-texts';
 
+/** The confirms of Stop, Replay and Run again of a reviewer. Replay asks after its instructions form; it is Stop and start when another step is running. */
 export function RunDialogs({
   flow,
-  error,
-  stopping,
   confirmStop,
   setConfirmStop,
   pending,
   setPending,
   replay,
+  runningElsewhere,
   stopRun,
   startReplay,
-  setError,
+  reviewer,
+  setReviewer,
+  startReviewer,
 }: {
   flow: FlowView;
-  error: string | null;
-  stopping: boolean;
   confirmStop: boolean;
   setConfirmStop: (open: boolean) => void;
   pending: { prompt: string; phases: PhaseName[] } | null;
   setPending: (pending: { prompt: string; phases: PhaseName[] } | null) => void;
   replay: string | null;
-  stopRun: () => void;
+  runningElsewhere: boolean;
+  stopRun: () => Promise<void>;
   startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
-  setError: (error: string | null) => void;
+  /** The reviewer step whose Run again waits for a confirm. */
+  reviewer: string | null;
+  setReviewer: (step: string | null) => void;
+  startReviewer: (step: string) => Promise<void>;
 }): ReactElement {
   return (
     <>
-      <Dialog open={confirmStop} onClose={() => (stopping ? undefined : setConfirmStop(false))} fullWidth maxWidth="xs">
-        <DialogTitle>Stop {flow.currentStep}?</DialogTitle>
-        <DialogContent>
-          <Typography>
-            The agent for {flow.key} is killed and this run is marked failed. Files already written stay in the
-            worktree.
-          </Typography>
-          {error ? (
-            <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-              {error}
-            </Typography>
-          ) : null}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setConfirmStop(false)} disabled={stopping}>
-            Keep running
-          </Button>
-          <Button color="error" variant="contained" disabled={stopping} onClick={stopRun}>
-            Stop
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={pending !== null} onClose={() => setPending(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Stop {flow.currentStep}?</DialogTitle>
-        <DialogContent>
-          <Typography>
-            {flow.currentStep} is running. Starting {replay} again stops it.
-          </Typography>
-          {error ? (
-            <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-              {error}
-            </Typography>
-          ) : null}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setPending(null)}>Cancel</Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={() => {
-              if (replay && pending) {
-                startReplay(replay, pending.prompt, pending.phases).catch((cause: unknown) =>
-                  setError(cause instanceof Error ? cause.message : 'replay failed'),
-                );
-              }
-            }}
-          >
-            Stop and start
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={confirmStop}
+        title={`Stop ${flow.key}?`}
+        body={stopBody(flow)}
+        verb="Stop"
+        tone="danger"
+        onConfirm={stopRun}
+        onClose={() => setConfirmStop(false)}
+      />
+      <ConfirmDialog
+        open={pending !== null}
+        title={runningElsewhere ? `Stop ${flow.currentStep}?` : `Replay from ${replay}?`}
+        body={replay ? (runningElsewhere ? stopAndStartBody(flow, replay) : replayBody(flow, replay)) : ''}
+        verb={runningElsewhere ? 'Stop and start' : 'Replay'}
+        tone="danger"
+        onConfirm={() => (replay && pending ? startReplay(replay, pending.prompt, pending.phases) : Promise.resolve())}
+        onClose={() => setPending(null)}
+      />
+      <ConfirmDialog
+        open={reviewer !== null}
+        title={`Run ${stepLabel(reviewer ?? '')} again?`}
+        body={reviewerBody(reviewer ?? '')}
+        verb="Run again"
+        tone="danger"
+        onConfirm={() => (reviewer ? startReviewer(reviewer) : Promise.resolve())}
+        onClose={() => setReviewer(null)}
+      />
     </>
   );
 }

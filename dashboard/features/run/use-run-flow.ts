@@ -2,32 +2,20 @@
 
 import type { Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import {
-  getFlow,
-  getRunLog,
-  rebaseRun as rebaseEndpoint,
-  replayStep,
-  resumeRun as resumeEndpoint,
-  startReviewer as reviewerEndpoint,
-  stopRun as stopEndpoint,
-} from '../../lib/endpoints';
+import { getFlow, getRunLog } from '../../lib/endpoints';
 import { openElapsed, visitStored } from '../../lib/elapsed';
-import { inState } from '../../lib/run-actions';
 import { useLiveActions, useLiveBridge } from '../shell';
+import { useRunCommands } from './use-run-commands';
 import { applyFlow, applyReviewLog, type FlowMemory } from './flow-state';
 import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
 import { reviewChipStatus } from '@contract/readable-log-review';
-import type { FlowView, ReplayBody } from '@contract/api';
+import type { FlowView } from '@contract/api';
 import type { LiveLog } from '@contract/live';
 
 export function useRunFlow(runKey: string): {
   flow: FlowView | null;
   setFlow: Dispatch<SetStateAction<FlowView | null>>;
   error: string | null;
-  setError: Dispatch<SetStateAction<string | null>>;
-  stopping: boolean;
-  rebasing: boolean;
-  rebaseError: string | null;
   confirmStop: boolean;
   setConfirmStop: Dispatch<SetStateAction<boolean>>;
   replay: string | null;
@@ -38,22 +26,22 @@ export function useRunFlow(runKey: string): {
   now: number;
   openMs: number;
   selectStep: (name: string) => void;
+  /** Fetch the run again, for the Retry of a failed load. */
+  reload: () => void;
   applyWaiting: (next: FlowView) => void;
-  stopRun: () => void;
-  rebaseRun: () => void;
+  stopRun: () => Promise<void>;
+  rebaseRun: () => Promise<void>;
   startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
-  startReviewer: (step: string) => void;
+  startReviewer: (step: string) => Promise<void>;
   resumeRun: () => void;
 } {
   const [flow, setFlow] = useState<FlowView | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stopping, setStopping] = useState(false);
-  const [rebasing, setRebasing] = useState(false);
-  const [rebaseError, setRebaseError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
   const [replay, setReplay] = useState<string | null>(null);
   const [pending, setPending] = useState<{ prompt: string; phases: PhaseName[] } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [loads, setLoads] = useState(0);
   const memory = useRef<FlowMemory>({ pinnedAt: null, heldMs: 0, heldStart: null, openReviews: [] });
   const followStep = useRef(true);
   const [now, setNow] = useState(() => Date.now());
@@ -111,7 +99,8 @@ export function useRunFlow(runKey: string): {
       generation.current += 1;
       watchRun(null);
     };
-  }, [runKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the load runs for a run key or a Retry, not for each render's callbacks
+  }, [runKey, loads]);
 
   useEffect(() => {
     const fresh = logs.filter((entry) => !seenLogs.current.has(entry));
@@ -132,6 +121,7 @@ export function useRunFlow(runKey: string): {
         return next.flow;
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyBody is rebuilt every render; the effect follows the live data
   }, [liveFlow, logs, runKey]);
 
   useEffect(() => {
@@ -145,6 +135,9 @@ export function useRunFlow(runKey: string): {
   useEffect(() => {
     if (flow && followStep.current) {
       setSelected((current) => {
+        if (flow.status === 'done') {
+          return null;
+        }
         if (flow.currentStep === 'code-review') {
           return current && pipelineStepOf(current) === 'code-review' ? current : REVIEW_STEPS[0];
         }
@@ -178,134 +171,28 @@ export function useRunFlow(runKey: string): {
     setFlow(next);
   };
 
-  const stopRun = (): void => {
-    if (!flow) {
-      return;
-    }
-    setStopping(true);
+  const reload = (): void => {
     setError(null);
-    stopEndpoint(flow.key)
-      .then(() => {
-        setConfirmStop(false);
-        setFlow((current) => {
-          if (!current) {
-            return current;
-          }
-          memory.current = {
-            ...memory.current,
-            heldMs: current.stepStartedAt ? openElapsed(current.stepStartedAt, Date.now()) : 0,
-            heldStart: current.stepStartedAt,
-          };
-          return { ...inState(current, 'stopped'), status: 'failed', resume: 'ready' };
-        });
-        setNow(Date.now());
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'stop failed'))
-      .finally(() => setStopping(false));
+    setLoads((count) => count + 1);
   };
 
-  const rebaseRun = (): void => {
-    if (!flow) {
-      return;
-    }
-    setRebasing(true);
-    setRebaseError(null);
-    rebaseEndpoint(flow.key)
-      .then(() => {
-        followStep.current = true;
-        setFlow((current) =>
-          current
-            ? {
-                ...inState(current, 'running'),
-                status: 'running',
-                resume: 'running',
-                stepStartedAt: null,
-                currentStep: current.status === 'done' ? 'code-review' : current.currentStep,
-              }
-            : current,
-        );
-      })
-      .catch((cause: unknown) => setRebaseError(cause instanceof Error ? cause.message : 'rebase failed'))
-      .finally(() => setRebasing(false));
-  };
-
-  const startReplay = (step: string, prompt: string, phases: PhaseName[]): Promise<void> => {
-    if (!flow) {
-      return Promise.resolve();
-    }
-    const run = flow;
-    return replayStep(run.key, step, { prompt, phases } satisfies ReplayBody).then(() => {
-      followStep.current = true;
-      setSelected(step);
-      memory.current = { ...memory.current, pinnedAt: run.updatedAt };
-      setFlow((current) =>
-        current
-          ? {
-              ...inState(current, 'running'),
-              status: 'running',
-              currentStep: step,
-              resume: 'running',
-              stepStartedAt: null,
-            }
-          : current,
-      );
-      setReplay(null);
-      setPending(null);
-    });
-  };
-
-  const startReviewer = (step: string): void => {
-    if (!flow) {
-      return;
-    }
-    const run = flow;
-    setError(null);
-    reviewerEndpoint(run.key, step)
-      .then(() => {
-        followStep.current = true;
-        setSelected(step);
-        memory.current = { ...memory.current, pinnedAt: run.updatedAt };
-        setFlow((current) =>
-          current
-            ? {
-                ...inState(current, 'running'),
-                status: 'running',
-                currentStep: 'code-review',
-                resume: 'running',
-                stepStartedAt: null,
-              }
-            : current,
-        );
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'start failed'));
-  };
-
-  const resumeRun = (): void => {
-    if (!flow) {
-      return;
-    }
-    const run = flow;
-    resumeEndpoint(run.key)
-      .then(() => {
-        followStep.current = true;
-        memory.current = { ...memory.current, pinnedAt: run.updatedAt };
-        setFlow((current) =>
-          current
-            ? { ...inState(current, 'running'), status: 'running', resume: 'running', stepStartedAt: null }
-            : current,
-        );
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'resume failed'));
-  };
+  const commands = useRunCommands({
+    flow,
+    setFlow,
+    setError,
+    setNow,
+    setSelected,
+    setReplay,
+    setPending,
+    memory,
+    followStep,
+  });
 
   return {
+    ...commands,
     flow,
     setFlow,
     error,
-    setError,
-    stopping,
-    rebasing,
-    rebaseError,
     confirmStop,
     setConfirmStop,
     replay,
@@ -316,12 +203,8 @@ export function useRunFlow(runKey: string): {
     now,
     openMs,
     selectStep,
+    reload,
     applyWaiting,
-    stopRun,
-    rebaseRun,
-    startReplay,
-    startReviewer,
-    resumeRun,
   };
 }
 

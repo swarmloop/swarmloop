@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFlow, getStep, getStepEvents, listProjects, listRemote, skipTask } from '../../../../lib/endpoints';
 import { LiveBridgeProvider } from '../../../shell';
 import { QueryWrapper } from '../../../../test/query-wrapper';
-import { flowView, stepView } from '../../../../test/fixtures';
+import { flowView, stepView, visitView } from '../../../../test/fixtures';
 import { RunScreen } from './index';
 
 vi.mock('../../../../lib/endpoints', () => ({
@@ -60,6 +60,27 @@ describe('RunScreen', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows the current step of a run paused by a provider limit as paused, never as waiting for you', async () => {
+    const user = userEvent.setup({ delay: null });
+    const limit = { runtime: 'claude', resetsAt: '2026-11-08T21:50:00.000Z', resumesAt: '2026-11-08T21:51:00.000Z' };
+    vi.mocked(getFlow).mockResolvedValue(
+      flowView({
+        status: 'waiting',
+        state: 'waiting',
+        stateReason: { code: 'RUNTIME_LIMIT', message: 'Claude hit its usage limit.', limit },
+        phases: [
+          { phase: 'implementation', steps: [{ name: 'implement', status: 'waiting', current: true, attempts: 1 }] },
+        ],
+      }),
+    );
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    const card = await screen.findByRole('button', { name: /^implement/ });
+    expect(within(card).getByTestId('PauseCircleOutlineIcon')).toBeInTheDocument();
+    await user.hover(card);
+    expect(await screen.findByRole('tooltip')).not.toHaveTextContent('Waiting for you');
+  });
+
   it('links a subtask page to its parent run', async () => {
     vi.mocked(getFlow).mockResolvedValue(flowView({ parentKey: 'p-1' }));
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
@@ -70,66 +91,47 @@ describe('RunScreen', () => {
   it('shows tasks after plan-improve', async () => {
     const tasks = [
       {
-        layer: 0,
-        tasks: [
-          {
-            id: 'a',
-            index: 0,
-            title: 'Add the column',
-            files: ['a.ts'],
-            proof: 'a.spec.ts',
-            depends: [],
-            status: 'merged' as const,
-          },
-        ],
+        id: 'a',
+        index: 0,
+        title: 'Add the column',
+        files: ['a.ts'],
+        proof: 'a.spec.ts',
+        depends: [],
+        status: 'merged' as const,
       },
       {
-        layer: 1,
-        tasks: [
-          {
-            id: 'b',
-            index: 1,
-            title: 'Send it',
-            files: ['b.ts', 'c.ts'],
-            proof: 'b.spec.ts',
-            depends: [],
-            status: 'blocked' as const,
-          },
-        ],
+        id: 'b',
+        index: 1,
+        title: 'Send it',
+        files: ['b.ts', 'c.ts'],
+        proof: 'b.spec.ts',
+        depends: [],
+        status: 'blocked' as const,
       },
     ];
     vi.mocked(getFlow).mockResolvedValue(flowView({ tasks }));
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
+    await userEvent.setup({ delay: null }).click(within(region).getByRole('button', { name: /^✓ 1 merged/ }));
     expect(region).toHaveTextContent('Add the column');
     expect(region).not.toHaveTextContent('b.spec.ts');
-    expect(region).toHaveTextContent('2 files · proof');
+    expect(within(region).getAllByRole('button', { name: 'Plan' })).toHaveLength(2);
   });
 
   it('shows the status line and each task status, and skips a blocked task', async () => {
     const tasks = [
+      { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const },
+      { id: 'b', index: 1, title: 'Send it', files: [], proof: 'b', depends: [], status: 'blocked' as const },
       {
-        layer: 0,
-        tasks: [
-          { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'merged' as const },
-        ],
-      },
-      {
-        layer: 1,
-        tasks: [
-          { id: 'b', index: 1, title: 'Send it', files: [], proof: 'b', depends: [], status: 'blocked' as const },
-          {
-            id: 'c',
-            index: 2,
-            title: 'Show it',
-            files: [],
-            proof: 'c',
-            depends: [],
-            status: 'waiting' as const,
-            note: 'waiting for b',
-          },
-        ],
+        id: 'c',
+        index: 2,
+        title: 'Show it',
+        files: [],
+        proof: 'c',
+        depends: [],
+        status: 'waiting' as const,
+        note: 'waiting for b',
       },
     ];
     vi.mocked(getFlow).mockResolvedValue(flowView({ tasks, taskLine: '1/3 merged · 1 blocked · 1 waiting' }));
@@ -138,31 +140,29 @@ describe('RunScreen', () => {
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
     expect(region).toHaveTextContent('3 tasks · 1 merged');
-    expect(region).toHaveTextContent('merged');
+    expect(region).toHaveTextContent('✓ 1 merged');
     expect(region).toHaveTextContent('Show it');
     expect(region).toHaveTextContent('waiting for b');
     expect(within(region).getAllByRole('button', { name: 'Skip task' })).toHaveLength(1);
 
-    await userEvent.setup({ delay: null }).click(within(region).getByRole('button', { name: 'Skip task' }));
+    const user = userEvent.setup({ delay: null });
+    await user.click(within(region).getByRole('button', { name: 'Skip task' }));
+    expect(skipTask).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Skip task' }));
     expect(skipTask).toHaveBeenCalledWith('run-1', 'b');
   });
 
   it('shows a resumed blocked subtask as running, with no Skip task on its row', async () => {
     const tasks = [
       {
-        layer: 0,
-        tasks: [
-          {
-            id: 'b',
-            index: 0,
-            title: 'Send it',
-            files: [],
-            proof: 'b',
-            depends: [],
-            status: 'running' as const,
-            run: { key: 'run-1-b', state: 'running' as const, currentStep: 'implement', usd: 0, durationMs: 0 },
-          },
-        ],
+        id: 'b',
+        index: 0,
+        title: 'Send it',
+        files: [],
+        proof: 'b',
+        depends: [],
+        status: 'running' as const,
+        run: { key: 'run-1-b', state: 'running' as const, currentStep: 'implement', usd: 0, durationMs: 0 },
       },
     ];
     vi.mocked(getFlow).mockResolvedValue(flowView({ tasks, taskLine: 'Split: 1 tasks · 0 merged · 1 running' }));
@@ -184,19 +184,14 @@ describe('RunScreen', () => {
         decisions: '- subtask a: use UTC',
         tasks: [
           {
-            layer: 0,
-            tasks: [
-              {
-                id: 'a',
-                index: 0,
-                title: 'Add the column',
-                files: [],
-                proof: 'a',
-                depends: [],
-                status: 'running',
-                run: { key: 'run-1-a', state: 'running', currentStep: 'implement', usd: 7, durationMs: 1000 },
-              },
-            ],
+            id: 'a',
+            index: 0,
+            title: 'Add the column',
+            files: [],
+            proof: 'a',
+            depends: [],
+            status: 'running',
+            run: { key: 'run-1-a', state: 'running', currentStep: 'implement', usd: 7, durationMs: 1000 },
           },
         ],
       }),
@@ -204,7 +199,7 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('1 tasks · 0 merged · 1s · $7.00');
+    expect(region).toHaveTextContent('1 tasks · 0 merged');
     expect(region).toHaveTextContent('running · implement');
     expect(within(region).getByRole('region', { name: 'Merge queue' })).toBeInTheDocument();
     expect(within(region).getByRole('region', { name: 'Decisions' })).toBeInTheDocument();
@@ -232,10 +227,10 @@ describe('RunScreen', () => {
     expect(container.firstElementChild).toHaveStyle({ minWidth: '0' });
   });
 
-  it('shows Loading the run. until the flow loads, then the flow name and board', async () => {
+  it('shows a skeleton until the flow loads, then the flow title and board', async () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
-    expect(screen.getByText('Loading the run.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Loading the run')).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Run one' })).toBeInTheDocument();
     expect(screen.getByText('implementation')).toBeInTheDocument();
   });
@@ -244,9 +239,81 @@ describe('RunScreen', () => {
     const user = userEvent.setup({ delay: null });
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
+    await user.click(await screen.findByRole('button', { name: /^implement/ }));
     await user.click(await screen.findByRole('button', { name: 'Run again' }));
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('heading', { name: 'implement' })).toBeInTheDocument();
+  });
+
+  it('opens a finished run on the summary with the review report and the cost, not on the done step', async () => {
+    vi.mocked(getStep).mockResolvedValue(stepView({ report: '## Verdict\n\nReady to merge.' }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    const summary = await screen.findByRole('region', { name: 'Summary' });
+    expect(await within(summary).findByRole('heading', { name: 'Verdict' })).toBeInTheDocument();
+    expect(summary).toHaveTextContent('Cost $0');
+    expect(getStep).toHaveBeenCalledWith('run-1', 'code-review');
+    expect(getStep).not.toHaveBeenCalledWith('run-1', 'done');
+    expect(screen.queryByText('This step has not run.')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the latest stored review report, then to a plain line', async () => {
+    const document = {
+      kind: 'review_report',
+      attempt: 1,
+      body: 'Stored report text',
+      createdAt: '2026-11-08T10:00:00.000Z',
+    };
+    vi.mocked(getStep).mockResolvedValueOnce(stepView({ visits: [visitView({ documents: [document] })] }));
+    const { unmount } = render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    expect(await screen.findByText('Stored report text')).toBeInTheDocument();
+    unmount();
+
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [] }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    expect(await screen.findByText('The review report is not available.')).toBeInTheDocument();
+  });
+
+  it('shows the tasks of a finished split run once, in the summary', async () => {
+    const tasks = [
+      { id: 't1', index: 0, title: 'First task', files: [], proof: 'passes', depends: [], status: 'merged' as const },
+    ];
+    vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'done', tasks }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    await screen.findByRole('region', { name: 'Summary' });
+    expect(screen.getAllByRole('region', { name: 'Tasks' })).toHaveLength(1);
+    expect(
+      within(screen.getByRole('region', { name: 'Summary' })).getByRole('region', { name: 'Tasks' }),
+    ).toBeInTheDocument();
+  });
+
+  it('opens the requirements step from the title of a finished run', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    await user.click(await screen.findByRole('button', { name: 'Run one' }));
+
+    await waitFor(() => expect(getStep).toHaveBeenCalledWith('run-1', 'requirements'));
+    expect(screen.queryByRole('region', { name: 'Summary' })).not.toBeInTheDocument();
+  });
+
+  it('says what failed when the run does not load, and loads it on Retry', async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.mocked(getFlow).mockRejectedValueOnce(new Error('server is down'));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    expect(await screen.findByText('The run could not be loaded: server is down')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByRole('heading', { name: 'Run one' })).toBeInTheDocument();
+  });
+
+  it('titles the tab with the run title', async () => {
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    await screen.findByRole('heading', { name: 'Run one' });
+    expect(document.title).toBe('Run one · swarmloop');
   });
 });

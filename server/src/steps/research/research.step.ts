@@ -25,6 +25,7 @@ import { researchContinue } from './research.prompts';
 import { researchFor, type ResearchResult } from '../../agent-result/definitions/research';
 import { requirementErrors, requirementsToWrite } from './research-requirements';
 import { resultPromptFor } from '../../agent-result/result-prompt';
+import { runTitle } from '../../contract/requirements-view';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -104,6 +105,9 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       check: (raw) => (subtask ? [] : requirementErrors(storedList, (raw as ResearchResult).requirements)),
     });
     const result = agentResult.resultValue as ResearchResult;
+    if (result.title?.trim()) {
+      await this.runs.recordTitle(ctx.opened.run, runTitle(result.title));
+    }
     const needs = subtask ? (result.needs ?? []) : [];
     if (needs.length > 0) {
       await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(renderProjects(names)));

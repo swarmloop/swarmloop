@@ -3,7 +3,8 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { CommandRepository } from '../../history/command.repository';
 import type { CheckoutRepository } from '../../history/checkout.repository';
 import type { RunSummary } from '../../contract/api';
-import { openItems, stateView } from './flow';
+import { stateView } from './flow';
+import { openItems } from './open-items';
 
 export type OwnState = Pick<RunSummary, 'state' | 'stateReason'>;
 

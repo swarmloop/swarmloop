@@ -123,6 +123,37 @@ describe('research step', () => {
     }
   });
 
+  it('stores the title of the result within 70 characters, and stores none when the result has no title', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-title-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-22', 'billing-api'), { recursive: true });
+    mkdirSync(join(root, 'worktrees', 'PROJ-23', 'billing-api'), { recursive: true });
+    const longTitle = 'Show a short title in the run list and the run page instead of the first words of the prompt';
+    const agent = jest
+      .fn()
+      .mockResolvedValueOnce(answer({ title: longTitle }))
+      .mockResolvedValueOnce(answer());
+    const app = await boot(root, agent);
+    const runs = app.get(RunRepository);
+    const documents = app.get(DocumentRepository);
+    try {
+      for (const key of ['PROJ-22', 'PROJ-23']) {
+        const seeded = await runs.begin(key, 'prepare');
+        seeded.status = 'waiting';
+        seeded.currentStep = 'research';
+        await runs.saveRun(seeded);
+        await documents.putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
+        expect((await app.get(PipelineService).step('research', key)).exitCode).toBe(0);
+      }
+      const titled = (await runs.findRun('PROJ-22'))?.title ?? '';
+      expect(titled).toBe('Show a short title in the run list and the run page instead of the…');
+      expect(titled.length).toBeLessThanOrEqual(70);
+      expect((await runs.findRun('PROJ-23'))?.title).toBeNull();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('goes on past its questions as assumptions when the run is a subtask, and reads the parent contract', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-subtask-'));
     await writeEnv(root);

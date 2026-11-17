@@ -1,10 +1,13 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
+import { useDocumentTitle } from '../../../../lib/document-title';
 import { useRunFlow } from '../../use-run-flow';
 import { NewRunDialog } from '../../../new-run';
 import { expandReviewPhases, replaySelection } from '../../phases';
@@ -16,6 +19,7 @@ import { StepDetail } from '../step-detail';
 import { GitAuthBanner } from '../git-auth-banner';
 import { LimitBanner } from '../limit-banner';
 import { WaitingPanel } from '../waiting-panel';
+import { FinishedSummary } from './finished-summary';
 import { RunDialogs } from './run-dialogs';
 import { RunHeader } from './run-header';
 import { TaskLayers } from './task-layers';
@@ -25,10 +29,6 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
     flow,
     setFlow,
     error,
-    setError,
-    stopping,
-    rebasing,
-    rebaseError,
     confirmStop,
     setConfirmStop,
     replay,
@@ -39,6 +39,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
     now,
     openMs,
     selectStep,
+    reload,
     applyWaiting,
     stopRun,
     rebaseRun,
@@ -47,8 +48,23 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
     resumeRun,
   } = useRunFlow(runKey);
 
+  const [reviewer, setReviewer] = useState<string | null>(null);
+  useDocumentTitle(flow?.title ?? null);
+
   if (!flow) {
-    return <Typography color={error ? 'error' : 'text.secondary'}>{error ?? 'Loading the run.'}</Typography>;
+    return error ? (
+      <Box>
+        <Typography color="error">{`The run could not be loaded: ${error}`}</Typography>
+        <Button onClick={reload} sx={{ mt: 1 }}>
+          Retry
+        </Button>
+      </Box>
+    ) : (
+      <Box aria-label="Loading the run">
+        <Skeleton variant="text" width={320} height={40} />
+        <Skeleton variant="rounded" height={120} sx={{ mt: 1 }} />
+      </Box>
+    );
   }
 
   const phases = expandReviewPhases(flow.phases);
@@ -59,6 +75,17 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   const original = launches.find((launch) => launch.fromStep === null)?.phases ?? [...PHASES];
   const latest = launches.at(-1)?.phases ?? original;
   const choice = replay ? replaySelection(original, latest, replay) : null;
+  const tasks = flow.tasks?.length ? (
+    <TaskLayers
+      tasks={flow.tasks}
+      epic={flow.epic}
+      ownUsd={flow.metrics.usd}
+      mergeQueue={flow.mergeQueue}
+      decisions={flow.decisions}
+      onSkip={(taskId) => skipTask(flow.key, taskId)}
+    />
+  ) : null;
+  const summary = flow.status === 'done' && selected === null;
   return (
     <Box sx={{ minWidth: 0 }}>
       {flow.parentKey ? (
@@ -71,34 +98,28 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
       <RunHeader
         flow={flow}
         openMs={openMs}
-        rebasing={rebasing}
-        stopping={stopping}
-        rebaseError={rebaseError}
         onRebase={rebaseRun}
         onStop={() => setConfirmStop(true)}
+        onOpenRequirements={() => selectStep('requirements')}
       />
+      {error ? (
+        <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+          {error}
+        </Typography>
+      ) : null}
       <FlowBoard
         phases={phases}
         returns={flow.returns}
         selected={selected}
         onSelect={selectStep}
         checkCommands={flow.checkCommands}
+        stateReason={flow.stateReason ?? null}
       />
-      {flow.tasks?.length ? (
-        <TaskLayers
-          layers={flow.tasks}
-          mergeQueue={flow.mergeQueue}
-          decisions={flow.decisions}
-          onSkip={(taskId) =>
-            void skipTask(flow.key, taskId).catch((reason: unknown) =>
-              setError(reason instanceof Error ? reason.message : 'Skip task failed.'),
-            )
-          }
-        />
-      ) : null}
+      {summary ? null : tasks}
       {flow.status === 'waiting' || flow.status === 'blocked' || flow.status === 'failed' ? (
         <WaitingPanel flow={flow} onChange={applyWaiting} />
       ) : null}
+      {summary ? <FinishedSummary flow={flow} tasks={tasks} /> : null}
       {selected ? (
         <StepDetail
           key={selected}
@@ -114,7 +135,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
             selected === 'code-review' || flow.status === 'running' || !flow.actions.includes('replay')
               ? undefined
               : REVIEW_STEPS.includes(selected)
-                ? () => startReviewer(selected)
+                ? () => setReviewer(selected)
                 : () => setReplay(pipelineStepOf(selected))
           }
           runStatus={pipelineStepOf(selected) === flow.currentStep ? flow.status : undefined}
@@ -138,29 +159,26 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         runKey={flow.key}
         onProjects={(projects) => setFlow((current) => (current ? { ...current, projects } : current))}
         onClose={() => setReplay(null)}
-        onSubmit={async (prompt, phases) => {
-          if (!replay) {
-            return;
-          }
-          if (runningElsewhere) {
+        onSubmit={(prompt, phases) => {
+          if (replay) {
             setPending({ prompt, phases });
-            return 'hold';
           }
-          await startReplay(replay, prompt, phases);
+          return Promise.resolve(replay ? 'hold' : undefined);
         }}
       />
       <RunDialogs
         flow={flow}
-        error={error}
-        stopping={stopping}
         confirmStop={confirmStop}
         setConfirmStop={setConfirmStop}
         pending={pending}
         setPending={setPending}
         replay={replay}
+        runningElsewhere={runningElsewhere}
         stopRun={stopRun}
         startReplay={startReplay}
-        setError={setError}
+        reviewer={reviewer}
+        setReviewer={setReviewer}
+        startReviewer={startReviewer}
       />
     </Box>
   );

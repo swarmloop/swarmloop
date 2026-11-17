@@ -124,8 +124,8 @@ export function TopRuns({
                   sx={{ cursor: 'pointer', '&:last-child td': { border: 0 } }}
                 >
                   <TableCell sx={{ maxWidth: 360 }}>
-                    <Typography noWrap sx={{ fontSize: 14, fontWeight: 500 }} title={run.name}>
-                      {run.name}
+                    <Typography noWrap sx={{ fontSize: 14, fontWeight: 500 }} title={run.title}>
+                      {run.title}
                     </Typography>
                   </TableCell>
                   <TableCell>

@@ -4,7 +4,7 @@ import type { PointerEvent, ReactElement } from 'react';
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import type { StatsDay, StatsTotals } from '@contract/api';
-import { CHART, ChartCard, ChartTip, MONO, TipRow, useWidth } from './chart-parts';
+import { CHART, ChartCard, ChartTip, TipRow, useWidth } from './chart-parts';
 import { dayLabel, longDayLabel, ticks, usd } from './stats-format';
 
 const HEIGHT = 220;
@@ -77,7 +77,6 @@ export function SpendPerDay({ days, totals }: { days: StatsDay[]; totals: StatsT
                 textAnchor="end"
                 dominantBaseline="middle"
                 fontSize={11}
-                fontFamily={MONO}
                 fill={CHART.axis}
               >
                 {usd(value)}
@@ -92,7 +91,6 @@ export function SpendPerDay({ days, totals }: { days: StatsDay[]; totals: StatsT
                 y={HEIGHT - 8}
                 textAnchor={anchor(index)}
                 fontSize={11}
-                fontFamily={MONO}
                 fill={CHART.axis}
               >
                 {dayLabel(day.day)}

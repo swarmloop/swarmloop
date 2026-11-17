@@ -4,6 +4,7 @@ import type { Issue } from './step-contract';
 import { CONTRACT_KIND, SUBTASKS_KIND, type Subtask } from '../../contract/subtask';
 import type { CoveredRequirement, Requirement } from '../../contract/requirement-list';
 import type { KeepLine } from '../shared/keep-lines';
+import type { StoredQuestion } from '../shared/question-parts';
 import { research, type ResearchResult } from '../../agent-result/definitions/research';
 import { plan, type PlanResult } from '../../agent-result/definitions/plan';
 import { planImprove, type PlanImproveResult } from '../../agent-result/definitions/plan-improve';
@@ -185,6 +186,13 @@ export const ARTIFACTS = {
     writers: ['implement'],
     readers: ['implement'],
     summarize: firstLine,
+  }),
+  // The open questions of review_questions and subtask_questions in parts; the text of a question is the key to its parts.
+  questionParts: artifact('question_parts', {
+    writers: ['code-review', 'implement'],
+    readers: ['implement'],
+    codec: jsonArrayCodec<StoredQuestion>(),
+    summarize: (questions) => listSummary(questions.length, 'questions', questions[0]?.parts.decide),
   }),
   needs: artifact('needs', { writers: ['research', 'plan', 'implement'], readers: [], summarize: firstLine }),
   impact: artifact('impact', {

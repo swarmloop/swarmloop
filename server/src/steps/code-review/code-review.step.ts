@@ -36,7 +36,7 @@ import { writeReviewDiff } from './review-diff';
 import { approvedPlan, foreignReviewOf, storedCheckout } from './review-input';
 import { closeReview, failed, noteHandoff, writeReport } from './review-report';
 import { othersOpen, reportDue, routeReview, runRound, tallyRound } from './review-round';
-import { askPerson, reviewQuestions, settleAsked } from './review-ask';
+import { askPerson, reviewAsks, settleAsked } from './review-ask';
 import { prepareReview, type PrepareDeps } from './review-prepare';
 import { opinionSummary } from './code-review-round-result';
 import { renderImplementation } from '../implement/implement-record';
@@ -74,6 +74,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.repos,
     ARTIFACTS.rebaseConflict,
     ARTIFACTS.reviewQuestions,
+    ARTIFACTS.questionParts,
     ARTIFACTS.requirements,
   ];
   override readonly usesModel = true;
@@ -313,9 +314,9 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     if (fresh) {
       recorded.push(textDocument(ARTIFACTS.rebaseConflict.kind, 'clear\n'));
     }
-    const questions = thirdParty ? [] : reviewQuestions(exchanges, finished, same, opened.startedAt);
-    if (questions.length > 0) {
-      const asked = await askPerson(ctx, questions, recorded, reportExchanges, written.usage);
+    const asks = thirdParty ? [] : reviewAsks(exchanges, finished, same, opened.startedAt);
+    if (asks.length > 0) {
+      const asked = await askPerson(ctx, asks, recorded, reportExchanges, written.usage);
       await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
       return asked;
     }

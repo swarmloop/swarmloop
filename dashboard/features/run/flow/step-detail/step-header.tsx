@@ -3,10 +3,8 @@
 import type { ReactElement } from 'react';
 import DataUsage from '@mui/icons-material/DataUsage';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
-import MemoryIcon from '@mui/icons-material/Memory';
 import Paid from '@mui/icons-material/Paid';
 import Schedule from '@mui/icons-material/Schedule';
-import Speed from '@mui/icons-material/Speed';
 import Undo from '@mui/icons-material/Undo';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -16,6 +14,8 @@ import Typography from '@mui/material/Typography';
 import { duration } from '../../../../lib/format';
 import { statusColor } from '../../../../theme/theme';
 import { AttemptSelector } from '../../attempt-selector';
+import { stepState } from '@contract/step-state';
+import { toneColor } from '../../run-state-word';
 import { stepLabel } from '../../phases';
 import { problemId } from '../../transcript/problem-card';
 import { problemsLabel } from '../../transcript/transcript-feed';
@@ -33,23 +33,32 @@ const stepMetricIcon: Partial<Record<StepMetricKind, typeof Schedule>> = {
   spend: Paid,
   'tokens-in': DataUsage,
   'tokens-out': DataUsage,
-  cpu: Speed,
-  memory: MemoryIcon,
 };
 
-/** `<runtime> · <model> · <effort>` for an agent step, and the reviewers of code review. */
-function describe({ agent, reviewers }: StepDescriptor, visit: StepView['visits'][number] | undefined): string {
-  const parts: string[] = [];
-  if (agent) {
-    parts.push(agent.runtime, agent.model);
-    if (visit?.effort) {
-      parts.push(visit.effortNote === 'epic' ? `${visit.effort} (epic)` : visit.effort);
-    }
-  }
-  if (reviewers) {
-    parts.push(`reviewers: ${reviewers.map((item) => item.name).join(', ')}`);
-  }
-  return parts.join(' · ');
+/** `<runtime> · <model> · <effort>` for an agent step, and the reviewers of code review. The model id is code. */
+function Description({
+  descriptor: { agent, reviewers },
+  visit,
+}: {
+  descriptor: StepDescriptor;
+  visit: StepView['visits'][number] | undefined;
+}): ReactElement {
+  const effort = visit?.effort ? (visit.effortNote === 'epic' ? `${visit.effort} (epic)` : visit.effort) : null;
+  return (
+    <>
+      {agent ? (
+        <>
+          {agent.runtime} ·{' '}
+          <Box component="span" sx={{ fontFamily: 'var(--font-mono)' }}>
+            {agent.model}
+          </Box>
+          {effort ? ` · ${effort}` : ''}
+        </>
+      ) : null}
+      {agent && reviewers ? ' · ' : null}
+      {reviewers ? `reviewers: ${reviewers.map((item) => item.name).join(', ')}` : null}
+    </>
+  );
 }
 
 export function StepHeader({
@@ -103,15 +112,13 @@ export function StepHeader({
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-          <Typography sx={{ fontFamily: 'var(--font-mono)' }}>{stepLabel(step)}</Typography>
+          <Typography>{stepLabel(step)}</Typography>
           {!step.startsWith('code-review-') && (runStatus === 'failed' || runStatus === 'blocked') ? (
-            <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: statusColor(runStatus) }}>
-              {runStatus}
-            </Typography>
+            <Typography sx={{ fontSize: 12, color: statusColor(runStatus) }}>{runStatus}</Typography>
           ) : null}
-          {onReplay && step !== 'done' ? (
+          {onReplay && step !== 'done' && label !== 'returned' ? (
             <Button size="small" variant="contained" onClick={onReplay}>
-              Run again
+              {label === 'failed' ? 'Retry' : 'Run again'}
             </Button>
           ) : null}
           {onResume ? (
@@ -131,10 +138,12 @@ export function StepHeader({
                 item.decision,
                 item.killReason,
               );
+              const state = stepState(status, null);
               return {
                 key: item.key,
                 label: String(item.attempt),
-                color: statusColor(status),
+                color: toneColor(state.tone),
+                state,
                 menuText: `${item.attempt} · ${status} · ${duration(item.durationMs)}`,
               };
             })}
@@ -148,8 +157,8 @@ export function StepHeader({
         ) : null}
       </Box>
       {server ? null : (
-        <Typography sx={{ mt: 0.5, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'text.secondary' }}>
-          {describe(view.descriptor, visit)}
+        <Typography sx={{ mt: 0.5, fontSize: 12, color: 'text.secondary' }}>
+          <Description descriptor={view.descriptor} visit={visit} />
         </Typography>
       )}
       {problem ? (
@@ -175,7 +184,6 @@ export function StepHeader({
             alignItems: 'center',
             columnGap: 2,
             rowGap: 0.75,
-            fontFamily: 'var(--font-mono)',
             fontSize: 13,
             color: 'text.secondary',
           }}
@@ -200,10 +208,6 @@ export function StepHeader({
             tokensIn: visit.tokensIn,
             tokensOut: visit.tokensOut,
             usd: visit.usd,
-            cpuAvg: visit.cpuAvg,
-            cpuPeak: visit.cpuPeak,
-            memAvg: visit.memAvg,
-            memPeak: visit.memPeak,
           }).map((item) => {
             const Icon = item.kind === 'status' && label === 'returned' ? Undo : stepMetricIcon[item.kind];
             return (
@@ -214,7 +218,12 @@ export function StepHeader({
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 0.5,
-                    color: item.kind === 'status' ? statusColor(label) : undefined,
+                    color:
+                      item.kind === 'status'
+                        ? label === 'returned'
+                          ? toneColor(stepState(label, null).tone)
+                          : statusColor(label)
+                        : undefined,
                   }}
                 >
                   {Icon ? <Icon sx={{ fontSize: 16 }} /> : null}

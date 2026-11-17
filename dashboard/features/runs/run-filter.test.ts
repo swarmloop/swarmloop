@@ -13,6 +13,17 @@ const run = (key: string, overrides: Partial<RunSummary> = {}): RunSummary => ({
 const keys = (runs: RunSummary[]): string[] => runs.map((item) => item.key);
 
 describe('filterRuns', () => {
+  it('finds a run by a word of its title, its name or its key', () => {
+    const runs = [
+      run('a', { title: 'Applier and command', name: 'Raw prompt one' }),
+      run('b', { title: 'Other', name: 'Raw prompt two' }),
+    ];
+
+    expect(keys(filterRuns(runs, 'applier', 'all').visible)).toEqual(['a']);
+    expect(keys(filterRuns(runs, 'prompt two', 'all').visible)).toEqual(['b']);
+    expect(keys(filterRuns(runs, 'b', 'all').visible)).toEqual(['b']);
+  });
+
   it('counts 1 working, 2 failed and 134 merged runs and shows only the active 3', () => {
     const runs = [
       run('w', { state: 'running' }),

@@ -22,6 +22,8 @@ export interface ResearchResult {
   /** The requirements of the input, ids R1.. in its order; a subtask is not asked for them. */
   requirements?: Requirement[];
   needs?: Need[];
+  /** A short title for the run. */
+  title?: string;
 }
 
 const keys = {
@@ -43,6 +45,7 @@ const keys = {
     )
     .required()
     .description('Capabilities the task touches; [] when none'),
+  title: Joi.string().description('A short title for the run: plain words, at most 70 characters, no markdown'),
   needs: Joi.array()
     .items(
       Joi.object({

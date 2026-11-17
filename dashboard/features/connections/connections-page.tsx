@@ -4,12 +4,6 @@ import type { ReactElement } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogContentText from '@mui/material/DialogContentText';
-import DialogTitle from '@mui/material/DialogTitle';
 import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
@@ -23,6 +17,7 @@ import {
   installMore,
   replaceApp,
 } from '../../lib/endpoints';
+import { ConfirmDialog } from '../shell';
 import { ConnectionCard } from './connection-card';
 import { FirstRun, ManifestPost, type ManifestForm } from './first-run';
 import { HostCard } from './host-card';
@@ -76,26 +71,14 @@ export function ConnectionsPage(): ReactElement {
   }
 
   async function confirmDisconnect(): Promise<void> {
-    if (!asking) {
-      return;
-    }
-    const host = asking.connection.host;
-    setAsking(null);
-    try {
-      await disconnect(host);
+    if (asking) {
+      await disconnect(asking.connection.host);
       load();
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'disconnect failed');
     }
   }
 
   async function confirmReplace(): Promise<void> {
-    setReplacing(null);
-    try {
-      setForm(await replaceApp());
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'the app could not be replaced');
-    }
+    setForm(await replaceApp());
   }
 
   return (
@@ -135,10 +118,11 @@ export function ConnectionsPage(): ReactElement {
         })}
       </Grid>
       {form ? <ManifestPost key={form.action} form={form} /> : null}
-      <Dialog open={replacing !== null} onClose={() => setReplacing(null)} aria-labelledby="replace-title">
-        <DialogTitle id="replace-title">Replace {replacing?.app?.name}?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
+      <ConfirmDialog
+        open={replacing !== null}
+        title={`Replace ${replacing?.app?.name}?`}
+        body={
+          <>
             {disconnected(replacing?.connected ?? [])} will be disconnected. Their runs wait with GIT_AUTH until they
             log in again. {words?.stays}
             {replacing?.app?.settingsUrl ? (
@@ -152,27 +136,22 @@ export function ConnectionsPage(): ReactElement {
               </>
             ) : null}
             .
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReplacing(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => void confirmReplace()}>
-            Replace app
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog open={asking !== null} onClose={() => setAsking(null)} aria-labelledby="disconnect-title">
-        <DialogTitle id="disconnect-title">Disconnect {asking?.label}?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>The stored tokens are deleted. Your runs wait until you connect again.</DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAsking(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => void confirmDisconnect()}>
-            Disconnect
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </>
+        }
+        verb="Replace app"
+        tone="danger"
+        onConfirm={confirmReplace}
+        onClose={() => setReplacing(null)}
+      />
+      <ConfirmDialog
+        open={asking !== null}
+        title={`Disconnect ${asking?.label}?`}
+        body="The stored tokens are deleted. Your runs wait until you connect again."
+        verb="Disconnect"
+        tone="danger"
+        onConfirm={confirmDisconnect}
+        onClose={() => setAsking(null)}
+      />
     </Box>
   );
 }

@@ -36,11 +36,25 @@ export function tokens(value: number): string {
   return text.endsWith('.0') ? `${text.slice(0, -2)}M` : `${text}M`;
 }
 
+/** One decimal, without a trailing `.0`. */
+function oneDecimal(value: number): string {
+  const text = (Math.round(value * 10) / 10).toFixed(1);
+  return text.endsWith('.0') ? text.slice(0, -2) : text;
+}
+
+/** Memory as KB below 1 MB, MB below 1024 MB, else GB, with at most one decimal. */
 export function memory(bytes: number): string {
-  if (bytes < 1024 * 1024) {
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1) {
     return `${Math.round(bytes / 1024)} KB`;
   }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const rounded = Math.round(mb * 10) / 10;
+  return rounded < 1024 ? `${oneDecimal(mb)} MB` : `${oneDecimal(mb / 1024)} GB`;
+}
+
+/** CPU as cores: percent of one core divided by 100, with one decimal. */
+export function cores(percent: number): string {
+  return (percent / 100).toFixed(1);
 }
 
 export function when(iso: string): string {
