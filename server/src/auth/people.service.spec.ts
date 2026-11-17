@@ -72,6 +72,15 @@ describe('PeopleService', () => {
       expect(await tokens.list('bob')).toEqual([]);
     }));
 
+  it('does not import a revoked SWARMLOOP_TOKEN again at the next start', () =>
+    withPeople({ SWARMLOOP_TOKEN: 'short' }, async (people, tokens) => {
+      await people.seen('ann');
+      const [imported] = await tokens.list('ann');
+      await tokens.revoke('ann', imported.id);
+      await people.onModuleInit();
+      expect(await tokens.personOf('short')).toBeNull();
+    }));
+
   it('imports SWARMLOOP_TOKEN on start when an admin exists and does nothing when none does', () =>
     withPeople({ SWARMLOOP_TOKEN: 'short' }, async (people, tokens, db) => {
       await people.onModuleInit();
@@ -80,6 +89,7 @@ describe('PeopleService', () => {
         login: 'ann',
         role: 'admin',
         createdAt: db.clock.iso(),
+        envTokenImportedAt: null,
       });
       await people.onModuleInit();
       expect(await tokens.personOf('short')).toBe('ann');

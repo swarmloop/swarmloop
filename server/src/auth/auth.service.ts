@@ -2,6 +2,7 @@ import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { AppConfig } from '../config/env';
 import { registerSecretSource } from '../core/secret-sources';
 import { isLoopback } from './bind-check';
+import { PeopleService } from './people.service';
 import { PersonalTokens } from './personal-tokens.service';
 import type { LoginProvider } from '../integrations/code-host/login-provider';
 import { SessionService, sessionIdOf } from './session.service';
@@ -32,6 +33,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     config: AppConfig,
     private readonly sessions: SessionService,
     private readonly tokens: PersonalTokens,
+    private readonly people: PeopleService,
     @Inject(OAUTH_PROVIDERS) private readonly providers: LoginProvider[],
   ) {
     this.publicUrl = config.env.SWARMLOOP_PUBLIC_URL;
@@ -73,6 +75,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private async resolve(credentials: Credentials): Promise<{ actor: string | null; via: Via | null }> {
     const session = (await this.sessions.find(sessionIdOf(credentials.cookie)))?.user;
     if (session) {
+      // A session that outlived an upgrade makes its person known, so the first one becomes the admin.
+      await this.people.seen(session);
       return { actor: session, via: 'session' };
     }
     const bearer = bearerOf(credentials.authorization);

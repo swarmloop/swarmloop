@@ -4,7 +4,7 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 export class PeopleAndTokens1796300000000 implements MigrationInterface {
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE TABLE IF NOT EXISTS "people" ("login" text PRIMARY KEY NOT NULL, "role" text NOT NULL, "created_at" text NOT NULL)`,
+      `CREATE TABLE IF NOT EXISTS "people" ("login" text PRIMARY KEY NOT NULL, "role" text NOT NULL, "created_at" text NOT NULL, "env_token_imported_at" text)`,
     );
     await queryRunner.query(
       `CREATE TABLE IF NOT EXISTS "personal_tokens" ("id" integer PRIMARY KEY AUTOINCREMENT NOT NULL, "login" text NOT NULL, "name" text NOT NULL, "token_hash" text NOT NULL, "created_at" text NOT NULL, "last_used_at" text, "expires_at" text)`,

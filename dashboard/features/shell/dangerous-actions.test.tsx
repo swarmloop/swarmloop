@@ -20,7 +20,6 @@ import {
   listProjects,
   listRemote,
   listRuns,
-  ticketKeys,
   rebaseRun,
   removeRun,
   replaceApp,
@@ -258,7 +257,6 @@ function mount(name: string): void {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => undefined);
-  vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });

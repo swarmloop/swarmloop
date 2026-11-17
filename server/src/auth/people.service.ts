@@ -33,8 +33,17 @@ export class PeopleService implements OnModuleInit {
       take: 1,
     });
     if (first) {
-      await this.tokens.adoptEnvToken(first.login);
+      await this.importEnvToken(first);
     }
+  }
+
+  /** Imports `SWARMLOOP_TOKEN` once: a person who revoked it does not get it back at the next start. */
+  private async importEnvToken(person: PersonEntity): Promise<void> {
+    if (person.envTokenImportedAt) {
+      return;
+    }
+    await this.tokens.adoptEnvToken(person.login);
+    await this.people.save({ ...person, envTokenImportedAt: this.clock.iso() });
   }
 
   /** Records a login the first time it is seen: an admin when no admin exists, else a member. */
@@ -43,9 +52,14 @@ export class PeopleService implements OnModuleInit {
       return;
     }
     const first = !(await this.people.existsBy({ role: 'admin' }));
-    await this.people.save({ login, role: first ? 'admin' : 'member', createdAt: this.clock.iso() });
+    const person = await this.people.save({
+      login,
+      role: first ? 'admin' : 'member',
+      createdAt: this.clock.iso(),
+      envTokenImportedAt: null,
+    });
     if (first) {
-      await this.tokens.adoptEnvToken(login);
+      await this.importEnvToken(person);
     }
   }
 
