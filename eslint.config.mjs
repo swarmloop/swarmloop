@@ -6,7 +6,14 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import boundaries from 'eslint-plugin-boundaries';
 import tseslint from 'typescript-eslint';
-import { DATE_SYNTAX, KEY_ID_SYNTAX, RUN_STATE_WRITE, SOCKET_SYNTAX, specRuleBlocks } from './eslint.spec-rules.mjs';
+import {
+  DATE_SYNTAX,
+  GIT_PROCESS,
+  KEY_ID_SYNTAX,
+  RUN_STATE_WRITE,
+  SOCKET_SYNTAX,
+  specRuleBlocks,
+} from './eslint.spec-rules.mjs';
 
 const sourceFiles = ['**/*.{js,mjs,ts,tsx}'];
 const dashboardFiles = ['dashboard/**/*.{js,mjs,ts,tsx}'];
@@ -87,6 +94,7 @@ const TEST_LIBRARIES = ['vitest', 'jest', '@jest/globals', '@testing-library/*',
 const STEP_SYNTAX = [
   DATE_SYNTAX,
   RUN_STATE_WRITE,
+  GIT_PROCESS,
   {
     selector: "CallExpression[callee.property.name='end'][arguments.length>=2]",
     message: 'Pass one object to end: { outcome, exitCode, line, ... }.',
@@ -224,8 +232,13 @@ export default tseslint.config(
         { object: 'process', property: 'env', message: 'Read config through AppConfig, or rawEnv() outside Nest.' },
         { object: 'Date', property: 'now', message: 'Read time through Clock.' },
       ],
-      'no-restricted-syntax': ['error', DATE_SYNTAX, RUN_STATE_WRITE],
+      'no-restricted-syntax': ['error', DATE_SYNTAX, RUN_STATE_WRITE, GIT_PROCESS],
     },
+  },
+  {
+    // The git runners: the one place that starts git on a checkout. The other selectors are repeated.
+    files: ['server/src/git/git.ts', 'server/src/git/worktree-tree.ts', 'server/src/sandbox/project-git.ts'],
+    rules: { 'no-restricted-syntax': ['error', DATE_SYNTAX, RUN_STATE_WRITE] },
   },
   {
     // Step code reads and writes documents through its declared inputs and outputs. The Date selector is repeated:
@@ -334,9 +347,15 @@ export default tseslint.config(
     rules: { 'no-restricted-properties': 'off', 'no-restricted-syntax': 'off' },
   },
   {
+    // The git rule stays on where the clock and env rules are off.
+    files: ['server/src/config/**', 'server/src/core/clock.ts', 'server/src/main.ts', 'server/src/api-main.ts'],
+    ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],
+    rules: { 'no-restricted-syntax': ['error', GIT_PROCESS] },
+  },
+  {
     // The one module that writes the state of a run. The clock rule stays on for it.
     files: ['server/src/history/run-state.ts'],
-    rules: { 'no-restricted-syntax': ['error', DATE_SYNTAX] },
+    rules: { 'no-restricted-syntax': ['error', DATE_SYNTAX, GIT_PROCESS] },
   },
   {
     files: dashboardFiles,

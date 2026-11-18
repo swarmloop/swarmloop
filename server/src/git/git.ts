@@ -132,9 +132,15 @@ export function gitMissing(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === 1;
 }
 
-/** Trust this checkout only. A root process otherwise refuses a developer-owned .git. */
-export function withSafeDirectory(args: string[], roots: readonly string[]): string[] {
-  const directory = directoryArg(args);
+/**
+ * Trust this checkout only. A root process otherwise refuses a developer-owned .git. The checkout is the `-C` argument
+ * unless the caller names it (a clone's source).
+ */
+export function withSafeDirectory(
+  args: string[],
+  roots: readonly string[],
+  directory: string | null = directoryArg(args),
+): string[] {
   if (!directory) {
     return args;
   }
@@ -145,7 +151,7 @@ export function withSafeDirectory(args: string[], roots: readonly string[]): str
   return ['-c', `safe.directory=${canonical}`, ...args];
 }
 
-function checkoutRoots(): string[] {
+export function checkoutRoots(): string[] {
   const env = rawEnv();
   const worktrees = env.SWARMLOOP_ROOT ? join(env.SWARMLOOP_ROOT, 'worktrees') : '';
   return [env.CHECKOUTS_ROOT ?? '', worktrees].filter((root) => isAbsolute(root));

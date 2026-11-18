@@ -5,8 +5,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { promisify } from 'util';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { rawEnv } from '../config/process-env';
-import { git, gitDetail } from '../git/git';
+import { git, GIT_LIMITS, gitDetail } from '../git/git';
+import { git as unrecordedGit } from '../git/worktree-tree';
 import type { DockerRunner } from '../sandbox/sandbox.service';
 import type { EnvironmentConfig } from './environment-config';
 
@@ -53,7 +53,12 @@ export async function resolveProjectImage(
   try {
     const archive = join(dir, 'export.tar');
     const paths = context === '.' ? ['.'] : [context, dockerfile];
-    await run('git', ['-C', repoPath, 'archive', '--format=tar', '-o', archive, ref, ...paths], { env: rawEnv() });
+    await unrecordedGit(
+      repoPath,
+      ['archive', '--format=tar', '-o', archive, ref, ...paths],
+      undefined,
+      GIT_LIMITS.default,
+    );
     await run('tar', ['-xf', archive, '-C', dir]);
     try {
       await docker(['build', '-t', tag, '-f', join(dir, dockerfile), join(dir, context)], IMAGE_TIMEOUT_MS);
