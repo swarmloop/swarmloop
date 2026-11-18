@@ -48,7 +48,6 @@ vi.mock('../../lib/endpoints', () => ({
   listRuns: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
-  sendAnswers: vi.fn(),
   resumeRun: vi.fn(),
   stopRun: vi.fn(),
   rebaseRun: vi.fn(),
@@ -259,6 +258,7 @@ beforeEach(() => {
   vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => undefined);
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
+  vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
   vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });

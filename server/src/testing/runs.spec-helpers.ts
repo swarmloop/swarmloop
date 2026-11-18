@@ -24,6 +24,7 @@ import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
 import { SubtaskClose } from '../api/subtask-close';
+import { RunAnswersService } from '../api/run-answers.service';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
@@ -62,6 +63,7 @@ export async function boot(
       RunQueriesService,
       RunReport,
       RunCommandsService,
+      RunAnswersService,
       RunSubtaskCommandsService,
       SubtaskClose,
       CommandService,

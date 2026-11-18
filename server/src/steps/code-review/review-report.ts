@@ -166,7 +166,13 @@ export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Fi
     return;
   }
   const parsed = item.parsed;
-  const status = item.error ? 'failed' : parsed?.decision === 'return' ? 'waiting' : parsed ? 'done' : 'failed';
+  const status = item.error
+    ? 'failed'
+    : item.asked || parsed?.decision === 'return'
+      ? 'waiting'
+      : parsed
+        ? 'done'
+        : 'failed';
   const exchange = exchangeOf(item);
   await deps.visits.finishVisit(opened.run, {
     step: `code-review-${item.reviewer.name}`,

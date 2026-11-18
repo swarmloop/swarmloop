@@ -1,3 +1,4 @@
+import type { PlanRevision } from '../../contract/plan-chat';
 import { isChecksReturn, isPipelineReturn } from '../follow-up';
 import { reviewReturn } from '../shared/handoff';
 import type { FailedCommand } from '../../environment/environment-types';
@@ -62,7 +63,7 @@ export function implementImproveAsk(notes: string | null): { definition: ResultD
 }
 
 /** The result text of a chat: full when the pass asks for `rejected`, which the chat's earlier result text lacks. */
-function resultTextFor(ask: { definition: ResultDefinition; lines: string[] }, received: string | null): string {
+export function resultTextFor(ask: { definition: ResultDefinition; lines: string[] }, received: string | null): string {
   return resultPromptFor(ask.definition, ask.lines.length > 0 ? null : received);
 }
 
@@ -76,6 +77,33 @@ export function checksStillRed(red: FailedCommand[], received: string | null): s
     '',
     resultPromptFor(implementation, received),
   ].join('\n');
+}
+
+/** The `Plan amendment` section of an implement pass: only the items the plan added or changed since the last pass. */
+export function planAmendment(revisions: readonly PlanRevision[]): { heading: string; body: string }[] {
+  const lines = (label: string, items: string[]): string[] =>
+    items.length > 0 ? [`${label}:`, ...items.map((item) => `- ${item}`)] : [];
+  const body = [
+    ...lines(
+      'Added',
+      revisions.flatMap((revision) => revision.added),
+    ),
+    ...lines(
+      'Changed',
+      revisions.flatMap((revision) => revision.changed),
+    ),
+  ];
+  return body.length > 0
+    ? [
+        {
+          heading: 'Plan amendment',
+          body: [
+            'The plan was amended after the last pass. Every other item is done: do only these, on the same branch.',
+            ...body,
+          ].join('\n'),
+        },
+      ]
+    : [];
 }
 
 export function implementFollowUp(

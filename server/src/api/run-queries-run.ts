@@ -8,7 +8,7 @@ import type { DocumentEntity, RunEntity } from '../history/entities';
 import type { StepEventLog } from '../history/step-event.log';
 import type { StepRegistry } from '../steps/step.registry';
 import type { RunRepository } from '../history/run.repository';
-import { resumeState, stateView } from './run-view/flow';
+import { resumeState, stateView } from './run-view/flow-waiting';
 import { mergeView } from './run-view/status';
 
 export async function requireRun(runs: RunRepository, key: string): Promise<RunEntity> {

@@ -15,6 +15,8 @@ import { DocumentRepository } from '../../history/document.repository';
 
 import type { AgentRunInput } from '../../agent/agent-runner';
 
+import { resultAnswer } from '../../testing/result-answer';
+
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 import * as delays from '../../core/delay';
@@ -55,6 +57,7 @@ describe('code-review step', () => {
     answer: string | null,
     decision: 'ok' | 'return',
     reason = 'The answer holds.',
+    subtask = false,
   ) {
     gitWorktree(join(root, 'worktrees', key, 'billing-api'));
     let again: 'ok' | 'return' = 'return';
@@ -74,6 +77,10 @@ describe('code-review step', () => {
     const runs = app.get(RunRepository);
     const documents = app.get(DocumentRepository);
     const run = await runs.findRun(key);
+    if (subtask) {
+      run!.parentRunId = 1;
+      await runs.saveRun(run!);
+    }
     await documents.putDocument(
       run!,
       'requirements',
@@ -107,7 +114,7 @@ describe('code-review step', () => {
   }
 
   it('asks the person when a reviewer returns the same diff again', async () => {
-    const { runs, documents, run, sent } = await returnedOnce('PROJ-98', null, 'return', 'It still holds.');
+    const { runs, documents, run, sent } = await returnedOnce('PROJ-98', null, 'return', 'It still holds.', true);
     const prompt = sent('code-review-requirements')?.prompt ?? '';
     expect(prompt).toContain('Remove the pending rebase catch-up');
     expect(prompt).toContain('Do not return that behavior again');
@@ -126,12 +133,33 @@ describe('code-review step', () => {
     expect(run.attemptsReview).toBe(0);
   });
 
+  it('asks the planner first when a reviewer of a run returns the same diff again, and not the person', async () => {
+    const { runs, documents, sent } = await returnedOnce('PROJ-94', null, 'return', 'It still holds.');
+    expect(sent('code-review-requirements')?.prompt).toContain('Your last finding and the answer of implement');
+    const waiting = await runs.findRun('PROJ-94');
+    expect(waiting?.currentStep).toBe('code-review');
+    expect(waiting?.status).toBe('waiting');
+    expect(await documents.latestBody('PROJ-94', 'review_questions')).toBeNull();
+    const chat = JSON.parse((await documents.latestBody('PROJ-94', 'plan_chat')) ?? '{}');
+    expect(chat.entries).toEqual([
+      expect.objectContaining({
+        kind: 'question',
+        from: 'code-review-requirements',
+        state: 'pending',
+        text: expect.stringContaining(
+          'requirements still returns: code-review-requirements Implement answered: nothing.',
+        ),
+      }),
+    ]);
+  });
+
   it('puts the answer of implement and the decision of the person into the next round', async () => {
     const { app, runs, documents, run, sent, agent } = await returnedOnce(
       'PROJ-96',
       'The plan removes it.',
       'return',
       'It still holds.',
+      true,
     );
     expect(sent('code-review-requirements')?.prompt).toContain('Implement answered: The plan removes it.');
     const question = (await documents.latestBody('PROJ-96', 'review_questions'))!.replace(/^- /, '').trim();
@@ -201,6 +229,31 @@ describe('code-review step', () => {
     expect(next?.currentStep).toBe('implement');
     expect(next?.attemptsReview).toBe(2);
     expect(await documents.latestBody('PROJ-99', 'review_requirements')).toContain('decision: return');
+  });
+
+  it('does not wait for a planner when a reviewer of a run that never planned asks a question', async () => {
+    mkdirSync(join(root, 'worktrees', 'PROJ-92', 'billing-api'), { recursive: true });
+    current = jest.fn(async (input: AgentRunInput) =>
+      result(
+        input.step.endsWith('report')
+          ? reportReply('The checks are in.')
+          : resultAnswer(input.step, {
+              decision: 'ok',
+              review: input.step,
+              summary: [input.step],
+              question: 'Which of the two is meant?',
+            }),
+      ),
+    );
+    await seed(app, 'PROJ-92');
+
+    const outcome = await app.get(PipelineService).step('code-review', 'PROJ-92');
+
+    expect(outcome.exitCode).toBe(0);
+    const run = await app.get(RunRepository).findRun('PROJ-92');
+    expect(run?.currentStep).toBe('commit');
+    const chat = await app.get(DocumentRepository).latestBody('PROJ-92', 'plan_chat');
+    expect(chat).toBeNull();
   });
 
   it('gives the regressions reviewer of a split run the keep lines and makes no run from them', async () => {

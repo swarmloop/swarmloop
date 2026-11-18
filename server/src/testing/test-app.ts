@@ -14,9 +14,11 @@ import { SESSION_COOKIE, SessionService } from '../auth/session.service';
 import type { Role } from '../contract/people';
 import { CommandHandlers } from '../api/command-handlers';
 import { ChatService } from '../api/chat.service';
+import { PlanChatService } from '../api/plan-chat.service';
 import { HealthController } from '../api/health.controller';
 import { LiveGateway } from '../api/live.gateway';
 import { SubtaskClose } from '../api/subtask-close';
+import { RunAnswersService } from '../api/run-answers.service';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
@@ -164,10 +166,12 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     providers: [
       RunQueriesService,
       RunCommandsService,
+      RunAnswersService,
       RunSubtaskCommandsService,
       SubtaskClose,
       RunRebaseService,
       ChatService,
+      PlanChatService,
       ShellService,
       CommandHandlers,
       LiveGateway,

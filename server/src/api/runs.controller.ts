@@ -176,10 +176,16 @@ export class RunsController {
   ): Promise<RunRef & CommandReceipt> {
     const settings = actor ? await this.settings.read(actor) : null;
     const plan = await this.runs.plan(body, actor);
-    const result = await this.dispatch<RunRef>('start', plan.key, { ...plan }, undefined, {
-      create: { targetPath: null, startedBy: actor, agents: settings?.agents ?? null },
-      expectedRevision: body.expectedRevision,
-    });
+    const result = await this.dispatch<RunRef>(
+      'start',
+      plan.key,
+      { ...plan, attachments: body.attachments },
+      undefined,
+      {
+        create: { targetPath: null, startedBy: actor, agents: settings?.agents ?? null },
+        expectedRevision: body.expectedRevision,
+      },
+    );
     response.status(httpStatus(result));
     return result;
   }
@@ -229,7 +235,12 @@ export class RunsController {
     @Headers('idempotency-key') idempotencyKey?: string,
     @Actor() actor?: string | null,
   ): Promise<RunRef & CommandReceipt> {
-    const payload: ReplayPayload = { step, prompt: body.prompt ?? '', phases: body.phases };
+    const payload: ReplayPayload = {
+      step,
+      prompt: body.prompt ?? '',
+      phases: body.phases,
+      attachments: body.attachments,
+    };
     const result = await this.dispatch<RunRef>('replay', key, payload, idempotencyKey, {
       expectedRevision: body.expectedRevision,
       actor,

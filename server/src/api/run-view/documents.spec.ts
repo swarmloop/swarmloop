@@ -211,6 +211,10 @@ describe('withoutServerRecords', () => {
     expect(withoutServerRecords([...kept, ...records])).toEqual(kept);
   });
 
+  it('leaves out the plan chat', () => {
+    expect(withoutServerRecords([doc('plan_chat'), doc('plan')])).toEqual([doc('plan')]);
+  });
+
   it('leaves out an interruption note and keeps an error document', () => {
     expect(withoutServerRecords([doc('interruption'), doc('error')])).toEqual([doc('error')]);
   });

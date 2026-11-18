@@ -13,10 +13,12 @@ import { AgentWorkFeed } from '../../contract/readable-log';
 import type { AgentWork } from '../../contract/readable-log';
 import { outputFileFor } from '../../core/attempt-output';
 import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
+import { AttachmentStore } from '../../history/attachment-store';
 import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
+import { withAttachments } from './attachments-section';
 import { promptSections } from './prompt-manifest';
 import { LimitFailover } from './limit-failover';
 import type { AgentLaunchRequest } from './agent-launch-request';
@@ -39,6 +41,7 @@ export class AgentLauncher {
     private readonly runStop: RunStop,
     @Optional() private readonly failover?: LimitFailover,
     @Optional() private readonly config?: AppConfig,
+    @Optional() private readonly files?: AttachmentStore,
   ) {}
 
   /**
@@ -114,6 +117,7 @@ export class AgentLauncher {
     const feed = new AgentWorkFeed([request.workspace, ...request.mounts.map((mount) => mount.containerPath)], () =>
       performance.now(),
     );
+    const names = this.files?.names(request.key) ?? [];
     const ending = request.result ? RESULT_AS_BEFORE : undefined;
     const loop = this.config ? loopWatch(new LoopDetector(this.config.env.LOOP_REPEAT), ending) : undefined;
     const work = (item: AgentWork): void => {
@@ -127,8 +131,9 @@ export class AgentLauncher {
       onSuspended: bindToStepScope((durationMs) => recordStepEvent({ kind: 'host.suspended', durationMs })),
       // A launch killed mid-tool leaves a block open that would hold back every later launch's events.
       onLaunchEnd: bindToStepScope(() => feed.finish().forEach(work)),
-      prompt: withRules(request.prompt),
-      freshPrompt: request.freshPrompt === undefined ? undefined : withRules(request.freshPrompt),
+      prompt: withRules(withAttachments(request.prompt, names)),
+      freshPrompt:
+        request.freshPrompt === undefined ? undefined : withRules(withAttachments(request.freshPrompt, names)),
       workspace: request.workspace,
       outputFile: outputFileFor(request.root, request.key, request.step, request.run.activeAttempt),
       sessionFile,

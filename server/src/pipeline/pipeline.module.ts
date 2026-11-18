@@ -47,6 +47,8 @@ import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
+import { PlannerTurns } from './planner-turns';
+import { RunReopen } from './run-reopen';
 import { BacklogActions } from './backlog/backlog-actions';
 import { BacklogActionSupport } from './backlog/backlog-action-support';
 import { BacklogTaskActions } from './backlog/backlog-task-actions';
@@ -60,6 +62,7 @@ import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
+import { PlanConversation } from '../steps/shared/plan-conversation';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 @Module({
@@ -109,6 +112,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     MergeWatch,
     Reconciler,
     StallWatch,
+    PlannerTurns,
+    PlanConversation,
     BacklogActionSupport,
     BacklogTaskActions,
     BacklogActions,
@@ -120,6 +125,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     RunSettler,
     RunRebase,
     MergeRequestDrafts,
+    RunReopen,
     { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
     EnvironmentService,
     { provide: HaltedRuns, useExisting: RunStop },
@@ -128,6 +134,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PipelineService,
     CommandService,
     Reconciler,
+    PlannerTurns,
     BacklogActions,
     BacklogQueries,
     BacklogScheduler,

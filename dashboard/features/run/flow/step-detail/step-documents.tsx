@@ -8,7 +8,9 @@ import { statusColor } from '../../../../theme/theme';
 import { MarkdownBody } from '../../../../components/ui/markdown-body';
 import type { CheckCommandView, StepView } from '@contract/api';
 import type { InterruptionNote } from '@contract/interruption';
+import type { PlanRevision } from '@contract/plan-chat';
 import type { StepEvent } from '@contract/step-events';
+import { PlanRevisionContext } from '../../conversation/revision-marks';
 import { LogTranscript } from '../../log-transcript';
 import type { AgentRole } from '../../transcript/agent-card';
 import { AgentLogPanel, Exchanges, type AgentLog } from '../../transcript/agent-log';
@@ -65,6 +67,7 @@ export function StepDocuments({
   commands,
   now = 0,
   restarted = false,
+  planRevision = null,
 }: {
   runKey: string;
   /** What the step recorded: null while it is read, empty for a visit from before events were kept. */
@@ -86,6 +89,8 @@ export function StepDocuments({
   now?: number;
   /** The server restarted while the visit's agent kept running: nothing samples its container. */
   restarted?: boolean;
+  /** For the plan step: the latest plan change, whose added and changed items the plan checklist marks. */
+  planRevision?: PlanRevision | null;
 }): ReactElement {
   const interruptions = useStableNotes(visits);
   const recorded = events !== null && events.length > 0;
@@ -94,7 +99,7 @@ export function StepDocuments({
   const launched = events?.some((event) => event.kind === 'agent.launched') ?? false;
   const agent: AgentLog = { logs, running: visit?.status === 'running', exchanges: visit?.exchanges ?? [] };
   return (
-    <>
+    <PlanRevisionContext.Provider value={planRevision}>
       {shownChecks.length > 0 ? (
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
           {shownChecks.map((item) => {
@@ -159,6 +164,6 @@ export function StepDocuments({
           ))
         : null}
       {events?.length === 0 ? <Exchanges exchanges={visit?.exchanges ?? []} /> : null}
-    </>
+    </PlanRevisionContext.Provider>
   );
 }

@@ -7,6 +7,7 @@ import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import { interruptionSentence } from '@contract/interruption';
+import type { PlanRevision } from '@contract/plan-chat';
 import { restartWaitSentence } from '@contract/restart-wait';
 import { localTime } from '../../../../lib/format';
 import { useStep } from '../../use-step';
@@ -34,6 +35,7 @@ export function StepDetail({
   attempts,
   liveCommands,
   restartedAt,
+  planRevision,
 }: {
   runKey: string;
   step: string;
@@ -50,6 +52,8 @@ export function StepDetail({
   liveCommands?: CheckCommandView[];
   /** When the server restarted while this step's agent kept running; set only during that wait. */
   restartedAt?: string;
+  /** For the plan step: the latest plan change, marked in the plan checklist. */
+  planRevision?: PlanRevision | null;
 }): React.ReactElement | null {
   const { view, attempt, setAttempt, error, loading, retry, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
@@ -168,6 +172,7 @@ export function StepDetail({
           commands={commands}
           now={now}
           restarted={restartWait}
+          planRevision={planRevision}
         />
       </Box>
     </Paper>

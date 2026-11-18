@@ -1,6 +1,7 @@
-import { chmodSync, mkdirSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { runtimeFor, runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
+import { cleanFileName } from '../core/clean-file-name';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { AgentTools } from '../integrations/agent-runtime/agent-runtime';
 import { sessionGroup } from '../history/session-group';
@@ -22,6 +23,12 @@ export function briefMounts(statePath: string, step: string, spilled: SandboxMou
     return spilled;
   }
   return [...spilled, review];
+}
+
+/** The run's files, read only, nested in `/work/brief`. A run without files has no such mount. */
+export function attachmentsMount(hostPath: string): SandboxMount | null {
+  const files = existsSync(hostPath) ? readdirSync(hostPath) : [];
+  return files.length > 0 ? { hostPath, containerPath: '/work/brief/attachments', readonly: true } : null;
 }
 
 /** Linux rejects one argv string longer than MAX_ARG_STRLEN (128KiB). */
@@ -48,12 +55,7 @@ export function spillPrompt(prompt: string, statePath: string, step: string): { 
 }
 
 function briefName(step: string): string {
-  const clean = step
-    .replace(/[^A-Za-z0-9._-]/g, '-')
-    .replace(/^-+/, '')
-    .slice(0, 80);
-  const base = clean.length > 0 && clean !== '.' && clean !== '..' ? clean : 'brief';
-  return `${base}.md`;
+  return `${cleanFileName(step, 'brief')}.md`;
 }
 
 export function buildAgentArgs(

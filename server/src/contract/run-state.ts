@@ -72,7 +72,11 @@ export const REASON = {
   skipped: 'SKIPPED',
   stalled: 'STALLED',
   agentPlace: 'AGENT_PLACE',
+  asksPlanner: 'ASKS_PLANNER',
 } as const;
+
+/** What a step says when it waits for the planner's answer to its question. */
+export const ASKS_PLANNER_WORDS = 'is waiting for the planner';
 
 /** What every command on a skipped task's run is refused with. */
 export const SKIPPED_NOTE = 'this task was skipped';
@@ -144,6 +148,7 @@ export const AUTO_RETRY_CODES: readonly string[] = [
   ERROR_CODES.SUBTASKS_RUNNING,
   ERROR_CODES.SUBTASK_WAITING,
   REASON.agentPlace,
+  REASON.asksPlanner,
 ];
 
 /** The waiting codes whose next try is timed: a person may try now. */
@@ -170,7 +175,7 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
         return ['resume', 'replay', 'rebase'];
       }
       if (reasonCode && TIMED_RETRY_CODES.includes(reasonCode)) return ['stop', 'resume', 'replay', 'rebase'];
-      return reasonCode && SUBTASK_WAIT_CODES.includes(reasonCode as ErrorCode)
+      return reasonCode && (reasonCode === REASON.asksPlanner || SUBTASK_WAIT_CODES.includes(reasonCode as ErrorCode))
         ? ['stop', 'resume', 'replay', 'rebase']
         : ['answer', 'replay', 'rebase'];
     case 'running':
@@ -241,7 +246,7 @@ export const STATE_WORDS: Readonly<Record<RunState, WordShape>> = {
 };
 
 /** What a reason does to the word of a waiting run: `state` leaves the state's own word. */
-type ReasonKind = 'paused' | 'retrying' | 'subtasks' | 'place' | 'state';
+type ReasonKind = 'paused' | 'retrying' | 'subtasks' | 'place' | 'planner' | 'state';
 
 type ReasonCode =
   (typeof ERROR_CODES)[keyof typeof ERROR_CODES] | (typeof REASON)[keyof typeof REASON] | typeof NEEDS_ANSWERS;
@@ -288,6 +293,7 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
   [REASON.skipped]: 'state',
   [REASON.stalled]: 'state',
   [REASON.agentPlace]: 'place',
+  [REASON.asksPlanner]: 'planner',
   [NEEDS_ANSWERS]: 'state',
 };
 
@@ -325,6 +331,8 @@ function waitingWord(reason: StateReason | null, time: (iso: string) => string):
       return { word: 'Waiting for subtasks', tone: 'working', icon: 'subtasks' };
     case 'place':
       return placeWord(reason);
+    case 'planner':
+      return { word: 'Waiting for the planner', tone: 'working', icon: 'working' };
     case 'state':
       return STATE_WORDS.waiting;
   }

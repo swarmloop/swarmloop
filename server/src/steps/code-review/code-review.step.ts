@@ -1,7 +1,6 @@
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
-import { limitRoute } from '../shared/limit-failover';
 import { agentFor } from '../../config/agents';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type {
   AgentProfile,
   InputSpec,
@@ -16,34 +15,30 @@ import { SwarmloopEnv } from '../../config/env';
 import { EventRepository } from '../../history/event.repository';
 import { assertInsideWork, workRoots } from '../../sandbox/allowed-path';
 import { root } from '../../history/run-paths';
-import { DocumentDraft, VisitDraft } from '../../history/visit';
+import { VisitDraft } from '../../history/visit';
 import { Charge, chargeReview } from '../../agent/spend';
 import { ModelPrice } from '../../agent/limits';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { RuntimeLimit } from '../../core/swarmloop-error';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { RunReport } from '../shared/run-report';
-import { textDocument } from '../shared/handoff';
-import { stampGate } from '../shared/gate';
-import type { RunEntity } from '../../history/entities';
 import { CheckoutService } from '../shared/checkout.service';
 import { requiredDocument } from '../step';
 import { writeReviewDiff } from './review-diff';
 import { approvedPlan, foreignReviewOf, storedCheckout } from './review-input';
-import { closeReview, failed, noteHandoff, writeReport } from './review-report';
-import { othersOpen, reportDue, routeReview, runRound, tallyRound } from './review-round';
-import { askPerson, reviewAsks, settleAsked } from './review-ask';
+import { closeReview, failed } from './review-report';
+import { reportDue, runRound } from './review-round';
+import { settleAsked } from './review-ask';
+import { ReviewSettle } from './review-settle';
 import { prepareReview, type PrepareDeps } from './review-prepare';
-import { opinionSummary } from './code-review-round-result';
 import { renderImplementation } from '../implement/implement-record';
-import { isResultKind } from '../../agent-result/result-definition';
 import { storedImpact } from '../shared/research-reads';
 import { ARTIFACTS, REVIEW_RESULTS } from '../contract/artifacts';
 import { CODE_REVIEWERS } from '../../contract/steps';
+import { PlanChatStore } from '../../history/plan-chat.store';
 
 const INPUTS = {
   implementationResult: { artifact: ARTIFACTS.implementationResult, need: 'optional' },
@@ -80,15 +75,19 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   override readonly usesModel = true;
   override readonly capabilities: StepCapabilities = { path: true };
 
+  private readonly settling: ReviewSettle;
+
   constructor(
     kernel: StepKernel,
-    private readonly events: EventRepository,
+    events: EventRepository,
     private readonly worktrees: CheckoutService,
     private readonly sandbox: SandboxService,
     private readonly launcher: AgentLauncher,
     private readonly runReport: RunReport,
+    @Optional() private readonly planChat?: PlanChatStore,
   ) {
     super(kernel);
+    this.settling = new ReviewSettle(this.documents, events, planChat);
   }
 
   private prepareDeps(): PrepareDeps {
@@ -181,6 +180,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       root: root(this.config),
       launcher: this.launcher,
       runReport: this.runReport,
+      chat: this.planChat,
     };
     const {
       requirements,
@@ -247,96 +247,24 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       retry,
       exchanges,
     });
-    const { reportContinued, opinions, stored, errors } = tallyRound(kept, recovered, finished);
-    const limited = finished.find((item) => item.limit)?.limit;
-    if (limited) {
-      // The reviewers that answered keep their answers; the ones the limit stopped run again when the run goes on.
-      const waiting = await closeReview(ctx, limitRoute(limited), `${opened.startedAt} ${limited.message}`, stored, []);
-      await this.stamp(opened.run, stored, fingerprint);
-      return waiting;
-    }
-    if (errors.length > 0) {
-      const closed = await closeReview(ctx, failed(errors[0]), `${opened.startedAt} ${errors[0]}`, stored, []);
-      await this.stamp(opened.run, stored, fingerprint);
-      return closed;
-    }
-    const noted = await noteHandoff(this.documents, key, opinions, stored);
-    if (only && othersOpen(only, opinions)) {
-      const summary = opinionSummary(opinions);
-      const waiting = await closeReview(
-        ctx,
-        { to: 'wait', reason: 'other reviewers are open' },
-        `${opened.startedAt} code-review waiting\n${summary}`,
-        noted,
-        [],
-      );
-      await this.stamp(opened.run, stored, fingerprint);
-      return waiting;
-    }
-    let written: Awaited<ReturnType<typeof writeReport>>;
-    try {
-      written = await writeReport(
-        deps,
-        opened,
-        key,
-        env,
-        opinions,
-        mounts,
-        requirements,
-        notes,
-        impact,
-        list,
-        reportContinued,
-        options.auto,
-        options.answerErrors,
-        exchanges,
-      );
-    } catch (error) {
-      if (!(error instanceof RuntimeLimit)) {
-        throw error;
-      }
-      const waiting = await closeReview(ctx, limitRoute(error), `${opened.startedAt} ${error.message}`, noted, []);
-      await this.stamp(opened.run, stored, fingerprint);
-      return waiting;
-    }
-    const reportExchanges = written.exchange ? [written.exchange] : [];
-    if ('error' in written) {
-      return closeReview(
-        ctx,
-        failed(written.error),
-        `${opened.startedAt} ${written.error}`,
-        [...noted, ...written.documents],
-        reportExchanges,
-        written.usage,
-      );
-    }
-    const recorded = [...noted, ...written.documents];
-    if (fresh) {
-      recorded.push(textDocument(ARTIFACTS.rebaseConflict.kind, 'clear\n'));
-    }
-    const asks = thirdParty ? [] : reviewAsks(exchanges, finished, same, opened.startedAt);
-    if (asks.length > 0) {
-      const asked = await askPerson(ctx, asks, recorded, reportExchanges, written.usage);
-      await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
-      return asked;
-    }
-    const routed = await routeReview(
-      this.events,
+    return this.settling.settle({
       ctx,
-      opinions,
-      recorded,
-      written.exchange ? [written.exchange] : [],
+      deps,
+      env,
+      finished,
+      kept,
+      recovered,
+      fingerprint,
+      only,
+      mounts,
+      requirements,
+      notes,
+      impact,
+      list,
+      exchanges,
+      fresh,
       thirdParty,
-      written.usage,
-    );
-    await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
-    return routed;
-  }
-
-  /** The reviews this round stored count for the generation and the files they judged, once their visit is closed. */
-  private async stamp(run: RunEntity, stored: DocumentDraft[], fingerprint: string): Promise<void> {
-    for (const document of stored.filter((item) => !isResultKind(item.kind))) {
-      await stampGate(this.documents, run, document.kind, fingerprint);
-    }
+      same,
+    });
   }
 }

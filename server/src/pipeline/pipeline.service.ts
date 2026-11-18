@@ -23,6 +23,8 @@ import { RunLifecycle } from './run-lifecycle';
 import { LimitRelease } from '../steps/shared/limit-release';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 import { ReportRefresh } from '../steps/shared/report-refresh';
+import { PlannerTurns } from './planner-turns';
+import { RunReopen } from './run-reopen';
 
 @Injectable()
 export class PipelineService implements OnApplicationBootstrap {
@@ -48,6 +50,8 @@ export class PipelineService implements OnApplicationBootstrap {
     private readonly drafts: MergeRequestDrafts,
     limits: LimitRelease,
     reportRefresh: ReportRefresh,
+    private readonly turns: PlannerTurns,
+    private readonly reopening: RunReopen,
   ) {
     this.instructions = new RunInstructions(runs, documents, registry);
     this.driver = new RunDriver(
@@ -64,6 +68,7 @@ export class PipelineService implements OnApplicationBootstrap {
       subtasks,
       limits,
       reportRefresh,
+      turns,
     );
     this.lifecycle = new RunLifecycle(
       runs,
@@ -126,6 +131,17 @@ export class PipelineService implements OnApplicationBootstrap {
     await this.runs.release(fresh, { status: 'waiting', currentStep: name });
     this.runStop.clear(key);
     return this.startDetached(key, this.registryPromptOptions(name, full));
+  }
+
+  /**
+   * A message to a done run: the planner takes it in a pass of its own. Only a reply with a plan reopens the run, with
+   * its merge requests back to draft; a reply without one leaves the run as it is.
+   */
+  amendDone(key: string): void {
+    this.turns.background(async () => {
+      const outcome = await this.turns.take(key, () => this.step('plan', key, { auto: true }), new Set());
+      if (outcome === 'changed') await this.reopening.reopen(key, (name) => this.startDetached(name));
+    });
   }
 
   /** Work resumes: the merge requests of the run are drafts again before it starts. */

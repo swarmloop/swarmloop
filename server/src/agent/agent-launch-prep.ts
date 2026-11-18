@@ -7,9 +7,10 @@ import type { SandboxMount } from '../core/sandbox-mount';
 import { agentStateDir, prepareStateDir, writeHomeFiles, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { syncChatMode } from './chat-mode';
+import { attachmentsDir } from '../history/run-paths';
 import { sessionHome } from '../history/session-group';
 import { RUN_LOGS_PATH, runLogMount } from '../core/run-logs';
-import { briefMounts, spillPrompt } from './agent-args';
+import { attachmentsMount, briefMounts, spillPrompt } from './agent-args';
 import { copySkillBriefs, SKILLS_DIR } from './skill-briefs';
 
 /** What one launch needs before it is spawned. */
@@ -65,7 +66,8 @@ export class AgentLaunchPrep {
         usage: { tokensIn: 0, tokensOut: 0, usd: 0 },
       });
     }
-    const mounts = [...briefs, runLogMount(root, input.runKey)];
+    const files = attachmentsMount(attachmentsDir(this.config, input.runKey));
+    const mounts = [...briefs, ...(files ? [files] : []), runLogMount(root, input.runKey)];
     return { userId, statePath, args, unsetEnv, mounts };
   }
 }

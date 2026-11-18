@@ -6,9 +6,11 @@ import Button from '@mui/material/Button';
 import Collapse from '@mui/material/Collapse';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import { alpha } from '@mui/material/styles';
 import type { TaskEntry } from '@contract/api';
 import { interruptionSentence } from '@contract/interruption';
 import { taskStateWord } from '@contract/run-state';
+import type { RevisionMark } from '../../conversation/revision-marks';
 import { ConfirmDialog } from '../../../shell';
 import { duration, localTime, money } from '../../../../lib/format';
 import { RunStateIcon, toneColor } from '../../run-state-word';
@@ -25,10 +27,13 @@ export function TaskRow({
   task,
   dependents,
   onSkip,
+  mark,
 }: {
   task: TaskEntry;
   dependents: string[];
   onSkip: (taskId: string) => Promise<unknown>;
+  /** Set when the latest plan change added or changed this task. */
+  mark?: RevisionMark | null;
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const [skipping, setSkipping] = useState(false);
@@ -45,6 +50,11 @@ export function TaskRow({
           {step}
         </Typography>
       </Box>
+      {mark ? (
+        <Typography component="span" variant="caption" color="primary">
+          {mark === 'added' ? 'New in this plan' : 'Changed in this plan'}
+        </Typography>
+      ) : null}
       <Tooltip title={task.title}>
         <Typography variant="body2" noWrap sx={{ minWidth: 0, flex: '1 1 8rem' }}>
           {task.title}
@@ -84,7 +94,14 @@ export function TaskRow({
   );
   const line = { display: 'flex', alignItems: 'center', gap: 1, flex: '1 1 0', minWidth: 0, flexWrap: 'wrap' };
   return (
-    <Box component="li" sx={{ listStyle: 'none', minWidth: 0 }}>
+    <Box
+      component="li"
+      sx={(theme) => ({
+        listStyle: 'none',
+        minWidth: 0,
+        ...(mark ? { bgcolor: alpha(theme.palette.primary.main, 0.1), borderRadius: 1, px: 0.5 } : {}),
+      })}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
         {task.run ? (
           <Box

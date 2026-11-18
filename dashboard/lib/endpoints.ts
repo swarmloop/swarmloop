@@ -1,7 +1,6 @@
 import { api, runLog, type LogPaging } from './api';
 import type {
   AddProjectBody,
-  AnswersBody,
   CreateRepositoryBody,
   ConnectionsView,
   CreateRunBody,
@@ -22,6 +21,7 @@ import type {
   TicketKeysBody,
   TicketKeysView,
 } from '@contract/api';
+import type { UploadView } from '@contract/attachments';
 import type { ConnectionCard, IntegrationCardsView, SignInView } from '@contract/connections';
 import type {
   CliLoginView,
@@ -110,8 +110,9 @@ export const ticketKeys = (body: TicketKeysBody): Promise<TicketKeysView> =>
   api<TicketKeysView>('/runs/ticket-keys', post(body));
 export const setRunProjects = (key: string, name: string): Promise<ProjectsView> =>
   api<ProjectsView>(`${run(key)}/projects`, post({ name } satisfies AddProjectBody));
-export const sendAnswers = (key: string, body: AnswersBody): Promise<FlowView> =>
-  api<FlowView>(`${run(key)}/answers`, post(body));
+/** Sends a message to the planner of the run, with the ids of the uploaded files; returns the run as it is now. */
+export const sendPlanChat = (key: string, message: string, attachments: string[] = []): Promise<FlowView> =>
+  api<FlowView>(`${run(key)}/plan-chat`, post({ message, ...(attachments.length > 0 ? { attachments } : {}) }));
 export const resumeRun = (key: string): Promise<unknown> => api(`${run(key)}/resume`, post());
 export const stopRun = (key: string): Promise<unknown> => api(`${run(key)}/stop`, post());
 export const skipTask = (key: string, taskId: string): Promise<unknown> =>
@@ -137,4 +138,11 @@ export const setRole = (login: string, role: Role): Promise<PersonView> =>
   api<PersonView>(`/people/${encodeURIComponent(login)}/role`, {
     method: 'PUT',
     body: JSON.stringify({ role } satisfies SetRoleBody),
+  });
+/** Keeps one file on the server for a message or a new run to take by its id; the body is the raw file. */
+export const uploadFile = (file: Blob, name: string): Promise<UploadView> =>
+  api<UploadView>(`/uploads?name=${encodeURIComponent(name)}`, {
+    ...post(),
+    body: file,
+    headers: { 'Content-Type': 'application/octet-stream' },
   });

@@ -5,6 +5,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { git } from '../git/git';
+import { AttachmentStore } from '../history/attachment-store';
 import { root } from '../history/run-paths';
 import { listGitProjects, resolveCheckoutPath, resolveCheckoutsRoot } from '../config/checkout-path';
 import { CheckoutService } from '../steps/shared/checkout.service';
@@ -31,6 +32,7 @@ export class Housekeeping implements OnModuleDestroy {
     private readonly disk: DiskGuard,
     private readonly clock: Clock,
     private readonly meter: OwnUseMeter,
+    private readonly uploads: AttachmentStore,
   ) {}
 
   /**
@@ -39,6 +41,7 @@ export class Housekeeping implements OnModuleDestroy {
    */
   async startup(): Promise<void> {
     void this.measureSizes();
+    await this.sweepUploads();
     this.logCheckouts();
     try {
       await this.tidyRegistrations();
@@ -72,15 +75,27 @@ export class Housekeeping implements OnModuleDestroy {
     }
   }
 
-  /** Every 10 minutes: the sizes for readiness. Once a day: dangling images and old build cache. Every `MERGE_WATCH_MIN` minutes: the workspaces of merged and closed runs. */
+  /** Every 10 minutes: the sizes for readiness. Once a day: dangling images, old build cache and staged uploads older than a day. Every `MERGE_WATCH_MIN` minutes: the workspaces of merged and closed runs. */
   schedule(): void {
     this.stop();
-    this.timer = setInterval(() => void this.disk.pruneDocker(), DAY_MS);
+    this.timer = setInterval(() => {
+      void this.disk.pruneDocker();
+      void this.sweepUploads();
+    }, DAY_MS);
     this.timer.unref();
     this.freeTimer = setInterval(() => void this.freeSettledRuns(), this.config.env.MERGE_WATCH_MIN * 60_000);
     this.freeTimer.unref();
     this.measureTimer = setInterval(() => void this.measureSizes(), MEASURE_MS);
     this.measureTimer.unref();
+  }
+
+  /** Removes the staged uploads that no message or run took within a day. */
+  private async sweepUploads(): Promise<void> {
+    try {
+      await this.uploads.sweepStale();
+    } catch (error) {
+      this.logger.warn(`staged uploads were not swept: ${String(error)}`);
+    }
   }
 
   /** The sizes readiness shows, measured here so that no request walks the disk. */

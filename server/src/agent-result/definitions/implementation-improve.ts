@@ -1,6 +1,6 @@
 import Joi from 'joi';
 import { defineResult } from '../result-definition';
-import { REJECTED, type RejectedFinding } from './implementation';
+import { QUESTION, REJECTED, type RejectedFinding } from './implementation';
 
 /** What the implement-improve step hands to the server. An empty `implementation` keeps the first pass. */
 export interface ImplementationImproveResult {
@@ -9,6 +9,7 @@ export interface ImplementationImproveResult {
   cause?: string[];
   plan?: string[];
   rejected?: RejectedFinding[];
+  question?: string;
 }
 
 const base = Joi.object({
@@ -22,6 +23,7 @@ const base = Joi.object({
   plan: Joi.array()
     .items(Joi.string())
     .description('The full corrected checklist, one per entry; leave out when no item changes'),
+  question: QUESTION,
 });
 
 export const implementationImprove = defineResult('implementation_improve', base);
