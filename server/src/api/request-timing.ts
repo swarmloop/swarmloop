@@ -1,11 +1,13 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { Clock } from '../core/clock';
+import { markEntered } from '../core/entered-marks';
 import { SlowRequestRepository } from '../history/server-stall.repository';
 
 const SLOW_MS = 1000;
 
 interface TimedRequest {
   method: string;
+  path: string;
   baseUrl: string;
   route?: { path?: unknown };
 }
@@ -27,6 +29,7 @@ export class RequestTiming implements OnModuleDestroy {
 
   middleware(): (req: TimedRequest, res: TimedResponse, next: () => void) => void {
     return (req, res, next) => {
+      markEntered(`request ${req.method} ${req.path}`);
       const arrived = this.clock.now();
       let done = false;
       const finish = (): void => {

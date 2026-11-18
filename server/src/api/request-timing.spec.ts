@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { SlowRequestRepository } from '../history/server-stall.repository';
+import { enteredBefore } from '../core/entered-marks';
 import { RequestTiming } from './request-timing';
 
 interface Added {
@@ -23,7 +24,7 @@ function setup(fail = false) {
   } as unknown as SlowRequestRepository;
   const timing = new RequestTiming(clock, repository);
   async function request(takes: number, events: string[] = ['finish'], path = '/runs/:id'): Promise<void> {
-    const req = { method: 'GET', baseUrl: '/api', route: { path } };
+    const req = { method: 'GET', path: `/api${path}`, baseUrl: '/api', route: { path } };
     const res = new EventEmitter();
     timing.middleware()(req, res, () => clock.advance(takes));
     for (const event of events) res.emit(event);
@@ -37,6 +38,12 @@ describe('RequestTiming', () => {
     const { added, request } = setup();
     await request(1500);
     expect(added).toEqual([{ route: 'GET /api/runs/:id', ms: 1500, at: '2026-01-01T00:00:01.500Z' }]);
+  });
+
+  it('marks the arrival of a request as the last entered callback', async () => {
+    const { request } = setup();
+    await request(10, ['finish'], '/marked/:id');
+    expect(enteredBefore(Date.now())).toBe('request GET /api/marked/:id');
   });
 
   it('does not count a request of 0.5 s', async () => {

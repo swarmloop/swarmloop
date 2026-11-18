@@ -3,6 +3,7 @@ import { join } from 'path';
 import type { OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfig } from '../config/env';
+import { markedInterval } from '../core/entered-marks';
 import { Clock } from '../core/clock';
 import { git } from '../git/git';
 import { AttachmentStore } from '../history/attachment-store';
@@ -78,15 +79,20 @@ export class Housekeeping implements OnModuleDestroy {
   /** Every 10 minutes: the sizes for readiness. Once a day: dangling images, old build cache and staged uploads older than a day. Every `MERGE_WATCH_MIN` minutes: the workspaces of merged and closed runs. */
   schedule(): void {
     this.stop();
-    this.timer = setInterval(() => {
-      void this.disk.pruneDocker();
-      void this.sweepUploads();
-    }, DAY_MS);
-    this.timer.unref();
-    this.freeTimer = setInterval(() => void this.freeSettledRuns(), this.config.env.MERGE_WATCH_MIN * 60_000);
-    this.freeTimer.unref();
-    this.measureTimer = setInterval(() => void this.measureSizes(), MEASURE_MS);
-    this.measureTimer.unref();
+    this.timer = markedInterval(
+      'housekeeping prune',
+      () => {
+        void this.disk.pruneDocker();
+        void this.sweepUploads();
+      },
+      DAY_MS,
+    );
+    this.freeTimer = markedInterval(
+      'housekeeping free runs',
+      () => void this.freeSettledRuns(),
+      this.config.env.MERGE_WATCH_MIN * 60_000,
+    );
+    this.measureTimer = markedInterval('housekeeping sizes', () => void this.measureSizes(), MEASURE_MS);
   }
 
   /** Removes the staged uploads that no message or run took within a day. */
