@@ -25,14 +25,16 @@ import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { RunReport } from '../shared/run-report';
+import { OpenReviewRounds } from '../shared/open-review-rounds';
 import { CheckoutService } from '../shared/checkout.service';
 import { requiredDocument } from '../step';
 import { writeReviewDiff } from './review-diff';
 import { approvedPlan, foreignReviewOf, storedCheckout } from './review-input';
 import { closeReview, failed } from './review-report';
-import { reportDue, runRound } from './review-round';
+import { othersOpen, reportDue, runRound } from './review-round';
 import { settleAsked } from './review-ask';
 import { ReviewSettle } from './review-settle';
+import { onlyReviewer } from './reviewer';
 import { prepareReview, type PrepareDeps } from './review-prepare';
 import { renderImplementation } from '../implement/implement-record';
 import { storedImpact } from '../shared/research-reads';
@@ -85,6 +87,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     private readonly launcher: AgentLauncher,
     private readonly runReport: RunReport,
     @Optional() private readonly planChat?: PlanChatStore,
+    @Optional() private readonly openRounds?: OpenReviewRounds,
   ) {
     super(kernel);
     this.settling = new ReviewSettle(this.documents, events, planChat);
@@ -161,14 +164,23 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   /** The review ends its own visit, so `work` hands the closed result back through `VisitLeftOpen`. */
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const env = this.config.env;
-    if (ctx.options.path) {
-      assertInsideWork(ctx.options.path, workRoots(this.config));
-      ctx.opened.run.targetPath = realpathSync(ctx.options.path);
+    const { key } = ctx.opened.run;
+    try {
+      const only = onlyReviewer(ctx.options.reviewer);
+      if (only) {
+        this.openRounds?.open(key, { reviewers: [only], reportDue: false, reportStarted: false });
+      }
+      if (ctx.options.path) {
+        assertInsideWork(ctx.options.path, workRoots(this.config));
+        ctx.opened.run.targetPath = realpathSync(ctx.options.path);
+      }
+      await this.sandbox.assertReady(agentFor(env, ctx.opened.run, 'code-review').runtime);
+      const result = input.implementationResult;
+      const notes = result ? renderImplementation(result.implementation) : await ctx.reread(ARTIFACTS.implementation);
+      throw new VisitLeftOpen(await this.review(notes, ctx, env));
+    } finally {
+      this.openRounds?.close(key);
     }
-    await this.sandbox.assertReady(agentFor(env, ctx.opened.run, 'code-review').runtime);
-    const result = input.implementationResult;
-    const notes = result ? renderImplementation(result.implementation) : await ctx.reread(ARTIFACTS.implementation);
-    throw new VisitLeftOpen(await this.review(notes, ctx, env));
   }
 
   private async review(notes: string | null, ctx: StepContext, env: SwarmloopEnv): Promise<PipelineResult> {
@@ -181,6 +193,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       launcher: this.launcher,
       runReport: this.runReport,
       chat: this.planChat,
+      onReportStart: () => this.openRounds?.reportStarted(key),
     };
     const {
       requirements,
@@ -198,6 +211,11 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       pending,
       recovered,
     } = await ctx.activity('Preparing', () => prepareReview(this.prepareDeps(), notes, ctx));
+    this.openRounds?.open(key, {
+      reviewers: pending.map((item) => item.name),
+      reportDue: reportDue(only, kept, pending) && !(only !== undefined && othersOpen(only, kept)),
+      reportStarted: false,
+    });
     const settled = await settleAsked(ctx, this.documents);
     if (settled) {
       return settled;

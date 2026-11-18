@@ -102,6 +102,7 @@ export async function writeReport(
     const directory = join(deps.root, 'data');
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, `${key}-code-review-report-output.txt`), 'starting\n');
+    deps.onReportStart?.();
     const result = await deps.launcher.launch({
       root: deps.root,
       run: opened.run,

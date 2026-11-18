@@ -19,7 +19,7 @@ import type { DocumentDraft } from '../../history/visit';
 import type { Opinion } from './code-review-record';
 import { reviewExchanges, type Exchange } from './review-exchange';
 import { sameReviewedDiff } from './review-round';
-import { REVIEWERS, type Reviewer } from './reviewer';
+import { onlyReviewer, type Reviewer } from './reviewer';
 import { selectReviewers } from './review-select';
 
 /** What the preparation reads. */
@@ -73,7 +73,7 @@ export async function prepareReview(deps: PrepareDeps, notes: string | null, ctx
     throw new SwarmloopError('requirements is missing');
   }
   const mounts = checkout ? pathMount(checkout) : await repoMounts(deps.runs, deps.documents, root(deps.config), key);
-  const only = REVIEWERS.some((item) => item.name === options.reviewer) ? options.reviewer : undefined;
+  const only = onlyReviewer(options.reviewer);
   const fresh = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim() === 'review';
   const retry = fresh ? false : await retrying(deps.visits, opened);
   const attemptId = retry ? await interruptedAttempt(deps.visits, opened) : null;

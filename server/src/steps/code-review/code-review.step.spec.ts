@@ -481,6 +481,24 @@ describe('code-review step', () => {
     expect(next?.status).toBe('waiting');
   });
 
+  it('names the open reviewers when one is started alone', async () => {
+    gitWorktree(join(root, 'worktrees', 'PROJ-95', 'billing-api'));
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step)));
+    useAgent(agent);
+    await seed(app, 'PROJ-95');
+    const runs = app.get(RunRepository);
+    const run = await runs.findRun('PROJ-95');
+    await putStamped(app, run!, 'review_requirements', 'notes\ndecision: ok\n', ['billing-api']);
+    await putStamped(app, run!, 'review_regressions', 'notes\ndecision: return\n', ['billing-api']);
+    const done = await app.get(PipelineService).step('code-review', 'PROJ-95', { reviewer: 'quality' });
+    expect(done.message).toMatch(
+      /^\S+ code-review waiting: security and performance have no answer for these files, regressions returned; the report waits for them\n/,
+    );
+    const next = await runs.findRun('PROJ-95');
+    expect(next?.status).toBe('waiting');
+    expect(next?.currentStep).toBe('code-review');
+  });
+
   it('does not recover an ok from a reviewer file of an older round', async () => {
     const workdir = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-older-round-'));
     mkdirSync(join(workdir, 'data'), { recursive: true });

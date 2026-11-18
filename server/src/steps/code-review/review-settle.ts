@@ -13,7 +13,7 @@ import { limitRoute } from '../shared/limit-failover';
 import { stampGate } from '../shared/gate';
 import { textDocument } from '../shared/handoff';
 import { ARTIFACTS } from '../contract/artifacts';
-import { opinionSummary } from './code-review-round-result';
+import { opinionSummary, othersOpenLine } from './code-review-round-result';
 import { askPerson, reviewAsks } from './review-ask';
 import type { PlanChatStore } from '../../history/plan-chat.store';
 import { waitForPlanner } from '../implement/implement-question';
@@ -21,7 +21,7 @@ import { isSubtask } from '../../contract/subtask';
 import { askedReviewer } from '../shared/reviewer-labels';
 import type { Exchange } from './review-exchange';
 import { closeReview, failed, noteHandoff, writeReport } from './review-report';
-import { othersOpen, routeReview, tallyRound } from './review-round';
+import { openOthers, othersOpen, routeReview, tallyRound } from './review-round';
 import type { Finished, ReviewDeps } from './reviewer';
 import type { Opinion } from './code-review-record';
 
@@ -95,7 +95,7 @@ export class ReviewSettle {
       const waiting = await closeReview(
         ctx,
         { to: 'wait', reason: 'other reviewers are open' },
-        `${opened.startedAt} code-review waiting\n${summary}`,
+        `${opened.startedAt} ${othersOpenLine(openOthers(only, opinions))}\n${summary}`,
         noted,
         [],
       );
