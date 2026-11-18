@@ -1,6 +1,7 @@
 import type { OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfig } from '../../config/env';
+import { markedInterval } from '../../core/entered-marks';
 import { Clock } from '../../core/clock';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -62,12 +63,15 @@ export class BacklogScheduler implements OnModuleDestroy {
 
   schedule(): void {
     this.stop();
-    this.timer = setInterval(() => {
-      this.tick().catch((error: unknown) => {
-        this.logger.warn(`backlog pass failed: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    }, this.config.env.RECONCILE_MS);
-    this.timer.unref();
+    this.timer = markedInterval(
+      'backlog pass',
+      () => {
+        this.tick().catch((error: unknown) => {
+          this.logger.warn(`backlog pass failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      },
+      this.config.env.RECONCILE_MS,
+    );
   }
 
   /** Stops the timer and waits for the pass that runs, so nothing reads the database after it closes. */
