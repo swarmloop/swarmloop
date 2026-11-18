@@ -49,6 +49,13 @@ describe('github merge gate', () => {
     ]);
   });
 
+  it('reads the tip of a branch', async () => {
+    const seen = githubFetch([{ commit: { sha: 'tip3' } }]);
+    const head = await githubService().readBranchHead({ project: 'acme/demo', ref: 'feature/a-b', sha: 'old' });
+    expect(head.sha).toBe('tip3');
+    expect(seen.map((call) => call.url)).toEqual(['https://api.github.com/repos/acme/demo/branches/feature%2Fa-b']);
+  });
+
   it('guards a merge with the head, and sends the same payload as before without one', async () => {
     const seen = githubFetch([{ sha: 'm1' }]);
     await githubService().mergeMergeRequest('acme/demo', 12, 'abc123');
@@ -102,6 +109,15 @@ describe('gitlab merge gate', () => {
     expect(seen.map((call) => call.url)).toEqual([
       'https://gitlab.example/api/v4/projects/group%2Fdemo',
       'https://gitlab.example/api/v4/projects/group%2Fdemo/repository/branches/main',
+    ]);
+  });
+
+  it('reads the tip of a branch', async () => {
+    const seen = gitlabFetch([{ commit: { id: 'tip4' } }]);
+    const head = await gitlabService().readBranchHead({ project: 'group/demo', ref: 'feature/a-b', sha: 'old' });
+    expect(head.sha).toBe('tip4');
+    expect(seen.map((call) => call.url)).toEqual([
+      'https://gitlab.example/api/v4/projects/group%2Fdemo/repository/branches/feature%2Fa-b',
     ]);
   });
 

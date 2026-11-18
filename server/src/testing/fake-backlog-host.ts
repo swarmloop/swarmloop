@@ -111,6 +111,11 @@ export class FakeBacklogHost implements CodeHost {
     return { branch, sha: head, httpCalls: [] };
   }
 
+  async readBranchHead(ref: PipelineRef): Promise<{ sha: string; httpCalls: HttpCallDraft[] }> {
+    await this.record('readBranchHead', ref);
+    return { sha: ref.sha ?? '', httpCalls: [] };
+  }
+
   async readBranchPipeline(
     ref: PipelineRef,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {

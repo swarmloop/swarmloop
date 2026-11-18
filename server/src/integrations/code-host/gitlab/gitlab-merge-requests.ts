@@ -121,15 +121,37 @@ export abstract class GitlabMergeRequests extends AbstractCodeHost {
       if (!branch) {
         throw new FetchFailed(this.failure, calls);
       }
-      const url = `${base}/repository/branches/${encodeURIComponent(branch)}`;
-      const tip = (await this.readJson(url, headers, calls)) as { commit?: { id?: string } } | null;
-      if (!tip?.commit?.id) {
-        throw new FetchFailed(this.failure, calls);
-      }
-      return { branch, sha: tip.commit.id, httpCalls: calls };
+      const sha = await this.readTip(base, branch, headers, calls);
+      return { branch, sha, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
+  }
+
+  async readBranchHead(ref: PipelineRef): Promise<{ sha: string; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const base = `${root}/api/v4/projects/${encodeURIComponent(ref.project)}`;
+      const sha = await this.readTip(base, ref.ref, headers, calls);
+      return { sha, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  private async readTip(
+    base: string,
+    branch: string,
+    headers: Record<string, string>,
+    calls: HttpCallDraft[],
+  ): Promise<string> {
+    const url = `${base}/repository/branches/${encodeURIComponent(branch)}`;
+    const tip = (await this.readJson(url, headers, calls)) as { commit?: { id?: string } } | null;
+    if (!tip?.commit?.id) {
+      throw new FetchFailed(this.failure, calls);
+    }
+    return tip.commit.id;
   }
 
   protected closeCall(root: string, project: string, iid: number): HostCall {

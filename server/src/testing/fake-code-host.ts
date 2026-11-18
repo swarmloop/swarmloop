@@ -196,6 +196,11 @@ export class FakeCodeHost {
     return Promise.resolve({ branch: this.feature, sha, httpCalls: [] });
   }
 
+  readBranchHead(ref: PipelineRef): Answer<'readBranchHead'> {
+    this.guard();
+    return Promise.resolve({ sha: this.originHead(ref.ref) ?? ref.sha ?? '', httpCalls: [] });
+  }
+
   mergeRequestState(_project: string, iid: number): Answer<'mergeRequestState'> {
     this.guard();
     const sha = this.merged.get(iid);
@@ -231,6 +236,15 @@ export class FakeCodeHost {
     if (!source || !this.onOrigin(source)) return git(this.clone, ['rev-parse', `origin/${this.feature}^{tree}`]);
     try {
       return git(this.clone, ['merge-tree', '--write-tree', `origin/${this.feature}`, `origin/${source}`]);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The last known head of a branch on origin, or null when origin has no such branch. No fetch: the origin of a spec may name a host that nothing answers. */
+  private originHead(branch: string): string | null {
+    try {
+      return git(this.clone, ['rev-parse', '--verify', '--quiet', `origin/${branch}`]);
     } catch {
       return null;
     }

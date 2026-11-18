@@ -184,6 +184,8 @@ export interface CodeHost {
   readMergeGate(project: string, iid: number): Promise<MergeGate & { httpCalls: HttpCallDraft[] }>;
   /** The default branch of a project and its tip commit. */
   readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }>;
+  /** The commit the branch `ref.ref` of `ref.project` has on the host now. */
+  readBranchHead(ref: PipelineRef): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
   /**
    * Squash-merges the request into the target branch it already has. `head` is the merge guard: the host refuses the
    * merge when the request's head is another commit. A refusal for a conflict is a `MergeConflict`; any other refusal is a `FetchFailed` with the host's message.

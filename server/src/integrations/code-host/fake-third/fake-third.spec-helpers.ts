@@ -116,6 +116,9 @@ class FakeThirdCodeHost extends AbstractCodeHost {
   rerunFailedJobs(): never {
     return unsupported();
   }
+  readBranchHead(): never {
+    return unsupported();
+  }
   readDefaultHead(): never {
     return unsupported();
   }
