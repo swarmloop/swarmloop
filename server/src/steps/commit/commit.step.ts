@@ -82,6 +82,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       }
       if (!(await this.somethingToPush(trees, branch, named))) {
         if (await this.publishedHead(trees, branch)) {
+          await this.publisher.rememberRefs(trees, branch, (body) => ctx.write(ARTIFACTS.pipelineRef, body));
           await this.publisher.stampRefs(opened.run, trees);
           return commitResult('ok', `${opened.startedAt} commit done\n${branch}`);
         }

@@ -132,16 +132,37 @@ export abstract class GithubMergeRequests extends AbstractCodeHost {
       if (!branch) {
         throw new FetchFailed('github pull request failed', calls);
       }
-      const tip = (await this.readJson(`${base}/branches/${encodeURIComponent(branch)}`, headers, calls)) as {
-        commit?: { sha?: string };
-      } | null;
-      if (!tip?.commit?.sha) {
-        throw new FetchFailed('github pull request failed', calls);
-      }
-      return { branch, sha: tip.commit.sha, httpCalls: calls };
+      const sha = await this.readTip(base, branch, headers, calls);
+      return { branch, sha, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
+  }
+
+  async readBranchHead(ref: PipelineRef): Promise<{ sha: string; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const sha = await this.readTip(`${root}/repos/${repoPath(ref.project)}`, ref.ref, headers, calls);
+      return { sha, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  private async readTip(
+    base: string,
+    branch: string,
+    headers: Record<string, string>,
+    calls: HttpCallDraft[],
+  ): Promise<string> {
+    const tip = (await this.readJson(`${base}/branches/${encodeURIComponent(branch)}`, headers, calls)) as {
+      commit?: { sha?: string };
+    } | null;
+    if (!tip?.commit?.sha) {
+      throw new FetchFailed('github pull request failed', calls);
+    }
+    return tip.commit.sha;
   }
 
   protected closeCall(root: string, project: string, iid: number): HostCall {

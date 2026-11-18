@@ -138,6 +138,8 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
 
   abstract readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }>;
 
+  abstract readBranchHead(ref: PipelineRef): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
+
   async mergeRequestState(project: string, iid: number): Promise<MergeRequestState & { httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
     try {

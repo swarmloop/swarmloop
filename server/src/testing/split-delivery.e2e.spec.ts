@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
@@ -8,8 +9,8 @@ import { VisitRepository } from '../history/visit.repository';
 import { deriveState, writeRunState } from '../history/run-state';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { RunQueriesService } from '../api/run-queries.service';
-import { save } from './runs.spec-helpers';
-import { createFlowHarness } from './flow-harness';
+import { git, save } from './runs.spec-helpers';
+import { createFlowHarness, useGitlabOrigin } from './flow-harness';
 import { BlockAgentRunner } from './result-answer';
 import { assertInvariants } from './flow-invariants';
 import type { TestApp } from './test-app';
@@ -32,8 +33,12 @@ const requirements = `${JSON.stringify({
   plan: { name: 'plan', overview: '', items: ['do it'], decision: 'approve' },
 })}\n`;
 
-async function world(tasks: Subtask[] = [task('a'), task('b'), task('c', ['a'])], blocks?: BlockAgentRunner) {
-  const flow = await createFlowHarness(KEY, { blocks });
+async function world(
+  tasks: Subtask[] = [task('a'), task('b'), task('c', ['a'])],
+  blocks?: BlockAgentRunner,
+  options: Parameters<typeof createFlowHarness>[1] = {},
+) {
+  const flow = await createFlowHarness(KEY, { blocks, ...options });
   const app = flow.app;
   const runs = app.app.get(RunRepository);
   const documents = app.app.get(DocumentRepository);
@@ -248,5 +253,49 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     }
     expect((await parentRun(app))?.currentStep).toBe('done');
     await assertInvariants(app);
+  });
+
+  it('waits for the CI of a head a subtask merge moved and returns to implement on its red', async () => {
+    const built = await world([task('a'), task('b')], undefined, { realHost: true, realSteps: ['commit'] });
+    app = built.app;
+    const feature = `feature/${KEY}-ship-the-field`;
+    const bare = join(app.root, 'demo.git');
+    const headOnOrigin = () => git(bare, ['rev-parse', `refs/heads/${feature}`]);
+
+    await app.pipeline.step('implement', KEY);
+    await finish(app, 'a', 1);
+    await app.pipeline.step('implement', KEY);
+    // An earlier commit pass published the head after a, and its CI is green.
+    const older = headOnOrigin();
+    const documents = app.app.get(DocumentRepository);
+    await documents.putDocument(
+      (await parentRun(app))!,
+      'pipeline_ref',
+      `project: group/demo\nref: ${feature}\nsha: ${older}\n`,
+    );
+    built.host.ci.pass(older);
+    await finish(app, 'b', 2);
+    await app.pipeline.step('implement', KEY);
+    const head = headOnOrigin();
+    expect(head).not.toBe(older);
+    built.host.ci.fail(head, 'lint: runShell complexity 25 over its baseline 24\n');
+    useGitlabOrigin(app.root, built.tree);
+    const gitlab = (await parentRun(app))!;
+    gitlab.codeHost = 'gitlab';
+    await app.app.get(RunRepository).saveRun(gitlab);
+
+    for (const step of ['checks', 'code-review', 'commit', 'merge-request'] as const) {
+      await app.pipeline.step(step, KEY);
+    }
+    expect(headOnOrigin()).toBe(head);
+    expect(await documents.latestBody(KEY, 'pipeline_ref')).toContain(`sha: ${head}`);
+    await app.pipeline.step('pipeline', KEY);
+
+    const parent = (await parentRun(app))!;
+    expect(parent.currentStep).toBe('implement');
+    expect(await documents.latestBody(KEY, 'pipeline_log')).toContain('complexity 25');
+    expect(await documents.latestBody(KEY, 'return')).toContain('complexity 25');
+    expect((await documents.latestBody(KEY, 'merge_request')) ?? '').not.toContain('Ready to merge');
+    expect((await documents.latestBody(KEY, 'pipeline_log')) ?? '').not.toContain('Ready to merge');
   });
 });

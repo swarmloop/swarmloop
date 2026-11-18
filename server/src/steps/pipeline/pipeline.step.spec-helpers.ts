@@ -28,7 +28,7 @@ import { DocumentRepository } from '../../history/document.repository';
 
 import { PipelineModule } from '../../pipeline/pipeline.module';
 
-import type { PipelineCheck, PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
+import type { PipelineCheck, PipelineRef, PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
 
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 
@@ -129,6 +129,7 @@ export async function boot(
   cancel: jest.Mock = jest.fn(() => Promise.resolve({ httpCalls: [] as HttpCallDraft[] })),
   clock?: Clock,
   infra: {
+    readBranchHead?: jest.Mock;
     rerunFailedJobs?: jest.Mock;
     readRunNotes?: jest.Mock;
     setDraft?: jest.Mock;
@@ -164,6 +165,7 @@ export async function boot(
         jest.spyOn(registry, 'byName').mockReturnValue({
           findMergeRequest: jest.fn(),
           openMergeRequest: jest.fn(),
+          readBranchHead: jest.fn((ref: PipelineRef) => Promise.resolve({ sha: ref.sha ?? '', httpCalls: [] })),
           readBranchPipeline: read,
           readJobTrace: trace,
           cancelPipeline: cancel,

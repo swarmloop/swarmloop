@@ -37,6 +37,42 @@ describe('commit step on a clean tree', () => {
     }
   });
 
+  it('records the published head as the pipeline ref when the branch already matches origin', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-moved-head-'));
+    const tree = featureTree(root, 'PROJ-132');
+    const branch = 'feature/PROJ-132-ship-the-field';
+    const bare = join(root, 'demo.git');
+    const token = 'moved-token';
+    git(tree, ['push', '-u', 'origin', branch]);
+    const old = git(tree, ['rev-parse', 'HEAD']);
+    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+    git(tree, ['add', 'src/field.ts']);
+    git(tree, ['commit', '-m', 'moved']);
+    git(tree, ['push', 'origin', branch]);
+    const head = git(tree, ['rev-parse', 'HEAD']);
+    git(tree, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
+    const restore = hostPush(bare, token);
+    try {
+      const app = await boot(root, 'gitlab', { baseUrl: 'https://gitlab.example', token });
+      try {
+        await seed(app, 'PROJ-132', 'gitlab');
+        const documents = app.get(DocumentRepository);
+        const seeded = await app.get(RunRepository).findRun('PROJ-132');
+        await documents.putDocument(seeded!, 'pipeline_ref', `project: group/demo\nref: ${branch}\nsha: ${old}\n`);
+        const done = await app.get(PipelineService).step('commit', 'PROJ-132');
+        expect(done.exitCode).toBe(0);
+        expect(done.message).toContain('commit done');
+        const ref = await documents.latestBody('PROJ-132', 'pipeline_ref');
+        expect(ref).toContain(`sha: ${head}`);
+        expect(ref).not.toContain(old);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      restore();
+    }
+  });
+
   it('pushes an empty Re-run CI commit when a ci_rerun is pending and the tree is clean', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-rerun-'));
     const tree = featureTree(root, 'PROJ-130');

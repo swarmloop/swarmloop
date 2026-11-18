@@ -14,7 +14,7 @@ import { AwakeTime } from '../../core/awake-time';
 import { recordStepEvent } from '../../core/step-event-scope';
 import type { StepName } from '../../contract/steps';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
-import { SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { CI_INFRA_SOURCE, issueOf } from '../shared/handoff';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { BaseStep, type StepContext } from '../base-step';
@@ -44,6 +44,8 @@ import { finishedRuns, readNotes, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
 import { cancelRunning } from './cancel-running';
+import { loadSeen } from './load-seen';
+import { atBranchHeads } from './branch-heads';
 import { flakyOnPass } from './flaky-tests';
 import { finish } from './pipeline-result';
 import { stuckAtStart } from './stuck-start';
@@ -122,15 +124,16 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
     const { opened } = ctx;
     const env = this.config.env;
-    const records = parsePipelineRefs(input.pipelineRef ?? '');
+    const recorded = parsePipelineRefs(input.pipelineRef ?? '');
     const skipped = input.ciSkip?.trim() ?? '';
-    if (records.length === 0 && skipped) {
+    if (recorded.length === 0 && skipped) {
       return finish('ok', report(opened, skipped), 'skipped', skipped);
     }
     const host = await this.registry.hostFor(opened.run);
-    if (records.length === 0) {
+    if (recorded.length === 0) {
       throw new SwarmloopError('pipeline ref is missing');
     }
+    const records = await atBranchHeads(host, recorded, ctx.calls);
     const watched = await ctx.activity(ciTitle(records), () => this.watch(ctx, records, env, host), ciResult);
     const result = await this.route(ctx, env, records, watched.seen, watched.verdict, host);
     const requests = await ctx.reread(ARTIFACTS.mergeRequest);
@@ -147,7 +150,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     const { calls } = ctx;
     const awake = this.awakeTime(env);
     assertNotStopped(this.runStop, ctx.opened.run.key);
-    let seen = await awake.run(() => this.load(records, calls, host, false));
+    let seen = await awake.run(() => loadSeen(records, calls, host, false));
     let verdict = verdictOf(seen);
     let said: string | null = null;
     const unstartedSince = new Map<number, number>();
@@ -170,7 +173,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       }
       await delay(pause);
       assertNotStopped(this.runStop, ctx.opened.run.key, externalWork(seen));
-      seen = await awake.run(() => this.load(records, calls, host));
+      seen = await awake.run(() => loadSeen(records, calls, host));
       verdict = verdictOf(seen);
       const waiting = verdict === 'wait' ? waitingFor(seen) : null;
       if (waiting && waiting !== said) {
@@ -187,32 +190,6 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   /** Awake time of one wait: the host sleeping between two polls does not count. */
   private awakeTime(env: SwarmloopEnv): AwakeTime {
     return new AwakeTime(this.clock, env.TICK_MS, (ms) => recordStepEvent({ kind: 'host.suspended', durationMs: ms }));
-  }
-
-  private async load(records: PipelineRef[], calls: HttpCallDraft[], host: CodeHost, jobs = true): Promise<Seen[]> {
-    const loaded = await Promise.all(
-      records.map(async (record) => {
-        const result = await host.readBranchPipeline(record, jobs);
-        return {
-          result,
-          seen: {
-            project: record.project,
-            id: result.snapshot?.id ?? null,
-            sha: record.sha ?? '',
-            url: result.snapshot?.url ?? '',
-            status: result.snapshot?.status ?? 'none',
-            jobs: result.snapshot?.jobs ?? [],
-            runs: result.snapshot?.runs ?? [],
-            checks: result.snapshot?.checks ?? [],
-            awaiting: result.snapshot?.awaiting ?? [],
-          },
-        };
-      }),
-    );
-    for (const item of loaded) {
-      calls.push(...item.result.httpCalls);
-    }
-    return loaded.map((item) => item.seen);
   }
 
   private async route(
@@ -237,7 +214,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         calls,
         env,
         host,
-        load: (jobs) => this.load(records, calls, host, jobs),
+        load: (jobs) => loadSeen(records, calls, host, jobs),
         awakeTime: () => this.awakeTime(env),
       });
       if (!settled.traces) {
