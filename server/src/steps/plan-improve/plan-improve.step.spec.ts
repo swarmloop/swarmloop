@@ -12,6 +12,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import type { AgentRunInput } from '../../agent/agent-runner';
 import { resultAnswer } from '../../testing/result-answer';
 import { boot, result, seed, storedTasks } from './plan-improve.step.spec-helpers';
+import { StepEventLog } from '../../history/step-event.log';
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 const improved = (items: string[], extra: Record<string, unknown> = {}): string =>
@@ -221,8 +222,11 @@ describe('plan-improve step with split', () => {
       }
       const done = await app.get(PipelineService).step('plan-improve', key);
       const documents = app.get(DocumentRepository);
+      const events = await app.get(StepEventLog).page(run.id, { step: 'plan-improve', limit: 500 });
+      const finished = events.events.find((event) => event.kind === 'attempt.finished');
       return {
         done,
+        facts: finished?.kind === 'attempt.finished' ? finished.facts : undefined,
         agent,
         run: await runs.findRun(key),
         subtasks: await documents.latestBody(key, 'subtasks'),
@@ -291,6 +295,13 @@ describe('plan-improve step with split', () => {
         { id: 'docs', status: 'pending' },
       ]);
     });
+  });
+
+  it('a corrected split shows how many tasks and how deep, and a plan shows none', async () => {
+    const split = await improveSplit('PROJ-93', correctedReply);
+    expect(split.facts?.details).toEqual(['2 tasks · depth 2']);
+    const plan = await improveSplit('PROJ-94', improved(['add the field']));
+    expect(plan.facts).toBeUndefined();
   });
 
   it('a split turned back into one plan writes an empty subtasks', async () => {

@@ -53,6 +53,7 @@ import { PlanConversation } from '../shared/plan-conversation';
 import { storedGraph } from '../shared/stored-graph';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { planReplyFor, type PlanReplyResult } from '../../agent-result/definitions/plan-reply';
+import { splitFacts } from './task-depth';
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
@@ -238,6 +239,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
           : []),
       ],
       handoff: notes.length > 0 ? [summary.trimEnd(), ...notes].join('\n') : summary,
+      ...(limits.maySplit && graph ? { facts: splitFacts(graph.tasks) } : {}),
     };
   }
 

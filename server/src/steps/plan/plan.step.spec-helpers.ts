@@ -13,6 +13,7 @@ import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { resultAnswer } from '../../testing/result-answer';
+import { StepEventLog } from '../../history/step-event.log';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 export function result(responseText: string): AgentRunResult {
@@ -135,8 +136,11 @@ export async function runSplit(key: string, answer: string, options: SplitOption
     });
     const done = await app.get(PipelineService).step('plan', key);
     const documents = app.get(DocumentRepository);
+    const events = await app.get(StepEventLog).page(seeded.id, { step: 'plan', limit: 500 });
+    const finished = events.events.find((event) => event.kind === 'attempt.finished');
     return {
       done,
+      facts: finished?.kind === 'attempt.finished' ? finished.facts : undefined,
       input: agent.mock.calls[0]?.[0] as AgentRunInput,
       run: await runs.findRun(key),
       subtasks: await documents.latestBody(key, 'subtasks'),
