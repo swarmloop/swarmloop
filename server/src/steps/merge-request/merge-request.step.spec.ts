@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'fs';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { DataSource } from 'typeorm';
 import type { Repository } from 'typeorm';
 import { HttpCallEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
@@ -68,6 +69,7 @@ describe('merge-request step', () => {
       const run = await app.get(RunRepository).findRun('PROJ-200');
       expect(run?.currentStep).toBe('pipeline');
       expect(run?.status).toBe('waiting');
+      await app.get(DataSource).query('PRAGMA wal_checkpoint(TRUNCATE)');
       expect(readFileSync(join(root, 'data', 'swarmloop.sqlite')).toString('utf8')).not.toContain(TOKEN);
     } finally {
       await app.close();

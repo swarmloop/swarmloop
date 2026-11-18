@@ -13,6 +13,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 import type { Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 import { AgentExchangeEntity, DocumentEntity, HttpCallEntity, StepStatEntity } from '../../history/entities';
 
@@ -93,6 +94,7 @@ describe('requirements step', () => {
       const calls = await app.get<Repository<HttpCallEntity>>(getRepositoryToken(HttpCallEntity)).find();
       expect(calls.length).toBeGreaterThan(0);
       expect(calls.every((call) => !call.url.includes(TOKEN) && !(call.error ?? '').includes(TOKEN))).toBe(true);
+      await app.get(DataSource).query('PRAGMA wal_checkpoint(TRUNCATE)');
       const db = await readFile(join(root, 'data', 'swarmloop.sqlite'));
       expect(db.includes(Buffer.from(TOKEN))).toBe(false);
       const run = await app.get(RunRepository).findRun('PROJ-2');

@@ -11,6 +11,7 @@ import { warmRuntimeModelLists } from './pipeline/model-lists.bootstrap';
 import { Housekeeping } from './pipeline/housekeeping';
 import { BacklogScheduler } from './pipeline/backlog/backlog-scheduler';
 import { Reconciler } from './pipeline/reconciler';
+import { WalCheckpoint } from './history/wal-checkpoint';
 import { bindRefusal } from './auth/bind-check';
 import { HostAppsService } from './auth/host-apps.service';
 import { codeHostAdapters } from './integrations/code-host/code-host-adapters';
@@ -54,6 +55,7 @@ async function bootstrap(): Promise<void> {
     housekeeping.schedule();
     app.get(Reconciler).schedule();
     app.get(BacklogScheduler).schedule();
+    app.get(WalCheckpoint).schedule();
   } catch (error) {
     fail(error);
   }

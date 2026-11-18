@@ -27,11 +27,16 @@ import { BacklogRepository } from './backlog.repository';
 import { UserSettingRepository } from './user-setting.repository';
 import { PlanChatStore } from './plan-chat.store';
 import { AttachmentStore } from './attachment-store';
+import { WalCheckpoint } from './wal-checkpoint';
 
-/** A commit is copied into the database file. The default waits for 1000 pages, so a finished status stays only in the WAL. */
+/**
+ * In WAL mode with synchronous NORMAL a commit only appends to the WAL, without an fsync, and a committed
+ * transaction survives a crash of the process. Checkpoints come rarely (the default of 1000 pages) and from the
+ * quiet-moment timer in wal-checkpoint.ts. A copy of the database goes through the backup API, which includes the WAL.
+ */
 export function configureDatabase(db: { pragma: (statement: string) => unknown }): void {
   db.pragma('journal_mode = WAL');
-  db.pragma('wal_autocheckpoint = 1');
+  db.pragma('synchronous = NORMAL');
 }
 
 function databaseFile(root: string): string {
@@ -84,6 +89,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     BacklogRepository,
     PlanChatStore,
     AttachmentStore,
+    WalCheckpoint,
   ],
   exports: [
     RunRepository,
@@ -103,6 +109,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     BacklogRepository,
     PlanChatStore,
     AttachmentStore,
+    WalCheckpoint,
     TypeOrmModule,
   ],
 })
