@@ -13,6 +13,7 @@ import { ConnectionsService } from '../auth/connections.service';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { ReadinessModelCredential } from './readiness-model-credential';
+import { ReadinessStalls } from './readiness-stalls';
 import { missingModelCredential, ok, worst, type Outcome } from './readiness-outcome';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { OwnUseMeter } from '../pipeline/own-use-meter';
@@ -48,6 +49,7 @@ export class ReadinessService {
     private readonly meter: OwnUseMeter,
     @Optional() private readonly connections?: ConnectionsService,
     @Optional() private readonly person?: ReadinessModelCredential,
+    @Optional() private readonly stalls?: ReadinessStalls,
   ) {}
 
   /** The last full report at once; one that is stale starts a refresh in the background. The first call waits at most 1 s. */
@@ -79,7 +81,7 @@ export class ReadinessService {
 
   /** Measures the sizes once and builds a report, for `swarmloop doctor`. The cached report stays as it is. */
   async fresh(): Promise<ReadinessView> {
-    await this.meter.measure();
+    await Promise.all([this.meter.measure(), this.sandbox.machine()]);
     return this.build();
   }
 
@@ -117,7 +119,18 @@ export class ReadinessService {
         }
       }),
     );
-    return { items, checkedAt: this.clock.iso() };
+    const stalls = await this.stallItem();
+    return { items: stalls ? [...items, stalls] : items, checkedAt: this.clock.iso() };
+  }
+
+  private async stallItem(): Promise<ReadinessItem | null> {
+    try {
+      const outcome = await this.stalls?.outcome();
+      return outcome ? { id: 'stalls', ...outcome } : null;
+    } catch (error) {
+      const line = error instanceof Error ? error.message : String(error);
+      return { id: 'stalls', status: 'fail', line, action: 'fix the cause named in the line, then check again' };
+    }
   }
 
   private async docker(): Promise<Outcome> {
@@ -126,7 +139,12 @@ export class ReadinessService {
     } catch {
       return { status: 'fail', line: 'docker is not running', action: 'start Docker or mount the Docker socket' };
     }
-    return ok('docker answers');
+    const machine = this.sandbox.knownMachine();
+    if (!machine) {
+      return ok('docker answers');
+    }
+    const gb = Number((machine.memoryBytes / GB).toFixed(1));
+    return ok(`${machine.cpus} CPUs · ${gb} GB`);
   }
 
   private arch(): Outcome {

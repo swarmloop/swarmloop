@@ -22,9 +22,16 @@ import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { fakeConnection } from '../testing/fake-connection';
 import { ReadinessModelCredential } from './readiness-model-credential';
+import { ReadinessStalls } from './readiness-stalls';
 import { ReadinessService } from './readiness.service';
 
 const GB = 1024 ** 3;
+
+interface StallRow {
+  startedAt: string;
+  durationMs: number;
+  kind: 'server-blocked' | 'host-paused';
+}
 
 describe('ReadinessService', () => {
   const original = global.fetch;
@@ -61,6 +68,7 @@ describe('ReadinessService', () => {
     env: Partial<SwarmloopEnv> = {},
     free = 50 * GB,
     person?: (config: AppConfig) => ReadinessModelCredential,
+    stallRows: StallRow[] = [],
   ): ReadinessService {
     const home = mkdtempSync(join(tmpdir(), 'readiness-'));
     dirs.push(home);
@@ -85,7 +93,11 @@ describe('ReadinessService', () => {
     clock = new FakeClock();
     meter = new OwnUseMeter(config, clock);
     const hosts = CodeHostRegistry.create(config.env, clock);
-    return new ReadinessService(config, sandbox, disk, hosts, clock, meter, undefined, person?.(config));
+    const stalls = new ReadinessStalls(
+      { since: async (iso: string) => stallRows.filter((row) => row.startedAt >= iso) } as never,
+      clock,
+    );
+    return new ReadinessService(config, sandbox, disk, hosts, clock, meter, undefined, person?.(config), stalls);
   }
 
   /** The calls that left for a code host. The port probes stay on this machine. */
@@ -125,6 +137,45 @@ describe('ReadinessService', () => {
       expect(item.line).not.toContain('\n');
       expect(item.action).not.toBe('');
     }
+  });
+
+  it("shows Docker's CPUs and memory once docker has answered with them", async () => {
+    const service = setup();
+    docker.mockImplementation(async (args: string[]) => (args.includes('--format') ? '8 16750372454\n' : ''));
+    expect((await itemOf(service, 'docker')).line).toBe('8 CPUs · 15.6 GB');
+  });
+
+  it('says only that docker answers when no reading is kept', async () => {
+    expect((await itemOf(setup(), 'docker')).line).toBe('docker answers');
+  });
+
+  it('warns of the stalls of the last hour, most frequent kind first', async () => {
+    const service = setup({}, 50 * GB, undefined, [
+      { startedAt: '2025-12-31T22:00:00.000Z', durationMs: 99_000, kind: 'host-paused' },
+      { startedAt: '2025-12-31T23:30:00.000Z', durationMs: 20_000, kind: 'server-blocked' },
+      { startedAt: '2025-12-31T23:45:00.000Z', durationMs: 12_000, kind: 'server-blocked' },
+    ]);
+    expect(await itemOf(service, 'stalls')).toMatchObject({
+      status: 'warn',
+      line: 'The server stalled 2 times in the last hour, 32 s in all (server blocked)',
+      link: '/#statistics',
+    });
+  });
+
+  it('says 1 time for a single stall', async () => {
+    const service = setup({}, 50 * GB, undefined, [
+      { startedAt: '2025-12-31T23:30:00.000Z', durationMs: 20_000, kind: 'host-paused' },
+    ]);
+    expect((await itemOf(service, 'stalls')).line).toBe(
+      'The server stalled 1 time in the last hour, 20 s in all (machine paused)',
+    );
+  });
+
+  it('has no stalls item without stalls in the last hour', async () => {
+    const service = setup({}, 50 * GB, undefined, [
+      { startedAt: '2025-12-31T22:00:00.000Z', durationMs: 20_000, kind: 'host-paused' },
+    ]);
+    expect((await service.fresh()).items.map((item) => item.id)).not.toContain('stalls');
   });
 
   it('fails when docker is down', async () => {
