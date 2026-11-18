@@ -1,4 +1,5 @@
 import type { SandboxChild, SandboxService } from '../sandbox/sandbox.service';
+import { markedInterval } from '../core/entered-marks';
 import type { AwakeTime } from '../core/awake-time';
 import { SAMPLE_MS } from '../core/awake-time';
 import type { KillReason } from './limits';
@@ -73,17 +74,20 @@ export class AgentProcess {
     this.child.stdout?.on('data', data);
     this.child.stderr?.on('data', error);
     handlers.sample();
-    const timer = setInterval(() => {
-      handlers.sample();
-      if (timeouts && timeouts.time.elapsedMs() >= timeouts.wallLimitMs) {
-        timeouts.timeout('time');
-      } else if (timeouts && timeouts.time.idleMs() >= timeouts.idleLimitMs) {
-        timeouts.timeout('idle');
-      } else {
-        handlers.tick();
-      }
-    }, SAMPLE_MS);
-    timer.unref();
+    const timer = markedInterval(
+      'agent sample',
+      () => {
+        handlers.sample();
+        if (timeouts && timeouts.time.elapsedMs() >= timeouts.wallLimitMs) {
+          timeouts.timeout('time');
+        } else if (timeouts && timeouts.time.idleMs() >= timeouts.idleLimitMs) {
+          timeouts.timeout('idle');
+        } else {
+          handlers.tick();
+        }
+      },
+      SAMPLE_MS,
+    );
     const exitCode = await new Promise<number>((resolve) => {
       let settled = false;
       const finish = (code: number): void => {
@@ -100,14 +104,17 @@ export class AgentProcess {
         finish(this.closedEarly);
       }
       this.child.on('close', (code) => finish(code ?? 1));
-      const watch = setInterval(() => {
-        if (!shouldFinish()) {
-          return;
-        }
-        clearInterval(watch);
-        setTimeout(() => finish(1), 5_000).unref();
-      }, 500);
-      watch.unref();
+      const watch = markedInterval(
+        'agent watch',
+        () => {
+          if (!shouldFinish()) {
+            return;
+          }
+          clearInterval(watch);
+          setTimeout(() => finish(1), 5_000).unref();
+        },
+        500,
+      );
     });
     this.child.stdout?.off('data', data);
     this.child.stderr?.off('data', error);

@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { relative } from 'path';
 import type { StepEvent, StepEventBody } from '../contract/step-events';
 import { isReadOnlyGit } from '../contract/git-reads';
+import { markEntered } from './entered-marks';
 import type { Clock } from './clock';
 
 /** Where the events of one attempt go. Writes run one after the other, in `seq` order. */
@@ -33,6 +34,7 @@ export async function runInStepScope<T>(
   lastSeq: number,
   run: () => Promise<T>,
 ): Promise<T> {
+  markEntered(`step ${scope.step}`);
   const sequence: Sequence = { next: lastSeq + 1, tail: Promise.resolve() };
   try {
     return await storage.run({ ...scope, sequence, activitySpanId: null }, run);

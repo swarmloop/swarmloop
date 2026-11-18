@@ -75,6 +75,17 @@ describe('runShell', () => {
     ]);
   });
 
+  it('tells the sandbox whether a container is a setup or a check', async () => {
+    const w = world(1);
+    const file = checkOutputPath(w.root, 'r1', 'implement', 'attempt-1', 0);
+
+    await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'setup');
+    await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'checks', { index: 0, file });
+
+    const held = (w.deps.sandbox.spawn as jest.Mock).mock.calls.map(([, given]) => given.work);
+    expect(held).toEqual(['setup', 'check']);
+  });
+
   it('gives a setup the same tail, mark and whole file', async () => {
     const w = world(498);
 

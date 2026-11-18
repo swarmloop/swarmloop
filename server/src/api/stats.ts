@@ -13,10 +13,13 @@ import { NON_RETURN_COUNTERS, readLoopDetail } from '../history/loop-detail';
 import { readOutcome } from '../history/run-state';
 import { runName } from './run-view/flow';
 import { viewTitle } from './run-view/run-title';
+import { localDay, MINUTE_MS } from './local-day';
+import { stallsOf } from './stats-stalls';
 import { countedRunsOf, sumOver } from './stats-units';
 
+export { localDay };
+
 const DAY_MS = 24 * 60 * 60 * 1000;
-const MINUTE_MS = 60 * 1000;
 const RETURN_BUCKETS = ['0', '1', '2', '3', '4+'];
 
 /** The last `days` local days, or every day when `days` is 0. Either way the days start no earlier than the first run. */
@@ -24,12 +27,6 @@ export interface StatsRange {
   days: number;
   /** Minutes the viewer's clock is behind UTC, as `Date.getTimezoneOffset` gives them (Warsaw in winter: -60). */
   tzOffset: number;
-}
-
-/** The local day of an ISO time, `YYYY-MM-DD`. */
-export function localDay(iso: string | number, tzOffset: number): string {
-  const ms = typeof iso === 'number' ? iso : Date.parse(iso);
-  return new Date(ms - tzOffset * MINUTE_MS).toISOString().slice(0, 10);
 }
 
 function shiftDay(day: string, by: number): string {
@@ -80,6 +77,8 @@ function emptyDays(from: string, to: string): Map<string, StatsDay> {
       merged: 0,
       closed: 0,
       medianToMergeMs: null,
+      stalls: { 'server-blocked': 0, 'host-paused': 0 },
+      stalledMs: 0,
     });
   }
   return days;
@@ -245,6 +244,7 @@ export function buildStats(
   const days = emptyDays(from, to);
   const spend = spendOf(rows.steps, days, range.tzOffset, new Map(rows.runs.map((run) => [run.id, run.runtime])));
   const returns = returnsOf(rows.loops, days, range.tzOffset);
+  stallsOf(rows.stalls, days, range.tzOffset);
 
   const agents = new Map<string, StatsShare>();
   const buckets = RETURN_BUCKETS.map(() => 0);

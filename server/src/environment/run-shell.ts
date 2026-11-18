@@ -3,6 +3,7 @@ import { createWriteStream, mkdirSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { SAMPLE_MS } from '../core/awake-time';
 import type { Clock } from '../core/clock';
+import { markedInterval } from '../core/entered-marks';
 import { markedTail, runLogPath } from '../core/run-logs';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { startCommandSpan } from '../core/step-event-scope';
@@ -41,6 +42,35 @@ export interface ShellDeps {
   live?: Pick<LiveHub, 'log'>;
   /** True for a run the user stopped: its containers die by docker stop and kill, not by their memory cap. */
   halted?: (key: string) => boolean;
+}
+
+/** The sandbox launch of one setup or check command. */
+function shellLaunch(args: {
+  input: ShellInput;
+  launch: ProjectLaunch;
+  command: string;
+  mount: SandboxMount;
+  phase: 'setup' | 'checks';
+  check?: { index: number };
+  manifest?: ManifestHosts;
+  statePath: string;
+  userId: ReturnType<typeof sandboxUserId>;
+}): Parameters<ShellDeps['sandbox']['spawn']>[0] {
+  const { input, launch, command, mount, phase, check, manifest, statePath, userId } = args;
+  return {
+    runtime: input.runtime,
+    runKey: input.key,
+    step: check ? `${input.step}-${check.index}` : input.step,
+    attemptId: input.run.activeAttempt ?? '',
+    mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
+    statePath,
+    allowHosts: phase === 'setup' ? setupHosts(manifest?.hosts) : [],
+    ...(phase === 'setup' && manifest?.hosts.length ? { manifestHosts: manifest } : {}),
+    command: [],
+    userId,
+    project: { ...launch, shell: command },
+    resultLost: true,
+  };
 }
 
 /**
@@ -116,23 +146,10 @@ export async function runShell(
     });
   };
   const child = await sandbox
-    .spawn(
-      {
-        runtime: input.runtime,
-        runKey: input.key,
-        step: check ? `${input.step}-${check.index}` : input.step,
-        attemptId: input.run.activeAttempt ?? '',
-        mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
-        statePath,
-        allowHosts: phase === 'setup' ? setupHosts(manifest?.hosts) : [],
-        ...(phase === 'setup' && manifest?.hosts.length ? { manifestHosts: manifest } : {}),
-        command: [],
-        userId,
-        project: { ...launch, shell: command },
-        resultLost: true,
-      },
-      { onPaused },
-    )
+    .spawn(shellLaunch({ input, launch, command, mount, phase, check, manifest, statePath, userId }), {
+      onPaused,
+      work: phase === 'setup' ? 'setup' : 'check',
+    })
     .catch(async (error: unknown) => {
       finish({ exitCode: null });
       await new Promise<void>((done) => file.end(done));
@@ -151,8 +168,7 @@ export async function runShell(
     },
   );
   take();
-  const sampler = setInterval(take, SAMPLE_MS);
-  sampler.unref();
+  const sampler = markedInterval('check sample', take, SAMPLE_MS);
   let partial = '';
   const read = (chunk: Buffer) => {
     const text = partial + chunk.toString('utf8');

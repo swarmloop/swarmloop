@@ -30,14 +30,25 @@ export const NAMES: Record<ReadinessItem['id'], string> = {
   ports: 'Ports',
   'model-credential': 'Model key',
   'code-host-token': 'Git token',
+  stalls: 'Server stalls',
 };
+
+/** The text of an alert's link, by the start of its target. */
+const LINK_TEXTS: [string, string][] = [
+  ['/connections', 'Open Connections'],
+  ['/#statistics', 'Open Statistics'],
+];
+
+function linkText(link: string): string {
+  return LINK_TEXTS.find(([prefix]) => link.startsWith(prefix))?.[1] ?? 'Open';
+}
 
 /** The few words an ok item shows; its whole line is in the tooltip. */
 export function shortLine(item: ReadinessItem): string {
   const line = item.line;
   switch (item.id) {
     case 'docker':
-      return 'running';
+      return line.includes('CPUs') ? line : 'running';
     case 'arch':
       return line.split(' ')[0] ?? line;
     case 'images':
@@ -50,6 +61,8 @@ export function shortLine(item: ReadinessItem): string {
       return line.match(/for (\S+)/)?.[1] ?? 'set';
     case 'code-host-token':
       return line.match(/^(\w+?)_TOKEN/)?.[1]?.toLowerCase() ?? 'accepted';
+    case 'stalls':
+      return line;
     case 'disk':
       return line.split(/[;,(]/)[0].trim();
   }
@@ -93,11 +106,14 @@ function PanelLoading(): ReactElement {
     <Paper variant="outlined" component="section" id="readiness" aria-label="Readiness" sx={{ p: { xs: 2, md: 2.5 } }}>
       <Typography sx={{ fontWeight: 600, mb: 1.5 }}>Checking readiness</Typography>
       <Box component="ul" sx={GRID_SX}>
-        {(Object.keys(NAMES) as ReadinessItem['id'][]).map((id) => (
-          <Box component="li" key={id} data-testid="readiness-placeholder">
-            <Skeleton variant="rounded" height={56} />
-          </Box>
-        ))}
+        {/* The stall item comes only after stalls, so a report always holds the other ids. */}
+        {(Object.keys(NAMES) as ReadinessItem['id'][])
+          .filter((id) => id !== 'stalls')
+          .map((id) => (
+            <Box component="li" key={id} data-testid="readiness-placeholder">
+              <Skeleton variant="rounded" height={56} />
+            </Box>
+          ))}
       </Box>
     </Paper>
   );
@@ -197,7 +213,7 @@ export function ReadinessPanel(): ReactElement {
               {item.link ? (
                 <>
                   {' '}
-                  <Link href={item.link}>Open Connections</Link>
+                  <Link href={item.link}>{linkText(item.link)}</Link>
                 </>
               ) : null}
             </Alert>

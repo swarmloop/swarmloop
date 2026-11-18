@@ -25,6 +25,7 @@ import { RuntimeCooldownRepository } from './runtime-cooldown.repository';
 import { IntegrationSecretRepository } from './integration-secret.repository';
 import { BacklogRepository } from './backlog.repository';
 import { UserSettingRepository } from './user-setting.repository';
+import { ServerStallRepository, SlowRequestRepository } from './server-stall.repository';
 import { PlanChatStore } from './plan-chat.store';
 import { AttachmentStore } from './attachment-store';
 import { WalCheckpoint } from './wal-checkpoint';
@@ -90,6 +91,8 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     PlanChatStore,
     AttachmentStore,
     WalCheckpoint,
+    ServerStallRepository,
+    SlowRequestRepository,
   ],
   exports: [
     RunRepository,
@@ -110,6 +113,8 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     PlanChatStore,
     AttachmentStore,
     WalCheckpoint,
+    ServerStallRepository,
+    SlowRequestRepository,
     TypeOrmModule,
   ],
 })

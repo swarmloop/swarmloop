@@ -1,3 +1,5 @@
+import type { ServerStallKind } from './server-stall';
+
 /** How a run ended up, for the statistics: done, still going (running, waiting, stopped), or failed (failed, blocked). */
 export type RunOutcome = 'done' | 'active' | 'failed';
 
@@ -14,6 +16,9 @@ export interface StatsDay {
   closed: number;
   /** Median time from done to merge of the day's merged runs; null without one. */
   medianToMergeMs: number | null;
+  /** Server stalls of the day by kind, and the time they took, counted by the local day the stall started. */
+  stalls: Record<ServerStallKind, number>;
+  stalledMs: number;
 }
 
 /** Spend and tokens of one step, model, effort or agent. `count` is visits for steps, models and efforts, runs for agents. */

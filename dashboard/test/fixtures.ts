@@ -136,6 +136,8 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
     merged: 0,
     closed: 0,
     medianToMergeMs: null,
+    stalls: { 'server-blocked': 0, 'host-paused': 0 },
+    stalledMs: 0,
     ...values,
   });
   return {
@@ -170,7 +172,7 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
     },
     days: [
       day('2026-11-08', { done: 1, usd: 3, returns: 2, merged: 1, medianToMergeMs: 7_200_000 }),
-      day('2026-11-09'),
+      day('2026-11-09', { stalls: { 'server-blocked': 2, 'host-paused': 1 }, stalledMs: 150_000 }),
       day('2026-11-10', { done: 1, active: 1, failed: 1, usd: 1.25, returns: 1, closed: 1 }),
     ],
     steps: [
