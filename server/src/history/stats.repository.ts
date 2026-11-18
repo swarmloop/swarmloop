@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { LoopEventEntity, RunEntity, StepStatEntity } from './entities';
+import { ServerStallEntity } from './server-stall.entities';
 
 export type StatsRunRow = Pick<RunEntity, 'id' | 'key' | 'prompt' | 'status' | 'runtime' | 'createdAt'> &
   Partial<Pick<RunEntity, 'title' | 'parentRunId' | 'state' | 'mergeOutcome' | 'doneAt'>>;
@@ -24,12 +25,15 @@ export type StatsStepRow = Pick<
 export type StatsLoopRow = Pick<LoopEventEntity, 'runId' | 'counter' | 'reason' | 'createdAt'> &
   Partial<Pick<LoopEventEntity, 'detail'>>;
 
+export type StatsStallRow = Pick<ServerStallEntity, 'startedAt' | 'durationMs' | 'kind'>;
+
 export interface StatsRows {
   /** When the first run of all started, or null before any. A range never reaches back past it. */
   firstRunAt: string | null;
   runs: StatsRunRow[];
   steps: StatsStepRow[];
   loops: StatsLoopRow[];
+  stalls: StatsStallRow[];
 }
 
 /** The rows the statistics are counted from. Reads only; the counting is the caller's. */
@@ -39,6 +43,7 @@ export class StatsRepository {
     @InjectRepository(RunEntity) private readonly runs: Repository<RunEntity>,
     @InjectRepository(StepStatEntity) private readonly steps: Repository<StepStatEntity>,
     @InjectRepository(LoopEventEntity) private readonly loops: Repository<LoopEventEntity>,
+    @InjectRepository(ServerStallEntity) private readonly stalls: Repository<ServerStallEntity>,
   ) {}
 
   /** The runs created at `since` or later (every run when null), with their steps and their returns. */
@@ -62,8 +67,13 @@ export class StatsRepository {
     });
     const first = await this.runs.find({ select: { createdAt: true }, order: { createdAt: 'ASC' }, take: 1 });
     const firstRunAt = first[0]?.createdAt ?? null;
+    const stalls = await this.stalls.find({
+      select: { startedAt: true, durationMs: true, kind: true },
+      where: since === null ? {} : { startedAt: MoreThanOrEqual(since) },
+      order: { id: 'ASC' },
+    });
     if (runs.length === 0) {
-      return { firstRunAt, runs, steps: [], loops: [] };
+      return { firstRunAt, runs, steps: [], loops: [], stalls };
     }
     const scope = since === null ? {} : { runId: In(runs.map((run) => run.id)) };
     const steps = await this.steps.find({
@@ -88,6 +98,6 @@ export class StatsRepository {
       select: { runId: true, counter: true, reason: true, detail: true, createdAt: true },
       where: scope,
     });
-    return { firstRunAt, runs, steps, loops };
+    return { firstRunAt, runs, steps, loops, stalls };
   }
 }
