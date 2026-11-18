@@ -16,14 +16,6 @@ const List = ({ lines }: { lines: string[] }): ReactElement => (
   </Box>
 );
 
-/** True when the run stopped on something a person fixes: a failed or blocked step, or a wait that Resume ends. */
-export function hasProblem(flow: FlowView): boolean {
-  if (flow.status === 'failed' || flow.status === 'blocked') {
-    return true;
-  }
-  return flow.status === 'waiting' && flow.items.length === 0 && flow.actions.includes('resume');
-}
-
 /** A failed or blocked step: why in plain words, the CI jobs and paths it names, and Resume. */
 export function ProblemEntry({ flow, onResume }: { flow: FlowView; onResume: () => void }): ReactElement {
   const infra = ciInfra(flow);

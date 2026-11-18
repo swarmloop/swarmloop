@@ -1,5 +1,6 @@
 import type { FlowView } from '@contract/api';
 import { ERROR_CODES } from '@contract/error-codes';
+import { REASON } from '@contract/run-state';
 import type { PlanChatEntry } from '@contract/plan-chat';
 import { localTime } from '../../../lib/format';
 
@@ -67,13 +68,32 @@ export function limitWaitSentence(flow: FlowView): string | null {
   return `Waiting for the ${reason.limit.runtime} usage limit. The run goes on at ${localTime(reason.limit.resumesAt)}.`;
 }
 
-/** True when the run needs the person: an open question or a step that failed or is blocked. */
+/**
+ * True when only a person ends the wait: a failed or blocked run, or a waiting run stopped on git access, a stall, or a
+ * usage limit with no time it ends. A run that waits on its own work is not one.
+ */
+export function waitsForPerson(flow: FlowView): boolean {
+  if (flow.status === 'failed' || flow.status === 'blocked') {
+    return true;
+  }
+  const reason = flow.stateReason;
+  if (flow.status !== 'waiting' || !reason) {
+    return false;
+  }
+  return (
+    reason.code === ERROR_CODES.GIT_AUTH ||
+    reason.code === REASON.stalled ||
+    (reason.code === ERROR_CODES.RUNTIME_LIMIT && !reason.limit)
+  );
+}
+
+/** True when the run needs the person: an open question, or a run that waits for a person. */
 export const needsPerson = (flow: FlowView): boolean =>
-  (flow.conversation?.questions.length ?? 0) > 0 || flow.status === 'failed' || flow.status === 'blocked';
+  (flow.conversation?.questions.length ?? 0) > 0 || waitsForPerson(flow);
 
 /** Changes when the conversation gets something new: its last entry, a question or a problem. */
 export function newestOf(flow: FlowView, entries: FeedEntry[]): string {
   const questions = (flow.conversation?.questions ?? []).map((item) => item.id).join(',');
-  const problem = flow.status === 'failed' || flow.status === 'blocked' ? `${flow.currentStep}:${flow.updatedAt}` : '';
+  const problem = waitsForPerson(flow) ? `${flow.currentStep}:${flow.updatedAt}` : '';
   return `${entries.at(-1)?.key ?? ''}|${questions}|${problem}`;
 }
