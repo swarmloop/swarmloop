@@ -10,6 +10,8 @@ import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import ChatIcon from '@mui/icons-material/ChatBubbleOutline';
 import CloseIcon from '@mui/icons-material/Close';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import type { FlowView } from '@contract/api';
 import { ConversationFeed } from './conversation-feed';
@@ -22,7 +24,7 @@ import { useColumnState } from './use-column-state';
 const WIDTH = { width: 360, minWidth: 320, maxWidth: 400 } as const;
 const RAIL_PX = 44;
 /** Below this window width the column is a bottom sheet. */
-const SHEET_BELOW_PX = 900;
+export const SHEET_BELOW_PX = 900;
 
 function Mark(): ReactElement {
   return (
@@ -64,10 +66,14 @@ export function ConversationColumn({
   flow,
   onResume,
   onChange,
+  wide = false,
+  onWide = () => undefined,
 }: {
   flow: FlowView;
   onResume: () => void;
   onChange: (flow: FlowView) => void;
+  wide?: boolean;
+  onWide?: (wide: boolean) => void;
 }): ReactElement {
   const narrow = !useMediaQuery(`(min-width:${SHEET_BELOW_PX}px)`, { noSsr: true });
   const entries: FeedEntry[] = feedEntries(flow.conversation?.entries ?? [], flow.conversation?.parentKey);
@@ -75,6 +81,13 @@ export function ConversationColumn({
   const needsNow = needsPerson(flow);
   const { open, setOpen, reveal, unseen } = useColumnState(newest, narrow, needsNow);
   const needs = needsNow ? newest : '';
+  const rail = !narrow && !open;
+  useEffect(() => {
+    // A rail never stands in for the step window: a stored wide choice ends when the column shows as the rail.
+    if (rail && wide) {
+      onWide(false);
+    }
+  }, [rail, wide, onWide]);
   useEffect(() => {
     if (needs && narrow) {
       reveal();
@@ -93,12 +106,28 @@ export function ConversationColumn({
     </Button>
   );
   const body = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, minHeight: 0, flex: 1, p: 1.5 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, minHeight: 0, flex: 1, minWidth: 0, p: 1.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center' }}>
         <Typography component="h2" variant="subtitle1" sx={{ flex: 1 }}>
           Conversation
         </Typography>
-        <IconButton size="small" aria-label="Collapse the conversation" onClick={() => setOpen(false)}>
+        {narrow ? null : (
+          <Button
+            size="small"
+            startIcon={wide ? <CloseFullscreenIcon /> : <OpenInFullIcon />}
+            onClick={() => onWide(!wide)}
+          >
+            {wide ? 'Narrow' : 'Widen'}
+          </Button>
+        )}
+        <IconButton
+          size="small"
+          aria-label="Collapse the conversation"
+          onClick={() => {
+            onWide(false);
+            setOpen(false);
+          }}
+        >
           <CloseIcon fontSize="small" />
         </IconButton>
       </Box>
@@ -130,12 +159,11 @@ export function ConversationColumn({
       component="aside"
       aria-label="Conversation"
       sx={{
-        ...WIDTH,
-        flexShrink: 0,
+        ...(wide ? { flex: 1, minWidth: 0 } : { ...WIDTH, flexShrink: 0 }),
         alignSelf: 'flex-start',
         position: 'sticky',
         top: 16,
-        maxHeight: 'calc(100vh - 32px)',
+        height: 'calc(100vh - 32px)',
         display: 'flex',
         border: 1,
         borderColor: 'divider',

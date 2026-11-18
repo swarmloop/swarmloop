@@ -264,6 +264,57 @@ describe('ConversationColumn on a wide window', () => {
   });
 });
 
+describe('ConversationColumn widening', () => {
+  mediaWidth(1280);
+
+  const wideColumn = (onWide: () => void, wide: boolean) => (
+    <ConversationColumn flow={flowWith()} onResume={vi.fn()} onChange={vi.fn()} onWide={onWide} wide={wide} />
+  );
+
+  it('shows Widen with its icon, then Narrow with its icon, and tells onWide', async () => {
+    const user = userEvent.setup({ delay: null });
+    const onWide = vi.fn();
+    const { rerender } = render(wideColumn(onWide, false), { wrapper: Wrapper });
+
+    const widen = screen.getByRole('button', { name: 'Widen' });
+    expect(widen.querySelector('[data-testid="OpenInFullIcon"]')).not.toBeNull();
+    await user.click(widen);
+    expect(onWide).toHaveBeenLastCalledWith(true);
+
+    rerender(wideColumn(onWide, true));
+    const narrow = screen.getByRole('button', { name: 'Narrow' });
+    expect(narrow.querySelector('[data-testid="CloseFullscreenIcon"]')).not.toBeNull();
+    expect(screen.getByRole('complementary', { name: 'Conversation' })).not.toHaveStyle({ maxWidth: '400px' });
+    await user.click(narrow);
+    expect(onWide).toHaveBeenLastCalledWith(false);
+  });
+
+  it('ends the wide choice when it collapses', async () => {
+    const user = userEvent.setup({ delay: null });
+    const onWide = vi.fn();
+    render(wideColumn(onWide, true), { wrapper: Wrapper });
+
+    await user.click(screen.getByRole('button', { name: 'Collapse the conversation' }));
+    expect(onWide).toHaveBeenCalledWith(false);
+  });
+
+  it('ends the wide choice when a stored closed state shows the rail', async () => {
+    localStorage.setItem('swarmloop.conversation.alice', 'closed');
+    const onWide = vi.fn();
+    render(wideColumn(onWide, true), { wrapper: Wrapper });
+
+    expect(await screen.findByRole('complementary', { name: 'Conversation rail' })).toBeInTheDocument();
+    expect(onWide).toHaveBeenCalledWith(false);
+  });
+
+  it('keeps the message box inside the column', () => {
+    render(column(flowWith()), { wrapper: Wrapper });
+
+    const aside = screen.getByRole('complementary', { name: 'Conversation' });
+    expect(within(aside).getByRole('textbox', { name: 'Message to the planner' })).toBeInTheDocument();
+  });
+});
+
 describe('ConversationColumn on a narrow window', () => {
   mediaWidth(600);
 
@@ -272,6 +323,7 @@ describe('ConversationColumn on a narrow window', () => {
     render(column(flowWith({ entries: [entry('r1', 'planner', 'hello there')] })), { wrapper: Wrapper });
 
     expect(screen.queryByRole('complementary')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Widen' })).toBeNull();
     expect(screen.queryByText('hello there')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Open the conversation' }));
 

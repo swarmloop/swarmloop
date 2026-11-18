@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Skeleton from '@mui/material/Skeleton';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import Typography from '@mui/material/Typography';
 import { useDocumentTitle } from '../../../../lib/document-title';
 import { useRunFlow } from '../../use-run-flow';
@@ -19,7 +20,8 @@ import { StepDetail } from '../step-detail';
 import { GitAuthBanner } from '../git-auth-banner';
 import { LimitBanner } from '../limit-banner';
 import type { PlanRevision } from '@contract/plan-chat';
-import { ConversationColumn } from '../../conversation/conversation-column';
+import { ConversationColumn, SHEET_BELOW_PX } from '../../conversation/conversation-column';
+import { useWideConversation } from '../../conversation/use-wide-conversation';
 import { latestRevision } from '../../conversation/revision-marks';
 import { FinishedSummary } from './finished-summary';
 import { RunDialogs } from './run-dialogs';
@@ -51,6 +53,8 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   } = useRunFlow(runKey);
 
   const [reviewer, setReviewer] = useState<string | null>(null);
+  const [wide, setWide] = useWideConversation();
+  const sideBySide = useMediaQuery(`(min-width:${SHEET_BELOW_PX}px)`, { noSsr: true });
   useDocumentTitle(flow?.title ?? null);
 
   if (!flow) {
@@ -93,6 +97,10 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   const planWindow = selected === 'plan';
   const tasks = layers(planWindow ? revision : null);
   const summary = flow.status === 'done' && selected === null;
+  const chooseStep = (name: string): void => {
+    setWide(false);
+    selectStep(name);
+  };
   return (
     <Box sx={{ minWidth: 0 }}>
       {flow.parentKey ? (
@@ -107,7 +115,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         openMs={openMs}
         onRebase={rebaseRun}
         onStop={() => setConfirmStop(true)}
-        onOpenRequirements={() => selectStep('requirements')}
+        onOpenRequirements={() => chooseStep('requirements')}
       />
       {error ? (
         <Typography color="error" variant="body2" sx={{ mt: 1 }}>
@@ -118,47 +126,49 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         phases={phases}
         returns={flow.returns}
         selected={selected}
-        onSelect={selectStep}
+        onSelect={chooseStep}
         checkCommands={flow.checkCommands}
         stateReason={flow.stateReason ?? null}
       />
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: 'flex-start' }}>
-        <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
-          {summary ? null : tasks}
-          {summary ? <FinishedSummary flow={flow} tasks={tasks} /> : null}
-          {selected ? (
-            <StepDetail
-              key={selected}
-              runKey={flow.key}
-              step={selected}
-              live={flow.status === 'running' && pipelineStepOf(selected) === flow.currentStep}
-              revision={flow.updatedAt}
-              planRevision={planWindow ? revision : undefined}
-              attempts={chip?.attempts ?? 0}
-              restartedAt={chip?.restartedAt}
-              now={now}
-              liveCommands={flow.checkCommands}
-              onReplay={
-                selected === 'code-review' || flow.status === 'running' || !flow.actions.includes('replay')
-                  ? undefined
-                  : REVIEW_STEPS.includes(selected)
-                    ? () => setReviewer(selected)
-                    : () => setReplay(pipelineStepOf(selected))
-              }
-              runStatus={pipelineStepOf(selected) === flow.currentStep ? flow.status : undefined}
-              onResume={
-                pipelineStepOf(selected) === flow.currentStep &&
-                (flow.status === 'failed' || flow.status === 'blocked') &&
-                flow.actions.includes('resume')
-                  ? resumeRun
-                  : undefined
-              }
-              resumeLabel={resumeLabel(flow.stateReason?.code)}
-              resumeTip={resumeTip(flow.stateReason?.code)}
-            />
-          ) : null}
-        </Box>
-        <ConversationColumn flow={flow} onResume={resumeRun} onChange={applyWaiting} />
+      {summary ? null : tasks}
+      <Box data-testid="step-row" sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+        {wide && sideBySide ? null : (
+          <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
+            {summary ? <FinishedSummary flow={flow} tasks={tasks} /> : null}
+            {selected ? (
+              <StepDetail
+                key={selected}
+                runKey={flow.key}
+                step={selected}
+                live={flow.status === 'running' && pipelineStepOf(selected) === flow.currentStep}
+                revision={flow.updatedAt}
+                planRevision={planWindow ? revision : undefined}
+                attempts={chip?.attempts ?? 0}
+                restartedAt={chip?.restartedAt}
+                now={now}
+                liveCommands={flow.checkCommands}
+                onReplay={
+                  selected === 'code-review' || flow.status === 'running' || !flow.actions.includes('replay')
+                    ? undefined
+                    : REVIEW_STEPS.includes(selected)
+                      ? () => setReviewer(selected)
+                      : () => setReplay(pipelineStepOf(selected))
+                }
+                runStatus={pipelineStepOf(selected) === flow.currentStep ? flow.status : undefined}
+                onResume={
+                  pipelineStepOf(selected) === flow.currentStep &&
+                  (flow.status === 'failed' || flow.status === 'blocked') &&
+                  flow.actions.includes('resume')
+                    ? resumeRun
+                    : undefined
+                }
+                resumeLabel={resumeLabel(flow.stateReason?.code)}
+                resumeTip={resumeTip(flow.stateReason?.code)}
+              />
+            ) : null}
+          </Box>
+        )}
+        <ConversationColumn flow={flow} onResume={resumeRun} onChange={applyWaiting} wide={wide} onWide={setWide} />
       </Box>
       <NewRunDialog
         key={replay ?? 'closed'}
