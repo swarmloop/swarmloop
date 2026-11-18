@@ -1,5 +1,14 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -8,21 +17,83 @@ import { spawnSync } from 'node:child_process';
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptsDir, '..');
-const script = join(scriptsDir, 'ci-tools.sh');
 
-// Replaces npm with a stub that records its arguments and working directory.
-function stubNpm() {
-  const dir = mkdtempSync(join(tmpdir(), 'ci-tools-'));
-  const record = join(dir, 'npm-call.txt');
-  writeFileSync(join(dir, 'npm'), `#!/usr/bin/env bash\n{ pwd; printf '%s\\n' "$@"; } > "${record}"\n`);
-  chmodSync(join(dir, 'npm'), 0o755);
-  return { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, record };
+const lintTools = [
+  'eslint',
+  '@eslint/js',
+  'typescript-eslint',
+  'globals',
+  'eslint-config-prettier',
+  'prettier',
+  '@next/eslint-plugin-next',
+  'eslint-plugin-react-hooks',
+  'eslint-plugin-jsx-a11y',
+  'eslint-plugin-boundaries',
+  'typescript',
+  'knip',
+  'madge',
+];
+const dashboardTools = [
+  'vitest',
+  'jsdom',
+  '@vitejs/plugin-react',
+  '@testing-library/react',
+  '@testing-library/dom',
+  '@testing-library/user-event',
+  '@testing-library/jest-dom',
+];
+
+// Builds a temporary repository layout with a copy of the script, and replaces npm with a stub that records
+// its arguments and working directory.
+function setup() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ci-tools-')));
+  mkdirSync(join(root, 'scripts'));
+  for (const file of ['scripts/ci-tools.sh', 'package.json', 'package-lock.json']) {
+    copyFileSync(join(repoRoot, file), join(root, file));
+  }
+  const bin = join(root, 'bin');
+  const record = join(root, 'npm-call.txt');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'npm'), `#!/usr/bin/env bash\n{ pwd; printf '%s\\n' "$@"; } > "${record}"\n`);
+  chmodSync(join(bin, 'npm'), 0o755);
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+  return {
+    root,
+    record,
+    run: (group) => spawnSync('bash', [join(root, 'scripts', 'ci-tools.sh'), group], { env, encoding: 'utf8' }),
+  };
+}
+
+function assertPinned(names) {
+  const manifest = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
+  const lock = JSON.parse(readFileSync(join(repoRoot, 'package-lock.json'), 'utf8'));
+  for (const name of names) {
+    const wanted = manifest.devDependencies[name];
+    assert.match(wanted, /^\d+\.\d+\.\d+$/, `${name} is not pinned to an exact version`);
+    assert.equal(lock.packages[`node_modules/${name}`].version, wanted, `${name} differs in the lockfile`);
+  }
+}
+
+function assertInstallsPinnedTree(group, names) {
+  const { root, run, record } = setup();
+
+  const result = run(group);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(readFileSync(record, 'utf8').split('\n').filter(Boolean), [
+    root,
+    'ci',
+    '--omit=peer',
+    '--no-audit',
+    '--no-fund',
+  ]);
+  assertPinned(names);
 }
 
 test('exits 1 for an unknown group', () => {
-  const { env, record } = stubNpm();
+  const { run, record } = setup();
 
-  const result = spawnSync('bash', [script, 'unknown'], { env, encoding: 'utf8' });
+  const result = run('unknown');
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /unknown group 'unknown'/);
@@ -30,53 +101,24 @@ test('exits 1 for an unknown group', () => {
 });
 
 test('installs the pinned lint packages in the repository root', () => {
-  const { env, record } = stubNpm();
-
-  const result = spawnSync('bash', [script, 'lint'], { env, encoding: 'utf8' });
-
-  assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(readFileSync(record, 'utf8').split('\n').filter(Boolean), [
-    repoRoot,
-    'install',
-    '--no-save',
-    '--no-package-lock',
-    '--no-audit',
-    '--no-fund',
-    'eslint@9',
-    '@eslint/js@9',
-    'typescript-eslint@8',
-    'globals@16',
-    'eslint-config-prettier@10',
-    'prettier@3',
-    '@next/eslint-plugin-next@15',
-    'eslint-plugin-react-hooks@5',
-    'eslint-plugin-jsx-a11y@6',
-    'eslint-plugin-boundaries@5',
-    'typescript@5',
-    'knip@5',
-    'madge@8',
-  ]);
+  assertInstallsPinnedTree('lint', lintTools);
 });
 
 test('installs the pinned dashboard test packages in dashboard/', () => {
-  const { env, record } = stubNpm();
+  assertInstallsPinnedTree('dashboard-test', dashboardTools);
+});
 
-  const result = spawnSync('bash', [script, 'dashboard-test'], { env, encoding: 'utf8' });
+test("links the dashboard copies of the tools' peers", () => {
+  const { root, run } = setup();
+  for (const name of ['react', 'react-dom']) {
+    mkdirSync(join(root, 'dashboard', 'node_modules', name), { recursive: true });
+  }
+
+  const result = run('lint');
 
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(readFileSync(record, 'utf8').split('\n').filter(Boolean), [
-    join(repoRoot, 'dashboard'),
-    'install',
-    '--no-save',
-    '--no-package-lock',
-    '--no-audit',
-    '--no-fund',
-    'vitest@3',
-    'jsdom@26',
-    '@vitejs/plugin-react@4',
-    '@testing-library/react@16',
-    '@testing-library/dom@10',
-    '@testing-library/user-event@14',
-    '@testing-library/jest-dom@6',
-  ]);
+  for (const name of ['react', 'react-dom']) {
+    assert.equal(realpathSync(join(root, 'node_modules', name)), join(root, 'dashboard', 'node_modules', name));
+  }
+  assert.equal(existsSync(join(root, 'node_modules', '@types', 'react')), false);
 });

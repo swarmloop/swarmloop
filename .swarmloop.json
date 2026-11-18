@@ -1,7 +1,7 @@
 {
   "version": 1,
   "image": "node:22-bookworm",
-  "setup": "npm ci --prefix server && npm ci --prefix dashboard && bash scripts/ci-tools.sh dashboard-test && bash scripts/ci-tools.sh lint",
+  "setup": "npm ci --prefix server && npm ci --prefix dashboard && bash scripts/ci-tools.sh lint",
   "checks": [
     {
       "run": "npm run typecheck --prefix server",
@@ -16,16 +16,28 @@
     {
       "run": "npm run typecheck --prefix dashboard",
       "name": "dashboard types",
-      "paths": ["dashboard/", "server/src/contract"]
+      "paths": ["dashboard/", "server/src/contract", "package.json", "package-lock.json", "scripts/ci-tools.sh"]
     },
     {
       "run": "npm test --prefix dashboard",
       "name": "dashboard tests",
-      "paths": ["dashboard/", "server/src/contract", "scripts/vitest-slowest-files.mjs", "scripts/slowest-files.mjs"]
+      "paths": [
+        "dashboard/",
+        "server/src/contract",
+        "package.json",
+        "package-lock.json",
+        "scripts/ci-tools.sh",
+        "scripts/vitest-slowest-files.mjs",
+        "scripts/slowest-files.mjs"
+      ]
     },
     {
       "run": "npx eslint .",
       "name": "eslint"
+    },
+    {
+      "run": "node scripts/check-installed.mjs dashboard",
+      "name": "dashboard tree"
     },
     {
       "run": "node_modules/.bin/knip --include files,exports,types",
@@ -37,7 +49,7 @@
       "paths": ["server/src/", "dashboard/", "server/tsconfig.json", "package.json"]
     },
     {
-      "run": "node --test scripts/ci-tools.test.mjs scripts/lint-run-state.test.mjs scripts/lint-git-process.test.mjs scripts/lint-test-imports.test.mjs scripts/lint-spec-rules.test.mjs scripts/complexity-baseline.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs scripts/slowest-files.test.mjs docker/egress/proxy.test.mjs",
+      "run": "node --test scripts/ci-tools.test.mjs scripts/check-installed.test.mjs scripts/lint-run-state.test.mjs scripts/lint-git-process.test.mjs scripts/lint-test-imports.test.mjs scripts/lint-spec-rules.test.mjs scripts/complexity-baseline.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs scripts/slowest-files.test.mjs docker/egress/proxy.test.mjs",
       "name": "script tests",
       "paths": [
         "scripts/",
@@ -47,6 +59,7 @@
         "eslint.strict.config.mjs",
         "eslint.complexity-baseline.mjs",
         "package.json",
+        "package-lock.json",
         "dashboard/app",
         "server/src/pipeline/worktree-lock.spec.ts",
         "server/src/integrations/agent-runtime/claude/claude-hook.spec.ts",

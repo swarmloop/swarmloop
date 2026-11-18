@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Installs the pinned tools for one CI group into the group's directory, without saving them to package.json.
-# lint installs into the repository root (one install: a second --no-save install there would prune the first); dashboard-test installs into dashboard/.
+# Installs the CI tools: the exact versions in the root package.json and package-lock.json, so a new release changes CI only through a commit.
+# They install into the root's node_modules, where the root configs and dashboard/ (as a parent folder) resolve them; the projects' own trees are never changed.
+# Every group installs the same tree, so a job that needs several groups runs it once (a second npm ci would reinstall the whole tree).
+# The tools' peers are linked to the dashboard's copies so its tests and types see one React; that is why this runs after the dashboard's own npm ci.
 # Usage: scripts/ci-tools.sh <group>
 
 if [ "$#" -ne 1 ]; then
@@ -11,41 +13,20 @@ if [ "$#" -ne 1 ]; then
 fi
 
 case "$1" in
-  lint)
-    dir=.
-    packages=(
-      eslint@9
-      @eslint/js@9
-      typescript-eslint@8
-      globals@16
-      eslint-config-prettier@10
-      prettier@3
-      @next/eslint-plugin-next@15
-      eslint-plugin-react-hooks@5
-      eslint-plugin-jsx-a11y@6
-      eslint-plugin-boundaries@5
-      typescript@5
-      knip@5
-      madge@8
-    )
-    ;;
-  dashboard-test)
-    dir=dashboard
-    packages=(
-      vitest@3
-      jsdom@26
-      @vitejs/plugin-react@4
-      @testing-library/react@16
-      @testing-library/dom@10
-      @testing-library/user-event@14
-      @testing-library/jest-dom@6
-    )
-    ;;
+  lint | dashboard-test) ;;
   *)
     echo "ci-tools: unknown group '$1'" >&2
     exit 1
     ;;
 esac
 
-cd "$(dirname "$0")/../$dir"
-npm install --no-save --no-package-lock --no-audit --no-fund "${packages[@]}"
+root="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root"
+npm ci --omit=peer --no-audit --no-fund
+
+for name in react react-dom @types/react @types/react-dom; do
+  if [ -e "$root/dashboard/node_modules/$name" ]; then
+    mkdir -p "$(dirname "$root/node_modules/$name")"
+    ln -sfn "$root/dashboard/node_modules/$name" "$root/node_modules/$name"
+  fi
+done

@@ -28,10 +28,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: dashboard/package-lock.json
+          cache-dependency-path: |
+            dashboard/package-lock.json
+            package-lock.json
       - run: npm ci
         working-directory: dashboard
       - run: bash scripts/ci-tools.sh dashboard-test
+      - run: node scripts/check-installed.mjs dashboard
       - run: npm run typecheck
         working-directory: dashboard
 
@@ -46,7 +49,9 @@ jobs:
           cache-dependency-path: |
             server/package-lock.json
             dashboard/package-lock.json
-      - run: npx --yes madge@8 --circular --extensions ts,tsx --ts-config server/tsconfig.json server/src dashboard
+            package-lock.json
+      - run: bash scripts/ci-tools.sh lint
+      - run: npx madge --circular --extensions ts,tsx --ts-config server/tsconfig.json server/src dashboard
 
   lint:
     runs-on: ubuntu-latest
@@ -61,18 +66,19 @@ jobs:
           cache-dependency-path: |
             server/package-lock.json
             dashboard/package-lock.json
+            package-lock.json
       - run: npm ci
         working-directory: server
       - run: npm ci
         working-directory: dashboard
-      - run: bash scripts/ci-tools.sh dashboard-test
       - run: bash scripts/ci-tools.sh lint
+      - run: node scripts/check-installed.mjs dashboard
       - run: npx eslint --fix .
       - run: bash scripts/lint-changed.sh origin/${{ github.event.repository.default_branch }} --fix
       - run: npx eslint .
       - run: bash scripts/lint-changed.sh origin/${{ github.event.repository.default_branch }}
       - run: npx eslint --config eslint.strict.config.mjs .
-      - run: node --test scripts/ci-tools.test.mjs scripts/lint-run-state.test.mjs scripts/lint-git-process.test.mjs scripts/lint-test-imports.test.mjs scripts/lint-spec-rules.test.mjs scripts/check-worktree.test.mjs scripts/check-paths.test.mjs scripts/complexity-baseline.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs scripts/measure-step-open.test.mjs scripts/slowest-files.test.mjs docker/egress/proxy.test.mjs
+      - run: node --test scripts/ci-tools.test.mjs scripts/check-installed.test.mjs scripts/lint-run-state.test.mjs scripts/lint-git-process.test.mjs scripts/lint-test-imports.test.mjs scripts/lint-spec-rules.test.mjs scripts/check-worktree.test.mjs scripts/check-paths.test.mjs scripts/complexity-baseline.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs scripts/measure-step-open.test.mjs scripts/slowest-files.test.mjs docker/egress/proxy.test.mjs
 
   knip:
     runs-on: ubuntu-latest
@@ -85,11 +91,13 @@ jobs:
           cache-dependency-path: |
             server/package-lock.json
             dashboard/package-lock.json
+            package-lock.json
       - run: npm ci
         working-directory: server
       - run: npm ci
         working-directory: dashboard
-      - run: npx --yes knip@5 --include files,exports,types
+      - run: bash scripts/ci-tools.sh lint
+      - run: npx knip --include files,exports,types
 
   autofix:
     runs-on: ubuntu-latest
@@ -104,12 +112,13 @@ jobs:
           cache-dependency-path: |
             server/package-lock.json
             dashboard/package-lock.json
+            package-lock.json
       - run: npm ci
         working-directory: server
       - run: npm ci
         working-directory: dashboard
-      - run: bash scripts/ci-tools.sh dashboard-test
       - run: bash scripts/ci-tools.sh lint
+      - run: node scripts/check-installed.mjs dashboard
       - run: bash scripts/autofix.sh origin/${{ github.event.repository.default_branch }}
 
   server-test:
@@ -162,10 +171,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: dashboard/package-lock.json
+          cache-dependency-path: |
+            dashboard/package-lock.json
+            package-lock.json
       - run: npm ci
         working-directory: dashboard
       - run: bash scripts/ci-tools.sh dashboard-test
+      - run: node scripts/check-installed.mjs dashboard
       - run: npm test
         working-directory: dashboard
 
