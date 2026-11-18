@@ -355,6 +355,58 @@ describe('RunScreen conversation column', () => {
     expect(await screen.findByRole('complementary', { name: 'Conversation' })).toBe(column);
   });
 
+  it('puts the conversation and the step window side by side in one row under the board', async () => {
+    vi.mocked(getFlow).mockResolvedValue(
+      flowView({
+        status: 'waiting',
+        state: 'waiting',
+        conversation: { composer: 'plan', replying: false, entries: [], revisions: [], questions: [] },
+      }),
+    );
+    const user = userEvent.setup({ delay: null });
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    const board = await screen.findByRole('button', { name: /^implement/ });
+    await user.click(board);
+    const column = await screen.findByRole('complementary', { name: 'Conversation' });
+    const row = screen.getByTestId('step-row');
+
+    expect(row).not.toContainElement(board);
+    expect(row.children).toHaveLength(2);
+    expect(row.children[1]).toBe(column);
+    expect(row).toHaveStyle({ alignItems: 'flex-start' });
+    expect(column).toHaveStyle({ alignSelf: 'flex-start' });
+    expect(column).not.toHaveStyle({ marginTop: '16px' });
+    expect(within(column).getByRole('textbox')).toBeInTheDocument();
+  });
+
+  it('widens the conversation over the step window, narrows it back, and keeps the choice after a reload', async () => {
+    localStorage.clear();
+    const user = userEvent.setup({ delay: null });
+    const first = render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    const board = await screen.findByRole('button', { name: /^implement/ });
+    await user.click(board);
+    const row = screen.getByTestId('step-row');
+    expect(row.children).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', { name: 'Widen' }));
+    expect(row.children).toHaveLength(1);
+    expect(screen.getByRole('complementary', { name: 'Conversation' })).toHaveStyle({ flex: '1 1 0%' });
+
+    first.unmount();
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    expect(await screen.findByRole('button', { name: 'Narrow' })).toBeInTheDocument();
+    expect(screen.getByTestId('step-row').children).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Narrow' }));
+    await waitFor(() => expect(screen.getByTestId('step-row').children).toHaveLength(2));
+
+    await user.click(screen.getByRole('button', { name: 'Widen' }));
+    expect(screen.getByTestId('step-row').children).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: /^implement/ }));
+    expect(screen.getByTestId('step-row').children).toHaveLength(2);
+    localStorage.clear();
+  });
+
   it('asks nothing through an answer form: a question is answered in the message box', async () => {
     vi.mocked(getFlow).mockResolvedValue(
       flowView({
