@@ -15,6 +15,7 @@ import { MergeShare, TimeToMerge } from './merge-charts';
 import { MoneyBreakdown, Returns } from './money-and-returns';
 import { RunsPerDay } from './runs-per-day';
 import { SpendPerDay } from './spend-per-day';
+import { StallsPerDay } from './stalls-per-day';
 import { StatTiles, TILE_COLUMNS } from './stat-tiles';
 import { dayLabel } from './stats-format';
 import { TopRuns } from './top-runs';
@@ -41,7 +42,12 @@ export function StatsSection({ version }: { version: string }): ReactElement {
   const stats = query.data;
 
   return (
-    <Box component="section" aria-label="Statistics" sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <Box
+      component="section"
+      id="statistics"
+      aria-label="Statistics"
+      sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <ToggleButtonGroup
           size="small"
@@ -95,6 +101,7 @@ export function StatsSection({ version }: { version: string }): ReactElement {
             <RunsPerDay days={stats.days} total={stats.totals} selected={day} onSelect={setDay} />
             <SpendPerDay days={stats.days} totals={stats.totals} />
           </Box>
+          <StallsPerDay days={stats.days} />
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 2 }}>
             <MergeShare days={stats.days} totals={stats.totals} />
             <TimeToMerge days={stats.days} totals={stats.totals} />

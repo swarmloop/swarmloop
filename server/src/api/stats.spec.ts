@@ -68,6 +68,7 @@ function rows(): StatsRows {
       { runId: 1, counter: 'pipeline', reason: 'lint failed', createdAt: '2026-11-08T12:30:00.000Z' },
       { runId: 3, counter: 'review', reason: 'review_quality', createdAt: '2026-11-10T08:40:00.000Z' },
     ],
+    stalls: [],
   };
 }
 
@@ -266,10 +267,29 @@ describe('buildStats', () => {
     ]);
   });
 
+  it('counts the server stalls on the local day they started, by kind', () => {
+    const stall = (kind: 'server-blocked' | 'host-paused', startedAt: string, durationMs: number) => ({
+      kind,
+      startedAt,
+      durationMs,
+    });
+    const stalls = [
+      stall('server-blocked', '2026-11-08T10:00:00.000Z', 20_000),
+      stall('server-blocked', '2026-11-08T12:00:00.000Z', 30_000),
+      stall('host-paused', '2026-11-08T13:00:00.000Z', 40_000),
+    ];
+
+    const stats = buildStats({ ...rows(), stalls }, durations, NOW, { days: 7, tzOffset: WARSAW });
+
+    const byDay = Object.fromEntries(stats.days.map((day) => [day.day, day]));
+    expect(byDay['2026-11-08']).toMatchObject({ stalls: { 'server-blocked': 2, 'host-paused': 1 }, stalledMs: 90_000 });
+    expect(byDay['2026-11-09']).toMatchObject({ stalls: { 'server-blocked': 0, 'host-paused': 0 }, stalledMs: 0 });
+  });
+
   it('starts no earlier than the first run of all, and has one day and no median without runs', () => {
     expect(buildStats(rows(), durations, NOW, { days: 0, tzOffset: 0 }).from).toBe('2026-11-01');
     expect(buildStats(rows(), durations, NOW, { days: 30, tzOffset: 0 }).from).toBe('2026-11-01');
-    const empty = buildStats({ firstRunAt: null, runs: [], steps: [], loops: [] }, new Map(), NOW, {
+    const empty = buildStats({ firstRunAt: null, runs: [], steps: [], loops: [], stalls: [] }, new Map(), NOW, {
       days: 0,
       tzOffset: 0,
     });
@@ -299,7 +319,7 @@ describe('stats range', () => {
 
   it('refuses a range that is not a whole number of days', async () => {
     const controller = new StatsController(
-      { rows: async () => ({ firstRunAt: null, runs: [], steps: [], loops: [] }) } as never,
+      { rows: async () => ({ firstRunAt: null, runs: [], steps: [], loops: [], stalls: [] }) } as never,
       { durationByRun: async () => new Map() } as never,
       { latestDocuments: async () => [] } as never,
       { now: () => NOW, iso: () => new Date(NOW).toISOString() },
@@ -321,7 +341,7 @@ describe('stats range', () => {
       ...extra,
     });
     const stats = buildStats(
-      { firstRunAt: at, runs: [row(1, { title: 'Stored title' }), row(2)], steps: [], loops: [] },
+      { firstRunAt: at, runs: [row(1, { title: 'Stored title' }), row(2)], steps: [], loops: [], stalls: [] },
       new Map(),
       NOW,
       { days: 7, tzOffset: WARSAW },
@@ -342,7 +362,7 @@ describe('stats range', () => {
       ...extra,
     });
     const view = (loops: StatsRows['loops'], runs = [run(1)], steps: StatsRows['steps'] = []) =>
-      buildStats({ firstRunAt: at, runs, steps, loops }, new Map(), NOW, { days: 7, tzOffset: WARSAW });
+      buildStats({ firstRunAt: at, runs, steps, loops, stalls: [] }, new Map(), NOW, { days: 7, tzOffset: WARSAW });
 
     it('counts each loop counter as its own kind and old checks returns as checks', () => {
       const stats = view([

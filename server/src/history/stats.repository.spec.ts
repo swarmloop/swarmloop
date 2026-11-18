@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { LoopEventEntity, RunEntity, StepStatEntity } from './entities';
+import { ServerStallEntity } from './server-stall.entities';
 import { repositoryDatabase } from './repository.spec-helpers';
 import { StatsRepository } from './stats.repository';
 
@@ -62,7 +63,36 @@ describe('StatsRepository', () => {
         runs: [],
         steps: [],
         loops: [],
+        stalls: [],
       });
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('reads the server stalls from the start of the range, all when there is none, also without runs', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const stall = (startedAt: string): Partial<ServerStallEntity> => ({
+        startedAt,
+        durationMs: 20_000,
+        kind: 'host-paused',
+        runningAgents: 0,
+        runningChecks: 0,
+        runningSetups: 0,
+        cpuPercent: 0,
+        memoryBytes: 0,
+      });
+      await db.app
+        .get(DataSource)
+        .getRepository(ServerStallEntity)
+        .save([stall('2026-10-01T00:00:00.000Z'), stall('2026-11-05T00:00:00.000Z')]);
+      const stats = db.app.get(StatsRepository);
+
+      expect((await stats.rows('2026-11-01T00:00:00.000Z')).stalls).toEqual([
+        { startedAt: '2026-11-05T00:00:00.000Z', durationMs: 20_000, kind: 'host-paused' },
+      ]);
+      expect((await stats.rows(null)).stalls).toHaveLength(2);
     } finally {
       await db.close();
     }
