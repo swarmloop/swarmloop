@@ -63,6 +63,8 @@ export interface ConversationQuestion {
   text: string;
   /** The answer already given, or an empty text. */
   answer: string;
+  /** ISO time the question was asked. Missing when it is not known. */
+  askedAt?: string;
 }
 
 /** The conversation of a run as the server fills it. */

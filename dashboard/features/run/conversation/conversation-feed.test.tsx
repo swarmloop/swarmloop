@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { FlowView } from '@contract/api';
@@ -286,5 +286,109 @@ describe('ConversationFeed', () => {
 
     expectNoRawJson(container);
     expect(container.textContent).not.toMatch(/CHECK_FAILED|question-7|message-1|talk-1|\d{4}-\d{2}-\d{2}T/);
+  });
+
+  describe('as one timeline', () => {
+    const at = (time: string) => `2026-11-15T${time}:00.000Z`;
+    const sized = (node: HTMLElement, scrollHeight: number, scrollTop = 0) => {
+      Object.defineProperty(node, 'scrollHeight', { configurable: true, value: scrollHeight });
+      Object.defineProperty(node, 'clientHeight', { configurable: true, value: 200 });
+      node.scrollTop = scrollTop;
+    };
+    const asked = (id: string, time: string) => ({
+      kind: 'question' as const,
+      id,
+      text: id,
+      answer: '',
+      askedAt: at(time),
+    });
+
+    it('shows a question asked before an answer first, as Answered with its answer under it', () => {
+      const entries = [{ ...entry('message-1', 'person', 'Use Postgres'), at: at('12:44') }];
+      feed(
+        flowView({
+          updatedAt: at('13:00'),
+          conversation: conversation({ entries, questions: [asked('q1', '12:25')] }),
+          items: [{ kind: 'question', id: 'q1', label: 'Which database?', answer: 'Use Postgres' }],
+        }),
+        entries,
+      );
+      const articles = screen.getAllByRole('article');
+      expect(articles[0].textContent).toContain('Answered');
+      expect(articles[0].textContent).toContain('Which database?');
+      expect(articles[0].textContent).toContain('Use Postgres');
+      expect(articles[1].textContent).toContain('Use Postgres');
+      expect(screen.queryByText('Question for you')).toBeNull();
+    });
+
+    it('shows an open question above a later message', () => {
+      const entries = [{ ...entry('message-1', 'person', 'Later words'), at: at('12:44') }];
+      feed(
+        flowView({
+          conversation: conversation({ entries, questions: [asked('q1', '12:25')] }),
+          items: [{ kind: 'question', id: 'q1', label: 'Which database?', answer: '' }],
+        }),
+        entries,
+      );
+      const articles = screen.getAllByRole('article');
+      expect(articles[0].textContent).toContain('Question for you');
+      expect(articles[1].textContent).toContain('Later words');
+    });
+
+    it('opens at the newest entry, follows a new one at the bottom, and keeps the view when scrolled up', () => {
+      const entries = [entry('m1', 'person', 'One')];
+      const flow = flowView({ conversation: conversation({ entries }) });
+      const height = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1000);
+      const view = feed(flow, entries);
+      height.mockRestore();
+      const log = screen.getByRole('log', { name: 'Conversation' });
+      expect(log.scrollTop).toBe(1000);
+
+      const more = [...entries, entry('m2', 'person', 'Two')];
+      sized(log, 1200, 1000);
+      view.rerender(<ConversationFeed flow={flow} entries={more} onResume={vi.fn()} />);
+      expect(log.scrollTop).toBe(1200);
+      expect(screen.queryByRole('button', { name: 'New messages ↓' })).toBeNull();
+
+      sized(log, 1200, 100);
+      fireEvent.scroll(log);
+      const most = [...more, entry('m3', 'person', 'Three')];
+      sized(log, 1400, 100);
+      view.rerender(<ConversationFeed flow={flow} entries={most} onResume={vi.fn()} />);
+      expect(log.scrollTop).toBe(100);
+      fireEvent.click(screen.getByRole('button', { name: 'New messages ↓' }));
+      expect(log.scrollTop).toBe(1400);
+      expect(screen.queryByRole('button', { name: 'New messages ↓' })).toBeNull();
+    });
+
+    it('keeps the view and the New messages button when a reply starts or ends', () => {
+      vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
+      const entries = [entry('m1', 'person', 'One')];
+      const idle = flowView({ conversation: conversation({ entries }) });
+      const view = feed(idle, entries);
+      const log = screen.getByRole('log', { name: 'Conversation' });
+      sized(log, 1200, 100);
+      fireEvent.scroll(log);
+      const more = [...entries, entry('m2', 'person', 'Two')];
+      sized(log, 1400, 100);
+      view.rerender(<ConversationFeed flow={idle} entries={more} onResume={vi.fn()} />);
+      expect(screen.getByRole('button', { name: 'New messages ↓' })).toBeInTheDocument();
+
+      const replying = flowView({ conversation: conversation({ entries, replying: true }) });
+      view.rerender(<ConversationFeed flow={replying} entries={more} onResume={vi.fn()} />);
+      view.rerender(<ConversationFeed flow={idle} entries={more} onResume={vi.fn()} />);
+      expect(screen.getByRole('log', { name: 'Conversation' })).toBe(log);
+      expect(log.scrollTop).toBe(100);
+      expect(screen.getByRole('button', { name: 'New messages ↓' })).toBeInTheDocument();
+    });
+
+    it('keeps a streaming reply as the last entry', async () => {
+      vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
+      const entries = [entry('m1', 'person', 'One')];
+      feed(flowView({ conversation: conversation({ replying: true, entries }), items: [] }), entries);
+      const articles = screen.getAllByRole('article');
+      expect(articles.at(-1)?.textContent).toContain('Writing');
+      expect(articles[0].textContent).toContain('One');
+    });
   });
 });
