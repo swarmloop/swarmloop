@@ -286,6 +286,31 @@ describe('sentence of a stop with its own next step', () => {
   });
 });
 
+describe('sentence of a run that waits for its subtasks', () => {
+  const waiting = (code: string): RunEntity =>
+    ({
+      status: 'waiting',
+      currentStep: 'implement',
+      stateReason: JSON.stringify({ code, message: 'm' }),
+    }) as RunEntity;
+  const tasks = [...Array(6).keys()].map((index) => ({
+    id: `t${index}`,
+    title: `Task ${index}`,
+    depends: [],
+    status: index < 3 ? 'running' : 'waiting',
+  }));
+  const documents = [{ kind: 'subtasks', body: JSON.stringify(tasks) }] as DocumentEntity[];
+
+  it('names the counts of a split run that waits for its subtasks', () => {
+    expect(sentence(waiting('SUBTASKS_RUNNING'), [], documents, [], 3)).toBe(
+      'Waiting for subtasks: 0/6 merged · 3 running · 3 waiting',
+    );
+    expect(sentence(waiting('SUBTASK_WAITING'), [], [], [], 3)).toBe(
+      'The next continuation implements the approved plan.',
+    );
+  });
+});
+
 describe('implement-improve of a split parent', () => {
   const run = { key: 'K-1', status: 'waiting', currentStep: 'checks', activeAttempt: null } as RunEntity;
   const chip = (stats: Partial<StepStatEntity>[], name: string) =>

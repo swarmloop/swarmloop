@@ -17,9 +17,10 @@ import {
   plainText,
   spokenText,
   talkSentence,
+  waitsForPerson,
 } from './conversation-words';
 import { InfoLine } from './info-line';
-import { hasProblem, ProblemEntry } from './problem-entry';
+import { ProblemEntry } from './problem-entry';
 import { QuestionEntry } from './question-entry';
 import { RevisionCard } from './revision-card';
 
@@ -100,7 +101,8 @@ function Talk({ talk }: { talk: AgentTalk }): ReactElement {
 
 /**
  * The conversation of a run, in order: the person's messages, the planner's replies (the one being written streams), talk
- * between agents as muted lines, what needs the person (questions, a usage-limit wait, a failed or blocked step).
+ * between agents as muted lines, what needs the person (questions, a failed or blocked step, a wait only a person ends), and one line for a wait
+ * the run ends by itself.
  */
 export function ConversationFeed({
   flow,
@@ -139,7 +141,10 @@ export function ConversationFeed({
           <QuestionEntry key={`${item.kind}:${item.id}`} item={item} />
         ))}
         {limit ? <InfoLine sentence={limit} /> : null}
-        {hasProblem(flow) ? <ProblemEntry flow={flow} onResume={onResume} /> : null}
+        {waitsForPerson(flow) ? <ProblemEntry flow={flow} onResume={onResume} /> : null}
+        {flow.status === 'waiting' && !waitsForPerson(flow) && !limit && flow.actions.includes('resume') ? (
+          <InfoLine sentence={plainText(flow.sentence)} />
+        ) : null}
       </Box>
     </BubbleLayoutProvider>
   );

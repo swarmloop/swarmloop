@@ -189,6 +189,41 @@ describe('ConversationFeed', () => {
     expect(onResume).toHaveBeenCalledOnce();
   });
 
+  it('shows a split run that waits for its subtasks as an info line, not a problem', () => {
+    feed(
+      flowView({
+        status: 'waiting',
+        resume: 'ready',
+        state: 'waiting',
+        actions: ['resume'],
+        sentence: 'Waiting for subtasks: 0/6 merged · 3 running · 3 waiting',
+        stateReason: { code: 'SUBTASKS_RUNNING', message: 'm' },
+      }),
+    );
+
+    expect(screen.getByText('Waiting for subtasks: 0/6 merged · 3 running · 3 waiting')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Problem' })).toBeNull();
+  });
+
+  it.each([
+    ['a git access wait', 'waiting', 'GIT_AUTH'],
+    ['a stalled run', 'waiting', 'STALLED'],
+    ['a failed run', 'failed', 'STEP_FAILED'],
+    ['a blocked run', 'blocked', 'LOOP_LIMIT'],
+  ] as const)('shows %s as a problem with Resume', (_name, status, code) => {
+    feed(
+      flowView({
+        status,
+        resume: 'ready',
+        actions: ['resume'],
+        stateReason: { code, message: 'm' },
+      }),
+    );
+
+    const card = screen.getByRole('region', { name: 'Problem' });
+    expect(within(card).getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+  });
+
   it('lists the jobs CI did not run and offers Re-run CI instead of Resume', async () => {
     const user = userEvent.setup({ delay: null });
     const onResume = vi.fn();

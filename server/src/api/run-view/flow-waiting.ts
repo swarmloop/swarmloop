@@ -1,8 +1,9 @@
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
 import { blockCode, deriveState, isReturned } from '../../history/run-state';
-import { ERROR_CODES } from '../../contract/error-codes';
+import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../../contract/error-codes';
 import { actionsFor, REASON } from '../../contract/run-state';
+import { parseSubtasks, statusLine, SUBTASKS_KIND } from '../../contract/subtask';
 import type { StateFacts } from '../../history/run-state';
 import type { RunAction, RunState, StateReason } from '../../contract/run-state';
 import type { FlowItem, FlowView } from '../../contract/api';
@@ -142,6 +143,10 @@ export function sentence(
   if (run.currentStep === 'prepare') {
     return 'The next continuation prepares the worktrees.';
   }
+  const subtasks = subtaskSentence(run, documents);
+  if (subtasks) {
+    return subtasks;
+  }
   if (run.currentStep === 'implement' && run.status === 'waiting') {
     const returned = isReturned(run);
     return returned
@@ -149,6 +154,16 @@ export function sentence(
       : 'The next continuation implements the approved plan.';
   }
   return `The next continuation continues at ${run.currentStep}.`;
+}
+
+/** What a split run that waits for its subtasks says: their counts. Null for any other run. */
+function subtaskSentence(run: RunEntity, documents: DocumentEntity[]): string | null {
+  const code = deriveState(run).reason?.code;
+  if (run.status !== 'waiting' || !code || !SUBTASK_WAIT_CODES.some((wait) => wait === code)) {
+    return null;
+  }
+  const tasks = parseSubtasks(latest(documents, SUBTASKS_KIND));
+  return tasks.length > 0 ? `Waiting for subtasks: ${statusLine(tasks)}` : null;
 }
 
 function spendHold(run: RunEntity, documents: DocumentEntity[], stats: StepStatEntity[]): string | null {
