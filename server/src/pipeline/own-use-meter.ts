@@ -10,25 +10,23 @@ import { total, treeBytes } from './disk-guard';
 @Injectable()
 export class OwnUseMeter {
   private latest: { line: string; at: number } | null = null;
-  private walking = false;
+  private walking: Promise<void> | null = null;
 
   constructor(
     private readonly config: AppConfig,
     private readonly clock: Clock,
   ) {}
 
-  /** Walks the folders and keeps the result. Does nothing while a walk runs; a failed walk keeps the last result. */
-  async measure(): Promise<void> {
-    if (this.walking) {
-      return;
-    }
-    this.walking = true;
-    try {
-      const line = await this.walk();
-      this.latest = { line, at: this.clock.now() };
-    } finally {
-      this.walking = false;
-    }
+  /** Walks the folders and keeps the result. A call during a walk gets that walk's promise; a failed walk keeps the last result. */
+  measure(): Promise<void> {
+    this.walking ??= this.walk()
+      .then((line) => {
+        this.latest = { line, at: this.clock.now() };
+      })
+      .finally(() => {
+        this.walking = null;
+      });
+    return this.walking;
   }
 
   last(): { line: string; at: number } | null {

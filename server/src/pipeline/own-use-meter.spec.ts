@@ -5,7 +5,25 @@ import { join } from 'path';
 import { AppConfig } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
+import type * as DiskGuard from './disk-guard';
+import { treeBytes } from './disk-guard';
 import { OwnUseMeter } from './own-use-meter';
+
+function actualGuard(): typeof DiskGuard {
+  return jest.requireActual<typeof DiskGuard>('./disk-guard');
+}
+
+jest.mock('./disk-guard', () => ({ ...actualGuard(), treeBytes: jest.fn(actualGuard().treeBytes) }));
+
+const walkTree = jest.mocked(treeBytes);
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 describe('OwnUseMeter', () => {
   let home: string;
@@ -53,15 +71,44 @@ describe('OwnUseMeter', () => {
     expect(meter.last()?.line).toContain('logs 3.0 KB');
   });
 
-  it('does nothing for a second measure during a walk', async () => {
+  it('shares the walk in progress with a second measure, and measures anew after it', async () => {
+    const gate = deferred();
+    walkTree.mockImplementationOnce(async (path) => {
+      await gate.promise;
+      return actualGuard().treeBytes(path);
+    });
     const first = meter.measure();
+    const second = meter.measure();
     writeFileSync(join(home, 'worktrees', 'late'), Buffer.alloc(4096));
-    await meter.measure();
+
+    expect(second).toBe(first);
     expect(meter.last()).toBeNull();
 
-    await first;
+    gate.resolve();
+    await Promise.all([first, second]);
 
-    expect(meter.last()?.line).toContain('worktrees');
+    expect(meter.last()).toEqual({ line: expect.stringContaining('worktrees 4.0 KB'), at: clock.now() });
+
+    writeFileSync(join(home, 'worktrees', 'later'), Buffer.alloc(4096));
+    clock.advance(1000);
+    await meter.measure();
+
+    expect(meter.last()).toEqual({ line: expect.stringContaining('worktrees 8.0 KB'), at: clock.now() });
+  });
+
+  it('keeps the last result when a walk fails, and the next measure walks again', async () => {
+    await meter.measure();
+    const saved = meter.last();
+    walkTree.mockRejectedValueOnce(new Error('unreadable'));
+
+    await expect(meter.measure()).rejects.toThrow('unreadable');
+    expect(meter.last()).toEqual(saved);
+
+    writeFileSync(join(home, 'worktrees', 'late'), Buffer.alloc(4096));
+    clock.advance(1000);
+    await meter.measure();
+
+    expect(meter.last()).toEqual({ line: expect.stringContaining('worktrees 4.0 KB'), at: clock.now() });
   });
 
   it('measures again after a walk ended', async () => {
