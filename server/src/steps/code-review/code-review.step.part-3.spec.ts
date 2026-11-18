@@ -232,7 +232,7 @@ describe('code-review step', () => {
   });
 
   it('does not wait for a planner when a reviewer of a run that never planned asks a question', async () => {
-    mkdirSync(join(root, 'worktrees', 'PROJ-92', 'billing-api'), { recursive: true });
+    gitWorktree(join(root, 'worktrees', 'PROJ-92', 'billing-api'));
     current = jest.fn(async (input: AgentRunInput) =>
       result(
         input.step.endsWith('report')

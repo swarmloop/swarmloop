@@ -392,6 +392,16 @@ describe('sandbox launch', () => {
       expect(() => sandboxArgs(brief, home)).not.toThrow();
     });
 
+    it('lets the read-only attachments folder of a run through and refuses it writable', () => {
+      const files = (readonly: boolean) =>
+        launch({
+          mounts: [{ hostPath: '/data/runs/PROJ-1/attachments', containerPath: '/work/brief/attachments', readonly }],
+          envMasks: [],
+        });
+      expect(sandboxArgs(files(true), home).join(' ')).toContain('dst=/work/brief/attachments,readonly=true');
+      expect(() => sandboxArgs(files(false), home)).toThrow('sandbox mount is not allowed');
+    });
+
     it('refuses a symlink that leaves the allowed roots', () => {
       const base = realpathSync(mkdtempSync(join(tmpdir(), 'swarmloop-link-')));
       mkdirSync(join(base, 'repo'));
