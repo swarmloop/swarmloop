@@ -25,11 +25,14 @@ Check the tasks:
 - no dependency cycle, and every dependency names a task in the list;
 - two tasks that can run at the same time do not change the same file unless one depends on the other;
 - `files` lists every file the task will change, including its tests and the shared test helpers and fixtures they need, and a task that changes a file another task lists depends on that task (the server adds the dependency when the planner forgets);
-- a file where tasks each add an entry (a registry or list such as module imports, the migrations index, route or step lists, `.env.example`, a README table) is shared: the tasks that touch it get a dependency between them, so they never change it at the same time;
+- A file where tasks each add an entry (a registry or list such as module imports, the migrations index, route or step lists, `.env.example`, a README table) is shared, and so are the changes that several tasks need (shared types and contracts, shared test helpers and fixtures): they go into one first task that holds only those shared changes and the tests that prove them, never feature work of its own, and the other tasks do not touch those files, so they run side by side. The other tasks depend on that first task, and on each other only when one changes a file another lists, or calls, imports or tests code another task creates or changes.
+- every dependency has one of these reasons: it is on the first task of shared changes, or one task changes a file the other lists, or calls, imports or tests code the other creates or changes; a dependency with none of them is removed;
 - tasks are only work that changes the tree: a task that only reruns existing tests and changes no file becomes a `keep` entry, and every task has a file to change;
 - a `keep` entry whose proof test does not exist yet says `new <test>`, and writing that test is in the `proof` of the first task the entry names;
 - every task has a proof;
-- every task is about one normal run of work, so cut a task that is much more and merge a task that is much less.
+- every task is about one normal run of work, so cut a task that is much more and merge a task that is much less. That first task may be smaller than one normal run of work and is never merged with feature work.
+
+`summary` gives the depth of the returned graph (the number of tasks on its longest chain of `depends`) and names each level beyond 3 and why.
 
 The task limit is only a safety limit against a runaway plan. It is not a target.
 

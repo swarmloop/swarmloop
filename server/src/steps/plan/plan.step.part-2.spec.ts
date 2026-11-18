@@ -43,6 +43,11 @@ describe('plan step with split', () => {
     expect(out.contract).toContain('the column is called `split`');
   });
 
+  it('a split answer shows how many tasks and how deep', async () => {
+    const out = await runSplit('PROJ-86', splitReply);
+    expect(out.facts?.details).toEqual(['2 tasks · depth 2']);
+  });
+
   it('stores a plan of 49 tasks at the default task limit, for plan-improve to merge', async () => {
     const tasks = Array.from({ length: 49 }, (_, n) => ({
       id: `t${n}`,
@@ -91,6 +96,7 @@ describe('plan step with split', () => {
     expect(out.done.exitCode).toBe(0);
     expect(JSON.parse(out.subtasks ?? 'null')).toEqual([]);
     expect(out.contract).toBeFalsy();
+    expect(out.facts).toBeUndefined();
   });
 
   it('a plain plan writes no subtasks for a run that does not split', async () => {

@@ -224,6 +224,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       route: result.route,
       summary: result.summary,
       exitCode: result.exitCode,
+      facts: result.facts,
       outputs: [],
       visit: this.modelVisitOf(run, visitStatus(outcome), exitCode, documents),
     };

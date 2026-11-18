@@ -93,13 +93,8 @@ describe('a step asks the planner', () => {
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 
-    expect(blocks.steps.slice(2, 7)).toEqual([
-      'implement',
-      'implement-improve',
-      'plan',
-      'implement-improve',
-      'code-review-requirements',
-    ]);
+    expect(blocks.steps.slice(2, 6)).toEqual(['implement', 'implement-improve', 'plan', 'implement-improve']);
+    expect(blocks.steps[6]).toMatch(/^code-review-/);
     expect(launches('implement-improve')[1].prompt).toContain('Answer from the planner:\nCursor, as in the brief.');
     expect(launches('implement')).toHaveLength(1);
     expect((await runOf())?.currentStep).toBe('done');

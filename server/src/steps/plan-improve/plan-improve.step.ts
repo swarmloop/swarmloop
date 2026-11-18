@@ -32,6 +32,7 @@ import {
   taskErrors,
   type TaskLimits,
 } from '../plan/plan-tasks';
+import { splitFacts } from '../plan/task-depth';
 import { mergeTasks, planImproveContinue, planImproveFollowUp } from './plan-improve.prompts';
 import {
   completePlanImprove,
@@ -216,6 +217,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       ],
       handoff:
         [renderSummary(value.summary, next.items).trimEnd(), ...gapLines(coverage?.problems ?? [])].join('\n') + '\n',
+      ...(graph ? { facts: splitFacts(graph.tasks) } : {}),
     };
   }
 
