@@ -69,7 +69,7 @@ describe('TaskLayers', () => {
       expect(region).toHaveTextContent(`Title t${id}`);
     }
     expect(region).toHaveTextContent('Working · code review');
-    expect(region).toHaveTextContent('after t1');
+    expect(region).toHaveTextContent('after t3');
     expect(region).toHaveTextContent('5s · $0.25');
     expect(within(region).getByRole('link', { name: 'Open run Title t3' })).toHaveAttribute('href', '/runs/run-1-t3');
     expect(within(region).queryByRole('link', { name: 'Open run Title t5' })).not.toBeInTheDocument();
@@ -151,11 +151,10 @@ describe('TaskLayers', () => {
     const region = screen.getByRole('region', { name: 'Tasks' });
     expect(region).not.toHaveTextContent('Stage');
     expect(within(region).getByText('13 tasks · 6 merged · $15.00')).toBeInTheDocument();
-    expect(region).toHaveTextContent('waiting for Title r1');
-    expect(region).toHaveTextContent('waiting for Title r2, Title r3');
+    expect(region).toHaveTextContent('after r1');
+    expect(region).toHaveTextContent('after r2, r3');
     expect(region).toHaveTextContent('waiting for a free slot');
-    expect(region).not.toHaveTextContent('waiting for Title m');
-    expect(region).toHaveTextContent('after m2');
+    expect(region).not.toHaveTextContent('after m');
     const titles = () =>
       within(region)
         .getAllByText(/^Title [rwms]\d$/)
@@ -198,6 +197,83 @@ describe('TaskLayers', () => {
     const region = screen.getByRole('region', { name: 'Tasks' });
     expect(region.textContent?.match(/waiting for/g)).toHaveLength(1);
     expect(region).not.toHaveTextContent('SUBTASKS_PARALLEL');
+  });
+
+  it('shows a relaunched interruption only in the state icon of a one-line row', () => {
+    const interrupted = task('t3', {
+      status: 'running',
+      run: {
+        key: 'run-1-t3',
+        state: 'running',
+        currentStep: 'implement',
+        usd: 0.25,
+        durationMs: 5000,
+        interruption: { at: '2026-11-18T13:24:00Z', relaunched: true },
+      },
+    });
+    render(<TaskLayers tasks={[interrupted]} onSkip={vi.fn()} />);
+
+    const row = screen.getByText('Title t3').closest('li')!;
+    expect(within(row).getByRole('img', { name: /Interrupted at/ })).toBeInTheDocument();
+    // The icon's own title is the one place the sentence appears; no caption repeats it.
+    expect(row.textContent?.match(/Interrupted at/g)).toHaveLength(1);
+    expect(row).toHaveTextContent('Working · implement');
+    expect(row).toHaveTextContent('5s · $0.25');
+  });
+
+  it('says in the caption that an interruption was not started again', () => {
+    const interrupted = task('t3', {
+      status: 'running',
+      run: {
+        key: 'run-1-t3',
+        state: 'running',
+        currentStep: 'implement',
+        usd: 0.25,
+        durationMs: 5000,
+        interruption: { at: '2026-11-18T13:24:00Z', relaunched: false, cause: 'stop' },
+      },
+    });
+    render(<TaskLayers tasks={[interrupted]} onSkip={vi.fn()} />);
+
+    expect(screen.getByText(/Not started again/)).toBeInTheDocument();
+  });
+
+  it('says once which tasks a waiting task waits for, by id and without titles', () => {
+    const waiting = task('t6', { depends: ['t3', 't1'], status: 'waiting', waitsFor: ['Title t3'], run: undefined });
+    render(<TaskLayers tasks={[tasks[0], tasks[2], waiting]} onSkip={vi.fn()} />);
+
+    const region = screen.getByRole('region', { name: 'Tasks' });
+    expect(region.textContent?.match(/after t3/g)).toHaveLength(1);
+    expect(region).not.toHaveTextContent('waiting for Title');
+  });
+
+  it('shows the reason of a blocked task on a second line with Skip task', () => {
+    const blocked = task('t5', {
+      status: 'blocked',
+      run: {
+        key: 'run-1-t5',
+        state: 'blocked',
+        currentStep: 'implement',
+        usd: 1,
+        durationMs: 1000,
+        stateReason: { code: 'GIT_AUTH', message: 'Push was refused' },
+      },
+    });
+    render(<TaskLayers tasks={[blocked]} onSkip={vi.fn()} />);
+
+    const row = screen.getByText('Title t5').closest('li')!;
+    expect(within(row).getByText('Push was refused')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Skip task' })).toBeInTheDocument();
+  });
+
+  it('opens the plan from the chevron at the row end', async () => {
+    render(<TaskLayers tasks={[task('t3', { status: 'running' })]} onSkip={vi.fn()} />);
+
+    const chevron = screen.getByRole('button', { name: /^Plan|^Changes/ });
+    expect(chevron).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.setup({ delay: null }).click(chevron);
+
+    expect(chevron).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('skips a blocked task', async () => {

@@ -7,6 +7,7 @@ import Typography from '@mui/material/Typography';
 import type { TaskEntry } from '@contract/api';
 import { epicFigures } from '@contract/epic-figures';
 import { needsPerson } from '@contract/run-state';
+import { unmetDepends } from '@contract/subtask';
 import { orderTasks, taskGroup } from '@contract/task-order';
 import type { PlanRevision } from '@contract/plan-chat';
 import { markOf } from '../../conversation/revision-marks';
@@ -63,6 +64,7 @@ export function TaskLayers({
       key={`${task.title} ${task.proof}`}
       task={task}
       dependents={dependentsOf(task, tasks)}
+      unmet={unmetDepends(task, tasks)}
       onSkip={onSkip}
       mark={markOf(revision, task.title)}
     />
