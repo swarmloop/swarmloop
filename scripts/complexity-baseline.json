@@ -1,0 +1,81 @@
+{
+  "dashboard/features/run/flow/flow-board.tsx": {
+    "Function 'FlowBoard' > Arrow function > Arrow function": 22
+  },
+  "dashboard/features/run/flow/run-screen/index.tsx": {
+    "Function 'RunScreen'": 44
+  },
+  "dashboard/features/run/flow/run-screen/task-row.tsx": {
+    "Function 'TaskRow'": 21
+  },
+  "dashboard/features/run/flow/step-detail/index.tsx": {
+    "Function 'StepDetail'": 55
+  },
+  "dashboard/features/run/flow/step-detail/step-documents.tsx": {
+    "Function 'StepDocuments'": 34
+  },
+  "dashboard/features/run/flow/step-detail/step-header.tsx": {
+    "Function 'StepHeader'": 27
+  },
+  "dashboard/features/run/transcript/bubble.tsx": {
+    "Function 'Bubble'": 25
+  },
+  "dashboard/features/run/transcript/transcript-feed.tsx": {
+    "Function 'Card'": 29
+  },
+  "dashboard/features/run/transcript/transcript-model.ts": {
+    "Function 'actorOf'": 28,
+    "Method 'add'": 27
+  },
+  "server/src/agent/agent-launch.ts": {
+    "Async method 'once'": 22
+  },
+  "server/src/auth/connections.controller.ts": {
+    "Async method 'view'": 25
+  },
+  "server/src/contract/run-state.ts": {
+    "Function 'actionsFor'": 25
+  },
+  "server/src/environment/environment-config.ts": {
+    "Function 'fromDevcontainer'": 25
+  },
+  "server/src/environment/run-shell.ts": {
+    "Async function 'runShell'": 24
+  },
+  "server/src/git/rebase/rebase.ts": {
+    "Async function 'rebaseFeatureRepo'": 33
+  },
+  "server/src/history/run-state.ts": {
+    "Function 'blockedState'": 21
+  },
+  "server/src/integrations/issue-tracker/jira/adf.ts": {
+    "Function 'adfToMarkdown'": 34
+  },
+  "server/src/pipeline/run-driver.ts": {
+    "Async method 'driveSteps'": 30
+  },
+  "server/src/sandbox/sandbox-launch.ts": {
+    "Function 'sandboxArgs'": 54
+  },
+  "server/src/steps/commit/commit.step.ts": {
+    "Async method 'work'": 24
+  },
+  "server/src/steps/implement/implement-improve.step.ts": {
+    "Async method 'produce'": 31
+  },
+  "server/src/steps/implement/implement.step.ts": {
+    "Async method 'produce'": 48
+  },
+  "server/src/steps/plan-improve/plan-improve.step.ts": {
+    "Async method 'produce'": 35
+  },
+  "server/src/steps/plan/plan.step.ts": {
+    "Async method 'produce'": 38
+  },
+  "server/src/steps/research/research.step.ts": {
+    "Async method 'produce'": 31
+  },
+  "server/src/testing/test-app.ts": {
+    "Async function 'createTestApp'": 28
+  }
+}
