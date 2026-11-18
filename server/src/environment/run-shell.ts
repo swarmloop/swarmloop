@@ -44,6 +44,35 @@ export interface ShellDeps {
   halted?: (key: string) => boolean;
 }
 
+/** The sandbox launch of one setup or check command. */
+function shellLaunch(args: {
+  input: ShellInput;
+  launch: ProjectLaunch;
+  command: string;
+  mount: SandboxMount;
+  phase: 'setup' | 'checks';
+  check?: { index: number };
+  manifest?: ManifestHosts;
+  statePath: string;
+  userId: ReturnType<typeof sandboxUserId>;
+}): Parameters<ShellDeps['sandbox']['spawn']>[0] {
+  const { input, launch, command, mount, phase, check, manifest, statePath, userId } = args;
+  return {
+    runtime: input.runtime,
+    runKey: input.key,
+    step: check ? `${input.step}-${check.index}` : input.step,
+    attemptId: input.run.activeAttempt ?? '',
+    mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
+    statePath,
+    allowHosts: phase === 'setup' ? setupHosts(manifest?.hosts) : [],
+    ...(phase === 'setup' && manifest?.hosts.length ? { manifestHosts: manifest } : {}),
+    command: [],
+    userId,
+    project: { ...launch, shell: command },
+    resultLost: true,
+  };
+}
+
 /**
  * The setup and each check command run in the project image with no model key. The output goes to the step log; every
  * command also streams its full output to its own file in the run's log folder, and the returned tail marks the lines
@@ -117,23 +146,10 @@ export async function runShell(
     });
   };
   const child = await sandbox
-    .spawn(
-      {
-        runtime: input.runtime,
-        runKey: input.key,
-        step: check ? `${input.step}-${check.index}` : input.step,
-        attemptId: input.run.activeAttempt ?? '',
-        mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
-        statePath,
-        allowHosts: phase === 'setup' ? setupHosts(manifest?.hosts) : [],
-        ...(phase === 'setup' && manifest?.hosts.length ? { manifestHosts: manifest } : {}),
-        command: [],
-        userId,
-        project: { ...launch, shell: command },
-        resultLost: true,
-      },
-      { onPaused, work: phase === 'setup' ? 'setup' : 'check' },
-    )
+    .spawn(shellLaunch({ input, launch, command, mount, phase, check, manifest, statePath, userId }), {
+      onPaused,
+      work: phase === 'setup' ? 'setup' : 'check',
+    })
     .catch(async (error: unknown) => {
       finish({ exitCode: null });
       await new Promise<void>((done) => file.end(done));
