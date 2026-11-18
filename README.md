@@ -55,6 +55,8 @@ Or build from source:
 git clone https://github.com/swarmloop/swarmloop && cd swarmloop && docker compose up -d
 ```
 
+What the machine needs: these are the numbers of swarmloop's own repository, the 90th percentile of the peak per agent visit and per check command since 15.11. One agent visit takes 1.7 GB and up to 3 cores, and up to 6 GB when the agent runs the full server test suite itself. One check command takes 3.3 GB and up to 3.7 cores; the heaviest, `npm test --prefix server`, takes 6 GB and 5 cores, and the others stay under 2 GB. The defaults run 4 agents (`AGENTS_PARALLEL`) and 3 check commands (`CHECKS_PARALLEL`) at once, about 19 GB, plus 2 GB for the server and the dashboard. Give Docker Desktop every CPU but two (macOS and its file sharing need them) and memory of 2 GB + 2 GB per agent + 3 GB per check command, about 20 GB for the defaults. On a smaller machine, lower `AGENTS_PARALLEL` and `CHECKS_PARALLEL`. Your project's own tests decide what its check commands take. **Readiness** shows the server's stalls when the machine is short.
+
 Then open [http://127.0.0.1:3921](http://127.0.0.1:3921) and, in the browser:
 
 1. **Connect GitHub** (or **Connect GitLab**).

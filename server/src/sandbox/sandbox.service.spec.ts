@@ -99,7 +99,7 @@ describe('SandboxService memory cap', () => {
     expect(runs).toHaveLength(2);
     for (const args of runs) {
       expect(args[args.indexOf('--memory') + 1]).toBe(`${2 * GB}b`);
-      expect(args[args.indexOf('--cpu-shares') + 1]).toBe('512');
+      expect(args[args.indexOf('--cpu-shares') + 1]).toBe('256');
     }
     expect(agent.memoryCapBytes).toBe(2 * GB);
     expect(check.memoryCapBytes).toBe(2 * GB);
