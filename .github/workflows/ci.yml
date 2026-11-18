@@ -42,6 +42,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            dashboard/package-lock.json
       - run: npx --yes madge@8 --circular --extensions ts,tsx --ts-config server/tsconfig.json server/src dashboard
 
   lint:
@@ -53,6 +57,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            dashboard/package-lock.json
       - run: npm ci
         working-directory: server
       - run: npm ci
@@ -125,6 +133,10 @@ jobs:
 
   server-test-seeds:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [1, 20260101, 987654321]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -137,12 +149,9 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: server/.jest-cache
-          key: server-jest-${{ github.job }}-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}-${{ github.sha }}
-          restore-keys: server-jest-${{ github.job }}-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}-
-      - run: |
-          for seed in 1 20260101 987654321; do
-            npm test -- --seed=$seed
-          done
+          key: server-jest-${{ github.job }}-${{ matrix.seed }}-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}-${{ github.sha }}
+          restore-keys: server-jest-${{ github.job }}-${{ matrix.seed }}-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}-
+      - run: npm test -- --seed=${{ matrix.seed }}
         working-directory: server
 
   dashboard-test:
@@ -178,16 +187,59 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/docker-layers/server
+          key: docker-layers-server-${{ runner.os }}-${{ github.sha }}
+          restore-keys: docker-layers-server-${{ runner.os }}-
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/docker-layers/dashboard
+          key: docker-layers-dashboard-${{ runner.os }}-${{ github.sha }}
+          restore-keys: docker-layers-dashboard-${{ runner.os }}-
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/docker-layers/agent-cursor
+          key: docker-layers-agent-cursor-${{ runner.os }}-${{ github.sha }}
+          restore-keys: docker-layers-agent-cursor-${{ runner.os }}-
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/docker-layers/agent-claude
+          key: docker-layers-agent-claude-${{ runner.os }}-${{ github.sha }}
+          restore-keys: docker-layers-agent-claude-${{ runner.os }}-
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/docker-layers/agent-codex
+          key: docker-layers-agent-codex-${{ runner.os }}-${{ github.sha }}
+          restore-keys: docker-layers-agent-codex-${{ runner.os }}-
+      - uses: actions/cache@v4
+        with:
+          path: /tmp/docker-layers/egress
+          key: docker-layers-egress-${{ runner.os }}-${{ github.sha }}
+          restore-keys: docker-layers-egress-${{ runner.os }}-
       - name: Build all images from the PR
         run: |
           set -eu
           args="--build-arg REVISION=${{ github.sha }} --build-arg VERSION=ci --build-arg SOURCE_URL=${{ github.server_url }}/${{ github.repository }}"
-          docker build $args -f docker/server/Dockerfile -t local/swarmloop-server:ci .
-          docker build $args -f docker/dashboard/Dockerfile -t local/swarmloop-dashboard:ci .
+          # build <image> <docker args...>: a missing cache folder only means a full build. The saved cache is
+          # replaced only after the build succeeded.
+          build() {
+            image=$1
+            shift
+            docker buildx build $args --pull --load \
+              --cache-from type=local,src=/tmp/docker-layers/$image \
+              --cache-to type=local,dest=/tmp/docker-layers/$image-new,mode=max \
+              -t local/swarmloop-$image:ci "$@"
+            rm -rf /tmp/docker-layers/$image
+            mv /tmp/docker-layers/$image-new /tmp/docker-layers/$image
+          }
+          build server -f docker/server/Dockerfile .
+          build dashboard -f docker/dashboard/Dockerfile .
           for runtime in cursor claude codex; do
-            docker build $args -f docker/sandbox/Dockerfile.$runtime -t local/swarmloop-agent-$runtime:ci docker/sandbox
+            build agent-$runtime -f docker/sandbox/Dockerfile.$runtime docker/sandbox
           done
-          docker build $args -t local/swarmloop-egress:ci docker/egress
+          build egress docker/egress
       - name: Start compose.yml in an empty directory
         env:
           SWARMLOOP_REGISTRY: local
