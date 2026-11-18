@@ -1,10 +1,14 @@
 import baseConfig from './eslint.config.mjs';
+import { readFileSync } from 'node:fs';
 import tseslint from 'typescript-eslint';
+import { complexityPlugin } from './eslint.complexity-baseline.mjs';
 
 const typedFiles = ['**/*.{ts,tsx}'];
 const testFiles = ['**/*.spec.ts', '**/*.spec-helpers.ts', '**/*.test.ts', '**/*.test.tsx'];
 // dashboard/tsconfig.json excludes these test and config files. dashboard/tsconfig.test.json includes them.
 const dashboardTestFiles = ['dashboard/**/*.test.{ts,tsx}', 'dashboard/vitest.*.ts', 'dashboard/test/**'];
+const baseline = JSON.parse(readFileSync(new URL('./scripts/complexity-baseline.json', import.meta.url), 'utf8'));
+const complexityOptions = { max: 20, baseline };
 const maxLines = (max) => ['error', { max, skipBlankLines: true, skipComments: true }];
 const typedRules = {
   '@typescript-eslint/no-floating-promises': 'error',
@@ -15,11 +19,13 @@ const typedRules = {
   '@typescript-eslint/explicit-module-boundary-types': 'error',
   '@typescript-eslint/no-explicit-any': 'error',
   'max-lines': maxLines(400),
-  complexity: ['warn', 20],
+  'local/complexity': ['error', complexityOptions],
+  'local/complexity-baseline-leave': ['warn', complexityOptions],
 };
 
 export default tseslint.config(
   ...baseConfig,
+  { plugins: { local: complexityPlugin } },
   {
     files: typedFiles,
     ignores: dashboardTestFiles,
@@ -51,7 +57,8 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
-      complexity: 'off',
+      'local/complexity': 'off',
+      'local/complexity-baseline-leave': 'off',
     },
   },
   {

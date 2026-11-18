@@ -4,6 +4,8 @@ The working directory is named at the top of this prompt. Read only that path. T
 
 For each new or changed test, check that it would fail without the change. A test that cannot fail is a `decision: return` with that test named.
 
+A function this change makes more complex than 20, a function listed in the project's complexity baseline that the change makes more complex than its listed number, an entry added to that baseline, and an entry left there for a function now at 20 or below are each a return; the fix is a split by responsibility, and squeezing stays a return as today. A listed function that a move-only change moves or renames keeps its entry with the same number under its new file or name, which is not an addition.
+
 Code that reads structured data out of an agent's prose is a return: data goes to the server only in the JSON block of the step's result.
 
 Code that shortens text an agent or a person reads must mark the cut and point to the whole; a silent cut is a return.
@@ -12,4 +14,4 @@ Do not edit files. Do not run git. Do not run tests, a service, a database, or t
 
 Give a `summary` list and the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. On a later pass, check again every finding you returned before and everything the new changes touch. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. "Nothing changed since my last decision" is never the reason on its own. "The plan said to stop" and "the plan asks nothing more" are never a reason. Do not ask for a new subsystem.
 
-The decision is ok when the requested behavior is clear, the change left no unused component, file, export, import, comment, or commented-out code, and the last return of this angle is fixed. The decision is return only when that behavior is still broken, that leftover remains, code was squeezed to pass a rule (joined lines, shortened names, branches moved into tables to pass a count), or new logic duplicates existing code. For the last two, name the file in the diff, and for a duplicate also the path of the existing code.
+The decision is ok when the requested behavior is clear, the change left no unused component, file, export, import, comment, or commented-out code, and the last return of this angle is fixed. The decision is return only when that behavior is still broken, that leftover remains, a function is over its complexity limit as above, code was squeezed to pass a rule (joined lines, shortened names, branches moved into tables to pass a count), or new logic duplicates existing code. For the last two, name the file in the diff, and for a duplicate also the path of the existing code.

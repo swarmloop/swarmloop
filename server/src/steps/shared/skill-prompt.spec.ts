@@ -222,6 +222,49 @@ describe('implement skill rules', () => {
     }
   });
 
+  it('returns the quality review on a function made more complex than its limit', () => {
+    const text = skill('code-review/quality');
+    expect(text).toContain('A function this change makes more complex than 20');
+    expect(text).toContain(
+      "a function listed in the project's complexity baseline that the change makes more complex than its listed number",
+    );
+    expect(text).toContain('the fix is a split by responsibility');
+  });
+
+  it('implement moves out the part of a listed function it touches first', () => {
+    const text = skill('implement');
+    expect(text).toContain(
+      "add to a function listed in the project's complexity baseline, it first moves out the part it touches",
+    );
+    expect(text).toContain('It never adds an entry to the list');
+  });
+
+  it('the security skill follows every outside value to its use', () => {
+    const text = skill('code-review/security');
+    const phrases = [
+      'HTTP path, query, body, headers and cookies',
+      'uploaded files and their names',
+      'CLI arguments',
+      'webhook payloads',
+      'values from a code host',
+      "an agent's output",
+      'env read at request time',
+      'a file path (resolved, then required to stay inside its root)',
+      'a process argument (an argument array with no shell, never a shell string)',
+      'a URL the server fetches (an allowed host)',
+      'HTML or markdown shown to a person (escaped)',
+      'a raw SQL string or a regular expression built from it',
+      'an object key (no `__proto__`, `constructor`)',
+      'a redirect target',
+      'a log line (no secret)',
+      'is checked to be a string, because a query or body field may be an array',
+      'the same authorization as their neighbours',
+      'a finding of one of them in the diff is critical, not hypothetical',
+      'lists every outside value and where it goes',
+    ];
+    for (const phrase of phrases) expect(text).toContain(phrase);
+  });
+
   it('returns the quality review on squeezed code and on duplicated logic', () => {
     const text = skill('code-review/quality');
     expect(text).toContain('code was squeezed to pass a rule');
