@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, statSync } from 'fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, statSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import { ignoredDirectories, isCheckout, trackedFiles } from '../git/ignored-entries';
 import type { EnvMask } from './sandbox-launch';
@@ -12,6 +13,14 @@ export function collectEnvMasks(mounts: { hostPath: string; containerPath: strin
     walkEnv(mount.hostPath, mount.containerPath, masks, gitRules(mount.hostPath));
   }
   return masks;
+}
+
+export function ensureMaskFile(path: string): void {
+  if (existsSync(path)) {
+    return;
+  }
+  mkdirSync(tmpdir(), { recursive: true });
+  closeSync(openSync(path, 'a'));
 }
 
 /** What git says about a checkout: the ignored directories and the tracked files, as paths from its root. */

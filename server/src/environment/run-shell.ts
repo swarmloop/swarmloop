@@ -131,7 +131,7 @@ export async function runShell(
         project: { ...launch, shell: command },
         resultLost: true,
       },
-      { onPaused },
+      { onPaused, work: phase === 'setup' ? 'setup' : 'check' },
     )
     .catch(async (error: unknown) => {
       finish({ exitCode: null });

@@ -1,5 +1,5 @@
-import { spawn, ChildProcess, execFile } from 'child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from 'fs';
+import { spawn, ChildProcess } from 'child_process';
+import { mkdirSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
@@ -32,9 +32,13 @@ import { Egress, egressMode } from './egress';
 import { imageMissing } from './image-resolver';
 import { withEgress } from './egress-launch';
 import { projectGitMount } from './project-git';
-import { collectEnvMasks } from './env-masks';
+import { collectEnvMasks, ensureMaskFile } from './env-masks';
+import { defaultDocker } from './default-docker';
+import { readDockerMachine } from './docker-machine';
+import type { DockerMachine } from './docker-machine';
+import { RunningWork } from './running-work';
 import { parseDockerStats } from './docker-stats';
-import { containerMemoryCap } from './memory-cap';
+import { memoryCapOf } from './memory-cap';
 import { ContainerGate } from './container-gate';
 import type { AgentHold } from './container-gate';
 
@@ -52,30 +56,43 @@ export class SandboxService {
   private readonly maskFile = join(tmpdir(), 'swarmloop-empty-env');
   private binds: BindMount[] | null = null;
   private egressProxy: Egress | null = null;
-  private memoryCap: number | undefined;
+  private machineInfo: DockerMachine | undefined;
 
   readonly gate: ContainerGate;
+  readonly work: RunningWork;
 
   constructor(
     @Optional() private readonly config?: AppConfig,
     @Optional() gate?: ContainerGate,
+    @Optional() work?: RunningWork,
   ) {
     this.gate = gate ?? new ContainerGate(config);
+    this.work = work ?? new RunningWork();
   }
 
   useDocker(docker: DockerRunner): void {
     this.docker = docker;
     this.egressProxy = null;
-    this.memoryCap = undefined;
+    this.machineInfo = undefined;
   }
 
-  /** Docker's memory less the reserve, the same for every container. Only an answer is kept, so an outage is tried again. */
+  /** Docker's CPUs and memory. Only an answer is kept, so an outage is tried again. */
+  async machine(): Promise<DockerMachine | undefined> {
+    this.machineInfo ??= await readDockerMachine((args, timeoutMs) => this.docker(args, timeoutMs));
+    return this.machineInfo;
+  }
+
+  /** The kept answer of `machine()`; no docker call. */
+  knownMachine(): DockerMachine | undefined {
+    return this.machineInfo;
+  }
+
+  /** Docker's memory less the reserve, the same for every container. */
   private async containerCap(): Promise<number | undefined> {
-    this.memoryCap ??= await containerMemoryCap(
-      (args, timeoutMs) => this.docker(args, timeoutMs),
+    return memoryCapOf(
+      await this.machine(),
       (this.config?.env.RESERVE_MEMORY_GB ?? Number(readDefaultSettings().RESERVE_MEMORY_GB)) * 1024 ** 3,
     );
-    return this.memoryCap;
   }
 
   /** The egress proxy all sandboxes go out through. SANDBOX_EGRESS=open turns it off. */
@@ -121,13 +138,15 @@ export class SandboxService {
    */
   async spawn(
     given: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'> & { envMasks?: EnvMask[] },
-    held?: { onPaused: () => void; agent?: AgentHold },
+    held?: { onPaused: () => void; agent?: AgentHold; work?: 'check' | 'setup' },
   ): Promise<SandboxChild> {
     const egress = this.egress();
     const admitted = held ? await this.gate.admit(held.onPaused, given.runKey, held.agent) : () => undefined;
     const metadata: SandboxMount[] = [];
     let release = () => undefined as void;
+    let started = '';
     const cleanup = () => {
+      this.work.end(started);
       admitted();
       release();
       for (const mount of metadata) {
@@ -150,6 +169,11 @@ export class SandboxService {
       const { launch } = acquired;
       const child = await this.spawnLaunch(launch);
       child.memoryCapBytes = memoryCapBytes;
+      const kind = held?.agent ? 'agent' : held?.work;
+      if (kind) {
+        started = child.containerName;
+        this.work.start(started, kind);
+      }
       child.once('close', cleanup);
       child.once('error', cleanup);
       return child;
@@ -207,7 +231,9 @@ export class SandboxService {
   async stats(name: string): Promise<{ cpuPercent: number; rssBytes: number }> {
     try {
       const raw = await this.docker(['stats', '--no-stream', '--format', '{{.CPUPerc}} {{.MemUsage}}', name]);
-      return parseDockerStats(raw);
+      const sample = parseDockerStats(raw);
+      this.work.sample(name, sample);
+      return sample;
     } catch {
       return { cpuPercent: 0, rssBytes: 0 };
     }
@@ -363,24 +389,4 @@ export class SandboxService {
       await this.docker(args);
     }
   }
-}
-
-function ensureMaskFile(path: string): void {
-  if (existsSync(path)) {
-    return;
-  }
-  mkdirSync(tmpdir(), { recursive: true });
-  closeSync(openSync(path, 'a'));
-}
-
-function defaultDocker(args: string[], timeoutMs = 30_000): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile('docker', args, { encoding: 'utf8', timeout: timeoutMs }, (error, stdout) => {
-      if (error) {
-        reject(new Error(error.message, { cause: error }));
-        return;
-      }
-      resolve(stdout);
-    });
-  });
 }
