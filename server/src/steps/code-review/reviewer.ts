@@ -86,9 +86,16 @@ export interface ReviewDeps {
   launcher: AgentLauncher;
   runReport: RunReport;
   chat?: PlanChatStore;
+  /** Called when the report's own agent is about to start. */
+  onReportStart?: () => void;
 }
 
 export const REVIEWERS: Reviewer[] = [...CODE_REVIEWERS.map((name) => ({ name, kind: REVIEWS.of(name) }))];
+
+/** The reviewer a Run again names, when it is one of the reviewers. */
+export function onlyReviewer(reviewer: string | undefined): string | undefined {
+  return REVIEWERS.some((item) => item.name === reviewer) ? reviewer : undefined;
+}
 
 export async function runJob(
   deps: ReviewDeps,

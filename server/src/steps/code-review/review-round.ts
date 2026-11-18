@@ -137,14 +137,19 @@ export function reportDue(only: string | undefined, kept: Opinion[], pending: Re
   return REVIEWERS.every((reviewer) => covered.has(reviewer.kind));
 }
 
+/** The reviewers other than `only` that hold the report back, in reviewer order: no opinion, or a return. */
+export function openOthers(only: string, opinions: Opinion[]): { missing: string[]; returned: string[] } {
+  const others = REVIEWERS.filter((reviewer) => reviewer.name !== only);
+  const answerOf = (reviewer: Reviewer): Opinion | undefined => opinions.find((item) => item.kind === reviewer.kind);
+  return {
+    missing: others.filter((reviewer) => !answerOf(reviewer)).map((reviewer) => reviewer.name),
+    returned: others.filter((reviewer) => answerOf(reviewer)?.decision === 'return').map((reviewer) => reviewer.name),
+  };
+}
+
 export function othersOpen(only: string, opinions: Opinion[]): boolean {
-  return REVIEWERS.some((reviewer) => {
-    if (reviewer.name === only) {
-      return false;
-    }
-    const opinion = opinions.find((item) => item.kind === reviewer.kind);
-    return !opinion || opinion.decision === 'return';
-  });
+  const open = openOthers(only, opinions);
+  return open.missing.length > 0 || open.returned.length > 0;
 }
 
 /** Done when nothing returned or the step is third-party. Otherwise the step goes back to implement. */

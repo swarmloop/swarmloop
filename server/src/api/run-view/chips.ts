@@ -11,6 +11,8 @@ import { LIMIT_VISIT } from '../../history/visit.repository';
 import { stepStatus, latest } from './status';
 import type { FlowView } from '../../contract/api';
 import { REVIEW_KINDS } from './run-view.types';
+import type { OpenReviewRound } from '../../steps/shared/open-review-rounds';
+import { wordList } from '../../core/word-list';
 
 /** The log of one reviewer or the report, only when it was written since the open round began. */
 export function roundLog(root: string, run: RunEntity, name: string): string {
@@ -98,17 +100,41 @@ function roundStanding(
   return { attempts: prior, status: preparing ? 'preparing' : 'running' };
 }
 
-/** The report is written after the angles. Until its own decision in the open round arrives it is working. */
+/** A due report whose own agent has not started waits for the reviewers that still run. */
+function waitingReport(attempts: number, working: string[]): FlowView['phases'][number]['steps'][number] {
+  return {
+    name: 'code-review',
+    status: 'waiting',
+    current: false,
+    attempts,
+    ...(working.length > 0 ? { note: `waits for ${wordList(working)}` } : {}),
+  };
+}
+
+/**
+ * The report is written after the angles. Until its own agent starts in the open round it waits; then it is
+ * working until its own decision arrives. A round that does not write it shows what is stored.
+ */
 export function reportChip(
   run: RunEntity,
   stats: StepStatEntity[],
   documents: DocumentEntity[],
   root: string,
   preparing = false,
+  round?: OpenReviewRound,
+  working: string[] = [],
 ): FlowView['phases'][number]['steps'][number] {
   const saved = reportAttempts(stats, documents);
-  if (roundOpen(run)) {
-    const standing = roundStanding(roundLog(root, run, 'code-review-report'), saved, preparing, reviewLogDecision);
+  if (roundOpen(run) && round?.reportDue && !round.reportStarted) {
+    return waitingReport(saved, working);
+  }
+  if (roundOpen(run) && (!round || round.reportDue)) {
+    const standing = roundStanding(
+      roundLog(root, run, 'code-review-report'),
+      saved,
+      round ? false : preparing,
+      reviewLogDecision,
+    );
     return {
       name: 'code-review',
       status: standing.status,
@@ -166,7 +192,7 @@ function ownedVisits(stats: StepStatEntity[], documents: DocumentEntity[], kind:
   ).length;
 }
 
-/** This reviewer's chip while the code-review round is open, from this round only. Null when no round is open. */
+/** This reviewer's chip while the code-review round is open, from this round only. Null when no round is open or the open round does not run it. */
 export function reviewerRound(
   name: string,
   run: RunEntity,
@@ -174,8 +200,9 @@ export function reviewerRound(
   documents: DocumentEntity[],
   root: string,
   preparing = false,
+  round?: OpenReviewRound,
 ): { attempts: number; status: string } | null {
-  if (!roundOpen(run)) {
+  if (!roundOpen(run) || (round && !round.reviewers.includes(requireReviewer(name)))) {
     return null;
   }
   const last = stats.filter((stat) => stat.step === name).at(-1);

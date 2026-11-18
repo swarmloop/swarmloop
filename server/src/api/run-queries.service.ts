@@ -60,6 +60,7 @@ import { conversationView } from './run-view/conversation';
 import { readPlanChat } from '../contract/plan-chat';
 import { PlannerTurns } from '../pipeline/planner-turns';
 import { RunReport } from '../steps/shared/run-report';
+import { OpenReviewRounds } from '../steps/shared/open-review-rounds';
 export { requireRun } from './run-queries-run';
 
 @Injectable()
@@ -83,6 +84,7 @@ export class RunQueriesService {
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly gate: ContainerGate = new ContainerGate(),
     @Optional() private readonly turns?: PlannerTurns,
+    @Optional() private readonly openRounds?: OpenReviewRounds,
   ) {
     this.reviewers = new ReviewerSteps({
       runs,
@@ -215,7 +217,10 @@ export class RunQueriesService {
         reportMs,
       ),
       phases: withRestartWait(
-        withPlaceChips(phases(shown, stats, documents, root(this.config), loops), this.gate.agentWait(run.key)),
+        withPlaceChips(
+          phases(shown, stats, documents, root(this.config), loops, this.openRounds?.of(run.key)),
+          this.gate.agentWait(run.key),
+        ),
         run,
       ),
       returns: returns(shown, loops),
