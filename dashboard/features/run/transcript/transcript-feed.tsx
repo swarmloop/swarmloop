@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactElement, useMemo } from 'react';
 import { DisclosureIcon } from '../../../components/ui/disclosure-icon';
 import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -23,6 +23,7 @@ import { CommandCard } from './command-card';
 import { HandoffCard } from './handoff-card';
 import { InputCard } from './input-card';
 import { IssueCard } from './issue-card';
+import { useFollowBottom } from '../use-follow-bottom';
 import { problemId } from './problem-card';
 import { RADIUS, SIZE, SPACE, useBubbleWidth, useMotionMs } from './tokens';
 import type { InterruptionNote } from '@contract/interruption';
@@ -39,9 +40,6 @@ function statusLine(live: boolean, now: number, lastTime: string | undefined): s
   const silent = lastTime && now > 0 ? now - Date.parse(lastTime) : 0;
   return silent > SILENT_MS ? `no output for ${Math.floor(silent / 60_000)} min` : 'live';
 }
-
-/** How far from the bottom the reader still counts as being at the bottom. */
-const BOTTOM_SLACK = 48;
 
 /** The words of the problems chip, and of the step header link that goes to the same card. */
 export function problemsLabel(count: number): string {
@@ -165,14 +163,10 @@ export function TranscriptFeed({
   /** A quiet sentence for the top line, beside the problems chip. */
   note?: string;
 }): ReactElement {
-  const [unseen, setUnseen] = useState(false);
   const width = useBubbleWidth();
   const ms = useMotionMs();
   const layout = useMemo(() => ({ width, ms }), [width, ms]);
-  const box = useRef<HTMLDivElement | null>(null);
-  const stick = useRef(true);
-  const seen = useRef(0);
-  const total = events?.length ?? 0;
+  const { box, onScroll, unseen, scrollToBottom } = useFollowBottom(events?.length ?? 0);
   const attempts = useMemo(() => groupByAttempt(events ?? [], interruptions), [events, interruptions]);
   const all = useMemo(() => attempts.flatMap((group) => group.items), [attempts]);
   const groups = useMemo(
@@ -186,19 +180,6 @@ export function TranscriptFeed({
   const lastLaunch = useMemo(() => all.filter((item) => item.bubble).at(-1)?.event.eventId, [all]);
   const lastTime = events?.at(-1)?.occurredAt;
 
-  useEffect(() => {
-    const node = box.current;
-    if (!node) {
-      return;
-    }
-    if (stick.current) {
-      node.scrollTop = node.scrollHeight;
-    } else if (total > seen.current) {
-      setUnseen(true);
-    }
-    seen.current = total;
-  }, [total]);
-
   return (
     <BubbleLayoutProvider value={layout}>
       <Box sx={{ mt: 2, minWidth: 0, position: 'relative' }}>
@@ -208,13 +189,7 @@ export function TranscriptFeed({
           aria-live="polite"
           aria-label="Transcript"
           data-testid="transcript-feed"
-          onScroll={(event) => {
-            const node = event.currentTarget;
-            stick.current = node.scrollHeight - node.scrollTop - node.clientHeight < BOTTOM_SLACK;
-            if (stick.current) {
-              setUnseen(false);
-            }
-          }}
+          onScroll={onScroll}
           sx={{
             maxHeight: SIZE.feed,
             overflowY: 'auto',
@@ -315,14 +290,7 @@ export function TranscriptFeed({
           <Button
             size="small"
             variant="contained"
-            onClick={() => {
-              const node = box.current;
-              if (node) {
-                node.scrollTop = node.scrollHeight;
-              }
-              stick.current = true;
-              setUnseen(false);
-            }}
+            onClick={scrollToBottom}
             sx={{
               position: 'absolute',
               bottom: SPACE.part,

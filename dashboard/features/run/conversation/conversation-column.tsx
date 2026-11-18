@@ -102,9 +102,7 @@ export function ConversationColumn({
           <CloseIcon fontSize="small" />
         </IconButton>
       </Box>
-      <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <ConversationFeed flow={flow} entries={entries} onResume={onResume} />
-      </Box>
+      <ConversationFeed flow={flow} entries={entries} onResume={onResume} />
       <Footer flow={flow} onChange={onChange} />
     </Box>
   );
