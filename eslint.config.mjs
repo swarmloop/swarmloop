@@ -256,6 +256,7 @@ export default tseslint.config(
       'server/src/steps/step.ts', // checks the stored plan and the required kind before a step starts
       'server/src/steps/run-rebase.ts', // a rebase of a stopped run has no visit to write through
       'server/src/steps/shared/current-plan.ts', // reads the newest plan result of the run
+      'server/src/steps/shared/amendment.ts', // reads the plan chat revisions written after the latest implement visit
       'server/src/steps/shared/stored-answer-errors.ts', // reads the validation errors attached to the agent's latest failed visit
       'server/src/steps/shared/handoff.ts', // reads and merges the handoff document
       'server/src/steps/shared/rebased-publisher.ts', // records the refs it pushed for the implement step
@@ -271,6 +272,7 @@ export default tseslint.config(
       'server/src/steps/shared/run-report.ts', // reads the stored parts of the report the merge request shows
       'server/src/steps/shared/rebase-journal.ts', // keeps the rebase journal as a document of the run
       'server/src/steps/shared/report-refresh.ts', // a step end refreshes the merge request report of a run with no visit of its own to write through
+      'server/src/steps/shared/plan-conversation.ts', // a planner visit outside the plan step reads the repos of the run it mounts
       'server/src/steps/merge-request/merge-request-draft.ts', // a Rebase or Replay turns the merge requests back into drafts with no visit to write through
     ],
     ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],
@@ -430,7 +432,7 @@ export default tseslint.config(
           mode: 'folder',
         })),
         { type: 'dashboard-lib', pattern: 'dashboard/lib/**', mode: 'folder' },
-        { type: 'dashboard-ui', pattern: 'dashboard/components/ui/**', mode: 'folder' },
+        { type: 'dashboard-ui', pattern: 'dashboard/components/{ui,composer}/**', mode: 'folder' },
         { type: 'contract', pattern: 'server/src/contract/**', mode: 'folder' },
       ],
       'boundaries/ignore': ['dashboard/features/**/*.test.*'],
@@ -462,8 +464,8 @@ export default tseslint.config(
               message: 'Import another feature through its index.ts.',
             },
             {
-              regex: '^(\\.\\.?/)+(?!.*components/ui/).*components/',
-              message: 'Features may import shared UI only from components/ui.',
+              regex: '^(\\.\\.?/)+(?!.*components/(?:ui|composer)/).*components/',
+              message: 'Features may import shared UI only from components/ui and components/composer.',
             },
             {
               regex: '^(\\.\\.?/)+(app|hooks)/',

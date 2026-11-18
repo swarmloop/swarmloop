@@ -4,9 +4,12 @@ import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { ChatService } from './chat.service';
+import { RunAnswersService } from './run-answers.service';
 import { RunCommandsService, StartPlan } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunRebaseService } from './run-rebase.service';
+import { AttachmentStore } from '../history/attachment-store';
+import { PlanChatService } from './plan-chat.service';
 import { ShellService } from './shell.service';
 
 /** What the shell command carries: one of the three shell actions. */
@@ -21,6 +24,8 @@ export interface ReplayPayload {
   step: string;
   prompt: string;
   phases?: string[];
+  /** Ids of the uploaded files the run takes. */
+  attachments?: string[];
 }
 
 /** Maps each command type to the service that did the work before the command path. */
@@ -30,11 +35,14 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     private readonly executor: CommandService,
     private readonly reconciler: Reconciler,
     private readonly runs: RunCommandsService,
+    private readonly answering: RunAnswersService,
     private readonly taskCommands: RunSubtaskCommandsService,
     private readonly rebases: RunRebaseService,
     private readonly chat: ChatService,
     private readonly shell: ShellService,
     private readonly subtasks: SubtaskPort,
+    private readonly planChat: PlanChatService,
+    private readonly files: AttachmentStore,
   ) {}
 
   onModuleInit(): void {
@@ -43,15 +51,24 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
       launch: (parent, task) => this.taskCommands.launchSubtask(parent, task),
     });
     const on = this.executor.register.bind(this.executor);
-    on('start', (_key, payload) => this.runs.startPlanned(payload as unknown as StartPlan));
+    on('start', async (key, payload) => {
+      await this.files.claim(key, payload.attachments as string[] | undefined);
+      return this.runs.startPlanned(payload as unknown as StartPlan);
+    });
     on('resume', (key, payload) => this.runs.resume(key, payload.prompt as string | undefined));
-    on('answer', (key, payload) => this.runs.answers(key, payload));
+    on('answer', (key, payload) =>
+      typeof payload.message === 'string'
+        ? this.answering.fromMessage(key, payload.message)
+        : this.answering.answers(key, payload),
+    );
+    on('plan-chat', (key, payload, context) => this.planChat.record(key, payload, context.commandId));
     on('step', (key, payload) => {
       const { step, body } = payload as unknown as StepPayload;
       return this.runs.startStep(key, step, body);
     });
-    on('replay', (key, payload) => {
-      const { step, prompt, phases } = payload as unknown as ReplayPayload;
+    on('replay', async (key, payload) => {
+      const { step, prompt, phases, attachments } = payload as unknown as ReplayPayload;
+      await this.files.claim(key, attachments);
       return this.runs.replay(key, step, prompt, phases);
     });
     on('stop', (key) => this.runs.stop(key));

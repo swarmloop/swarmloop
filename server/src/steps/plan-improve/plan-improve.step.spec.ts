@@ -253,6 +253,46 @@ describe('plan-improve step with split', () => {
     });
   });
 
+  describe('with tasks that already started', () => {
+    const started = storedTasks.map((task, index) => ({
+      ...task,
+      status: index === 0 ? 'running' : 'merged',
+      ...(index === 1 ? { merged: { demo: 'abc123' } } : {}),
+    }));
+    const same = started.map(({ status: _status, merged: _merged, ...task }) => task);
+    const contract = ['the column is called `split`'];
+
+    it('refuses an answer that rewrites a started task and sends the reason back', async () => {
+      const out = await improveSplit('PROJ-92', splitAnswer({ contract }), { stored: started });
+      expect(out.done.exitCode).not.toBe(0);
+      const prompts = out.agent.mock.calls.map((call) => (call[0] as AgentRunInput).prompt);
+      expect(prompts.some((prompt) => prompt.includes('task api already started and cannot be changed (title)'))).toBe(
+        true,
+      );
+      expect(JSON.parse(out.subtasks ?? '[]')[1].title).toBe('Send it');
+    });
+
+    it('keeps the status and merge commits of started tasks and adds a new task as pending', async () => {
+      const docs = {
+        id: 'docs',
+        title: 'Docs',
+        depends: ['api'],
+        files: ['d.md'],
+        proof: 'd.spec.ts',
+        description: 'Docs.',
+      };
+      const out = await improveSplit('PROJ-93', splitAnswer({ contract }, [...same, docs]), {
+        stored: started,
+      });
+      expect(out.done.exitCode).toBe(0);
+      expect(JSON.parse(out.subtasks ?? '[]')).toMatchObject([
+        { id: 'column', status: 'running' },
+        { id: 'api', status: 'merged', merged: { demo: 'abc123' } },
+        { id: 'docs', status: 'pending' },
+      ]);
+    });
+  });
+
   it('a split turned back into one plan writes an empty subtasks', async () => {
     const out = await improveSplit('PROJ-91', improved(['add the field']));
     expect(out.done.exitCode).toBe(0);

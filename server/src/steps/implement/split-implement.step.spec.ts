@@ -14,7 +14,7 @@ import { CommandService } from '../../pipeline/command.service';
 import { Reconciler } from '../../pipeline/reconciler';
 import { FAKE_MODEL_KEY } from '../../testing/env.spec-helpers';
 import { createTestApp, type TestApp } from '../../testing/test-app';
-import { NO_CI_NOTE } from './split-implement.step';
+import { NO_CI_NOTE } from './split-pass';
 import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import type { CodeHost } from '../../integrations/code-host/code-host';

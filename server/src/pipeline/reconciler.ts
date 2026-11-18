@@ -5,6 +5,8 @@ import { AppConfig } from '../config/env';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { agentsFor } from '../config/agents';
 import { ERROR_CODES } from '../contract/error-codes';
+import { REASON } from '../contract/run-state';
+import { PlanChatStore } from '../history/plan-chat.store';
 import { RunStop } from '../agent/run-stop';
 import { Clock } from '../core/clock';
 import { failedAttemptLaunches, loopMark } from '../core/pipeline-result';
@@ -68,6 +70,7 @@ export class Reconciler implements OnModuleDestroy {
     private readonly stalls: StallWatch,
     @Optional() private readonly connections?: ConnectionsService,
     @Optional() private readonly credentials?: PersonalCredentials,
+    @Optional() private readonly planChat?: PlanChatStore,
   ) {}
 
   /** The startup pass over the runs. `claimed` says which runs a step of this process holds. */
@@ -136,6 +139,7 @@ export class Reconciler implements OnModuleDestroy {
       await this.resumeGitAuth();
       await this.resumeSubtaskParents();
       await this.resumeStalled();
+      await this.resumeAskingPlanner();
       await this.watchMerges();
       await this.reconcileCommands();
     });
@@ -305,6 +309,18 @@ export class Reconciler implements OnModuleDestroy {
       } catch (error) {
         this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
+    }
+  }
+
+  /**
+   * A run whose step asked the planner goes on by itself after a restart: the resume takes the question to the planner.
+   * The key names the question, so a question the planner could not settle is not resumed again and again.
+   */
+  async resumeAskingPlanner(): Promise<void> {
+    for (const run of await this.withReason('waiting', REASON.asksPlanner)) {
+      const [question] = (await this.planChat?.pendingQuestions(run.key)) ?? [];
+      if (!question || this.claimed(run.key)) continue;
+      await this.resumeOnce(run, `planner-${question.key}`, () => Promise.resolve(true));
     }
   }
 

@@ -2,6 +2,7 @@ import Joi from 'joi';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { defineResult } from '../result-definition';
 import type { ResultDefinition } from '../result-definition';
+import { QUESTION } from './implementation';
 
 /** The mark of one requirement of the Requirements list. */
 export interface RequirementMark {
@@ -21,6 +22,8 @@ export interface ReviewResult {
   requirements?: RequirementMark[];
   /** Only a reviewer that saw implement's answer to its last finding gives it. */
   reason?: string;
+  /** One choice the reviewer cannot settle from the brief, the requirements, the plan and the decisions. */
+  question?: string;
 }
 
 const REQUIREMENT_MARK = Joi.object({
@@ -51,6 +54,7 @@ function reviewSchema(name: string): Joi.ObjectSchema {
           ? 'The summary list, one line per entry; what you checked'
           : 'The summary list, one line per entry; what you checked, or the marks of the input list',
       ),
+    question: QUESTION,
   };
   return Joi.object(
     requirements

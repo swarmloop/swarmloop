@@ -25,12 +25,12 @@ export function RunDialogs({
   flow: FlowView;
   confirmStop: boolean;
   setConfirmStop: (open: boolean) => void;
-  pending: { prompt: string; phases: PhaseName[] } | null;
-  setPending: (pending: { prompt: string; phases: PhaseName[] } | null) => void;
+  pending: { prompt: string; phases: PhaseName[]; attachments?: string[] } | null;
+  setPending: (pending: { prompt: string; phases: PhaseName[]; attachments?: string[] } | null) => void;
   replay: string | null;
   runningElsewhere: boolean;
   stopRun: () => Promise<void>;
-  startReplay: (step: string, prompt: string, phases: PhaseName[]) => Promise<void>;
+  startReplay: (step: string, prompt: string, phases: PhaseName[], attachments?: string[]) => Promise<void>;
   /** The reviewer step whose Run again waits for a confirm. */
   reviewer: string | null;
   setReviewer: (step: string | null) => void;
@@ -53,7 +53,11 @@ export function RunDialogs({
         body={replay ? (runningElsewhere ? stopAndStartBody(flow, replay) : replayBody(flow, replay)) : ''}
         verb={runningElsewhere ? 'Stop and start' : 'Replay'}
         tone="danger"
-        onConfirm={() => (replay && pending ? startReplay(replay, pending.prompt, pending.phases) : Promise.resolve())}
+        onConfirm={() =>
+          replay && pending
+            ? startReplay(replay, pending.prompt, pending.phases, ...(pending.attachments ? [pending.attachments] : []))
+            : Promise.resolve()
+        }
         onClose={() => setPending(null)}
       />
       <ConfirmDialog

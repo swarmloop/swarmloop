@@ -74,6 +74,22 @@ export function skillText(raw: string, planTool: boolean): string {
 const PLAN_TOOL_MARK = '[plan tool] ';
 const NO_PLAN_TOOL_MARK = '[no plan tool] ';
 
+/** The section of a skill that is for the chat with a person. A first prompt does not carry it. */
+const ANSWER_HEADING = '## Answer a person';
+
+/** The text under a `##` heading of a skill, up to the next heading. Empty when the skill has none. */
+export function skillSection(skill: string, heading: string): string {
+  const file = join(__dirname, '../../../../skills', skill, 'SKILL.md');
+  let text: string;
+  try {
+    text = skillText(readFileSync(file, 'utf8'), true);
+  } catch {
+    throw new SwarmloopError(`${skill} skill is missing`);
+  }
+  const start = text.split(new RegExp(`^## ${heading}$`, 'm'))[1];
+  return (start?.split(/^## /m)[0] ?? '').trim();
+}
+
 export function skillPrompt(
   skill: string,
   requirements: string,
@@ -99,7 +115,8 @@ export function skillPrompt(
       ? workingDirectoryBlock(names, mounts)
       : ['Worktrees:', ...names.map((name) => `- ${name}`)].join('\n');
   // The `## Split` section of a skill is for a run that may split. Any other run reads the text before it.
-  const body = options.split ? text : (text.split(/^## Split$/m)[0] ?? text);
+  const first = text.split(new RegExp(`^${ANSWER_HEADING}$`, 'm'))[0] ?? text;
+  const body = options.split ? first : (first.split(/^## Split$/m)[0] ?? first);
   const executionRule = options.deferExecutionRules ? '' : LOCAL_RUN_RULE;
   const parts = [
     where,

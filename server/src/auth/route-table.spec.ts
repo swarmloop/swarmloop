@@ -43,7 +43,7 @@ describe('the route table', () => {
   const open = (controller: Controller) => Reflect.getMetadata(PUBLIC_KEY, controller) === true;
 
   it('guards every route globally: ApiModule imports AuthModule, which registers the guard', () => {
-    expect(controllers).toHaveLength(10);
+    expect(controllers).toHaveLength(12);
     expect(apiModule).toMatch(/imports: \[[^\]]*\bAuthModule\b/);
     for (const controller of controllers.filter((candidate) => candidate !== AuthController)) {
       expect(apiModule).toMatch(new RegExp(`controllers: \\[[^\\]]*\\b${controller.name}\\b`));

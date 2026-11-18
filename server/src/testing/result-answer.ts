@@ -1,3 +1,4 @@
+import { PERSON_WORDS } from '../steps/plan/plan.prompts';
 import { CODE_REVIEWERS } from '../contract/steps';
 import { emptyResult } from '../agent/agent-result';
 import type { AgentRunResult } from '../agent/agent-result';
@@ -21,6 +22,9 @@ const DEFAULT_PLAN = {
   plan: ['do the change - files: a.ts - proof: a.spec.ts'],
   covers: [['R1']],
 };
+
+/** The planner's reply to a person's message: it answers and keeps the plan. */
+const DEFAULT_PLAN_REPLY = { reply: 'Noted.' };
 
 /** The review of that plan: it keeps the plan. */
 const DEFAULT_PLAN_IMPROVE = { summary: ['checked the plan'], plan: [] };
@@ -111,7 +115,9 @@ export class BlockAgentRunner {
     this.steps.push(script);
     this.prompts.push({ step: script, prompt: input.prompt ?? '', freshPrompt: input.freshPrompt });
     const next = this.scripts.get(script)?.shift();
-    const answer = next ?? { block: this.defaults[script] ?? {} };
+    const asked =
+      script === 'plan' && input.prompt?.includes(PERSON_WORDS) ? DEFAULT_PLAN_REPLY : this.defaults[script];
+    const answer = next ?? { block: asked ?? {} };
     const now = new Date(0).toISOString();
     const chatId = `chat-${input.step}`;
     if (input.sessionFile && input.runKey) {

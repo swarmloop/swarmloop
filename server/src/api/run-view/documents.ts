@@ -9,11 +9,14 @@ import { latest } from './status';
 import { isResultKind } from '../../agent-result/result-definition';
 import { ARTIFACTS } from '../../steps/contract/artifacts';
 
-/** The documents a person reads: the stored result objects, the answer errors and the interruption notes are server records, left out. */
+/** The documents a person reads: the stored result objects, the answer errors, the plan chat and the interruption notes are server records, left out. */
 export function withoutServerRecords<T extends { kind: string }>(documents: T[]): T[] {
   return documents.filter(
     (document) =>
-      !isResultKind(document.kind) && document.kind !== ARTIFACTS.answerErrors.kind && document.kind !== 'interruption',
+      !isResultKind(document.kind) &&
+      document.kind !== ARTIFACTS.answerErrors.kind &&
+      document.kind !== ARTIFACTS.planChat.kind &&
+      document.kind !== 'interruption',
   );
 }
 

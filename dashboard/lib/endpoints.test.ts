@@ -25,10 +25,11 @@ import {
   removeRun,
   replayStep,
   resumeRun,
-  sendAnswers,
+  sendPlanChat,
   setRunProjects,
   startReviewer,
   stopRun,
+  uploadFile,
 } from './endpoints';
 
 vi.mock('./api', () => ({ api: vi.fn(), runLog: vi.fn() }));
@@ -38,6 +39,36 @@ beforeEach(() => {
 });
 
 describe('endpoints', () => {
+  it('uploads a file as a raw body with its encoded name', async () => {
+    const file = new Blob(['bytes']);
+    vi.mocked(api).mockResolvedValue({ id: 'u1', name: 'a b.png', size: 5 });
+
+    await expect(uploadFile(file, 'a b.png')).resolves.toEqual({ id: 'u1', name: 'a b.png', size: 5 });
+
+    expect(vi.mocked(api).mock.calls).toEqual([
+      [
+        '/uploads?name=a%20b.png',
+        { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } },
+      ],
+    ]);
+  });
+
+  it('throws the reason of a refused upload', async () => {
+    vi.mocked(api).mockRejectedValue(new Error('The file is larger than 25 MB'));
+
+    await expect(uploadFile(new Blob(['x']), 'big.bin')).rejects.toThrow('The file is larger than 25 MB');
+  });
+
+  it('posts a plan chat message to the run, with upload ids only when there are some', async () => {
+    await sendPlanChat('a/b', 'split it', ['u1']);
+    await sendPlanChat('run-1', 'hello');
+
+    expect(vi.mocked(api).mock.calls).toEqual([
+      ['/runs/a%2Fb/plan-chat', { method: 'POST', body: JSON.stringify({ message: 'split it', attachments: ['u1'] }) }],
+      ['/runs/run-1/plan-chat', { method: 'POST', body: JSON.stringify({ message: 'hello' }) }],
+    ]);
+  });
+
   it('reads with GET paths and encodes the key once', async () => {
     await listRuns();
     await getFlow('a/b');
@@ -69,18 +100,13 @@ describe('endpoints', () => {
     ]);
   });
 
-  it('posts the body of createRun, sendAnswers, setRunProjects and replayStep as JSON', async () => {
+  it('posts the body of createRun, setRunProjects and replayStep as JSON', async () => {
     await createRun({ prompt: 'p', phases: ['requirements'], projects: ['x'] });
-    await sendAnswers('run-1', { answers: [{ kind: 'question', id: 'q1', body: 'yes' }] });
     await setRunProjects('run-1', 'docs');
     await replayStep('run-1', 'implement', { prompt: 'again', phases: ['implementation'] });
 
     expect(vi.mocked(api).mock.calls).toEqual([
       ['/runs', { method: 'POST', body: JSON.stringify({ prompt: 'p', phases: ['requirements'], projects: ['x'] }) }],
-      [
-        '/runs/run-1/answers',
-        { method: 'POST', body: JSON.stringify({ answers: [{ kind: 'question', id: 'q1', body: 'yes' }] }) },
-      ],
       ['/runs/run-1/projects', { method: 'POST', body: JSON.stringify({ name: 'docs' }) }],
       [
         '/runs/run-1/steps/implement/replay',

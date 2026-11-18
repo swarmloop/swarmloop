@@ -32,7 +32,8 @@ import { childrenByParent, listExtras } from './run-view/status';
 import { epicTotal } from '../steps/shared/epic-total';
 import { STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
-import { latest, metrics, phases, reason, returns, runName, sentence, withSkip } from './run-view/flow';
+import { latest, metrics, phases, returns, runName } from './run-view/flow';
+import { reason, sentence, withSkip } from './run-view/flow-waiting';
 import { belongsToVisit, documentView, interruptionOf, taskView, withReturnNotes } from './run-view/documents';
 import { mergeRequestViews } from './run-view/merge-requests';
 import { ARTIFACTS } from '../steps/contract/artifacts';
@@ -54,6 +55,10 @@ import { openItems } from '../steps/shared/open-items';
 import { requirementBodies, viewTitle } from './run-view/run-title';
 import { readHistory } from './run-queries-history';
 import { openSpend } from './run-queries-spend';
+import { parseSubtasks, SUBTASKS_KIND } from '../contract/subtask';
+import { conversationView } from './run-view/conversation';
+import { readPlanChat } from '../contract/plan-chat';
+import { PlannerTurns } from '../pipeline/planner-turns';
 import { RunReport } from '../steps/shared/run-report';
 export { requireRun } from './run-queries-run';
 
@@ -77,6 +82,7 @@ export class RunQueriesService {
     private readonly backlogs: BacklogRepository,
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly gate: ContainerGate = new ContainerGate(),
+    @Optional() private readonly turns?: PlannerTurns,
   ) {
     this.reviewers = new ReviewerSteps({
       runs,
@@ -153,6 +159,7 @@ export class RunQueriesService {
     const loops = await this.events.listLoops(run.id);
     const checkCommands = latestCommandViews(await this.checkCommands.list(run.id));
     const label = (await this.backlogs.labelsFor([run.key])).get(run.key);
+    const parent = await parentOf(this.runs, this.documents, run);
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
@@ -166,7 +173,7 @@ export class RunQueriesService {
       currentStep: run.currentStep,
       updatedAt: run.updatedAt,
       stepStartedAt: run.stepStartedAt,
-      ...(await parentOf(this.runs, this.documents, run)),
+      ...parent,
       ...(label ? { backlog: label } : {}),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
       ...(run.ownerSince ? { ownerSince: run.ownerSince } : {}),
@@ -186,6 +193,15 @@ export class RunQueriesService {
       ),
       ...epicTotal(shown, children, this.usdOf, this.clock.now()),
       ...state,
+      conversation: conversationView({
+        run,
+        split: parseSubtasks(latest(documents, SUBTASKS_KIND)).length > 0,
+        state: state.state,
+        parentKey: parent.parentKey,
+        items: open,
+        log: readPlanChat(latest(documents, ARTIFACTS.planChat.kind)),
+        replying: this.turns?.replying(run.key) ?? false,
+      }),
       sentence: withSkip(
         sentence(shown, open, documents, stats, maxReturns),
         shown.currentStep,

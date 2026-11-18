@@ -29,7 +29,7 @@ import { root } from '../history/run-paths';
 import { assertInsideWork, workRoots } from '../sandbox/allowed-path';
 import { flagError } from './flag-error';
 import { snapshotRun } from './worktree-snapshot';
-import { writeRunState } from '../history/run-state';
+import { deriveState, writeRunState } from '../history/run-state';
 import type { WorkspaceGuard } from './workspace-guard';
 import { workspaceBlock } from './workspace-guard';
 import type { DiskGuard } from './disk-guard';
@@ -37,6 +37,7 @@ import type { SubtaskPort } from './subtask-port';
 import type { LimitRelease } from '../steps/shared/limit-release';
 import { storedAnswerErrors } from '../steps/shared/stored-answer-errors';
 import type { ReportRefresh } from '../steps/shared/report-refresh';
+import type { PlannerTurns } from './planner-turns';
 
 const HOP_LIMIT = STEPS.length * 3;
 
@@ -55,6 +56,7 @@ export class RunDriver {
     private readonly subtasks?: SubtaskPort,
     private readonly limits?: LimitRelease,
     private readonly reportRefresh?: ReportRefresh,
+    private readonly turns?: PlannerTurns,
   ) {}
 
   async savedStep(
@@ -90,6 +92,7 @@ export class RunDriver {
     let manual = options.auto !== true;
     let result: PipelineResult = { exitCode: 0, message: `${key} started` };
     let ran = false;
+    const declined = new Set<string>();
     for (let hop = 0; hop < HOP_LIMIT; hop += 1) {
       if (this.runStop.halted(key)) {
         return { exitCode: ran ? 0 : 1, message: `${key} stopped` };
@@ -98,6 +101,14 @@ export class RunDriver {
       const blocked = await this.stopBefore(key, step);
       if (blocked) {
         return { exitCode: ran ? 0 : 1, message: blocked };
+      }
+      const amended = await this.takeTurn(key, declined);
+      if (amended) {
+        step = amended;
+        stepOptions = { auto: true };
+      } else if (await this.turns?.hasQuestion(key)) {
+        // The question waits for the planner, or for the person it was escalated to: nothing runs.
+        return result;
       }
       result = await this.execute(step, key, stepOptions);
       ran = true;
@@ -112,6 +123,11 @@ export class RunDriver {
       const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
       const stats = run ? await this.visits.listStats(run.id) : [];
       const env = this.config.env;
+      if (run && run.currentStep === step && asksPlanner(run)) {
+        // The next hop takes the question to the planner; the step goes on with its answer.
+        stepOptions = { auto: true };
+        continue;
+      }
       if (result.resume && run?.status === 'waiting' && run.currentStep === step) {
         stepOptions = { auto: true };
         continue;
@@ -144,6 +160,34 @@ export class RunDriver {
       stepOptions = { auto: true };
     }
     return result;
+  }
+
+  /**
+   * Between two steps, the planner takes what waits for it, one turn at a time in the order it came: a person's message,
+   * and the question of a step that waits for the answer. A plan a message changed goes to plan-improve, and the flow
+   * goes on from there as after any return. Otherwise the run goes on as it was.
+   */
+  private async takeTurn(key: string, declined: Set<string>): Promise<StepName | null> {
+    const run = await this.runs.findRun(key);
+    if (!run || !this.turns) return null;
+    for (let next = await this.turns.next(run, declined); next; next = await this.turns.next(run, declined)) {
+      if (next === 'question') {
+        await this.turns.answer(key, declined);
+        continue;
+      }
+      if (next === 'answer') {
+        await this.turns.settle(key, declined);
+        continue;
+      }
+      const outcome = await this.turns.take(key, () => this.execute('plan', key, { auto: true }), declined);
+      if (outcome === 'none') return null;
+      if (outcome === 'changed') {
+        const fresh = await this.runs.findRun(key);
+        if (fresh) await this.runs.release(fresh, { status: 'waiting', currentStep: 'plan-improve' });
+        return 'plan-improve';
+      }
+    }
+    return null;
   }
 
   async spendStop(key: string, step: StepName): Promise<string | null> {
@@ -299,6 +343,11 @@ export class RunDriver {
     if (unfit) return { exitCode: 1, message: unfit };
     return this.execute(name, key, options);
   }
+}
+
+/** The run waits with the reason that its step asked the planner. */
+function asksPlanner(run: RunEntity): boolean {
+  return run.status === 'waiting' && deriveState(run).reason?.code === REASON.asksPlanner;
 }
 
 function targetError(path: string | undefined): string | null {

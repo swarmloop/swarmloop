@@ -16,7 +16,8 @@ export const JUMPS: Partial<Record<StepName, readonly StepName[]>> = {
   implement: ['commit', 'checks', 'code-review'],
   'merge-request': ['done', 'code-review'],
   pipeline: ['code-review'],
-  'plan-improve': ['plan-improve'],
+  plan: ['branch'],
+  'plan-improve': ['plan', 'plan-improve'],
 };
 
 /** Throws when `step` ends with a return or a jump that the tables do not allow. */

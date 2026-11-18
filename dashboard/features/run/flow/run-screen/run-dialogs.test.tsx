@@ -64,6 +64,19 @@ describe('RunDialogs', () => {
     expect(props.startReplay).toHaveBeenCalledWith('implement', 'Try again', ['planning']);
   });
 
+  it('hands the pending upload ids to the replay', async () => {
+    const user = userEvent.setup({ delay: null });
+    const props = dialogs({
+      replay: 'implement',
+      runningElsewhere: true,
+      pending: { prompt: 'Try again', phases: ['planning'], attachments: ['u1'] },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Stop and start' }));
+
+    expect(props.startReplay).toHaveBeenCalledWith('implement', 'Try again', ['planning'], ['u1']);
+  });
+
   it('sends a failed replay to setError', async () => {
     const user = userEvent.setup({ delay: null });
     dialogs({

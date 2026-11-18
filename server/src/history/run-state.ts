@@ -101,6 +101,7 @@ function unfinishedState(
       stored.code === ERROR_CODES.HOST_UNAVAILABLE ||
       stored.code === ERROR_CODES.CI_NOT_STARTED ||
       stored.code === ERROR_CODES.DOCKER_UNAVAILABLE ||
+      stored.code === REASON.asksPlanner ||
       SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
   )
     return { state: 'waiting', reason: stored };

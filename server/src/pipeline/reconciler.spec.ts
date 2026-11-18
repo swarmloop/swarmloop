@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
+import { REASON } from '../contract/run-state';
+import { PlanChatStore } from '../history/plan-chat.store';
 import type { StepEvent } from '../contract/step-events';
 import { AppConfig } from '../config/env';
 import { attemptOutputPath } from '../core/attempt-output';
@@ -292,6 +294,40 @@ describe('reconciler waits and automatic tries', () => {
       await park(world, 'blocked', 'STOPPED');
 
       await world.app.get(Reconciler).resumeDiskLow();
+
+      expect(accepted).toEqual([]);
+    });
+  });
+
+  describe('resumeAskingPlanner', () => {
+    const question = {
+      key: 'ask-implement-1',
+      role: 'planner' as const,
+      kind: 'question' as const,
+      from: 'implement',
+      text: 'Which page size?',
+      at: '2026-01-01T00:00:00.000Z',
+      state: 'pending' as const,
+    };
+
+    it('resumes a run whose step still waits for the planner, once for each question', async () => {
+      const world = await boot();
+      await park(world, 'waiting', REASON.asksPlanner);
+      await world.app.get(PlanChatStore).appendEntry(KEY, question);
+
+      await world.app.get(Reconciler).resumeAskingPlanner();
+
+      expect(accepted).toEqual([['resume', KEY, {}, { idempotencyKey: 'planner-ask-implement-1' }]]);
+    });
+
+    it('leaves a run alone whose question the planner answered', async () => {
+      const world = await boot();
+      await park(world, 'waiting', REASON.asksPlanner);
+      const chat = world.app.get(PlanChatStore);
+      await chat.appendEntry(KEY, question);
+      await chat.markTaken(KEY, [question.key]);
+
+      await world.app.get(Reconciler).resumeAskingPlanner();
 
       expect(accepted).toEqual([]);
     });

@@ -1,8 +1,10 @@
-import type { ReactElement, ReactNode } from 'react';
+import { useContext, type ReactElement, type ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
+import { alpha } from '@mui/material/styles';
 import { requirementsView } from '@contract/requirements-view';
+import { PlanRevisionContext, markOf } from '../conversation/revision-marks';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
 
 function Section({ title, children }: { title: string; children: ReactNode }): ReactElement {
@@ -23,6 +25,7 @@ function Linked({ text, url }: { text: string; url?: string | null }): ReactElem
 /** The requirements document of a run for a person: the prompt, the tickets, the pages and files, and the plan as a checklist. */
 export function RequirementsDetail({ body }: { body: string }): ReactElement {
   const view = requirementsView(body);
+  const revision = useContext(PlanRevisionContext);
   if (!view) {
     return <MarkdownBody text={body} />;
   }
@@ -69,12 +72,26 @@ export function RequirementsDetail({ body }: { body: string }): ReactElement {
         <Section title={view.plan.name ? `Plan: ${view.plan.name}` : 'Plan'}>
           {view.plan.overview ? <MarkdownBody text={view.plan.overview} /> : null}
           <Box component="ul" aria-label="Plan checklist" sx={{ m: 0, pl: 2.5, listStyle: 'none' }}>
-            {view.plan.items.map((item) => (
-              <li key={item}>
-                <span aria-hidden>{'☐'} </span>
-                {item}
-              </li>
-            ))}
+            {view.plan.items.map((item) => {
+              const mark = markOf(revision, item);
+              return (
+                <Box
+                  component="li"
+                  key={item}
+                  sx={(theme) => ({
+                    ...(mark ? { bgcolor: alpha(theme.palette.primary.main, 0.1), borderRadius: 1, px: 0.5 } : {}),
+                  })}
+                >
+                  <span aria-hidden>{'☐'} </span>
+                  {item}
+                  {mark ? (
+                    <Typography component="span" variant="caption" color="primary" sx={{ ml: 1 }}>
+                      {mark === 'added' ? 'New in this plan' : 'Changed in this plan'}
+                    </Typography>
+                  ) : null}
+                </Box>
+              );
+            })}
           </Box>
         </Section>
       ) : null}

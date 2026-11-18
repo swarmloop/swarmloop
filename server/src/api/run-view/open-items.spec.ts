@@ -1,6 +1,6 @@
 import type { DocumentEntity, RunEntity } from '../../history/entities';
 import { renderQuestions } from '../../steps/research/research-record';
-import { resumeState, stateView } from './flow';
+import { resumeState, stateView } from './flow-waiting';
 import { openItems } from '../../steps/shared/open-items';
 
 describe('open questions of the run view', () => {
@@ -35,6 +35,19 @@ describe('open questions of the run view', () => {
     ]);
     expect(item).toMatchObject({ kind: 'question', id: 'Subtask a asks: which?', answer: '' });
     expect(items([doc('questions', '- from research\n')])).toEqual([]);
+  });
+
+  it('lists a question the planner escalated at implement with its parts, and not an old one without parts', () => {
+    const implementing = { currentStep: 'implement', status: 'waiting' } as RunEntity;
+    const line = 'implement asks: Which pagination? (asked t)';
+    const parts = { decide: 'Which pagination?', sides: [], full: '', askedAt: 't' };
+    const documents = [
+      doc('questions', `- from research\n- ${line}\n`),
+      doc('question_parts', JSON.stringify([{ question: line, parts }])),
+    ];
+    const items = openItems(implementing, documents, []);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: 'question', id: line, answer: '', parts });
   });
 
   it('lists the question of a code review waiting for the person, and is ready once it is answered', () => {

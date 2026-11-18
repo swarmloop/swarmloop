@@ -58,6 +58,9 @@ function schemaOf(hidden: string[]): Joi.ObjectSchema {
     });
 }
 
+/** The schema keys of a plan answer, which the planner's reply builds on. */
+export { keys as planKeys };
+
 const SPLIT_KEYS = ['contract', 'tasks', 'keep'];
 
 /** Every field of the plan result: the definition its stored kind is read with. */

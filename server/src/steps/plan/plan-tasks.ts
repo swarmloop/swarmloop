@@ -73,6 +73,62 @@ export function buildGraph(value: SplitFields): TaskGraph {
   return { contract: renderContract(value.contract), tasks, decisions: chainSharedFiles(tasks), keep: value.keep };
 }
 
+/** The graph a run stores: its tasks, the contract text and the kept capabilities. */
+export type StoredGraph = Pick<TaskGraph, 'contract' | 'tasks' | 'keep'>;
+
+/** The tasks the split pass opened a run for: they have a status, and it is not the `pending` a plan writes. */
+export function startedTasks(tasks: Subtask[]): Subtask[] {
+  return tasks.filter((task) => task.status && task.status !== 'pending');
+}
+
+/**
+ * The stored graph with the tasks, contract entries and keep lines of `added` appended. Stored tasks and their
+ * dependencies stay as they are; an added task that shares a file with another task depends on the earlier one.
+ * The merged graph is checked as a whole: the errors come back and no graph is built when it is not valid.
+ */
+export function withAddedTasks(
+  stored: StoredGraph,
+  added: SplitFields,
+  limits: TaskLimits,
+): { graph: TaskGraph | null; errors: string[] } {
+  const errors = taskErrors(
+    {
+      contract: [stored.contract, ...added.contract],
+      tasks: [...stored.tasks, ...added.tasks],
+      keep: [...stored.keep, ...added.keep],
+    },
+    limits,
+  );
+  if (errors.length > 0) {
+    return { graph: null, errors };
+  }
+  const built = buildGraph(added);
+  // The stored tasks are chained as copies: only the added tasks gain dependencies.
+  const copies = stored.tasks.map((task) => ({ ...task, depends: [...task.depends] }));
+  const decisions = [...built.decisions, ...chainSharedFiles([...copies, ...built.tasks])];
+  const contract = [stored.contract, built.contract].filter((part) => part.trim()).join('\n\n');
+  const graph = {
+    contract,
+    tasks: [...stored.tasks, ...built.tasks],
+    decisions,
+    keep: [...stored.keep, ...added.keep],
+  };
+  return { graph, errors };
+}
+
+/** The check of a reply that adds tasks to a stored graph: no error means the merged graph is valid. */
+export function addTasksCheck(stored: StoredGraph, limits: TaskLimits): (value: unknown) => string[] {
+  return (value) => {
+    const given = value as Partial<SplitFields> & { plan?: string[] };
+    const refused = given.plan?.length ? ['plan is not allowed: give only the tasks to add in `tasks`'] : [];
+    return [...refused, ...withAddedTasks(stored, completeSplit(given), unbounded(limits)).errors];
+  };
+}
+
+function completeSplit(value: Partial<SplitFields>): SplitFields {
+  return { contract: value.contract ?? [], tasks: value.tasks ?? [], keep: value.keep ?? [] };
+}
+
 /** The stored contract: one bullet per entry, the lines after the first indented two spaces. */
 export function renderContract(entries: string[]): string {
   return entries

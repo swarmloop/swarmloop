@@ -1,11 +1,11 @@
 import { agentFor } from '../../config/agents';
 import type { RunEntity } from '../../history/entities';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { AgentProfile, ArtifactValue, InputSpec, Route, StepInput, StepResult } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
 import { isEffort, raisesEffort, type Effort } from '../../contract/effort';
-import { isSubtask } from '../../contract/subtask';
+import { isSubtask, type Subtask } from '../../contract/subtask';
 import { clearEpic, markEpic } from '../../history/run-state';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
@@ -14,8 +14,10 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
+import { planAmended } from '../shared/amendment';
 import { projectRules } from '../shared/project-rules';
 import { AgentLauncher } from '../shared/agent-launcher';
+import { PlanChatStore } from '../../history/plan-chat.store';
 import { appendImpact, withHandoff, withImpact } from '../shared/handoff';
 import { PLAN_EXECUTION_RULE, skillPrompt } from '../shared/skill-prompt';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
@@ -45,6 +47,7 @@ import type { Requirement } from '../../contract/requirement-list';
 import { correctCoverage, gapLines, requirementsSection } from '../shared/coverage-correction';
 import { coverageOf, mergeRequirements, type CoverageUnit } from '../shared/requirement-coverage';
 import { improveUnits, mergedList } from './plan-improve-coverage';
+import { addedTasksErrors, keepStored } from './plan-improve-tasks';
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
@@ -78,7 +81,12 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.requirementCoverage,
   ];
 
-  constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
+  constructor(
+    kernel: StepKernel,
+    sandbox: SandboxService,
+    launcher: AgentLauncher,
+    @Optional() private readonly planChat?: PlanChatStore,
+  ) {
     super(kernel, sandbox, launcher);
   }
 
@@ -109,7 +117,11 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const continued = await resumableChat(root(this.config), key, 'plan-improve', runtime);
     const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
-    const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
+    // A plan amended after implement started may not split, as a subtask's plan may not.
+    const base = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
+    const limits = (await planAmended(this.documents, this.visits, ctx.opened.run))
+      ? { ...base, maySplit: false }
+      : base;
     const maySplit = limits.maySplit;
     const tasks = maySplit ? ((await ctx.reread(ARTIFACTS.subtasks)) ?? []) : [];
     const contract = tasks.length > 0 ? ((await ctx.reread(ARTIFACTS.contract)) ?? '') : '';
@@ -157,7 +169,7 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
         ? appendImpact(planImproveFollowUp(resultPromptFor(asked, received)), impact)
         : fullFor(runtime, received, Boolean(continued?.chatId));
     const check = (raw: unknown): string[] =>
-      improveErrors(completePlanImprove(raw as Partial<PlanImproveResult>), limits, list);
+      improveErrors(completePlanImprove(raw as Partial<PlanImproveResult>), limits, list, { tasks, contract });
     const agentResult = await ctx.launch({
       prompt: finish(chosen),
       briefFor: (other) => finish(fullFor(other, null)),
@@ -185,15 +197,16 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       : null;
     const value = coverage?.value ?? answered;
     // A split answer is written back as tasks. A plan answer turns a split back into one plan, and an empty one keeps it.
-    const graph = isSplit(value) ? buildGraph(value) : null;
+    const graph = isSplit(value) ? keepStored(tasks, buildGraph(value)) : null;
     const items = graph ? planItemsFromTasks(graph.tasks) : value.plan;
     const next = { ...plan, items: items.length > 0 ? items : plan.items, decision: 'approve' as const };
+    const route = this.epicRoute(
+      ctx.opened.run,
+      !!graph,
+      (agentResult.agent ?? this.profile(this.config.env, ctx.opened.run)).effort,
+    );
     return {
-      route: this.epicRoute(
-        ctx.opened.run,
-        !!graph,
-        (agentResult.agent ?? this.profile(this.config.env, ctx.opened.run)).effort,
-      ),
+      route: await this.takingMessage(route, ctx.opened.run),
       summary: `${ctx.opened.startedAt} plan-improve done\n${next.items.join('\n')}`,
       outputs: [
         { artifact: ARTIFACTS.requirements, value: withPlan(requirements, next) },
@@ -204,6 +217,18 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
       handoff:
         [renderSummary(value.summary, next.items).trimEnd(), ...gapLines(coverage?.problems ?? [])].join('\n') + '\n',
     };
+  }
+
+  /**
+   * A plan that checked ok while a person's message waits goes back to the plan step, whose next visit takes it. The
+   * plan step takes it in its own chat, so a run without that chat goes on and the message waits.
+   */
+  private async takingMessage(route: Route, run: RunEntity): Promise<Route> {
+    if (route.to !== 'next' || ((await this.planChat?.pending(run.key))?.length ?? 0) === 0) return route;
+    const { runtime } = agentFor(this.config.env, run, 'plan');
+    return (await resumableChat(root(this.config), run.key, 'plan', runtime))?.chatId
+      ? { to: 'jump', step: 'plan' }
+      : route;
   }
 
   /**
@@ -225,9 +250,15 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
   }
 }
 
-/** What the server checks on a plan-improve answer after its schema: the split. */
-function improveErrors(value: PlanImproveResult, limits: TaskLimits, list: Requirement[] | null | undefined): string[] {
+/** What the server checks on a plan-improve answer after its schema: started tasks stay, the split, the list. */
+function improveErrors(
+  value: PlanImproveResult,
+  limits: TaskLimits,
+  list: Requirement[] | null | undefined,
+  stored: { tasks: Subtask[]; contract: string },
+): string[] {
   return [
+    ...addedTasksErrors(stored.tasks, stored.contract, value),
     ...(isSplit(value) ? taskErrors(value, limits) : []),
     ...(list ? mergeRequirements(list, value.requirements ?? []).problems : []),
   ];

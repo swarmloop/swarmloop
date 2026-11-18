@@ -331,4 +331,32 @@ describe('TaskLayers', () => {
     expect(inList).toEqual(['Task C', 'Task A', 'Task B']);
     expect(titles()).toEqual(inList);
   });
+
+  it('marks the tasks the latest plan change added or changed', () => {
+    const revision = {
+      version: 2,
+      reason: 'You asked for more',
+      summary: 'Two tasks',
+      added: ['Title t2'],
+      changed: ['Title t3'],
+      dropped: [],
+      at: '2026-11-15T07:11:43.444Z',
+    };
+    render(
+      <TaskLayers
+        tasks={[
+          task('t1', { status: 'blocked' }),
+          task('t2', { status: 'blocked' }),
+          task('t3', { status: 'blocked' }),
+        ]}
+        revision={revision}
+        onSkip={vi.fn()}
+      />,
+    );
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows[0]).not.toHaveTextContent('in this plan');
+    expect(rows[1]).toHaveTextContent('New in this plan');
+    expect(rows[2]).toHaveTextContent('Changed in this plan');
+  });
 });

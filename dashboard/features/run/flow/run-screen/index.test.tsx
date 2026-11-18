@@ -1,8 +1,17 @@
 import type { ReactNode } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { mediaWidth } from '../../../../test/viewport';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getFlow, getStep, getStepEvents, listProjects, listRemote, skipTask } from '../../../../lib/endpoints';
+import {
+  getFlow,
+  getStep,
+  getStepEvents,
+  listProjects,
+  listRemote,
+  skipTask,
+  getSession,
+} from '../../../../lib/endpoints';
 import { LiveBridgeProvider } from '../../../shell';
 import { QueryWrapper } from '../../../../test/query-wrapper';
 import { flowView, stepView, visitView } from '../../../../test/fixtures';
@@ -17,7 +26,7 @@ vi.mock('../../../../lib/endpoints', () => ({
   listRemote: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
-  sendAnswers: vi.fn(),
+  getSession: vi.fn(),
   resumeRun: vi.fn(),
   stopRun: vi.fn(),
   rebaseRun: vi.fn(),
@@ -36,6 +45,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
+  vi.mocked(getSession).mockResolvedValue({ user: 'alice' });
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'done' }));
   vi.mocked(getStep).mockResolvedValue(stepView());
@@ -117,6 +127,19 @@ describe('RunScreen', () => {
     expect(region).toHaveTextContent('Add the column');
     expect(region).not.toHaveTextContent('b.spec.ts');
     expect(within(region).getAllByRole('button', { name: 'Plan' })).toHaveLength(2);
+  });
+
+  it('keeps the Tasks section drawn once while the plan step is open, also while its window loads', async () => {
+    const tasks = [
+      { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'blocked' as const },
+    ];
+    vi.mocked(getStep).mockReturnValue(new Promise(() => {}));
+    vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'running', currentStep: 'plan', tasks }));
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    expect(await screen.findByRole('region', { name: 'Tasks' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('Loading the step')).toBeInTheDocument();
+    expect(screen.getAllByRole('region', { name: 'Tasks' })).toHaveLength(1);
   });
 
   it('shows the status line and each task status, and skips a blocked task', async () => {
@@ -315,5 +338,43 @@ describe('RunScreen', () => {
 
     await screen.findByRole('heading', { name: 'Run one' });
     expect(document.title).toBe('Run one · swarmloop');
+  });
+});
+
+describe('RunScreen conversation column', () => {
+  mediaWidth(1280);
+
+  it('stays under the flow board and next to the page of the run, on the summary and on a selected step', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    const board = await screen.findByRole('button', { name: /^implement/ });
+    const column = screen.getByRole('complementary', { name: 'Conversation' });
+
+    expect(board.compareDocumentPosition(column) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(board);
+    expect(await screen.findByRole('complementary', { name: 'Conversation' })).toBe(column);
+  });
+
+  it('asks nothing through an answer form: a question is answered in the message box', async () => {
+    vi.mocked(getFlow).mockResolvedValue(
+      flowView({
+        status: 'waiting',
+        state: 'waiting',
+        resume: 'need-answers',
+        items: [{ kind: 'question', id: 'q1', label: 'Which database?', answer: '' }],
+        conversation: {
+          composer: 'plan',
+          replying: false,
+          entries: [],
+          revisions: [],
+          questions: [{ kind: 'question', id: 'q1', text: 'Which database?', answer: '' }],
+        },
+      }),
+    );
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+
+    expect(await screen.findByText('Question for you')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
   });
 });
