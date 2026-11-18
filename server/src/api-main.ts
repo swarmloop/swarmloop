@@ -5,6 +5,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { assertAgents } from './config/agents';
 import { AppConfig } from './config/env';
 import { applySettings, assertSettings, readSettings } from './config/load-env';
+import { RequestTiming } from './api/request-timing';
 import { secureHttp } from './api/request-guard';
 import { Clock } from './core/clock';
 import { warmRuntimeModelLists } from './pipeline/model-lists.bootstrap';
@@ -42,6 +43,7 @@ async function bootstrap(): Promise<void> {
       fail(refusal);
       return;
     }
+    app.use(app.get(RequestTiming).middleware());
     secureHttp(app, env.SWARMLOOP_PUBLIC_URL);
     app.enableShutdownHooks();
     app.enableCors({ origin: allowedOrigins(env.SWARMLOOP_PUBLIC_URL), credentials: true });

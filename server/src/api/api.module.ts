@@ -32,6 +32,7 @@ import { RunCommandsService } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { RunRebaseService } from './run-rebase.service';
+import { RequestTiming } from './request-timing';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { RunRebaseService } from './run-rebase.service';
     SettingsService,
     CommandHandlers,
     LiveGateway,
+    RequestTiming,
   ],
 })
 export class ApiModule {}
