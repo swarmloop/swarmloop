@@ -8,6 +8,7 @@ import { ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/run-state';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunStop } from '../agent/run-stop';
+import { markedInterval } from '../core/entered-marks';
 import { Clock } from '../core/clock';
 import { failedAttemptLaunches, loopMark } from '../core/pipeline-result';
 import { AwakeTime } from '../core/awake-time';
@@ -86,8 +87,7 @@ export class Reconciler implements OnModuleDestroy {
   schedule(): void {
     this.stop();
     this.awake = new AwakeTime(this.clock, this.config.env.RECONCILE_MS);
-    this.timer = setInterval(() => this.tickOnce(), this.config.env.RECONCILE_MS);
-    this.timer.unref();
+    this.timer = markedInterval('reconciler pass', () => this.tickOnce(), this.config.env.RECONCILE_MS);
   }
 
   /** Stops the timer and waits for the pass that runs, so nothing reads the database after it closes. */

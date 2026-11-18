@@ -1,4 +1,5 @@
 import type { StepEvent } from '../contract/step-events';
+import { enteredBefore } from './entered-marks';
 import { FakeClock } from './fake-clock.spec-helpers';
 import { recordStepEvent, runInStepScope, startCommandSpan } from './step-event-scope';
 
@@ -22,6 +23,11 @@ describe('step event scope', () => {
     expect(() =>
       startCommandSpan({ actor: 'server', repo: '', cwd: '/', executable: 'git', args: [] })({ exitCode: 0 }),
     ).not.toThrow();
+  });
+
+  it('marks the step it runs as the last entered callback', async () => {
+    await runInStepScope(scope(8, []), 0, () => Promise.resolve());
+    expect(enteredBefore(Date.now())).toBe('step commit');
   });
 
   it('numbers the events of a scope after the last one and stamps the scope on them', async () => {

@@ -53,6 +53,14 @@ describe('StatsSection', () => {
     expect(tip).toHaveTextContent('1failed');
   });
 
+  it('shows the server stalls per day with their kinds in words, in the section named statistics', async () => {
+    renderSection();
+    await screen.findByLabelText('Runs: 4');
+    expect(screen.getByRole('region', { name: 'Statistics' })).toHaveAttribute('id', 'statistics');
+    expect(screen.getByText('Server stalls per day')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mon, Nov 9: 2 server blocked, 1 machine paused')).toBeInTheDocument();
+  });
+
   it('groups the spend by model on request', async () => {
     renderSection();
     const money = await screen.findByRole('region', { name: 'Where the money goes' });

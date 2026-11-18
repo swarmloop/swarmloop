@@ -1,5 +1,5 @@
 export type ReadinessId =
-  'docker' | 'arch' | 'images' | 'disk' | 'paths' | 'ports' | 'model-credential' | 'code-host-token';
+  'docker' | 'arch' | 'images' | 'disk' | 'paths' | 'ports' | 'model-credential' | 'code-host-token' | 'stalls';
 
 export interface ReadinessItem {
   id: ReadinessId;

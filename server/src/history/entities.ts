@@ -11,6 +11,7 @@ import { CredentialCooldownEntity } from './credential-cooldown.entity';
 import { PersonEntity, PersonalTokenEntity } from './people-entities';
 import { RunEntity } from './run.entity';
 import { FlakyTestEntity } from './flaky-test.entity';
+import { ServerStallEntity, SlowRequestEntity } from './server-stall.entities';
 import { SessionEntity } from './session.entity';
 import { StepStatEntity } from './step-stat.entity';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
@@ -356,4 +357,6 @@ export const entities = [
   BacklogEventEntity,
   PersonEntity,
   PersonalTokenEntity,
+  ServerStallEntity,
+  SlowRequestEntity,
 ];

@@ -3,6 +3,7 @@ import { createWriteStream, mkdirSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { SAMPLE_MS } from '../core/awake-time';
 import type { Clock } from '../core/clock';
+import { markedInterval } from '../core/entered-marks';
 import { markedTail, runLogPath } from '../core/run-logs';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { startCommandSpan } from '../core/step-event-scope';
@@ -131,7 +132,7 @@ export async function runShell(
         project: { ...launch, shell: command },
         resultLost: true,
       },
-      { onPaused },
+      { onPaused, work: phase === 'setup' ? 'setup' : 'check' },
     )
     .catch(async (error: unknown) => {
       finish({ exitCode: null });
@@ -151,8 +152,7 @@ export async function runShell(
     },
   );
   take();
-  const sampler = setInterval(take, SAMPLE_MS);
-  sampler.unref();
+  const sampler = markedInterval('check sample', take, SAMPLE_MS);
   let partial = '';
   const read = (chunk: Buffer) => {
     const text = partial + chunk.toString('utf8');

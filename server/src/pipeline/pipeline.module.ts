@@ -56,6 +56,7 @@ import { BacklogTaskActions } from './backlog/backlog-task-actions';
 import { BacklogQueries } from './backlog/backlog-queries';
 import { BacklogEvents } from './backlog/backlog-events';
 import { BacklogMerge } from './backlog/backlog-merge';
+import { ServerStallWatch } from './server-stalls/server-stall-watch';
 import { BacklogScheduler } from './backlog/backlog-scheduler';
 import { BacklogStartPort } from './backlog/backlog-start-port';
 import { StallWatch } from './stall-watch';
@@ -123,6 +124,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BacklogEvents,
     BacklogMerge,
     BacklogScheduler,
+    ServerStallWatch,
     BacklogStartPort,
     RunSettler,
     RunRebase,

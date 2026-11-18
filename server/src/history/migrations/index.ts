@@ -4,6 +4,7 @@ import { DropUnusedData1796100000000 } from './1796100000000-drop-unused-data';
 import { Backlogs1796200000000 } from './1796200000000-backlogs';
 import { RunTitle1796200000000 } from './1796200000000-run-title';
 import { PeopleAndTokens1796300000000 } from './1796300000000-people-and-tokens';
+import { ServerStalls1796400000000 } from './1796400000000-server-stalls';
 import { AgentEffort1795900000000 } from './1795900000000-agent-effort';
 import { InterruptedCheckRows1795900000000 } from './1795900000000-interrupted-check-rows';
 import { InitialSchema1793664000000 } from './1793664000000-initial-schema';
@@ -75,4 +76,5 @@ export const migrations = [
   Backlogs1796200000000,
   RunTitle1796200000000,
   PeopleAndTokens1796300000000,
+  ServerStalls1796400000000,
 ];

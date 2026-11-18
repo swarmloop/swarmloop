@@ -58,7 +58,47 @@ describe('sandbox launch', () => {
   describe('machine limits', () => {
     it('gives every container a lower CPU weight than the default', () => {
       const args = sandboxArgs(launch(), home, '');
-      expect(args[args.indexOf('--cpu-shares') + 1]).toBe('512');
+      expect(args[args.indexOf('--cpu-shares') + 1]).toBe('256');
+    });
+
+    it('gives agent, check command and setup launches the same lower CPU weight', () => {
+      const project = {
+        image: 'swarmloop-env-demo:0123456789ab',
+        cliVolume: 'swarmloop-cli-claude-0123456789ab',
+        path: '/usr/local/bin:/usr/bin:/bin',
+        certFile: true,
+        caches: [],
+        shell: 'npm test',
+      };
+      const launches = [
+        launch(),
+        launch({ step: 'checks', runtime: 'claude', command: [], project }),
+        launch({
+          step: 'setup',
+          runtime: 'claude',
+          command: [],
+          allowHosts: ['pub.dev'],
+          project: { ...project, shell: 'npm ci' },
+          manifestHosts: { hosts: ['pub.dev'], origins: [] },
+        }),
+      ];
+      for (const item of launches) {
+        const args = sandboxArgs(item, home, '');
+        expect(args[args.indexOf('--cpu-shares') + 1]).toBe('256');
+      }
+    });
+
+    it('leaves the server and dashboard services at the default CPU weight', () => {
+      const root = join(__dirname, '..', '..', '..');
+      for (const file of ['compose.yml', 'compose.override.yml']) {
+        const services = readFileSync(join(root, file), 'utf8').split(/^services:\n/m)[1] ?? '';
+        const blocks = services.split(/^(?= {2}[\w-]+:\s*$)/m);
+        for (const name of ['server', 'dashboard']) {
+          const block = blocks.find((item) => item.startsWith(`  ${name}:`)) ?? '';
+          if (file === 'compose.yml') expect(block).not.toBe('');
+          expect(block).not.toMatch(/^\s+(cpu_shares|cpus):/m);
+        }
+      }
     });
 
     it('caps the memory only when a cap is given', () => {

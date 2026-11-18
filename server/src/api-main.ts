@@ -5,10 +5,12 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { assertAgents } from './config/agents';
 import { AppConfig } from './config/env';
 import { applySettings, assertSettings, readSettings } from './config/load-env';
+import { RequestTiming } from './api/request-timing';
 import { secureHttp } from './api/request-guard';
 import { Clock } from './core/clock';
 import { warmRuntimeModelLists } from './pipeline/model-lists.bootstrap';
 import { Housekeeping } from './pipeline/housekeeping';
+import { ServerStallWatch } from './pipeline/server-stalls/server-stall-watch';
 import { BacklogScheduler } from './pipeline/backlog/backlog-scheduler';
 import { Reconciler } from './pipeline/reconciler';
 import { WalCheckpoint } from './history/wal-checkpoint';
@@ -43,6 +45,7 @@ async function bootstrap(): Promise<void> {
       fail(refusal);
       return;
     }
+    app.use(app.get(RequestTiming).middleware());
     secureHttp(app, env.SWARMLOOP_PUBLIC_URL);
     app.enableShutdownHooks();
     app.enableCors({ origin: allowedOrigins(env.SWARMLOOP_PUBLIC_URL), credentials: true });
@@ -56,6 +59,7 @@ async function bootstrap(): Promise<void> {
     app.get(Reconciler).schedule();
     app.get(BacklogScheduler).schedule();
     app.get(WalCheckpoint).schedule();
+    await app.get(ServerStallWatch).start();
   } catch (error) {
     fail(error);
   }

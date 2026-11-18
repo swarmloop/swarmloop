@@ -58,6 +58,45 @@ describe('ReadinessPanel', () => {
     );
   });
 
+  it("shows Docker's CPUs and memory on its tile", async () => {
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [{ id: 'docker', status: 'ok', line: '8 CPUs · 15.6 GB', action: 'nothing to do' }],
+      checkedAt: CHECKED_AT,
+    });
+    renderPanel();
+    expect(await screen.findByLabelText(/^Docker: ready/)).toHaveTextContent('8 CPUs · 15.6 GB');
+  });
+
+  it('shows the stall alert with its count, total and kind and a link to Statistics', async () => {
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [
+        {
+          id: 'stalls',
+          status: 'warn',
+          line: 'The server stalled 2 times in the last hour, 32 s in all (server blocked)',
+          action: 'give Docker more CPUs or memory',
+          link: '/#statistics',
+        },
+      ],
+      checkedAt: CHECKED_AT,
+    });
+    renderPanel();
+    expect(
+      await screen.findByText(/The server stalled 2 times in the last hour, 32 s in all \(server blocked\)/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Statistics' })).toHaveAttribute('href', '/#statistics');
+  });
+
+  it('shows no stall alert without the item', async () => {
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
+      checkedAt: CHECKED_AT,
+    });
+    renderPanel();
+    await screen.findByText('Ready to run');
+    expect(screen.queryByText(/The server stalled/)).not.toBeInTheDocument();
+  });
+
   it("lists the four parts of swarmloop's own disk use with sizes on the Disk tile", async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [

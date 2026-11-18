@@ -43,7 +43,7 @@ describe('SandboxService memory cap', () => {
 
   /** 3 GB with a reserve of 1 GB: small enough that a queue would hold work back. */
   function service(
-    info: (args: string[]) => Promise<string> | string = () => `${3 * GB}`,
+    info: (args: string[]) => Promise<string> | string = () => `4 ${3 * GB}`,
     spawnFails = false,
   ): SandboxService {
     const sandbox = new SandboxService(new AppConfig(testEnv({ RESERVE_MEMORY_GB: 1 })));
@@ -99,7 +99,7 @@ describe('SandboxService memory cap', () => {
     expect(runs).toHaveLength(2);
     for (const args of runs) {
       expect(args[args.indexOf('--memory') + 1]).toBe(`${2 * GB}b`);
-      expect(args[args.indexOf('--cpu-shares') + 1]).toBe('512');
+      expect(args[args.indexOf('--cpu-shares') + 1]).toBe('256');
     }
     expect(agent.memoryCapBytes).toBe(2 * GB);
     expect(check.memoryCapBytes).toBe(2 * GB);
@@ -116,9 +116,65 @@ describe('SandboxService memory cap', () => {
     let answer: string | Error = new Error('down');
     const sandbox = service(() => (answer instanceof Error ? Promise.reject(answer) : answer));
     await sandbox.spawn(launch('plan'));
-    answer = `${5 * GB}`;
+    answer = `4 ${5 * GB}`;
     const later = await sandbox.spawn(launch('review'));
     expect(later.memoryCapBytes).toBe(4 * GB);
+  });
+
+  it('keeps what docker said of its CPUs and memory, and asks again after a failure', async () => {
+    let answer: string | Error = new Error('down');
+    const sandbox = service(() => (answer instanceof Error ? Promise.reject(answer) : answer));
+    expect(sandbox.knownMachine()).toBeUndefined();
+    expect(await sandbox.machine()).toBeUndefined();
+    expect(sandbox.knownMachine()).toBeUndefined();
+    answer = `8 ${16 * GB}`;
+    expect(await sandbox.machine()).toEqual({ cpus: 8, memoryBytes: 16 * GB });
+    answer = new Error('down again');
+    expect(await sandbox.machine()).toEqual({ cpus: 8, memoryBytes: 16 * GB });
+    expect(sandbox.knownMachine()).toEqual({ cpus: 8, memoryBytes: 16 * GB });
+  });
+
+  it('takes the memory cap from the kept machine', async () => {
+    const sandbox = service(() => `8 ${16 * GB}`);
+    await sandbox.machine();
+    const child = await sandbox.spawn(launch('plan'));
+    expect(child.memoryCapBytes).toBe(15 * GB);
+  });
+
+  it('counts the work that runs and its last sample until it closes', async () => {
+    const sandbox = service();
+    let sampled = '';
+    sandbox.useDocker(async (args) => {
+      if (args[0] === 'info') {
+        return `4 ${3 * GB}`;
+      }
+      if (args[0] === 'stats' && args[args.length - 1] === sampled) {
+        return '50.0% 100MiB / 3GiB';
+      }
+      throw new Error('no answer');
+    });
+    const held = { onPaused: () => undefined };
+    const agent = await sandbox.spawn(launch('plan', { attemptId: 'a' }), {
+      ...held,
+      agent: { step: 'plan', onWait: () => undefined },
+    });
+    const check = await sandbox.spawn(launch('checks-0', { command: [], project: projectLaunch }), {
+      ...held,
+      work: 'check',
+    });
+    const setup = await sandbox.spawn(launch('setup', { command: [], project: projectLaunch }), {
+      ...held,
+      work: 'setup',
+    });
+    await sandbox.spawn(launch('free'));
+    expect(sandbox.work.load()).toMatchObject({ agents: 1, checks: 1, setups: 1 });
+    sampled = agent.containerName;
+    await sandbox.stats(agent.containerName);
+    await sandbox.stats(check.containerName);
+    expect(sandbox.work.load()).toMatchObject({ cpuPercent: 50, memoryBytes: 100 * 1024 ** 2 });
+    check.emit('close');
+    setup.emit('error');
+    expect(sandbox.work.load()).toMatchObject({ agents: 1, checks: 0, setups: 0 });
   });
 
   it('releases nothing and leaves nothing behind when the spawn throws', async () => {
@@ -144,7 +200,7 @@ describe('SandboxService memory cap', () => {
       const dockerCalls: string[][] = [];
       sandbox.useDocker(async (args) => {
         dockerCalls.push(args);
-        return args[0] === 'info' ? `${3 * GB}` : '';
+        return args[0] === 'info' ? `4 ${3 * GB}` : '';
       });
       sandbox.spawnDocker = (args) => {
         runs.push(args);
@@ -230,7 +286,7 @@ describe('SandboxService memory cap', () => {
       sandbox.spawnDocker = () => {
         throw new Error('docker run failed');
       };
-      answer(`${3 * GB}`);
+      answer(`4 ${3 * GB}`);
       await expect(starting).rejects.toThrow('docker run failed');
       expect(gate.running()).toBe(0);
     });
