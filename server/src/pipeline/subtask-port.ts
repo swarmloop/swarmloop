@@ -10,8 +10,9 @@ import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { deriveState, writeRunState } from '../history/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
-import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND, type Subtask } from '../contract/subtask';
+import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND, withStatuses, type Subtask } from '../contract/subtask';
 import { SubtaskOps, type RebaseEvent, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
+import { disagrees } from '../steps/shared/subtask-status';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
@@ -212,8 +213,8 @@ export class SubtaskPort extends SubtaskOps {
     }
   }
 
-  override async fastForward(parent: RunEntity): Promise<void> {
-    await this.worktrees.fastForward(parent, await this.reposOf(parent), await this.branchOf(parent));
+  override async fastForward(parent: RunEntity): Promise<string | null> {
+    return this.worktrees.fastForward(parent, await this.reposOf(parent), await this.branchOf(parent));
   }
 
   override async rebase(run: RunEntity, event?: RebaseEvent): Promise<boolean> {
@@ -354,9 +355,19 @@ export class SubtaskPort extends SubtaskOps {
 
   /** True when the subtasks are not as the last pass saw them, or when no pass recorded them yet. */
   async subtasksChanged(parent: RunEntity): Promise<boolean> {
-    return (
-      parent.subtaskFingerprint === null || parent.subtaskFingerprint !== (await this.runs.subtaskFingerprint(parent))
-    );
+    if (parent.subtaskFingerprint === null) return true;
+    if (parent.subtaskFingerprint !== (await this.runs.subtaskFingerprint(parent))) return true;
+    return this.disagreeing(parent);
+  }
+
+  /** True when a task of the `subtasks` document has another status than its run gives, whatever the fingerprint says. */
+  private async disagreeing(parent: RunEntity): Promise<boolean> {
+    const tasks = withStatuses(parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND)));
+    for (const task of tasks) {
+      const child = settled(task) ? null : await this.runs.findSubtask(parent, task.id);
+      if (child && disagrees(task, child)) return true;
+    }
+    return false;
   }
 
   /** A split parent in implement with subtask runs: a pass that already runs, or is queued, is enough for a resume. */

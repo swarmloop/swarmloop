@@ -21,6 +21,7 @@ import { openQuestions } from '../shared/answers';
 import { keepOpen, type StoredQuestion } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
 import type { SubtaskOps } from '../shared/subtask-ops';
+import { mergedOf, taskStatusOf } from '../shared/subtask-status';
 import type { StepContext } from '../base-step';
 import type { InputReader } from '../contract/input-reader';
 import type { StepResult } from '../contract/step-contract';
@@ -77,7 +78,8 @@ export class SplitPass {
     const storedParts = (await ctx.reread(ARTIFACTS.questionParts)) ?? [];
     const parts = keepOpen(storedParts, carried, asks);
     const followed = await this.refresh(run, needed.tasks);
-    const { tasks: merged, refusal, unfetched } = await this.deps.merges.run(run, followed);
+    const { tasks: merged, refusal, unfetched, unmoved: mergeNote } = await this.deps.merges.run(run, followed.tasks);
+    const unmoved = [followed.unmoved, mergeNote].filter(Boolean).join('; ') || null;
     const tasks = await this.explain(run, await this.start(run, merged));
     const outputs: StepResult['outputs'] = [
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
@@ -87,7 +89,16 @@ export class SplitPass {
         ? []
         : [{ artifact: ARTIFACTS.questionParts, value: parts }]),
     ];
-    return this.route(ctx, tasks, open, outputs, { refusal, unfetched });
+    const result = await this.route(ctx, tasks, open, outputs, { refusal, unfetched });
+    return unmoved ? this.withUnmoved(result, unmoved) : result;
+  }
+
+  /** The note of a worktree that kept its commits goes into the summary, and into the reason of a wait or a block. */
+  private withUnmoved(result: StepResult, unmoved: string): StepResult {
+    const { route } = result;
+    const noted =
+      route.to === 'wait' || route.to === 'block' ? { ...route, reason: `${route.reason}; ${unmoved}` } : route;
+    return { ...result, route: noted, summary: `${result.summary}; ${unmoved}` };
   }
 
   /** What the parent does after the pass: wait with the reason, block, or finish when every task is settled. */
@@ -178,12 +189,16 @@ export class SplitPass {
   }
 
   /** Every task has a run, and its status follows that run. A settled task keeps the status it has. */
-  private async refresh(parent: RunEntity, tasks: Subtask[]): Promise<Subtask[]> {
+  private async refresh(parent: RunEntity, tasks: Subtask[]): Promise<{ tasks: Subtask[]; unmoved: string | null }> {
     const refreshed: Subtask[] = [];
+    let taken = false;
     for (const task of tasks) {
-      refreshed.push(settled(task) ? task : await this.follow(parent, task));
+      const followed = settled(task) ? task : await this.follow(parent, task);
+      // A task an earlier pass merged and recorded never reaches the merge queue, so the worktree of the parent follows here.
+      taken ||= !settled(task) && followed.status === 'merged';
+      refreshed.push(followed);
     }
-    return refreshed;
+    return { tasks: refreshed, unmoved: taken ? await this.deps.subtasks.fastForward(parent) : null };
   }
 
   private async follow(parent: RunEntity, task: Subtask): Promise<Subtask> {
@@ -195,17 +210,11 @@ export class SplitPass {
     }
     const delivered = child.status === 'done' ? await this.deps.subtasks.deliveredNote(child) : null;
     if (delivered) return { ...task, status: 'skipped', note: delivered };
-    const status = this.statusOf(task, child, state);
+    const status = taskStatusOf(task, child);
+    if (status === 'merged') return { ...task, status, merged: mergedOf(child), note: undefined };
     const rebased = status !== 'green' && task.note?.startsWith(REBASED_PREFIX) ? task.note : undefined;
     const note = status === 'green' && (await this.deps.subtasks.withoutCi(child)) ? NO_CI_NOTE : rebased;
     return { ...task, status, note };
-  }
-
-  statusOf(task: Subtask, child: RunEntity, state: string): Subtask['status'] {
-    if (child.status === 'done') return 'green';
-    if (state === 'blocked' || state === 'failed') return 'blocked';
-    const launched = child.status !== 'waiting' || child.currentStep !== 'requirements';
-    return task.status === 'running' || launched ? 'running' : 'waiting';
   }
 
   /** The tasks that may run at once. A task that waits for a sibling holds no slot, or the sibling could never start. */

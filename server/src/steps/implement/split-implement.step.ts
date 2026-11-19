@@ -5,6 +5,7 @@ import type { RunEntity } from '../../history/entities';
 import { readyTasks, settled, withStatuses } from '../../contract/subtask';
 import type { StepName } from '../../contract/steps';
 import { SubtaskOps } from '../shared/subtask-ops';
+import { taskStatusOf } from '../shared/subtask-status';
 import { SplitMerge } from './split-merge';
 import { SplitNeeds } from './split-needs';
 import { SplitPass } from './split-pass';
@@ -87,7 +88,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       if (!child) return false;
       children.push(child);
       const { state } = deriveState(child);
-      const changed = state === 'stopped' || this.pass.statusOf(task, child, state) !== task.status;
+      const changed = state === 'stopped' || taskStatusOf(task, child) !== task.status;
       if (changed || task.status === 'green' || (await this.subtasks.asking(child))) return false;
     }
     if (earliestRetry(children) !== (deriveState(parent).reason?.retryAt ?? null)) return false;

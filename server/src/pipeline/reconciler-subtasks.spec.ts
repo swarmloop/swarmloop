@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 import { ERROR_CODES } from '../contract/error-codes';
+import type { Subtask } from '../contract/subtask';
+import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { createTestApp } from '../testing/test-app';
@@ -19,6 +21,16 @@ import { Reconciler } from './reconciler';
 import { SubtaskPort } from './subtask-port';
 
 const KEY = 'PROJ-500';
+
+const greenTask: Subtask = {
+  id: 'a',
+  title: 'Task a',
+  description: 'Do a.',
+  depends: [],
+  files: [],
+  proof: 'a.spec.ts',
+  status: 'green',
+};
 
 /** A split parent that waits for one running subtask, with the fingerprint of its last pass recorded or not. */
 async function waitingParent(app: TestApp, recorded: boolean, blocked = false) {
@@ -81,6 +93,23 @@ describe('reconciler and the subtasks of a parent', () => {
 
   it('resumes a parent with no fingerprint', async () => {
     await waitingParent(app, false);
+
+    await ticks(1);
+
+    expect(resumed).toEqual([KEY]);
+  });
+
+  it('resumes a parent whose subtasks say green for a child whose merge is recorded, whatever the fingerprint', async () => {
+    const { runs, child } = await waitingParent(app, false);
+    const parent = (await runs.findRun(KEY))!;
+    await app.app.get(DocumentRepository).putDocument(parent, 'subtasks', `${JSON.stringify([greenTask])}\n`);
+    writeRunState(child, {
+      status: 'done',
+      currentStep: 'done',
+      merge: { merged: { demo: { sha: 'abc', by: null, at: '2026-11-19T00:07:10.000Z', url: null } } },
+    });
+    await runs.saveRun(child);
+    await runs.recordSubtaskFingerprint(parent, await runs.subtaskFingerprint(parent));
 
     await ticks(1);
 

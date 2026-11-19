@@ -44,8 +44,11 @@ export abstract class SubtaskOps {
    * and the files its merge changed.
    */
   abstract recordMerged(parent: RunEntity, run: RunEntity, merged: Record<string, string>): Promise<void>;
-  /** Moves the worktrees of the parent to the feature branch as it is on origin. */
-  abstract fastForward(parent: RunEntity): Promise<void>;
+  /**
+   * Moves the worktrees of the parent to the feature branch as it is on origin. Null when they moved; otherwise the
+   * words that say which worktree stayed, with both heads.
+   */
+  abstract fastForward(parent: RunEntity): Promise<string | null>;
   /**
    * Moves a subtask run onto the feature branch, when it has a merge request and is in a state that takes it. A run
    * that works takes it when its current step ends, and a run that waits for a person or a sibling is left alone.

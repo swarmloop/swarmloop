@@ -31,3 +31,45 @@ describe('the files a task changed by its merge', () => {
     expect(files.sort()).toEqual(['src/field.ts', 'src/helper.ts']);
   });
 });
+
+describe('moving the worktree of the parent to the feature branch', () => {
+  const branch = 'feature/proj-92-ship-the-field';
+  const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
+  const setup = async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-fast-forward-'));
+    const { tree } = featureWorktree(root, 'proj-92');
+    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
+    const commit = (name: string) => {
+      writeFileSync(join(tree, 'src', name), `${name}\n`);
+      git(tree, ['add', '.']);
+      git(tree, ['commit', '-m', name]);
+      return git(tree, ['rev-parse', 'HEAD']);
+    };
+    const run = { key: 'proj-92' } as RunEntity;
+    return { tree, commit, move: () => new SubtaskWorktrees(config, clock).fastForward(run, ['demo'], branch) };
+  };
+
+  it('moves the parent worktree to the feature branch and reports nothing', async () => {
+    const { tree, commit, move } = await setup();
+    const tip = commit('a.ts');
+    git(tree, ['push', 'origin', branch]);
+    git(tree, ['reset', '--hard', 'HEAD~1']);
+
+    expect(await move()).toBeNull();
+    expect(git(tree, ['rev-parse', 'HEAD'])).toBe(tip);
+  });
+
+  it('reports both heads and leaves the worktree when it has commits the feature branch lacks', async () => {
+    const { tree, commit, move } = await setup();
+    const remote = commit('a.ts');
+    git(tree, ['push', 'origin', branch]);
+    git(tree, ['reset', '--hard', 'HEAD~1']);
+    const local = commit('b.ts');
+
+    const note = await move();
+
+    expect(note).toContain(local);
+    expect(note).toContain(remote);
+    expect(git(tree, ['rev-parse', 'HEAD'])).toBe(local);
+  });
+});

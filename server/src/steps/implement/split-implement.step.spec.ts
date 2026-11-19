@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
@@ -37,6 +37,17 @@ import {
   work,
   world,
 } from './split-implement.spec-helpers';
+
+/** The run of a task is done and its merge is recorded, as a pass that merged it leaves it. */
+async function recordMerge(app: TestApp, id: string): Promise<void> {
+  const run = await child(app, id);
+  writeRunState(run, {
+    status: 'done',
+    currentStep: 'done',
+    merge: { merged: { demo: { sha: 'abc', by: null, at: '2026-11-19T00:07:10.000Z', url: null } } },
+  });
+  await app.app.get(RunRepository).saveRun(run);
+}
 
 describe('split implement', () => {
   let app: TestApp;
@@ -290,6 +301,48 @@ describe('split implement', () => {
     expect(await app.app.get(DocumentRepository).latestBody(KEY, 'implementation_result')).toContain('Task a (merged)');
   });
 
+  it('takes a task merged by an earlier pass as merged and moves the parent on', async () => {
+    const built = await world();
+    app = built.app;
+    const parent = await seedParent(app, [task('a'), task('b', ['a'])]);
+    await app.app.get(DocumentRepository).putDocument(parent, 'repos', 'demo\n');
+    await pass(app);
+    await setStatus(app, 'a', 'merged');
+    await setStatus(app, 'b', 'green');
+    await recordMerge(app, 'b');
+
+    await pass(app);
+
+    expect(await statuses(app)).toEqual({ a: 'merged', b: 'merged' });
+    expect((await tasksOf(app))[1]?.merged).toEqual({ demo: 'abc' });
+    expect(await app.app.get(RunRepository).findRun(KEY)).toMatchObject({ currentStep: 'checks', status: 'waiting' });
+  });
+
+  it('is not quiet and is started by the timer when its subtasks say green for a child whose merge is recorded', async () => {
+    const built = await world();
+    app = built.app;
+    const seeded = await seedParent(app, [task('a'), task('b')]);
+    await app.app.get(DocumentRepository).putDocument(seeded, 'repos', 'demo\n');
+    await pass(app);
+    await setStatus(app, 'a', 'merged');
+    await setStatus(app, 'b', 'green');
+    await recordMerge(app, 'b');
+    const runs = app.app.get(RunRepository);
+    const parent = (await runs.findRun(KEY))!;
+    writeRunState(parent, {
+      status: 'waiting',
+      reason: { code: ERROR_CODES.SUBTASKS_RUNNING, message: 'running' },
+    });
+    await runs.saveRun(parent);
+    await runs.recordSubtaskFingerprint(parent, await runs.subtaskFingerprint(parent));
+
+    await app.app.get(Reconciler).resumeSubtaskParents();
+    await settle(app);
+
+    expect(await statuses(app)).toEqual({ a: 'merged', b: 'merged' });
+    expect((await app.app.get(RunRepository).findRun(KEY))?.currentStep).not.toBe('implement');
+  });
+
   it('leaves a settled parent with a rebase conflict to the agent path, not the passes', async () => {
     const built = await world();
     app = built.app;
@@ -455,6 +508,29 @@ describe('split merge', () => {
     const tasks = await tasksOf(app);
     expect(tasks[0]?.merged).toEqual({ demo: built.host.merged.get(1) });
     expect(git(built.tree, ['rev-parse', 'HEAD'])).toBe(built.host.merged.get(2));
+  });
+
+  it('records the merge and names both heads when the parent worktree has commits the feature branch lacks', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+    writeFileSync(join(built.tree, 'local.txt'), 'local\n');
+    git(built.tree, ['add', '.']);
+    git(built.tree, ['commit', '-m', 'local']);
+    const local = git(built.tree, ['rev-parse', 'HEAD']);
+
+    const result = await pass(app);
+
+    expect(await statuses(app)).toEqual({ a: 'merged' });
+    expect(built.host.merges).toEqual([1]);
+    expect(result.message).toContain(local);
+    expect(result.message).toContain(`${FEATURE} at ${built.host.merged.get(1)}`);
+    expect(git(built.tree, ['rev-parse', 'HEAD'])).toBe(local);
+
+    await pass(app);
+    expect(built.host.merges).toEqual([1]);
   });
 
   it('deletes the branch of a merged subtask', async () => {
