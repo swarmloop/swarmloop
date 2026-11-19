@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,9 +7,11 @@ import { epicFigures } from '@contract/epic-figures';
 import { ERROR_CODES } from '@contract/error-codes';
 import { duration, money } from '../../lib/format';
 import { runSummary } from '../../test/fixtures';
+import { fakeIntersectionObserver } from '../../test/intersection-observer';
 import { RunList } from './run-list';
 import { epicOfThree, listRun, NOW, renderList, STATE_RUNS, TODAY, YESTERDAY } from './run-list.spec-helpers';
 
+const intersection = fakeIntersectionObserver();
 const NOT_TITLE = { ignore: 'script, style, title' };
 
 function list(overrides: Partial<ComponentProps<typeof RunList>> = {}) {
@@ -17,10 +19,12 @@ function list(overrides: Partial<ComponentProps<typeof RunList>> = {}) {
   const props = {
     query: '',
     onQuery: vi.fn(),
-    runs: [run],
     visible: [run],
     part: 'active' as const,
     otherMatches: 0,
+    total: 1,
+    next: null,
+    onLoadMore: vi.fn(),
     onPart: vi.fn(),
     selected: '',
     now: 0,
@@ -71,7 +75,7 @@ describe('RunList', () => {
       merge: { closed: { repo: 'acme/demo', by: 'grace', at: '2026-05-02T08:00:00.000Z' } },
     };
     const open = { ...done, key: 'run-4', name: 'Open run' };
-    list({ runs: [merged, closed, open], visible: [merged, closed, open] });
+    list({ visible: [merged, closed, open] });
 
     expect(screen.getByText('Ready to merge', { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText('Merged', { selector: 'span' })).toBeInTheDocument();
@@ -93,7 +97,7 @@ describe('RunList', () => {
       taskId: 'a',
       mergeWait: 'waiting for b, which is blocked',
     };
-    list({ runs: [queued], visible: [queued] });
+    list({ visible: [queued] });
 
     expect(screen.getByText('Queued to merge into the epic', { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByLabelText('waiting for b, which is blocked')).toBeInTheDocument();
@@ -111,7 +115,7 @@ describe('RunList', () => {
       parentKey: 'run-0',
       merge: { merged: { 'acme/demo': { sha: 'abcdef123', by: null, at: '2026-05-01T10:00:00.000Z', url: null } } },
     };
-    list({ runs: [parent, merged], visible: [parent, merged] });
+    list({ visible: [parent, merged] });
 
     await user.click(screen.getByRole('button', { name: 'Expand subtasks of Parent run' }));
     await user.click(screen.getByRole('button', { name: /^✓ 1 merged/ }));
@@ -127,13 +131,41 @@ describe('RunList', () => {
   });
 
   it('says No runs yet. when there are no runs', () => {
-    list({ runs: [], visible: [] });
+    list({ total: 0, visible: [] });
 
     expect(screen.getByText('No runs yet.')).toBeInTheDocument();
   });
 
+  it('shows a quiet Loading row while there is a next page, and asks for it when the row scrolls into view', () => {
+    const props = list({ next: 'c1' });
+
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /load/i })).not.toBeInTheDocument();
+    intersection.scrollIntoView();
+
+    expect(props.onLoadMore).toHaveBeenCalled();
+  });
+
+  it('shows no Loading row on the last page and stops watching when the list goes', () => {
+    list();
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+
+    cleanup();
+    list({ next: 'c1' });
+    expect(intersection.watching()).toBe(1);
+    cleanup();
+
+    expect(intersection.watching()).toBe(0);
+  });
+
+  it('says No runs yet. only when the server counts no run at all', () => {
+    list({ total: 3, visible: [] });
+
+    expect(screen.queryByText('No runs yet.')).not.toBeInTheDocument();
+  });
+
   it('shows skeleton rows and no empty text while the list loads', () => {
-    list({ runs: [], visible: [], loaded: false });
+    list({ total: 0, visible: [], loaded: false });
 
     expect(screen.getByLabelText('Loading runs')).toBeInTheDocument();
     expect(screen.queryByText(/No runs yet/)).not.toBeInTheDocument();
@@ -141,7 +173,7 @@ describe('RunList', () => {
 
   it('says what failed with Retry instead of a skeleton that never ends', async () => {
     const user = userEvent.setup({ delay: null });
-    const props = list({ runs: [], visible: [], loaded: false, error: 'api is down' });
+    const props = list({ total: 0, visible: [], loaded: false, error: 'api is down' });
 
     expect(screen.getByText('Runs could not be loaded: api is down')).toBeInTheDocument();
     expect(screen.queryByLabelText('Loading runs')).not.toBeInTheDocument();
@@ -152,7 +184,7 @@ describe('RunList', () => {
 
   it('shows the title of a run, not its name', () => {
     const run = { ...runSummary(), name: '# 03 — Applier and command', title: 'Applier and command' };
-    list({ runs: [run], visible: [run] });
+    list({ visible: [run] });
 
     expect(screen.getByText('Applier and command')).toBeInTheDocument();
     expect(screen.queryByText(/^# 03/)).not.toBeInTheDocument();
@@ -227,7 +259,7 @@ describe('RunList', () => {
 
     it('lists a subtask under its parent, indented, with its own cost', async () => {
       const user = userEvent.setup({ delay: null });
-      list({ runs: [parent, child], visible: [parent, child] });
+      list({ visible: [parent, child] });
 
       await user.click(screen.getByRole('button', { name: 'Expand subtasks of Parent run' }));
 
@@ -241,7 +273,7 @@ describe('RunList', () => {
 
     it('marks a waiting subtask', () => {
       const waiting = { ...child, state: 'waiting' as const };
-      list({ runs: [parent, waiting], visible: [parent, waiting] });
+      list({ visible: [parent, waiting] });
 
       expect(screen.getByRole('img', { name: /^Waiting for you/ })).toBeInTheDocument();
       expect(screen.queryByText('waiting')).not.toBeInTheDocument();
@@ -249,14 +281,14 @@ describe('RunList', () => {
 
     it('expands the subtasks while the parent is not done and collapses them once it is', () => {
       const done = { ...parent, status: 'done' };
-      list({ runs: [done, child], visible: [done, child] });
+      list({ visible: [done, child] });
 
       expect(screen.queryByText('Child one')).not.toBeInTheDocument();
     });
 
     it('toggles the subtasks from the arrow, over the default', async () => {
       const user = userEvent.setup({ delay: null });
-      list({ runs: [parent, child], visible: [parent, child] });
+      list({ visible: [parent, child] });
       expect(screen.queryByText('Child one')).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: 'Expand subtasks of Parent run' }));
@@ -269,7 +301,7 @@ describe('RunList', () => {
     it('opens a collapsed done parent from the arrow', async () => {
       const user = userEvent.setup({ delay: null });
       const done = { ...parent, status: 'done' };
-      list({ runs: [done, child], visible: [done, child] });
+      list({ visible: [done, child] });
 
       await user.click(screen.getByRole('button', { name: 'Expand subtasks of Parent run' }));
 
@@ -277,7 +309,7 @@ describe('RunList', () => {
     });
 
     it('shows a subtask whose parent is not in the list as a top-level run', () => {
-      list({ runs: [child], visible: [child] });
+      list({ visible: [child] });
 
       expect(screen.getByText('Child one')).toBeInTheDocument();
       expect(screen.getByText('Working', { selector: 'span' })).toBeInTheDocument();

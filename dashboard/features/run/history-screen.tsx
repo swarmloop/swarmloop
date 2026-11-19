@@ -15,7 +15,7 @@ import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import { AttemptSelector } from './attempt-selector';
 import { SeriesChart } from './series';
-import { getHistory, getRunLog } from '../../lib/endpoints';
+import { getFlow, getHistory, getRunLog } from '../../lib/endpoints';
 import { useDocumentTitle } from '../../lib/document-title';
 import { count, duration, memory, money } from '../../lib/format';
 import { documentsByKind, tokensByModel } from './history';
@@ -33,7 +33,18 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
   const [visit, setVisit] = useState<number | null>(null);
   const [file, setFile] = useState<string | null>(null);
 
-  const title = useLiveBridge((snapshot) => snapshot.runs.find((run) => run.key === runKey)?.title) ?? runKey;
+  const heldTitle = useLiveBridge((snapshot) => snapshot.runs.find((run) => run.key === runKey)?.title);
+  const held = heldTitle !== undefined;
+  const [fetchedTitle, setFetchedTitle] = useState<{ key: string; title: string } | null>(null);
+  // A run the list has not loaded (a done run far down) is titled from its flow, read once per key.
+  useEffect(() => {
+    if (!held) {
+      getFlow(runKey)
+        .then((flow) => setFetchedTitle({ key: runKey, title: flow.title }))
+        .catch(() => undefined);
+    }
+  }, [runKey, held]);
+  const title = heldTitle ?? (fetchedTitle?.key === runKey ? fetchedTitle.title : runKey);
   useDocumentTitle(title);
 
   const reload = useCallback((): void => {

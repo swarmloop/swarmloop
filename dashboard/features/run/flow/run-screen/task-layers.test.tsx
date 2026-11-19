@@ -43,10 +43,12 @@ function renderRunList(runs: RunSummary[]): void {
     <RunList
       query=""
       onQuery={vi.fn()}
-      runs={runs}
       visible={runs}
       part="active"
       otherMatches={0}
+      total={runs.length}
+      next={null}
+      onLoadMore={vi.fn()}
       onPart={vi.fn()}
       selected=""
       now={0}

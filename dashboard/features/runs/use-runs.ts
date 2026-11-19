@@ -4,12 +4,22 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { listRuns, removeRun as deleteRun } from '../../lib/endpoints';
 import { useLiveActions, useLiveBridge } from '../shell';
 import type { RunSummary } from '@contract/api';
+import type { PartCounts } from '@contract/run-list';
 
 const WORKING_TICK_MS = 1000;
 const IDLE_TICK_MS = 30_000;
 
 export function useRuns(): {
   runs: RunSummary[];
+  counts: PartCounts;
+  otherMatches: number;
+  /** The cursor of the next page of the shown part, or null on the last page. */
+  next: string | null;
+  /** True while the list of a newly chosen part has not arrived. */
+  listing: boolean;
+  loadingMore: boolean;
+  /** Loads the page after the last one shown; one request at a time. */
+  loadMore: () => void;
   loaded: boolean;
   now: number;
   error: string | null;
@@ -21,25 +31,57 @@ export function useRuns(): {
   const runs = useLiveBridge((snapshot) => snapshot.runs);
   const connected = useLiveBridge((snapshot) => snapshot.connected);
   const loaded = useLiveBridge((snapshot) => snapshot.loaded);
-  const { setRuns } = useLiveActions();
+  const counts = useLiveBridge((snapshot) => snapshot.counts);
+  const { part, q } = useLiveBridge((snapshot) => snapshot.view);
+  const next = useLiveBridge((snapshot) => snapshot.next);
+  const otherMatches = useLiveBridge((snapshot) => snapshot.otherMatches);
+  const listing = useLiveBridge((snapshot) => snapshot.listing);
+  const { setRuns, setPage } = useLiveActions();
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const mounted = useRef(true);
+  const loadingMoreNow = useRef(false);
+
+  const fail = useCallback((cause: unknown): void => {
+    if (mounted.current) {
+      setError(cause instanceof Error ? cause.message : 'api is not reachable');
+    }
+  }, []);
 
   const reload = useCallback((): void => {
     setError(null);
-    listRuns()
-      .then((body) => {
+    const view = { part, q };
+    listRuns(view)
+      .then((page) => {
         if (mounted.current) {
-          setRuns(body.runs);
+          setPage(page, view, false);
         }
       })
-      .catch((cause: unknown) => {
+      .catch(fail);
+  }, [part, q, setPage, fail]);
+
+  const loadMore = (): void => {
+    if (next === null || loadingMoreNow.current) {
+      return;
+    }
+    loadingMoreNow.current = true;
+    setLoadingMore(true);
+    const view = { part, q };
+    listRuns({ ...view, cursor: next })
+      .then((page) => {
         if (mounted.current) {
-          setError(cause instanceof Error ? cause.message : 'api is not reachable');
+          setPage(page, view, true);
+        }
+      })
+      .catch(fail)
+      .finally(() => {
+        loadingMoreNow.current = false;
+        if (mounted.current) {
+          setLoadingMore(false);
         }
       });
-  }, [setRuns]);
+  };
 
   useEffect(() => {
     mounted.current = true;
@@ -48,6 +90,28 @@ export function useRuns(): {
       mounted.current = false;
     };
   }, [reload]);
+
+  // A socket that connects again may have missed changes: the first page is read again.
+  const wasConnected = useRef(connected);
+  useEffect(() => {
+    if (connected && !wasConnected.current) {
+      reload();
+    }
+    wasConnected.current = connected;
+  }, [connected, reload]);
+
+  // While a filter finds nothing, the hint of how many runs the other part holds follows the counts.
+  const countsKey = `${counts.active}/${counts.done}/${counts.all}`;
+  const seenCounts = useRef(countsKey);
+  useEffect(() => {
+    if (seenCounts.current === countsKey) {
+      return;
+    }
+    seenCounts.current = countsKey;
+    if (q !== '' && runs.length === 0) {
+      reload();
+    }
+  }, [countsKey, q, runs.length, reload]);
 
   useEffect(() => {
     setError(null);
@@ -66,5 +130,19 @@ export function useRuns(): {
     setRuns((current) => current.filter((run) => run.key !== key));
   }
 
-  return { runs, loaded, now, error, connected, retry: reload, removeRun };
+  return {
+    runs,
+    counts,
+    otherMatches,
+    next,
+    listing,
+    loadingMore,
+    loadMore,
+    loaded,
+    now,
+    error,
+    connected,
+    retry: reload,
+    removeRun,
+  };
 }

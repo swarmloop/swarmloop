@@ -70,7 +70,8 @@ describe('endpoints', () => {
   });
 
   it('reads with GET paths and encodes the key once', async () => {
-    await listRuns();
+    await listRuns({ part: 'done', q: 'a b', cursor: 'c1' });
+    await listRuns({ part: 'active', q: '' });
     await getFlow('a/b');
     await getStep('run-1', 'code review');
     await getHistory('run-1');
@@ -78,7 +79,8 @@ describe('endpoints', () => {
     await getStats(7, -60);
 
     expect(vi.mocked(api).mock.calls).toEqual([
-      ['/runs'],
+      ['/runs?part=done&q=a+b&cursor=c1'],
+      ['/runs?part=active'],
       ['/runs/a%2Fb'],
       ['/runs/run-1/steps/code%20review'],
       ['/runs/run-1/history'],

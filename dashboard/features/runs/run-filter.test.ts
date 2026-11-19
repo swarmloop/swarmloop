@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { RunSummary } from '@contract/api';
 import { runSummary } from '../../test/fixtures';
-import { filterRuns, parsePart, showQuery } from './run-filter';
+import { filterRuns, parsePart } from '@contract/run-list';
+import { showQuery } from './run-filter';
 
 const run = (key: string, overrides: Partial<RunSummary> = {}): RunSummary => ({
   ...runSummary(),

@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadinessProvider } from '../features/readiness';
 import { getReadiness, getSession, listProjects, listRuns } from '../lib/endpoints';
+import { listRunsFrom } from '../test/runs-page';
 import { QueryWrapper } from '../test/query-wrapper';
 import { DashboardShell } from './dashboard-shell';
 
@@ -41,7 +42,7 @@ beforeEach(() => {
   vi.mocked(usePathname).mockReturnValue('/');
   vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams() as unknown as ReturnType<typeof useSearchParams>);
   vi.mocked(useRouter).mockReturnValue({ push: vi.fn() } as unknown as ReturnType<typeof useRouter>);
-  vi.mocked(listRuns).mockResolvedValue({ runs: [] });
+  vi.mocked(listRuns).mockImplementation(listRunsFrom([]));
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
 });
 

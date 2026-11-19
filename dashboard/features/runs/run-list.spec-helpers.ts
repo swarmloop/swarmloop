@@ -161,10 +161,12 @@ function listProps(runs: RunSummary[], overrides: Partial<ComponentProps<typeof 
   return {
     query: '',
     onQuery: vi.fn(),
-    runs,
     visible: runs,
     part: 'active' as const,
     otherMatches: 0,
+    total: runs.length,
+    next: null,
+    onLoadMore: vi.fn(),
     onPart: vi.fn(),
     selected: '',
     now: NOW,
