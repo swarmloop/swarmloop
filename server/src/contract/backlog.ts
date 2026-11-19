@@ -13,6 +13,7 @@ export type BacklogEventKind =
   | 'rebase-refused'
   | 'main-red'
   | 'main-green'
+  | 'run-chat'
   | 'requirement-ready'
   | 'milestone-ready'
   | 'action';
