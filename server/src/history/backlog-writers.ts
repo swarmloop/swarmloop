@@ -115,6 +115,15 @@ export interface BacklogTurnRecord {
   reason: string;
   nextTryAt: string | null;
   createdAt: string;
+  /** What the turn's agent visits used; unset until the turn launches. */
+  runtime?: string;
+  model?: string;
+  effort?: string | null;
+  tokensIn?: number;
+  tokensOut?: number;
+  usd?: number;
+  durationMs?: number;
+  transcript?: string;
 }
 
 /** The writes of a backlog, and the reads its actions use; the same ones run alone or inside one transaction. */
@@ -260,7 +269,10 @@ export function writersOn(manager: EntityManager, clock: Clock): BacklogWriters 
       return true;
     },
     async saveTurn(record) {
-      return toTurn(await saveRow(manager, BacklogTurnEntity, { ...record, id: record.id as number }));
+      // A field a turn does not set yet stays out of the insert, so the column keeps its default.
+      return toTurn(
+        await saveRow(manager, BacklogTurnEntity, { ...record, id: record.id as number } as BacklogTurnEntity),
+      );
     },
     async findBacklog(name) {
       const row = await manager.findOne(BacklogEntity, { where: { name } });

@@ -62,7 +62,13 @@ import { BacklogStartPort } from './backlog/backlog-start-port';
 import { PlannerBacklogCalls } from './backlog/planner/planner-backlog-calls';
 import { PlannerRules } from './backlog/planner/planner-rules';
 import { PlannerRunPort } from './backlog/planner/planner-run-port';
+import { BacklogPlanner } from './backlog/planner/backlog-planner';
 import { PlannerTurnActions } from './backlog/planner/planner-actions';
+import { BacklogTurnPrompt } from './backlog/planner/turn-prompt';
+import { BacklogTurnRunner } from './backlog/planner/turn-runner';
+import { BacklogTurnState } from './backlog/planner/turn-state';
+import { BacklogTurnWorkspace } from './backlog/planner/turn-workspace';
+import { EventFacts } from './backlog/planner/event-facts';
 import { StallWatch } from './stall-watch';
 import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
@@ -134,6 +140,12 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PlannerBacklogCalls,
     PlannerRunPort,
     PlannerTurnActions,
+    EventFacts,
+    BacklogTurnState,
+    BacklogTurnPrompt,
+    BacklogTurnWorkspace,
+    BacklogTurnRunner,
+    BacklogPlanner,
     RunSettler,
     RunRebase,
     MergeRequestDrafts,

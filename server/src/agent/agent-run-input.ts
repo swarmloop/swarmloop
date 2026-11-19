@@ -17,6 +17,8 @@ export interface AgentRunInput {
   tokensInRun: number;
   resumeChatId: string | null;
   runKey: string;
+  /** The login whose credential the launch uses. Without it the run's starter is looked up. */
+  login?: string | null;
   step: string;
   attemptId: string;
   liveStep?: string;

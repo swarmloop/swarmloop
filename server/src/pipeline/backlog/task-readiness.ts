@@ -17,6 +17,8 @@ export interface BacklogTask extends Subtask {
   cycle: string | null;
   /** In an active milestone, or the owner asked to run it now. */
   mayStart: boolean;
+  /** A task it depends on that merged and whose merge the planner has not read yet. A task with it set waits. */
+  unreadMerge?: string;
 }
 
 /** What a repository's main reads as; `unreadable` carries the words for why it could not be read. */
@@ -35,10 +37,12 @@ export function backlogTasks(
   records: BacklogTaskRecord[],
   activeMilestones: ReadonlySet<number>,
   runs: ReadonlyMap<string, RunFacts>,
+  unreadMerges: ReadonlySet<string> = new Set(),
 ): BacklogTask[] {
   const unsettled = records.filter((record) => !settled(record));
   return records.map((record) => {
     const edges = dependencyEdges(record, records);
+    const unread = edges.map((edge) => edge.id).find((id) => unreadMerges.has(id));
     const task: BacklogTask = {
       id: record.slug,
       title: record.title,
@@ -55,15 +59,18 @@ export function backlogTasks(
       fixesMain: record.fixesMain,
       runKey: record.runKey,
       mayStart: record.runNow || (record.milestoneId !== null && activeMilestones.has(record.milestoneId)),
+      ...(unread === undefined ? {} : { unreadMerge: unread }),
     };
     const run = record.runKey === null ? undefined : runs.get(record.runKey);
     return { ...task, status: shownTaskState(task, run) };
   });
 }
 
-/** The tasks that may start now, in plan order: ready by the epic's rules, never started, and allowed to start. */
+/** The tasks that may start now, in plan order: ready by the epic's rules, never started, allowed to start, and no merge they depend on unread. */
 export function candidates(tasks: BacklogTask[]): BacklogTask[] {
-  return readyTasks(tasks, Infinity).filter((task) => task.mayStart && task.runKey === null);
+  return readyTasks(tasks, Infinity).filter(
+    (task) => task.mayStart && task.runKey === null && task.unreadMerge === undefined,
+  );
 }
 
 /** The repositories that the candidates touch, so the scheduler reads each main once. */
@@ -103,6 +110,7 @@ function waitedRefs(task: BacklogTask, tasks: BacklogTask[]): string[] {
 
 /** What a task waits for in its dependencies, in words, or null when none holds it. A requirement is named as `<ref>'s tasks`. */
 export function dependencyWait(task: BacklogTask, tasks: BacklogTask[]): string | null {
+  if (task.unreadMerge !== undefined) return `waits for the planner to read the merge of ${task.unreadMerge}`;
   if (unmetDepends(task, tasks).length === 0) return null;
   if (task.cycle !== null) return `waits in a cycle: ${task.cycle}`;
   const note = waitNote(task, tasks);

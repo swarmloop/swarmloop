@@ -51,6 +51,31 @@ export class BacklogTurnEntity {
   @Column({ name: 'next_try_at', type: 'text', nullable: true })
   nextTryAt!: string | null;
 
+  @Column({ type: 'text', default: '' })
+  runtime!: string;
+
+  @Column({ type: 'text', default: '' })
+  model!: string;
+
+  @Column({ type: 'text', nullable: true })
+  effort!: string | null;
+
+  @Column({ name: 'tokens_in', type: 'integer', default: 0 })
+  tokensIn!: number;
+
+  @Column({ name: 'tokens_out', type: 'integer', default: 0 })
+  tokensOut!: number;
+
+  @Column({ type: 'float', default: 0 })
+  usd!: number;
+
+  @Column({ name: 'duration_ms', type: 'integer', default: 0 })
+  durationMs!: number;
+
+  /** The path of the transcript of the turn's agent visit. */
+  @Column({ type: 'text', default: '' })
+  transcript!: string;
+
   @Column({ name: 'created_at', type: 'text' })
   createdAt!: string;
 }

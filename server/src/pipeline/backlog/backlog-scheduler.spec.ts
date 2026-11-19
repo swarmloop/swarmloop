@@ -1,3 +1,4 @@
+import { BacklogChatRepository } from '../../history/backlog-chat.repository';
 import { backlogHarness } from './backlog.spec-helpers';
 
 type Harness = Awaited<ReturnType<typeof backlogHarness>>;
@@ -294,6 +295,51 @@ describe('BacklogScheduler run keys and requirement cycles', () => {
     withHarness(async (h) => {
       const { id, milestoneId } = await activeBacklog(h);
       await h.seedTask(id, 'a', { milestoneId, covers: ['M1.R1'], depends: ['M1.R1'] });
+      await h.tick();
+      expect(h.started()).toEqual(['a']);
+    }));
+
+  it('holds the dependents of a merged task until a finished turn has read its merge, then starts them', () =>
+    withHarness(async (h) => {
+      const { id, milestoneId } = await activeBacklog(h);
+      await h.seedTask(id, 'a', { milestoneId, status: 'merged' });
+      await h.seedTask(id, 'b', { milestoneId, depends: ['a'] });
+      await h.backlogs.recordEvent(id, 'task-merged:a', 'task-merged', { slug: 'a' });
+      await h.tick();
+      expect(h.started()).toEqual([]);
+      expect((await h.task(id, 'b')).note).toBe('waits for the planner to read the merge of a');
+
+      const chat = h.db.app.get(BacklogChatRepository);
+      const base = { backlogId: id, reason: '', nextTryAt: null, createdAt: h.db.clock.iso() };
+      await chat.saveTurn({ ...base, turnKey: 'turn-1', status: 'running' });
+      await chat.takeInto(id, 'turn-1');
+      await h.tick();
+      expect(h.started()).toEqual([]);
+
+      await chat.saveTurn({ ...(await chat.findTurn('turn-1')), ...base, turnKey: 'turn-1', status: 'done' });
+      await h.tick();
+      expect(h.started()).toEqual(['b']);
+    }));
+
+  it('calls a listener at the end of each events pass until it is removed', () =>
+    withHarness(async (h) => {
+      await activeBacklog(h);
+      const calls: string[] = [];
+      const stop = h.scheduler().afterEvents(async () => {
+        calls.push('pass');
+      });
+      await h.tick();
+      await h.tick();
+      stop();
+      await h.tick();
+      expect(calls).toEqual(['pass', 'pass']);
+    }));
+
+  it('goes on with the pass when a listener fails', () =>
+    withHarness(async (h) => {
+      const { id, milestoneId } = await activeBacklog(h);
+      await h.seedTask(id, 'a', { milestoneId });
+      h.scheduler().afterEvents(() => Promise.reject(new Error('listener broke')));
       await h.tick();
       expect(h.started()).toEqual(['a']);
     }));

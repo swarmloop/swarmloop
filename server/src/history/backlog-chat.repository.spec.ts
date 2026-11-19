@@ -37,6 +37,15 @@ describe('BacklogChatRepository', () => {
       expect((await db.chat.itemsOfTurn('turn-1')).events).toHaveLength(1);
     }));
 
+  it('does not wake a backlog for the record of an action, and gives it to no turn', () =>
+    withPlanner(async (db) => {
+      const id = await db.addBacklog();
+      await db.addEvent(id, 'action:1', 'action', { action: 'add tasks' });
+      expect(await db.chat.backlogsWithWaitingWork()).toEqual([]);
+      expect((await db.chat.waitingItems(id)).events).toEqual([]);
+      expect((await db.chat.takeInto(id, 'turn-1')).events).toEqual([]);
+    }));
+
   it('makes the items of a failed turn wait again, with the new ones', () =>
     withPlanner(async (db) => {
       const id = await db.addBacklog();
