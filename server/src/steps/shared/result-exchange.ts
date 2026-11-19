@@ -13,7 +13,7 @@ interface ResultExchange {
 }
 
 /** The errors of one answer: the result block against the schema, then the checks the server makes on the value. */
-function errorsOf(request: AgentLaunchRequest, text: string): { value?: unknown; errors: string[] } {
+async function errorsOf(request: AgentLaunchRequest, text: string): Promise<{ value?: unknown; errors: string[] }> {
   if (!request.result) {
     return { errors: [] };
   }
@@ -21,7 +21,7 @@ function errorsOf(request: AgentLaunchRequest, text: string): { value?: unknown;
   if (!read.ok) {
     return { errors: read.errors };
   }
-  return { value: read.value, errors: request.check?.(read.value) ?? [] };
+  return { value: read.value, errors: (await request.check?.(read.value)) ?? [] };
 }
 
 /** An answer of a clean exit is read; a limit, a kill or a bad exit is handled by the caller as before. */
@@ -41,7 +41,7 @@ export async function exchangeResult(
   const results = [first];
   for (let sent = 0; ; sent += 1) {
     const last = results[results.length - 1];
-    const { value, errors } = errorsOf(request, last.responseText);
+    const { value, errors } = await errorsOf(request, last.responseText);
     if (errors.length === 0) {
       return { result: combineAgentResults(results) ?? last, value };
     }

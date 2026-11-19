@@ -1,4 +1,5 @@
 import type { BacklogEventKind } from '../../contract/backlog';
+import { PlanChatStore } from '../../history/plan-chat.store';
 import { backlogHarness } from './backlog.spec-helpers';
 
 type Harness = Awaited<ReturnType<typeof backlogHarness>>;
@@ -188,6 +189,33 @@ describe('BacklogEvents', () => {
 
       expect(await events(h, id, 'merge-refused')).toMatchObject([
         { facts: { task: 'a', repository: 'web', message: 'branch protected' } },
+      ]);
+    }));
+
+  it('writes run-chat once per planner reply, with the person messages since the last reply (newest first)', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      const id = (await h.seedBacklog('one')).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1' });
+      await h.seedDoneRun('a-1', []);
+      const chat = h.db.app.get(PlanChatStore);
+      const entry = (key: string, role: 'person' | 'planner', text: string) =>
+        ({ key, role, text, at: '2026-01-01T00:00:00.000Z', state: 'taken' }) as const;
+
+      await chat.appendEntry('a-1', entry('m1', 'person', 'use the small one'));
+      await h.tick();
+      expect(await events(h, id, 'run-chat')).toEqual([]);
+
+      await chat.appendEntry('a-1', entry('r1', 'planner', 'done, small one'));
+      await h.tick();
+      await h.tick();
+      await chat.appendEntry('a-1', entry('m2', 'person', 'and rename it'));
+      await chat.appendEntry('a-1', entry('r2', 'planner', 'renamed'));
+      await h.tick();
+
+      expect((await events(h, id, 'run-chat')).map((event) => event.facts)).toEqual([
+        { slug: 'a', runKey: 'a-1', message: 'and rename it', reply: 'renamed' },
+        { slug: 'a', runKey: 'a-1', message: 'use the small one', reply: 'done, small one' },
       ]);
     }));
 });

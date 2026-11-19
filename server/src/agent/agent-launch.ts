@@ -49,24 +49,29 @@ export class AgentLaunch {
   ) {}
 
   /**
-   * The credential this launch runs with: the starter's own, else the server's env. With none the run stops, as a
+   * The credential this launch runs with: the given login's own, else the run's starter's own, else the server's env. With none the run stops, as a
    * Stop does, and says which runtime is missing: the person may have disconnected after the run was created.
    */
   async credentialOf(
     key: string,
     runtime: RuntimeName,
+    login?: string | null,
   ): Promise<{ name: string; value: string; owner: string | null }> {
-    if (!this.credentials || !this.runs) {
+    if (!this.credentials || (login === undefined && !this.runs)) {
       return { ...credentialFor(this.config.env, runtime), owner: null };
     }
-    const run = await this.runs.findRun(key);
-    const starter = run ? await starterOf(this.runs, run) : null;
+    const starter = login === undefined ? await this.starterOfRun(key) : login;
     const found = await this.credentials.runtimeCredential(runtime, starter);
     if (!found) {
       this.runStop.halt(key);
       throw new StepStopped([], missingCredential(runtime));
     }
     return found;
+  }
+
+  private async starterOfRun(key: string): Promise<string | null> {
+    const run = await (this.runs as RunRepository).findRun(key);
+    return run ? starterOf(this.runs as RunRepository, run) : null;
   }
 
   /** One launch of the process: spawn it, read its stream until it exits, and return what it did. */
@@ -77,7 +82,7 @@ export class AgentLaunch {
     priorOutput: string,
   ): Promise<AgentRunResult> {
     const env = this.config.env;
-    const credential = await this.credentialOf(input.runKey, runtime.name);
+    const credential = await this.credentialOf(input.runKey, runtime.name, input.login);
     const launch = this.launchPrep.prepare(input, runtime, resumed);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime.name, this.clock.now());
     let started = this.clock.now();

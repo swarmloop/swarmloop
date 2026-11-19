@@ -2,13 +2,35 @@ import type { AgentTools } from '../../integrations/agent-runtime/agent-runtime'
 import type { EffortFields } from '../../contract/effort';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
-import type { RunEntity } from '../../history/entities';
+import type { Agent } from '../../config/agents';
+import type { VisitDraft } from '../../history/visit';
 import type { ResultDefinition } from '../../agent-result/result-definition';
 import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';
 
+/**
+ * Whose spend and visits a launch counts: a run, or any other owner with the same facts (the backlog planner's turn).
+ * A run leaves the optional members unset and its launch works as it always did.
+ */
+export interface LaunchOwner {
+  id: number;
+  agentCalls: number;
+  spentUsd: number;
+  activeAttempt: string | null;
+  startedBy?: string | null;
+  parentRunId?: number | null;
+  /** The agents to use, in fallback order, instead of the role list of the run's tier. */
+  roleAgents?: Agent[];
+  /** The tokens spent so far, instead of the total of the run's visits. */
+  tokensSoFar?: number;
+  /** Records a launch that hit a provider limit, instead of a visit row of the run. */
+  recordLimit?: (visit: VisitDraft) => Promise<void>;
+}
+
 export interface AgentLaunchRequest extends EffortFields {
   root: string;
-  run: RunEntity;
+  run: LaunchOwner;
+  /** The login whose credential the launch uses. Without it the run's starter is looked up. */
+  login?: string | null;
   key: string;
   step: string;
   mode: string;
@@ -31,7 +53,7 @@ export interface AgentLaunchRequest extends EffortFields {
   /** The result block the answer must end with. A missing or invalid block gets up to two follow-ups in the same chat. */
   result?: ResultDefinition;
   /** Checks a validated result. Each message it returns goes into the follow-up like a schema error. */
-  check?: (value: unknown) => string[];
+  check?: (value: unknown) => string[] | Promise<string[]>;
   /** The errors of the answer an earlier visit of the step failed on: this launch starts by telling the agent. */
   answerErrors?: string[];
   project?: ProjectLaunch;

@@ -14,6 +14,8 @@ import { SESSION_COOKIE, SessionService } from '../auth/session.service';
 import type { Role } from '../contract/people';
 import { CommandHandlers } from '../api/command-handlers';
 import { ChatService } from '../api/chat.service';
+import { BacklogChatService } from '../api/backlog-chat.service';
+import { PlannerRunCommands } from '../api/planner-run-commands';
 import { PlanChatService } from '../api/plan-chat.service';
 import { HealthController } from '../api/health.controller';
 import { LiveGateway } from '../api/live.gateway';
@@ -57,6 +59,7 @@ import type { StepOptions } from '../core/pipeline-result';
 import { RunRepository } from '../history/run.repository';
 import { StepKernel } from '../steps/step-kernel';
 import { PipelineModule } from '../pipeline/pipeline.module';
+import { BacklogPlanner } from '../pipeline/backlog/planner/backlog-planner';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { BlockAgentRunner } from './result-answer';
@@ -66,9 +69,9 @@ export { ScriptedFakeAgentRunner, ScriptedStep };
 
 const ADMIN_TOKEN = 'test-admin-token';
 /** The steps whose agent answers in result blocks. */
-const BLOCK_STEPS = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve'];
+const BLOCK_STEPS = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve', 'backlog-plan'];
 
-/** A step whose agent answers in a result block: the ones above, every code reviewer and the report. */
+/** A step whose agent answers in a result block: the ones above (the backlog planner's turn too), every code reviewer and the report. */
 function answersInBlocks(step: string): boolean {
   return BLOCK_STEPS.includes(step) || step.startsWith('code-review-');
 }
@@ -174,6 +177,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       RunRebaseService,
       ChatService,
       PlanChatService,
+      PlannerRunCommands,
+      BacklogChatService,
       ShellService,
       CommandHandlers,
       LiveGateway,
@@ -254,6 +259,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     throw error;
   }
   if (options.reconcilerTimer) app.get(Reconciler).schedule();
+  await app.get(BacklogPlanner).start();
   const server = app.getHttpServer() as Server;
   const address = server.address() as AddressInfo | null;
   if (!address || typeof address === 'string') {

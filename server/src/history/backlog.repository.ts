@@ -3,14 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
 import { In } from 'typeorm';
 import { Clock } from '../core/clock';
-import type {
-  BacklogEventKind,
-  MergeMode,
-  MilestoneStatus,
-  RequirementStatus,
-  RunBacklog,
-  TaskMadeBy,
-} from '../contract/backlog';
+import type { BacklogEventKind, RunBacklog } from '../contract/backlog';
 import type { SubtaskStatus } from '../contract/subtask';
 import {
   BacklogEntity,
@@ -21,208 +14,48 @@ import {
   RequirementEntity,
 } from './backlog.entities';
 import { LiveHub } from '../live/live.hub';
+import {
+  toBacklog,
+  toEvent,
+  toMilestone,
+  toRequirement,
+  toTask,
+  writersOn,
+  type BacklogEventRecord,
+  type BacklogMessageRecord,
+  type BacklogRecord,
+  type BacklogTaskRecord,
+  type BacklogTurnRecord,
+  type BacklogWriters,
+  type DecisionRecord,
+  type Facts,
+  type MilestoneRecord,
+  type RequirementRecord,
+} from './backlog-writers';
 import { transaction } from './transaction';
 
-type Facts = Record<string, string>;
-
-interface BacklogRecord {
-  id?: number;
-  name: string;
-  owner: string;
-  repositories: string[];
-  mergeMode: MergeMode;
-  paused: boolean;
-  createdAt: string;
-}
-
-interface MilestoneRecord {
-  id?: number;
-  backlogId: number;
-  number: number;
-  title: string;
-  goal: string;
-  status: MilestoneStatus;
-  /** The milestone whose acceptance starts this queued one. */
-  queuedAfterId?: number | null;
-  createdAt: string;
-}
-
-interface RequirementRecord {
-  id?: number;
-  milestoneId: number;
-  ref: string;
-  text: string;
-  status: RequirementStatus;
-}
-
-export interface BacklogTaskRecord {
-  id?: number;
-  backlogId: number;
-  milestoneId: number | null;
-  slug: string;
-  title: string;
-  description: string;
-  repositories: string[];
-  covers: string[];
-  depends: string[];
-  files: string[];
-  proof: string[];
-  manual: boolean;
-  fixesMain: string | null;
-  status: SubtaskStatus;
-  runKey: string | null;
-  /** What the scheduler says about the task, in words. */
-  note: string;
-  /** The owner asked to run the task now: it joins the scheduler whatever its milestone. */
-  runNow: boolean;
-  /** The owner said this task may merge, for a `manual` task or a backlog in mode `ok`. */
-  mergeOk: boolean;
-  merged: Record<string, string>;
-  madeBy: TaskMadeBy;
-  position: number;
-  createdAt: string;
-}
-
-interface DecisionRecord {
-  id?: number;
-  backlogId: number;
-  text: string;
-  who: string;
-  createdAt: string;
-}
-
-interface BacklogEventRecord {
-  id: number;
-  backlogId: number;
-  eventKey: string;
-  kind: BacklogEventKind;
-  facts: Facts;
-  turn: string | null;
-  createdAt: string;
-}
-
-/** The writes of a backlog; the same ones run alone or inside one transaction. */
-interface BacklogWriters {
-  saveBacklog(record: BacklogRecord): Promise<BacklogRecord>;
-  saveMilestone(record: MilestoneRecord): Promise<MilestoneRecord>;
-  saveRequirement(record: RequirementRecord): Promise<RequirementRecord>;
-  saveTask(record: BacklogTaskRecord): Promise<BacklogTaskRecord>;
-  addDecision(record: DecisionRecord): Promise<DecisionRecord>;
-  deleteTask(id: number): Promise<void>;
-  /** Writes the event once per key; false when the key was written before. */
-  recordEvent(backlogId: number, key: string, kind: BacklogEventKind, facts: Facts): Promise<boolean>;
-}
+export type { BacklogTaskRecord };
 
 const FINISHED: SubtaskStatus[] = ['merged', 'skipped'];
 
-function toBacklog(row: BacklogEntity): BacklogRecord {
-  return { ...row, repositories: JSON.parse(row.repositories) as string[], mergeMode: row.mergeMode as MergeMode };
-}
-
-function fromBacklog(record: BacklogRecord): BacklogEntity {
-  return { id: record.id as number, ...record, repositories: JSON.stringify(record.repositories) };
-}
-
-function toMilestone(row: MilestoneEntity): MilestoneRecord {
-  return { ...row, status: row.status as MilestoneStatus };
-}
-
-function toRequirement(row: RequirementEntity): RequirementRecord {
-  return { ...row, status: row.status as RequirementStatus };
-}
-
-function toTask(row: BacklogTaskEntity): BacklogTaskRecord {
-  return {
-    ...row,
-    repositories: JSON.parse(row.repositories) as string[],
-    covers: JSON.parse(row.covers) as string[],
-    depends: JSON.parse(row.depends) as string[],
-    files: JSON.parse(row.files) as string[],
-    proof: JSON.parse(row.proof) as string[],
-    merged: JSON.parse(row.merged) as Record<string, string>,
-    status: row.status as SubtaskStatus,
-    madeBy: row.madeBy as TaskMadeBy,
-  };
-}
-
-function fromTask(record: BacklogTaskRecord): BacklogTaskEntity {
-  return {
-    ...record,
-    id: record.id as number,
-    repositories: JSON.stringify(record.repositories),
-    covers: JSON.stringify(record.covers),
-    depends: JSON.stringify(record.depends),
-    files: JSON.stringify(record.files),
-    proof: JSON.stringify(record.proof),
-    merged: JSON.stringify(record.merged),
-  };
-}
-
-function toEvent(row: BacklogEventEntity): BacklogEventRecord {
-  return { ...row, kind: row.kind as BacklogEventKind, facts: JSON.parse(row.facts) as Facts };
-}
-
-async function saveRow<Row extends { id: number }>(
-  manager: EntityManager,
-  target: new () => Row,
-  row: Row,
-): Promise<Row> {
-  const { id, ...fields } = row;
-  if (id) {
-    await manager.update(target, id, fields as never);
-    return row;
-  }
-  const inserted = await manager.insert(target, fields as never);
-  return { ...row, id: Number(inserted.identifiers[0]?.id) };
-}
-
 /** `touched` hears the key of each run whose label a task write may change. */
-function writersOn(manager: EntityManager, clock: Clock, touched: (runKey: string) => void): BacklogWriters {
+function touching(
+  base: BacklogWriters,
+  manager: EntityManager,
+  touched: (runKey: string) => void,
+): BacklogWriters {
   return {
-    async saveBacklog(record) {
-      return toBacklog(await saveRow(manager, BacklogEntity, fromBacklog(record)));
-    },
-    async saveMilestone(record) {
-      return toMilestone(
-        await saveRow(manager, MilestoneEntity, {
-          ...record,
-          queuedAfterId: record.queuedAfterId ?? null,
-          id: record.id as number,
-        }),
-      );
-    },
-    async saveRequirement(record) {
-      return toRequirement(await saveRow(manager, RequirementEntity, { ...record, id: record.id as number }));
-    },
+    ...base,
     async saveTask(record) {
       const before = record.id ? await manager.findOne(BacklogTaskEntity, { where: { id: record.id } }) : null;
-      const saved = toTask(await saveRow(manager, BacklogTaskEntity, fromTask(record)));
+      const saved = await base.saveTask(record);
       for (const key of [saved.runKey, before?.runKey]) if (key) touched(key);
       return saved;
     },
-    async addDecision(record) {
-      return saveRow(manager, DecisionEntity, { ...record, id: record.id as number });
-    },
     async deleteTask(id) {
       const before = await manager.findOne(BacklogTaskEntity, { where: { id } });
-      await manager.delete(BacklogTaskEntity, id);
+      await base.deleteTask(id);
       if (before?.runKey) touched(before.runKey);
-    },
-    async recordEvent(backlogId, key, kind, facts) {
-      try {
-        await manager.insert(BacklogEventEntity, {
-          backlogId,
-          eventKey: key,
-          kind,
-          facts: JSON.stringify(facts),
-          turn: null,
-          createdAt: clock.iso(),
-        });
-      } catch (error) {
-        if ((error as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') return false;
-        throw error;
-      }
-      return true;
     },
   };
 }
@@ -237,7 +70,7 @@ export class BacklogRepository implements BacklogWriters {
     private readonly clock: Clock,
     @Optional() private readonly live?: LiveHub,
   ) {
-    this.writers = writersOn(dataSource.manager, clock, (key) => this.live?.changed(key));
+    this.writers = touching(writersOn(dataSource.manager, clock), dataSource.manager, (key) => this.live?.changed(key));
   }
 
   async listBacklogs(): Promise<BacklogRecord[]> {
@@ -363,11 +196,19 @@ export class BacklogRepository implements BacklogWriters {
     return this.writers.recordEvent(backlogId, key, kind, facts);
   }
 
+  addMessage(record: BacklogMessageRecord): Promise<boolean> {
+    return this.writers.addMessage(record);
+  }
+
+  saveTurn(record: BacklogTurnRecord): Promise<BacklogTurnRecord> {
+    return this.writers.saveTurn(record);
+  }
+
   /** Runs the work in one transaction; when it throws, nothing it wrote stays. */
   async transaction<T>(work: (writers: BacklogWriters) => Promise<T>): Promise<T> {
     const touched = new Set<string>();
     const result = await transaction(this.dataSource, (manager) =>
-      work(writersOn(manager, this.clock, (key) => touched.add(key))),
+      work(touching(writersOn(manager, this.clock), manager, (key) => touched.add(key))),
     );
     for (const key of touched) this.live?.changed(key);
     return result;

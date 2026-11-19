@@ -230,6 +230,21 @@ describe('LiveGateway', () => {
     });
   });
 
+  it('sends a backlog entry to every socket, and stops after destroy', () => {
+    const hub = new LiveHub();
+    const gateway = new LiveGateway(hub, {} as unknown as RunQueriesService, auth, new ContainerGate());
+    const sent: unknown[] = [];
+    gateway.server = {
+      emit: (name: string, entry: unknown) => sent.push([name, entry]),
+    } as unknown as LiveGateway['server'];
+    gateway.onModuleInit();
+    const entry = { backlog: 'shop', turn: { status: 'running' as const, reason: '', nextTryAt: null } };
+    hub.backlog(entry);
+    gateway.onModuleDestroy();
+    hub.backlog(entry);
+    expect(sent).toEqual([['backlog', entry]]);
+  });
+
   describe('server pause', () => {
     function gatewayOn(gate: ContainerGate) {
       const gateway = new LiveGateway(

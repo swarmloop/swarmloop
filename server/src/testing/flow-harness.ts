@@ -16,6 +16,7 @@ import { BacklogStart } from '../api/backlog-start';
 import { RunCommandsService } from '../api/run-commands.service';
 import { BacklogActions } from '../pipeline/backlog/backlog-actions';
 import { BacklogScheduler } from '../pipeline/backlog/backlog-scheduler';
+import { BacklogPlanner } from '../pipeline/backlog/planner/backlog-planner';
 import { BacklogStartPort } from '../pipeline/backlog/backlog-start-port';
 import type { RunEntity } from '../history/entities';
 import { putStamped } from '../steps/shared/gate.spec-helpers';
@@ -153,6 +154,7 @@ export async function createFlowHarness(
       await reconciler.resumeSubtaskParents();
       await reconciler.watchMerges();
       await reconciler.reconcileCommands();
+      await harness.app.app.get(BacklogPlanner).whenIdle();
     },
     backlog: () => {
       backlogWired = true;

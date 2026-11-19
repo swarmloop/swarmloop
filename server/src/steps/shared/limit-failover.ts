@@ -2,7 +2,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { AppConfig } from '../../config/env';
 import { effortFields } from '../../contract/effort';
 import type { EffortFields } from '../../contract/effort';
-import { agentsFor, availableAgent } from '../../config/agents';
+import { agentsFor, firstAvailable } from '../../config/agents';
 import type { Agent } from '../../config/agents';
 import type { AgentRunResult } from '../../agent/agent-result';
 import { ERROR_CODES } from '../../contract/error-codes';
@@ -11,6 +11,7 @@ import { RuntimeLimit } from '../../core/swarmloop-error';
 import { recordStepEvent } from '../../core/step-event-scope';
 import type { VisitDraft } from '../../history/visit';
 import type { RunEntity } from '../../history/entities';
+import type { LaunchOwner } from './agent-launch-request';
 import { RuntimeCooldownRepository } from '../../history/runtime-cooldown.repository';
 import type { CooldownKey } from '../../history/runtime-cooldown.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -22,7 +23,8 @@ import type { Route } from '../contract/step-contract';
 
 /** What a launch that may move to another agent tells the failover. */
 interface FailoverTarget extends EffortFields {
-  run: RunEntity;
+  run: LaunchOwner;
+  login?: string | null;
   step: string;
   liveStep?: string;
   mode: string;
@@ -54,12 +56,17 @@ function limitText(runtime: RuntimeName, resetsAt: string | undefined): string {
 
 /** The cooldown keys of `runtimes` for the credentials of the run's starter. Without a store they are the server's own, `env`. */
 export async function cooldownKeys(
-  run: RunEntity,
+  run: Pick<LaunchOwner, 'startedBy' | 'parentRunId'>,
   runtimes: readonly RuntimeName[],
   runs?: RunRepository,
   credentials?: PersonalCredentials,
+  login?: string | null,
 ): Promise<CooldownKey[]> {
-  const starter = runs && credentials ? await starterOf(runs, run) : null;
+  const given = login !== undefined;
+  const starter =
+    given || !(runs && credentials)
+      ? (login ?? null)
+      : await starterOf(runs, { startedBy: run.startedBy ?? null, parentRunId: run.parentRunId ?? null });
   return Promise.all(
     runtimes.map(async (runtime) => ({
       runtime,
@@ -89,7 +96,7 @@ export class LimitFailover {
     if (!cooling.has(request.runtime)) {
       return request;
     }
-    const next = availableAgent(this.config.env, request.run, this.use(request), cooling);
+    const next = this.available(request, cooling);
     if (next) {
       const moved = this.moveTo(request, next);
       return next.runtime !== request.runtime && request.briefFor
@@ -113,13 +120,8 @@ export class LimitFailover {
     const end = known ? named : now + this.config.env.LIMIT_COOLDOWN_MIN * 60_000;
     const keys = await this.keys(request);
     await this.cooldowns.set(keys[0], end, known);
-    await this.visits.finishVisit(request.run, this.visit(request, result));
-    const next = availableAgent(
-      this.config.env,
-      request.run,
-      this.use(request),
-      await this.cooldowns.cooling(now, keys),
-    );
+    await this.recordLimit(request, this.visit(request, result));
+    const next = this.available(request, await this.cooldowns.cooling(now, keys));
     if (!next) {
       throw await this.waiting(request, request.runtime, window, resetsAt);
     }
@@ -139,6 +141,20 @@ export class LimitFailover {
       prompt: request.briefFor?.(next.runtime) ?? request.brief ?? request.prompt,
       freshPrompt: undefined,
     };
+  }
+
+  /** The first agent of the owner's list whose runtime is not cooling down. A run's list is the one of its role and tier. */
+  private available(request: FailoverTarget, cooling: ReadonlySet<string>): Agent | null {
+    return firstAvailable(this.agentList(request), cooling);
+  }
+
+  private agentList(request: FailoverTarget): Agent[] {
+    return request.run.roleAgents ?? agentsFor(this.config.env, request.run, this.use(request));
+  }
+
+  /** An owner that records its own limited visits does; any other owner is a run, whose visit goes to its rows. */
+  private recordLimit(request: FailoverTarget, visit: VisitDraft): Promise<unknown> {
+    return request.run.recordLimit?.(visit) ?? this.visits.finishVisit(request.run as RunEntity, visit);
   }
 
   /** The request on the next agent, which brings its own effort: the old agent's level never stays on it. */
@@ -164,8 +180,14 @@ export class LimitFailover {
 
   /** The keys of the request's runtime and the runtimes of its role, for the run's credentials. */
   private keys(request: FailoverTarget): Promise<CooldownKey[]> {
-    const role = agentsFor(this.config.env, request.run, this.use(request)).map((agent) => agent.runtime);
-    return cooldownKeys(request.run, [...new Set([request.runtime, ...role])], this.runs, this.credentials);
+    const role = this.agentList(request).map((agent) => agent.runtime);
+    return cooldownKeys(
+      request.run,
+      [...new Set([request.runtime, ...role])],
+      this.runs,
+      this.credentials,
+      request.login,
+    );
   }
 
   private use(request: FailoverTarget): string {

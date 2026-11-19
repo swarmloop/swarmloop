@@ -4,6 +4,7 @@ import { AppConfig } from '../../config/env';
 import { markedInterval } from '../../core/entered-marks';
 import { Clock } from '../../core/clock';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
+import { BacklogChatRepository } from '../../history/backlog-chat.repository';
 import { RunRepository } from '../../history/run.repository';
 import { deriveState } from '../../history/run-state';
 import { RepositoryHost } from '../../steps/shared/repository-host';
@@ -49,6 +50,7 @@ export class BacklogScheduler implements OnModuleDestroy {
   private pass: Promise<void> | null = null;
   /** The backlog that got the last place, so the next place goes to the backlog after it. */
   private lastServed: number | null = null;
+  private readonly listeners = new Set<() => void | Promise<void>>();
 
   constructor(
     private readonly backlogs: BacklogRepository,
@@ -59,7 +61,16 @@ export class BacklogScheduler implements OnModuleDestroy {
     private readonly port: BacklogStartPort,
     private readonly config: AppConfig,
     private readonly clock: Clock,
+    private readonly chat: BacklogChatRepository,
   ) {}
+
+  /** Calls `listener` at the end of each events pass, before tasks are chosen. Returns the way to stop. */
+  afterEvents(listener: () => void | Promise<void>): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
 
   schedule(): void {
     this.stop();
@@ -100,6 +111,7 @@ export class BacklogScheduler implements OnModuleDestroy {
     const mains = new Map<string, MainReading>();
     await this.merge.run(backlogs, mains);
     await this.events.observe(backlogs, mains);
+    await this.notify();
     const passes: BacklogPass[] = [];
     for (const backlog of backlogs) passes.push(await this.read(backlog));
     const open = passes.filter((pass) => !pass.paused);
@@ -129,6 +141,17 @@ export class BacklogScheduler implements OnModuleDestroy {
     }
   }
 
+  /** A listener that fails never stops the pass. */
+  private async notify(): Promise<void> {
+    for (const listener of this.listeners) {
+      try {
+        await listener();
+      } catch (error) {
+        this.logger.warn(`backlog listener failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
   /** The backlog's tasks, with the shown status of each one's run stored when it changed. */
   private async read(backlog: { id?: number; owner: string; paused: boolean }): Promise<BacklogPass> {
     const id = backlog.id as number;
@@ -140,7 +163,8 @@ export class BacklogScheduler implements OnModuleDestroy {
       if (record.runKey !== null && run)
         facts.set(record.runKey, { state: deriveState(run).state, currentStep: run.currentStep });
     }
-    const tasks = backlogTasks(stored, active, facts);
+    const unread = stored.some((record) => record.status === 'merged') ? await this.chat.unhandledMergedSlugs(id) : [];
+    const tasks = backlogTasks(stored, active, facts, new Set(unread));
     const records = new Map(stored.map((record) => [record.slug, record]));
     const pass: BacklogPass = {
       id,

@@ -24,6 +24,7 @@ import { FlakyTestRepository } from './flaky-test.repository';
 import { RuntimeCooldownRepository } from './runtime-cooldown.repository';
 import { IntegrationSecretRepository } from './integration-secret.repository';
 import { BacklogRepository } from './backlog.repository';
+import { BacklogChatRepository } from './backlog-chat.repository';
 import { UserSettingRepository } from './user-setting.repository';
 import { ServerStallRepository, SlowRequestRepository } from './server-stall.repository';
 import { PlanChatStore } from './plan-chat.store';
@@ -88,6 +89,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     UserSettingRepository,
     IntegrationSecretRepository,
     BacklogRepository,
+    BacklogChatRepository,
     PlanChatStore,
     AttachmentStore,
     WalCheckpoint,
@@ -110,6 +112,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     UserSettingRepository,
     IntegrationSecretRepository,
     BacklogRepository,
+    BacklogChatRepository,
     PlanChatStore,
     AttachmentStore,
     WalCheckpoint,

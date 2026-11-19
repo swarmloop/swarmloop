@@ -3,14 +3,17 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
+import { AgentLaunch } from '../../agent/agent-launch';
 import { AgentProcessRunner } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
+import type { Agent } from '../../config/agents';
 import { AppConfig } from '../../config/env';
 import { testEnv } from '../../config/env.spec-helpers';
 import type { StepEvent } from '../../contract/step-events';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../../core/step-event-scope';
 import type { RunEntity } from '../../history/entities';
+import type { VisitDraft } from '../../history/visit';
 import { sessionFileName } from '../../history/session-group';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SandboxService } from '../../sandbox/sandbox.service';
@@ -536,5 +539,128 @@ describe('AgentLauncher effort', () => {
 
     expect(input.effort).toBe('xhigh');
     expect(events.some((event) => event.kind === 'agent.effort_capped')).toBe(false);
+  });
+});
+
+describe('AgentLauncher for an owner that is not a run', () => {
+  const ran = { chatId: null, tokensIn: 3, tokensOut: 4, usd: 0.5, calls: 1, exitCode: 0, resumed: false, samples: [] };
+  const limited = { ...ran, responseText: 'limit', limit: { window: '5-hour' } };
+
+  function setup(answers: object[], cooling: string[] = []) {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-launcher-owner-'));
+    const run = jest.fn();
+    for (const answer of answers) run.mockResolvedValueOnce(answer);
+    const recorded: VisitDraft[] = [];
+    const finishVisit = jest.fn();
+    const failover = new LimitFailover(
+      new AppConfig(testEnv()),
+      new FakeClock(),
+      {
+        cooling: async () => new Set(cooling),
+        set: async (key: { runtime: string }) => {
+          cooling.push(key.runtime);
+        },
+        earliest: async () => ({ until: 0, resumeAt: Date.UTC(2026, 0, 1, 1) }),
+      } as never,
+      { finishVisit } as never,
+    );
+    const tokenTotal = jest.fn(async () => 999);
+    const launcher = new AgentLauncher({ run } as never, { tokenTotal } as never, new RunStop(), failover);
+    const owner = {
+      id: 7,
+      agentCalls: 0,
+      spentUsd: 1,
+      activeAttempt: null,
+      tokensSoFar: 12,
+      roleAgents: [
+        { runtime: 'claude', model: 'm-claude' },
+        { runtime: 'codex', model: 'm-codex' },
+      ] as Agent[],
+      recordLimit: async (visit: VisitDraft) => {
+        recorded.push(visit);
+      },
+    };
+    const launch = () =>
+      launcher.launch({
+        root,
+        run: owner,
+        login: 'ada',
+        key: 'turn-1',
+        step: 'backlog-plan',
+        mode: 'plan',
+        tools: 'plan',
+        runtime: 'claude',
+        model: 'm-claude',
+        timeLimitMs: 1,
+        prompt: 'plan the backlog',
+        workspace: root,
+        mounts: [],
+        failover: true,
+      });
+    return { run, launch, recorded, finishVisit, tokenTotal, owner };
+  }
+
+  it('launches with the login and the owner spend, and counts the calls on the owner', async () => {
+    const { run, launch, tokenTotal, owner } = setup([{ ...ran, responseText: 'done' }]);
+    await launch();
+    expect(run.mock.calls[0][0]).toMatchObject({ login: 'ada', tokensInRun: 12, spentUsd: 1, attemptId: '' });
+    expect(tokenTotal).not.toHaveBeenCalled();
+    expect(owner).toMatchObject({ agentCalls: 1, spentUsd: 1.5 });
+  });
+
+  it('moves to the next agent of its own list on a limit and records the limited visit through the owner', async () => {
+    const { run, launch, recorded, finishVisit } = setup([limited, { ...ran, responseText: 'done' }]);
+    const result = await launch();
+    expect(run.mock.calls.map((call) => call[0].runtime)).toEqual(['claude', 'codex']);
+    expect(result.agent).toEqual({ runtime: 'codex', model: 'm-codex' });
+    expect(recorded).toEqual([expect.objectContaining({ runtime: 'claude', status: 'interrupted' })]);
+    expect(finishVisit).not.toHaveBeenCalled();
+  });
+
+  it('throws the usage limit with the time of the next try when every agent of its list is limited', async () => {
+    const { run, launch, recorded } = setup([limited, limited]);
+    await expect(launch()).rejects.toMatchObject({
+      name: 'RuntimeLimit',
+      resumesAt: new Date(Date.UTC(2026, 0, 1, 1)).toISOString(),
+    });
+    expect(run.mock.calls.map((call) => call[0].runtime)).toEqual(['claude', 'codex']);
+    expect(recorded).toHaveLength(2);
+  });
+});
+
+describe('AgentLaunch credential of a launch', () => {
+  function launchWith(login?: string | null) {
+    const runtimeCredential = jest.fn(async (_runtime: string, who: string | null) => ({
+      name: 'KEY',
+      value: 'secret',
+      owner: who,
+    }));
+    const findRun = jest.fn(async () => ({ startedBy: 'grace', parentRunId: null }));
+    const launch = new AgentLaunch(
+      new AppConfig(testEnv()),
+      new FakeClock(),
+      {} as never,
+      new RunStop(),
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      { runtimeCredential } as never,
+      { findRun } as never,
+    );
+    return { found: launch.credentialOf('run-1', 'claude', login), runtimeCredential, findRun };
+  }
+
+  it('uses the credential of the given login without looking up a run', async () => {
+    const { found, runtimeCredential, findRun } = launchWith('ada');
+    expect(await found).toMatchObject({ owner: 'ada' });
+    expect(runtimeCredential).toHaveBeenCalledWith('claude', 'ada');
+    expect(findRun).not.toHaveBeenCalled();
+  });
+
+  it('resolves the starter of the run without a login, as before', async () => {
+    const { found, runtimeCredential } = launchWith();
+    expect(await found).toMatchObject({ owner: 'grace' });
+    expect(runtimeCredential).toHaveBeenCalledWith('claude', 'grace');
   });
 });

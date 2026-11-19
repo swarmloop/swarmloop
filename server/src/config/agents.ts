@@ -24,6 +24,9 @@ type Role = (typeof ROLES)[number];
 const TIERS = ['main', 'subtask'] as const;
 type Tier = (typeof TIERS)[number];
 
+/** The backlog's planner has a list of its own, for the plan role only. No run reads it. */
+type ListTier = Tier | 'backlog';
+
 /** The env values that name agents: the role lists. */
 interface AgentEnv {
   AGENTS_PLAN: string;
@@ -32,6 +35,7 @@ interface AgentEnv {
   AGENTS_SUBTASK_PLAN: string;
   AGENTS_SUBTASK_IMPLEMENT: string;
   AGENTS_SUBTASK_REVIEW: string;
+  AGENTS_BACKLOG_PLAN: string;
   EPIC_EFFORT: string;
 }
 
@@ -44,7 +48,13 @@ type AgentRun = object & {
 
 /** Everything that launches or prices an agent: the steps of a run, and the work done outside the pipeline. */
 type AgentUse =
-  StepName | 'code-review-report' | `code-review-${(typeof CODE_REVIEWERS)[number]}` | 'chat' | 'shell' | 'rebase';
+  | StepName
+  | 'code-review-report'
+  | `code-review-${(typeof CODE_REVIEWERS)[number]}`
+  | 'chat'
+  | 'shell'
+  | 'rebase'
+  | 'backlog-plan';
 
 /** The one table from a step to its role. A step without an agent has none. */
 export const ROLE_OF_STEP = {
@@ -71,6 +81,7 @@ export const ROLE_OF_STEP = {
   chat: 'implement',
   shell: 'implement',
   rebase: 'implement',
+  'backlog-plan': 'plan',
 } as const satisfies Record<AgentUse, Role | null>;
 
 /** The uses that have an agent. */
@@ -145,7 +156,7 @@ const LISTS: Record<Tier, Record<Role, keyof AgentEnv>> = {
 function knownStored(
   run: AgentRun | null | undefined,
   role: Role,
-  tier: Tier,
+  tier: ListTier,
 ): { runtime: RuntimeName; model: string; effort?: string }[] {
   return (run?.agents?.[tier]?.[role] ?? []).flatMap(({ runtime, model, effort }) => {
     const known = RUNTIME_NAMES.find((candidate) => candidate === runtime);
@@ -157,7 +168,7 @@ function knownStored(
  * The run's stored choice for one role and tier. A stored level that its runtime no longer declares is dropped: it
  * was checked when saved, and a changed model list must not stop a running run.
  */
-function storedAgents(run: AgentRun | null | undefined, role: Role, tier: Tier): Agent[] {
+function storedAgents(run: AgentRun | null | undefined, role: Role, tier: ListTier): Agent[] {
   const agents: Agent[] = [];
   for (const { runtime: known, model, effort } of knownStored(run, role, tier)) {
     if (effort) {
@@ -196,9 +207,9 @@ function resolveEffort(agent: Agent, run: AgentRun | null | undefined, env: Agen
   return { ...base, ...(level ? { effort: level } : {}), ...(note ? { effortNote: note } : {}) };
 }
 
-/** The env name of the list a role and tier read: an unset subtask list falls back to the main role. */
-function listName(env: AgentEnv, role: Role, tier: Tier): keyof AgentEnv {
-  const own = LISTS[tier][role];
+/** The env name of the list a role and tier read: an unset subtask or backlog list falls back to the main role. */
+function listName(env: AgentEnv, role: Role, tier: ListTier): keyof AgentEnv {
+  const own = tier === 'backlog' ? 'AGENTS_BACKLOG_PLAN' : LISTS[tier][role];
   return env[own] === '' ? LISTS.main[role] : own;
 }
 
@@ -206,7 +217,7 @@ function listName(env: AgentEnv, role: Role, tier: Tier): keyof AgentEnv {
  * The agents of one role in one tier, in fallback order. The run's stored choice comes first; else an unset list
  * falls back to the main role, whose list is required.
  */
-function agentsOf(env: AgentEnv, role: Role, tier: Tier = 'main', run?: AgentRun | null): Agent[] {
+function agentsOf(env: AgentEnv, role: Role, tier: ListTier = 'main', run?: AgentRun | null): Agent[] {
   const stored = storedAgents(run, role, tier);
   if (stored.length > 0) {
     return stored.map((agent) => resolveEffort(agent, run, env, role));
@@ -219,7 +230,7 @@ function agentsOf(env: AgentEnv, role: Role, tier: Tier = 'main', run?: AgentRun
  * The agents of one role and tier as written: the run's stored choice, else the env list. A level is read but not
  * checked, so no model list is needed. It serves what only shows or counts agents; a launch uses `agentsOf`.
  */
-function namedAgents(env: AgentEnv, role: Role, tier: Tier, run?: AgentRun | null): Agent[] {
+function namedAgents(env: AgentEnv, role: Role, tier: ListTier, run?: AgentRun | null): Agent[] {
   const stored = knownStored(run, role, tier).map(({ runtime, model, effort }) =>
     effort && isEffort(effort) ? { runtime, model, effort } : { runtime, model },
   );
@@ -244,6 +255,11 @@ export function agentsFor(env: AgentEnv, run: AgentRun | null, step: string): Ag
   return role ? agentsOf(env, role, tierOf(run), run) : [];
 }
 
+/** The first agent of a list whose runtime is not cooling down, or null when every one is. */
+export function firstAvailable(agents: readonly Agent[], cooling: ReadonlySet<string>): Agent | null {
+  return agents.find((agent) => !cooling.has(agent.runtime)) ?? null;
+}
+
 /**
  * The first agent of a step's role and tier whose runtime is not cooling down after a provider limit, or null when
  * every one is. The first agent comes back as soon as its cooldown ends, so no step stays on a fallback.
@@ -254,7 +270,7 @@ export function availableAgent(
   step: string,
   cooling: ReadonlySet<string>,
 ): Agent | null {
-  return agentsFor(env, run, step).find((agent) => !cooling.has(agent.runtime)) ?? null;
+  return firstAvailable(agentsFor(env, run, step), cooling);
 }
 
 function tierOf(run: AgentRun | null): Tier {
@@ -273,15 +289,39 @@ export function namedAgentsFor(env: AgentEnv, run: AgentRun | null, step: string
   return role ? namedAgents(env, role, tierOf(run), run) : [];
 }
 
+/**
+ * The agents of the backlog's planner: a person's stored choice first, else the env list (an empty one is the main
+ * plan role), with the effort resolved and capped and the fallback order kept.
+ */
+export function backlogPlanAgents(env: AgentEnv, stored?: StoredAgents | null): Agent[] {
+  return agentsOf(env, 'plan', 'backlog', { agents: stored });
+}
+
+/** The backlog planner's agents the server defaults (env) name, as written. */
+export function namedBacklogPlanAgents(env: AgentEnv): Agent[] {
+  return namedAgents(env, 'plan', 'backlog');
+}
+
+/** Every agent the server defaults (env) name, in every role of every tier and the backlog's plan list. */
+function namedEverywhere(env: AgentEnv): Agent[] {
+  return [
+    ...TIERS.flatMap((tier) => ROLES.flatMap((role) => namedAgents(env, role, tier))),
+    ...namedBacklogPlanAgents(env),
+  ];
+}
+
 /** Every distinct runtime named in any role of any tier of the server defaults (env). */
 export function runtimesInUse(env: AgentEnv): RuntimeName[] {
-  const all = TIERS.flatMap((tier) => ROLES.flatMap((role) => namedAgents(env, role, tier)));
+  const all = namedEverywhere(env);
   return [...new Set(all.map((agent) => agent.runtime))];
 }
 
 /** The runtimes whose env agents name an effort. Their model lists must be read before the levels can be checked. */
 export function runtimesNamingEffort(env: AgentEnv): RuntimeName[] {
-  const names = TIERS.flatMap((tier) => ROLES.map((role) => LISTS[tier][role])).filter((name) => env[name] !== '');
+  const names = [
+    ...TIERS.flatMap((tier) => ROLES.map((role) => LISTS[tier][role])),
+    'AGENTS_BACKLOG_PLAN' as const,
+  ].filter((name) => env[name] !== '');
   const agents = names.flatMap((name) => env[name].split(',').map((item) => splitAgent(name, item)));
   return [...new Set(agents.filter((agent) => agent.effort).map((agent) => agent.runtime))];
 }
@@ -289,7 +329,7 @@ export function runtimesNamingEffort(env: AgentEnv): RuntimeName[] {
 /** The models env names for each runtime, once each, in env order: the role lists. */
 export function knownModels(env: AgentEnv): Partial<Record<RuntimeName, string[]>> {
   const models: Partial<Record<RuntimeName, string[]>> = {};
-  for (const { runtime, model } of TIERS.flatMap((tier) => ROLES.flatMap((role) => namedAgents(env, role, tier)))) {
+  for (const { runtime, model } of namedEverywhere(env)) {
     const list = (models[runtime] ??= []);
     if (!list.includes(model)) {
       list.push(model);
@@ -345,14 +385,13 @@ export function credentialFor(env: Partial<CredentialEnv>, runtime: RuntimeName)
  * an agent is checked only when its runtime's model list is loaded: without a key the list cannot be read.
  */
 export function assertAgents(env: AgentEnv): void {
-  for (const tier of TIERS) {
-    for (const role of ROLES) {
-      const name = listName(env, role, tier);
-      for (const entry of env[name].split(',')) {
-        const { runtime, effort } = splitAgent(name, entry);
-        if (!effort || runtimeFor(runtime).listLoaded()) {
-          parseAgent(name, entry);
-        }
+  const lists: [Role, ListTier][] = TIERS.flatMap((tier) => ROLES.map((role): [Role, ListTier] => [role, tier]));
+  for (const [role, tier] of [...lists, ['plan', 'backlog'] as [Role, ListTier]]) {
+    const name = listName(env, role, tier);
+    for (const entry of env[name].split(',')) {
+      const { runtime, effort } = splitAgent(name, entry);
+      if (!effort || runtimeFor(runtime).listLoaded()) {
+        parseAgent(name, entry);
       }
     }
   }

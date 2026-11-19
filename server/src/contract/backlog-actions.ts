@@ -59,3 +59,8 @@ export interface MoveItemBody {
   /** The number of the milestone the item goes to. */
   milestone: number;
 }
+
+/** Closing a requirement says what shows it is met. */
+export interface CloseRequirementBody {
+  evidence: string;
+}

@@ -209,3 +209,27 @@ describe('requirement cycles', () => {
     expect(dependencyWait(tasks[0], tasks)).toBe("waits for M1.R3's tasks");
   });
 });
+
+describe('the hold for the planner to read a merge', () => {
+  const merged = record('a', { status: 'merged' });
+  const records = [merged, record('b', { depends: ['a'] }), record('c')];
+
+  it('holds a dependent of a merged task whose merge event is unread, and no other task', () => {
+    const tasks = backlogTasks(records, ACTIVE, NO_RUNS, new Set(['a']));
+    expect(candidates(tasks).map((task) => task.id)).toEqual(['c']);
+    expect(dependencyWait(tasks[1], tasks)).toBe('waits for the planner to read the merge of a');
+    expect(dependencyWait(tasks[2], tasks)).toBeNull();
+  });
+
+  it('holds nothing for a merged task with no unread merge event', () => {
+    const tasks = backlogTasks(records, ACTIVE, NO_RUNS);
+    expect(candidates(tasks).map((task) => task.id)).toEqual(['b', 'c']);
+    expect(dependencyWait(tasks[1], tasks)).toBeNull();
+  });
+
+  it('holds a task that depends on the merged task through a requirement it covers', () => {
+    const covered = [record('a', { status: 'merged', covers: ['M1.R1'] }), record('b', { depends: ['M1.R1'] })];
+    const tasks = backlogTasks(covered, ACTIVE, NO_RUNS, new Set(['a']));
+    expect(candidates(tasks)).toEqual([]);
+  });
+});

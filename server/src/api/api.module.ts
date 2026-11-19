@@ -15,6 +15,8 @@ import { PlanChatController } from './plan-chat.controller';
 import { UploadsController } from './uploads.controller';
 import { PlanChatService } from './plan-chat.service';
 import { ShellService } from './shell.service';
+import { BacklogChatController } from './backlog-chat.controller';
+import { BacklogChatService } from './backlog-chat.service';
 import { BacklogsController } from './backlogs.controller';
 import { CheckoutsController } from './checkouts.controller';
 import { HealthController } from './health.controller';
@@ -27,6 +29,7 @@ import { SettingsService } from './settings.service';
 import { StatsController } from './stats.controller';
 import { SubtaskClose } from './subtask-close';
 import { BacklogStart } from './backlog-start';
+import { PlannerRunCommands } from './planner-run-commands';
 import { RunAnswersService } from './run-answers.service';
 import { RunCommandsService } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
@@ -55,6 +58,7 @@ import { RequestTiming } from './request-timing';
     PlanChatController,
     UploadsController,
     BacklogsController,
+    BacklogChatController,
     CheckoutsController,
     RepositoriesController,
     StatsController,
@@ -66,6 +70,8 @@ import { RequestTiming } from './request-timing';
     RunCommandsService,
     RunAnswersService,
     BacklogStart,
+    PlannerRunCommands,
+    BacklogChatService,
     RunSubtaskCommandsService,
     SubtaskClose,
     RunRebaseService,

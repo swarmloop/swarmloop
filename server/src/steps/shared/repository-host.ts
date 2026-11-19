@@ -8,6 +8,13 @@ import { RepositoryOrigins } from './repository-origins';
 type MergeRequestRef = Pick<MergeRequestRecord, 'project' | 'iid'>;
 type HostRun = { codeHost: string; startedBy: string | null };
 
+/** A failed job of a main: its name, its log and where the whole run is on the host. */
+interface FailedJob {
+  name: string;
+  trace: string;
+  url: string;
+}
+
 type GateReading = MergeGate & { failing: string[]; pending: string[] };
 
 function stateOf(snapshot: PipelineSnapshot | null): RepositoryMainView['state'] {
@@ -28,13 +35,17 @@ export class RepositoryHost {
     private readonly hosts: CodeHostRegistry,
   ) {}
 
-  /** The state of a repository's default branch. */
-  async main(repo: string, person: string | null): Promise<RepositoryMainView> {
+  private async hostOf(repo: string, person: string | null) {
     const { origin, project } = await this.origins.of(repo);
     const scoped = await this.hosts.forRun(person);
     const name = scoped.forOrigin(origin);
     if (name === null) throw new SwarmloopError(`${repo} is not on a known code host`);
-    const host = scoped.byName(name);
+    return { host: scoped.byName(name), project };
+  }
+
+  /** The state of a repository's default branch. */
+  async main(repo: string, person: string | null): Promise<RepositoryMainView> {
+    const { host, project } = await this.hostOf(repo, person);
     const { branch, sha } = await host.readDefaultHead(project);
     const { snapshot } = await host.readBranchPipeline({ project, ref: branch, sha });
     const durations = (snapshot?.checks ?? []).map((check) => check.durationMs);
@@ -47,6 +58,19 @@ export class RepositoryHost {
       durationMs: durations.length > 0 ? Math.max(...durations) : null,
       url: snapshot?.url ?? null,
     };
+  }
+
+  /** The first failed job of a repository's default branch with its whole log, or null when no job of a workflow failed. */
+  async failedMainJob(repo: string, person: string | null): Promise<FailedJob | null> {
+    const { host, project } = await this.hostOf(repo, person);
+    const { branch, sha } = await host.readDefaultHead(project);
+    const { snapshot } = await host.readBranchPipeline({ project, ref: branch, sha });
+    const failed = (snapshot?.checks ?? []).find(
+      (check) => check.workflow && (check.status === 'failed' || check.status === 'canceled'),
+    );
+    if (!failed) return null;
+    const { trace } = await host.readJobTrace(project, failed.id);
+    return { name: failed.name, trace, url: failed.url || snapshot?.url || '' };
   }
 
   /** A merge request's gate, with the names of its failing and pending checks on the head. */
