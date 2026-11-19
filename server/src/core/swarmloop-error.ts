@@ -39,6 +39,19 @@ export class GitAuthError extends SwarmloopError {
   }
 }
 
+/** A host refused a branch, a commit or a title after the one answer the agent gets: a person puts the rule into the repository. */
+export class GitRulesError extends SwarmloopError {
+  readonly hint = 'put the rule into .swarmloop.json';
+
+  constructor(
+    readonly hostMessage: string,
+    readonly refused: string,
+  ) {
+    super(`${hostMessage} refuses ${refused}`, { code: ERROR_CODES.GIT_RULES, category: 'user' });
+    this.name = 'GitRulesError';
+  }
+}
+
 /** A host, git or another provider kept failing after the retries: the step waits and tries again at `retryAt`. */
 export class HostUnavailable extends SwarmloopError {
   constructor(

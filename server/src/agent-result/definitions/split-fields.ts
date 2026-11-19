@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { CHANGE_KEY, type GitChange } from './git-change';
 
 /** One task of a split plan, as the planner writes it. */
 export interface SplitTask {
@@ -10,6 +11,8 @@ export interface SplitTask {
   description: string;
   /** The ids of the requirements the task serves. */
   covers?: string[];
+  /** What the task's own change means. */
+  change?: GitChange;
 }
 
 /** One capability of a split plan that must keep working, and the tasks that touch it. */
@@ -52,6 +55,7 @@ export function splitKeys(): Record<string, Joi.Schema> {
           proof: Joi.string().required().description('The test or check that proves it'),
           description: Joi.string().required().description('What the task does, kept whole'),
           covers: list().default([]).description('Ids of the requirements the task serves'),
+          change: CHANGE_KEY,
         }),
       )
       .default([])

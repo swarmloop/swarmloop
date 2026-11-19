@@ -379,7 +379,7 @@ test('agent answer rules let the registry read the labels of its own pipeline_lo
   const text =
     "const result = /^result:\\s*(\\S+)/m.exec(body)?.[1] ?? '';\nconst job = /^job:\\s*(.+)$/m.exec(body)?.[1];\n";
 
-  assert.deepEqual(check({ 'server/src/steps/contract/artifacts.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/steps/contract/artifact-summaries.ts': text }), []);
   assert.equal(check({ 'server/src/steps/contract/artifact-summary.ts': text }).length, 2);
 });
 

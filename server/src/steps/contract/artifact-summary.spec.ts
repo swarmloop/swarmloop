@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { requirementsView } from '../../contract/requirements-view';
-import { ARTIFACTS, summarizePlan, summarizeReview, summarizeReviewResult } from './artifacts';
+import { ARTIFACTS } from './artifacts';
+import { summarizePlan, summarizeReview, summarizeReviewResult } from './artifact-summaries';
 import type { Subtask } from '../../contract/subtask';
 import type { Artifact } from './artifact';
 

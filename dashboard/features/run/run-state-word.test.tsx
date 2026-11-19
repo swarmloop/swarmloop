@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import type { StateWord } from '@contract/run-state';
+import { stateWord, type StateWord } from '@contract/run-state';
 import { RunStateIcon } from './run-state-word';
 
 const working: StateWord = { word: 'Working', tone: 'working', icon: 'working', tip: '' };
@@ -29,6 +29,17 @@ describe('RunStateIcon', () => {
     render(<RunStateIcon view={person} />);
 
     expect(screen.getByRole('img', { name: 'Waiting for you: Answer the questions' })).toBeInTheDocument();
+  });
+
+  it('shows the word of a blocked run that a git rule of the repository stopped', () => {
+    const reason = { code: 'GIT_RULES', message: 'title must start with a ticket refuses feat: add x' };
+    render(<RunStateIcon view={stateWord('blocked', reason, {}, (iso) => iso)} />);
+
+    expect(
+      screen.getByRole('img', {
+        name: 'Waits for you: a git rule of the repository: title must start with a ticket refuses feat: add x',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('colors the icon by the tone', () => {
