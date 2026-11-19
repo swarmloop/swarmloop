@@ -539,7 +539,9 @@ describe('sloop', () => {
   });
 
   it('sends the machine token on every call and X-Swarmloop on a mutating one', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, json: async () => ({ runs: [], next: null }) });
     const api = new HttpServerApi('http://127.0.0.1:3920', 'machine-secret', fetchImpl);
     await api.list();
     await api.stop('PROJ-1');

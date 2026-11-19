@@ -47,7 +47,8 @@ function DashboardFrame({
 }): ReactElement {
   const pathname = usePathname();
   const router = useRouter();
-  const { runs, loaded, now, error, retry, connected, removeRun } = useRuns();
+  const { runs, counts, otherMatches, next, listing, loadMore, loaded, now, error, retry, connected, removeRun } =
+    useRuns();
   const openNewRun = useNewRun();
   const { blocker } = useReadiness();
   const [pendingRemove, setPendingRemove] = useState<{ run: RunSummary; search: string } | null>(null);
@@ -147,6 +148,11 @@ function DashboardFrame({
           <Suspense fallback={null}>
             <RunColumn
               runs={runs}
+              counts={counts}
+              otherMatches={otherMatches}
+              next={next}
+              onLoadMore={loadMore}
+              listing={listing}
               selected={selected}
               now={now}
               loaded={loaded}

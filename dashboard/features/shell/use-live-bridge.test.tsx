@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { emitted, fakeSocket, receive } from '../../test/fake-socket';
 import { flowView, runSummary } from '../../test/fixtures';
+import { runsPage } from '../../test/runs-page';
 import { LiveBridgeProvider, useLiveActions, useLiveBridge } from './use-live-bridge';
 import type { RunSummary } from '@contract/api';
 
@@ -12,7 +13,7 @@ let watch: (key: string | null) => void = () => undefined;
 let setList: (runs: RunSummary[]) => void = () => undefined;
 
 function Probe() {
-  const { runs, loaded, flow, logs, events, connected, paused } = useLiveBridge((snapshot) => snapshot);
+  const { runs, loaded, flow, logs, events, connected, paused, statusStamp } = useLiveBridge((snapshot) => snapshot);
   const { watchRun, setRuns } = useLiveActions();
   useEffect(() => {
     watch = watchRun;
@@ -22,6 +23,7 @@ function Probe() {
     <div>
       <p>{connected ? 'live' : 'offline'}</p>
       <p>{paused ? 'paused' : 'running'}</p>
+      <p>stamp {statusStamp}</p>
       <p>{loaded ? 'loaded' : 'not loaded'}</p>
       {runs.map((run) => (
         <p key={run.key}>{run.name}</p>
@@ -76,10 +78,10 @@ describe('useLiveBridge', () => {
   it('replaces the runs with a runs event', () => {
     render(<Probe />, { wrapper: LiveBridgeProvider });
 
-    act(() => receive('runs', { runs: [runSummary()] }));
+    act(() => receive('runs', runsPage([runSummary()], { part: 'active' })));
     expect(screen.getByText('Run one')).toBeInTheDocument();
 
-    act(() => receive('runs', { runs: [{ ...runSummary(), key: 'run-2', name: 'Run two' }] }));
+    act(() => receive('runs', runsPage([{ ...runSummary(), key: 'run-2', name: 'Run two' }], { part: 'active' })));
     expect(screen.getByText('Run two')).toBeInTheDocument();
     expect(screen.queryByText('Run one')).not.toBeInTheDocument();
   });
@@ -87,7 +89,7 @@ describe('useLiveBridge', () => {
   it('is loaded after the first runs list from the socket or from the API', () => {
     const socket = render(<Probe />, { wrapper: LiveBridgeProvider });
     expect(screen.getByText('not loaded')).toBeInTheDocument();
-    act(() => receive('runs', { runs: [] }));
+    act(() => receive('runs', runsPage([], { part: 'active' })));
     expect(screen.getByText('loaded')).toBeInTheDocument();
     socket.unmount();
 
@@ -127,9 +129,57 @@ describe('useLiveBridge', () => {
 
     unmount();
 
-    for (const event of ['connect', 'disconnect', 'runs', 'flow', 'log']) {
+    for (const event of ['connect', 'disconnect', 'runs', 'run', 'flow', 'log']) {
       expect(fakeSocket.listenerCount(event)).toBe(0);
     }
+  });
+
+  it('a run event replaces its rows in the held list and the list renders as after a full runs', () => {
+    const counts = { active: 2, done: 0, all: 2 };
+    const row = (key: string, name: string, createdAt: string): RunSummary => ({
+      ...runSummary(),
+      key,
+      name,
+      title: name,
+      createdAt,
+    });
+    const first = row('r-1', 'First', '2026-11-02T10:00:00.000Z');
+    const second = row('r-2', 'Second', '2026-11-01T10:00:00.000Z');
+    const { unmount } = render(<Probe />, { wrapper: LiveBridgeProvider });
+    act(() => receive('runs', { runs: [first, second], counts, otherMatches: 0, next: null }));
+
+    act(() =>
+      receive('run', { rows: [{ ...second, name: 'Second renamed', title: 'Second renamed' }], removed: [], counts }),
+    );
+    const afterRun = screen.getAllByText(/^(First|Second)/).map((node) => node.textContent);
+    unmount();
+
+    render(<Probe />, { wrapper: LiveBridgeProvider });
+    act(() =>
+      receive('runs', {
+        runs: [first, { ...second, name: 'Second renamed', title: 'Second renamed' }],
+        counts,
+        otherMatches: 0,
+        next: null,
+      }),
+    );
+    const afterRuns = screen.getAllByText(/^(First|Second)/).map((node) => node.textContent);
+
+    expect(afterRun).toEqual(['First', 'Second renamed']);
+    expect(afterRun).toEqual(afterRuns);
+  });
+
+  it('moves the status stamp when a run the list does not hold changes status', () => {
+    const counts = { active: 1, done: 0, all: 1 };
+    const outside = { ...runSummary(), key: 'r-9', status: 'running' as const };
+    render(<Probe />, { wrapper: LiveBridgeProvider });
+    act(() => receive('runs', { runs: [], counts, otherMatches: 0, next: null }));
+    act(() => receive('run', { rows: [outside], removed: [], counts }));
+    const before = screen.getByText(/^stamp/).textContent;
+    act(() => receive('run', { rows: [outside], removed: [], counts }));
+    expect(screen.getByText(/^stamp/).textContent).toBe(before);
+    act(() => receive('run', { rows: [{ ...outside, status: 'failed' }], removed: [], counts }));
+    expect(screen.getByText(/^stamp/).textContent).not.toBe(before);
   });
 
   it('keeps the last events message of the watched run and ignores another run', () => {

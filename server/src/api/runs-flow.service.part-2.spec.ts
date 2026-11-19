@@ -364,7 +364,7 @@ describe('runs api', () => {
       short.ownerPid = null;
       short.stepStartedAt = null;
       await runs.saveRun(short);
-      const listed = await app.get(RunQueriesService).list();
+      const listed = await app.get(RunQueriesService).list({ part: 'all', q: '' });
       const flow = await app.get(RunQueriesService).flow('proj-duration');
       const shortFlow = await app.get(RunQueriesService).flow('proj-duration-short');
       expect(listed.runs.find((item) => item.key === 'proj-duration')?.durationMs).toBe(12_000);
@@ -437,7 +437,7 @@ describe('runs api', () => {
       run.currentStep = 'done';
       run.ownerPid = null;
       await runs.saveRun(run);
-      const listed = await app.get(RunQueriesService).list();
+      const listed = await app.get(RunQueriesService).list({ part: 'all', q: '' });
       const flow = await app.get(RunQueriesService).flow('proj-loop');
       expect(listed.runs.find((item) => item.key === 'proj-loop')?.durationMs).toBe(21_000);
       expect(flow.metrics.durationMs).toBe(21_000);

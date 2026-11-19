@@ -3,15 +3,34 @@
 import type { ReactElement, ReactNode } from 'react';
 import { createContext, createElement, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import { liveSocket } from '../../lib/live';
-import type { FlowView, RunsView, RunSummary } from '@contract/api';
+import type { FlowView, RunSummary } from '@contract/api';
 import type { LiveEvents, LiveLog } from '@contract/live';
+import type { Part, PartCounts, RunChange, RunsPage } from '@contract/run-list';
 import type { ServerState } from '@contract/server-pause';
+import { applyRunChange } from './apply-run-change';
+
+interface ListView {
+  part: Part;
+  q: string;
+}
 
 interface LiveSnapshot {
   runs: RunSummary[];
   /** True once the runs list has come from the API or the socket. */
   loaded: boolean;
   connected: boolean;
+  /** The counts of the three parts, from the server. */
+  counts: PartCounts;
+  /** The part and the filter text the list shows. */
+  view: ListView;
+  /** The cursor of the next page of the view, or null on the last page. */
+  next: string | null;
+  /** The runs of the other part that match the filter text. */
+  otherMatches: number;
+  /** True while the list of a newly chosen part has not arrived. */
+  listing: boolean;
+  /** Moves when a run's status changes or a run goes, whether or not the list holds the run. */
+  statusStamp: number;
   /** The flow of the watched run. */
   flow: FlowView | null;
   /** The latest log per step, and per command for the checks step, of the watched run; the newest entry is last. */
@@ -26,6 +45,10 @@ interface LiveStore {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => LiveSnapshot;
   setRuns: (next: RunSummary[] | ((current: RunSummary[]) => RunSummary[])) => void;
+  /** Sets the part and the filter text the list shows; a new part clears the rows until its page arrives. */
+  showList: (part: Part, q: string) => void;
+  /** Stores a page of the view it was asked for; an answer for an older view is dropped. */
+  setPage: (page: RunsPage, view: ListView, append: boolean) => void;
   watchRun: (key: string | null) => void;
   /** Connects the socket events to the store and returns the cleanup. */
   attach: () => () => void;
@@ -36,12 +59,20 @@ function createStore(): LiveStore {
     runs: [],
     loaded: false,
     connected: false,
+    counts: { active: 0, done: 0, all: 0 },
+    view: { part: 'active', q: '' },
+    next: null,
+    otherMatches: 0,
+    listing: false,
+    statusStamp: 0,
     flow: null,
     logs: [],
     events: null,
     paused: false,
   };
   let watched: string | null = null;
+  const statuses = new Map<string, string>();
+  const remember = (rows: RunSummary[]): void => rows.forEach((run) => statuses.set(run.key, run.status));
   const listeners = new Set<() => void>();
   const update = (patch: Partial<LiveSnapshot>): void => {
     snapshot = { ...snapshot, ...patch };
@@ -56,6 +87,30 @@ function createStore(): LiveStore {
     },
     getSnapshot: () => snapshot,
     setRuns: (next) => update({ runs: typeof next === 'function' ? next(snapshot.runs) : next, loaded: true }),
+    showList(part, q) {
+      const { view } = snapshot;
+      if (part === view.part) {
+        if (q !== view.q) {
+          update({ view: { part, q } });
+        }
+        return;
+      }
+      update({ view: { part, q }, runs: [], next: null, listing: true });
+    },
+    setPage(page, view, append) {
+      if (view.part !== snapshot.view.part || view.q !== snapshot.view.q) {
+        return;
+      }
+      remember(page.runs);
+      update({
+        runs: append ? [...snapshot.runs, ...page.runs] : page.runs,
+        counts: page.counts,
+        next: page.next,
+        otherMatches: page.otherMatches,
+        loaded: true,
+        listing: false,
+      });
+    },
     watchRun(key) {
       if (key === watched) {
         return;
@@ -75,7 +130,25 @@ function createStore(): LiveStore {
         }
       };
       const onDisconnect = (): void => update({ connected: false });
-      const onRuns = (body: RunsView): void => update({ runs: body.runs, loaded: true });
+      const onRuns = (page: RunsPage): void => {
+        remember(page.runs);
+        if (snapshot.view.part === 'active' && snapshot.view.q === '') {
+          update({ counts: page.counts, runs: page.runs, loaded: true });
+        } else {
+          update({ counts: page.counts });
+        }
+      };
+      const onRun = (change: RunChange): void => {
+        const moved =
+          change.removed.some((key) => statuses.delete(key)) ||
+          change.rows.some((run) => statuses.get(run.key) !== run.status);
+        remember(change.rows);
+        update({
+          statusStamp: snapshot.statusStamp + (moved ? 1 : 0),
+          counts: change.counts,
+          runs: applyRunChange({ runs: snapshot.runs, ...snapshot.view, next: snapshot.next }, change),
+        });
+      };
       const onFlow = (body: FlowView): void => {
         if (body.key === watched) {
           update({ flow: body });
@@ -100,6 +173,7 @@ function createStore(): LiveStore {
       socket.on('connect', onConnect);
       socket.on('disconnect', onDisconnect);
       socket.on('runs', onRuns);
+      socket.on('run', onRun);
       socket.on('flow', onFlow);
       socket.on('log', onLog);
       socket.on('events', onEvents);
@@ -111,6 +185,7 @@ function createStore(): LiveStore {
         socket.off('connect', onConnect);
         socket.off('disconnect', onDisconnect);
         socket.off('runs', onRuns);
+        socket.off('run', onRun);
         socket.off('flow', onFlow);
         socket.off('log', onLog);
         socket.off('events', onEvents);
@@ -146,7 +221,7 @@ export function useLiveBridge<T>(select: (snapshot: LiveSnapshot) => T): T {
   );
 }
 
-export function useLiveActions(): Pick<LiveStore, 'setRuns' | 'watchRun'> {
-  const { setRuns, watchRun } = useStore();
-  return { setRuns, watchRun };
+export function useLiveActions(): Pick<LiveStore, 'setRuns' | 'showList' | 'setPage' | 'watchRun'> {
+  const { setRuns, showList, setPage, watchRun } = useStore();
+  return { setRuns, showList, setPage, watchRun };
 }

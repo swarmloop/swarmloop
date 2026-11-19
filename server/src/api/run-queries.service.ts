@@ -22,7 +22,7 @@ import { isReviewStep } from '../contract/steps';
 import { parsePaths } from '../git/commit-paths';
 import { renderProjects, storedProjects } from '../config/checkout-path';
 import type { StepEventPage } from '../contract/step-events';
-import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contract/api';
+import { FlowView, HistoryView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
 import { runPlace, withPlaceChips } from './run-view/agent-place';
 import { withRestartWait } from './run-view/restart-wait';
@@ -51,7 +51,9 @@ import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
 import { openItems } from '../steps/shared/open-items';
 import { viewTitle } from './run-view/run-title';
+import type { Part, RunsPage } from '../contract/run-list';
 import { RunListRows } from './run-list-rows';
+import { pageOf } from './run-list-page';
 import { readHistory } from './run-queries-history';
 import { openSpend, spentUsd } from './run-queries-spend';
 import { parseSubtasks, SUBTASKS_KIND } from '../contract/subtask';
@@ -101,8 +103,8 @@ export class RunQueriesService {
 
   private readonly reviewers: ReviewerSteps;
 
-  async list(): Promise<RunsView> {
-    return (await this.rows.read()).view;
+  async list(query: { part: Part; q: string; cursor?: string } = { part: 'active', q: '' }): Promise<RunsPage> {
+    return pageOf((await this.rows.read()).view.runs, query);
   }
 
   private readonly usdOf = (run: RunEntity): number => spentUsd(run, this.pipeline, this.live);

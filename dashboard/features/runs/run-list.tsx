@@ -10,8 +10,10 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { EpicGroup } from './epic-group';
-import { byDay, nested } from './run-days';
-import type { Part } from './run-filter';
+import type { Part } from '@contract/run-list';
+import { nested } from '@contract/run-list';
+import { byDay } from './run-days';
+import { LoadMoreRow } from './load-more-row';
 import { RunRow } from './run-row';
 
 /** Moves focus to the previous or next row, task line or fold button in the list. */
@@ -85,10 +87,12 @@ function EmptyText({
 export function RunList({
   query,
   onQuery,
-  runs,
   visible,
   part,
   otherMatches,
+  total,
+  next,
+  onLoadMore,
   onPart,
   control,
   selected,
@@ -101,10 +105,14 @@ export function RunList({
 }: {
   query: string;
   onQuery: (query: string) => void;
-  runs: RunSummary[];
   visible: RunSummary[];
   part: Part;
   otherMatches: number;
+  /** The number of runs in the list, whatever part and filter: 0 says there are no runs at all. */
+  total: number;
+  /** The cursor of the next page, or null when the part is whole. */
+  next: string | null;
+  onLoadMore: () => void;
   onPart: (part: Part) => void;
   control?: ReactNode;
   selected: string;
@@ -132,7 +140,7 @@ export function RunList({
       {!loaded && !error ? <RowSkeletons /> : null}
       {loaded && visible.length === 0 ? (
         <Typography variant="body2" color="text.secondary" component="div" sx={{ px: 2, pt: 2 }}>
-          {runs.length === 0 ? (
+          {total === 0 ? (
             'No runs yet.'
           ) : (
             <EmptyText part={part} searching={query.trim() !== ''} otherMatches={otherMatches} onPart={onPart} />
@@ -173,6 +181,7 @@ export function RunList({
           </Box>
         ))}
       </Box>
+      {next !== null ? <LoadMoreRow onLoadMore={onLoadMore} /> : null}
       {error ? (
         <Box sx={{ px: 2, pt: 1 }}>
           <Typography variant="body2" color="error">

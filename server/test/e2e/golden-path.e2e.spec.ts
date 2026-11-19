@@ -49,7 +49,7 @@ describe('HTTP API golden path', () => {
         'pipeline',
       ]);
 
-      const runs: RunsView = await (await fetch(`${testApp.url}/runs`, { headers: testApp.auth })).json();
+      const runs: RunsView = await (await fetch(`${testApp.url}/runs?part=all`, { headers: testApp.auth })).json();
       expect(runs.runs[0]).toMatchObject({ key: 'TEST-1', status: 'done', currentStep: 'done' });
       const flow: FlowView = await (await fetch(`${testApp.url}/runs/TEST-1`, { headers: testApp.auth })).json();
       expect(flow).toMatchObject({ key: 'TEST-1', status: 'done', currentStep: 'done', resume: 'done' });

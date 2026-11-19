@@ -3,16 +3,23 @@
 import type { ReactElement } from 'react';
 import type { Route } from 'next';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { RunSummary } from '@contract/api';
-import { filterRuns, parsePart, showQuery } from './run-filter';
-import type { Part } from './run-filter';
+import { parsePart } from '@contract/run-list';
+import type { Part, PartCounts } from '@contract/run-list';
+import { useLiveActions } from '../shell';
+import { showQuery } from './run-filter';
 import { RunList } from './run-list';
 import { ShowControl } from './show-control';
 
 /** The run list with its search box and its Active / Done / All control; the part lives in `?show=`. */
 export function RunColumn({
   runs,
+  counts,
+  otherMatches,
+  next,
+  onLoadMore,
+  listing,
   now,
   loaded,
   error,
@@ -22,6 +29,12 @@ export function RunColumn({
   onRemove,
 }: {
   runs: RunSummary[];
+  counts: PartCounts;
+  otherMatches: number;
+  next: string | null;
+  onLoadMore: () => void;
+  /** True while the list of a newly chosen part has not arrived. */
+  listing: boolean;
   now: number;
   loaded: boolean;
   error: string | null;
@@ -37,11 +50,12 @@ export function RunColumn({
   const [query, setQuery] = useState('');
   const part = parsePart(searchParams.get('show'));
   const search = showQuery(searchParams);
-  const { visible, counts, otherMatches } = useMemo(() => filterRuns(runs, query, part), [runs, query, part]);
+  const { showList } = useLiveActions();
+  useEffect(() => showList(part, query), [showList, part, query]);
 
-  function onPart(next: Part): void {
+  function onPart(chosen: Part): void {
     const params = new URLSearchParams(searchParams.toString());
-    params.set('show', next);
+    params.set('show', chosen);
     router.replace(`${pathname}?${params.toString()}` as Route);
   }
 
@@ -49,15 +63,17 @@ export function RunColumn({
     <RunList
       query={query}
       onQuery={setQuery}
-      runs={runs}
-      visible={visible}
+      visible={runs}
       part={part}
       otherMatches={otherMatches}
+      total={counts.all}
+      next={next}
+      onLoadMore={onLoadMore}
       onPart={onPart}
       control={<ShowControl part={part} counts={counts} onPart={onPart} />}
       selected={selected}
       now={now}
-      loaded={loaded}
+      loaded={loaded && !listing}
       error={error}
       onRetry={onRetry}
       onOpen={(key) => onOpen(key, search)}

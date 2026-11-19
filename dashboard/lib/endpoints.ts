@@ -14,7 +14,6 @@ import type {
   ReplayBody,
   SkipTaskBody,
   RunRef,
-  RunsView,
   SettingsBody,
   StatsView,
   StepView,
@@ -35,6 +34,7 @@ import type {
   UseTokenBody,
 } from '@contract/people';
 import type { ReadinessView } from '@contract/readiness';
+import type { Part, RunsPage } from '@contract/run-list';
 import type { SettingsView } from '@contract/settings';
 import type { StepEventPage } from '@contract/step-events';
 
@@ -87,7 +87,17 @@ export const saveSettings = (body: SettingsBody): Promise<SettingsView> =>
   api<SettingsView>('/settings', { method: 'PUT', body: JSON.stringify(body) });
 export const logout = (): Promise<unknown> => api('/auth/logout', post());
 export const getReadiness = (): Promise<ReadinessView> => api<ReadinessView>('/readiness');
-export const listRuns = (): Promise<RunsView> => api<RunsView>('/runs');
+/** One page of the run list for a part and a filter text; `cursor` asks for the page after the one that gave it. */
+export const listRuns = (query: { part: Part; q: string; cursor?: string }): Promise<RunsPage> => {
+  const params = new URLSearchParams({ part: query.part });
+  if (query.q !== '') {
+    params.set('q', query.q);
+  }
+  if (query.cursor !== undefined) {
+    params.set('cursor', query.cursor);
+  }
+  return api<RunsPage>(`/runs?${params}`);
+};
 /** The statistics of the runs started in the last `days` local days (0: all of them). `tz` is `getTimezoneOffset()`. */
 export const getStats = (days: number, tz: number): Promise<StatsView> =>
   api<StatsView>(`/stats?days=${days}&tz=${tz}`);
