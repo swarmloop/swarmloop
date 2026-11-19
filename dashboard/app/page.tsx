@@ -7,19 +7,21 @@ import Button from '@mui/material/Button';
 import Skeleton from '@mui/material/Skeleton';
 import Link from 'next/link';
 import { ReadinessPanel } from '../features/readiness';
-import { filterRuns } from '../features/runs';
 import { useLiveBridge } from '../features/shell';
 import { StatsSection } from '../features/stats';
 import { HOSTS } from './login/hosts';
 
 export default function HomePage(): React.ReactElement {
   const runs = useLiveBridge((snapshot) => snapshot.runs);
-  // The statistics reload when a run appears, goes or changes status, not on every live tick.
-  const version = useMemo(() => runs.map((run) => `${run.key}:${run.status}`).join(','), [runs]);
   const loaded = useLiveBridge((snapshot) => snapshot.loaded);
   // The same counts as the run list's switch, so a subtask is never counted on its own.
-  const { active, done, all } = useMemo(() => filterRuns(runs, '', 'all').counts, [runs]);
-  const empty = loaded && runs.length === 0;
+  const { active, done, all } = useLiveBridge((snapshot) => snapshot.counts);
+  // The statistics reload when a run appears, goes, changes status or changes part, not on every live tick.
+  const version = useMemo(
+    () => `${runs.map((run) => `${run.key}:${run.status}`).join(',')}|${active}/${done}/${all}`,
+    [runs, active, done, all],
+  );
+  const empty = loaded && all === 0;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 1480 }}>

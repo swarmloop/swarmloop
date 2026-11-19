@@ -1,17 +1,22 @@
 import { act, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { getHistory } from '../../lib/endpoints';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getFlow, getHistory } from '../../lib/endpoints';
 import userEvent from '@testing-library/user-event';
 import { receive } from '../../test/fake-socket';
-import { historyView, runSummary } from '../../test/fixtures';
+import { flowView, historyView, runSummary } from '../../test/fixtures';
+import { runsPage } from '../../test/runs-page';
 import { expectNoRawJson } from '../../test/raw-json';
 import { LiveBridgeProvider } from '../shell';
 import { HistoryScreen } from './history-screen';
 
-vi.mock('../../lib/endpoints', () => ({ getHistory: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({ getFlow: vi.fn(), getHistory: vi.fn() }));
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 
 describe('HistoryScreen', () => {
+  beforeEach(() => {
+    vi.mocked(getFlow).mockRejectedValue(new Error('no flow'));
+  });
+
   it('shows a skeleton first, then the run key and a link back to the flow', async () => {
     vi.mocked(getHistory).mockResolvedValue(historyView());
 
@@ -42,10 +47,24 @@ describe('HistoryScreen', () => {
     expect(await screen.findByRole('heading', { name: 'run-1' })).toBeInTheDocument();
     expect(document.title).toBe('run-1 · swarmloop');
 
-    act(() => receive('runs', { runs: [{ ...runSummary(), key: 'run-1', title: 'Add a stats page' }] }));
+    act(() =>
+      receive('runs', runsPage([{ ...runSummary(), key: 'run-1', title: 'Add a stats page' }], { part: 'active' })),
+    );
 
     expect(screen.getByRole('heading', { name: 'Add a stats page' })).toBeInTheDocument();
     expect(document.title).toBe('Add a stats page · swarmloop');
+  });
+
+  it('is titled from the flow of a run that the list has not loaded', async () => {
+    vi.mocked(getHistory).mockResolvedValue(historyView());
+    vi.mocked(getFlow).mockResolvedValue(flowView({ title: 'An old run' }));
+
+    render(<HistoryScreen runKey="run-1" />, { wrapper: LiveBridgeProvider });
+
+    expect(await screen.findByRole('heading', { name: 'An old run' })).toBeInTheDocument();
+    expect(document.title).toBe('An old run · swarmloop');
+    expect(getFlow).toHaveBeenCalledTimes(1);
+    expect(getFlow).toHaveBeenCalledWith('run-1');
   });
 
   it('shows the documents by kind: the requirements structured, JSON as a table, the log as a transcript', async () => {

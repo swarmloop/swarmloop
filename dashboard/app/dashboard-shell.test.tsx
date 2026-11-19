@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSession, listProjects, listRemote, listRuns, removeRun } from '../lib/endpoints';
 import { receive } from '../test/fake-socket';
 import { runSummary } from '../test/fixtures';
+import { listRunsFrom } from '../test/runs-page';
+import { fakeIntersectionObserver } from '../test/intersection-observer';
 import { DashboardShell } from './dashboard-shell';
 
 vi.mock('next/navigation', () => ({ usePathname: vi.fn(), useRouter: vi.fn(), useSearchParams: vi.fn() }));
@@ -40,11 +42,13 @@ beforeEach(() => {
   vi.mocked(usePathname).mockReturnValue('/');
   vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams() as unknown as ReturnType<typeof useSearchParams>);
   vi.mocked(useRouter).mockReturnValue({ push, replace } as unknown as ReturnType<typeof useRouter>);
-  vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
+  vi.mocked(listRuns).mockImplementation(listRunsFrom([runSummary()]));
   vi.mocked(removeRun).mockResolvedValue({ key: 'run-1' });
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
   vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
 });
+
+fakeIntersectionObserver();
 
 describe('Shell', () => {
   it('shows the pause notice once at the top while the server is paused', async () => {
@@ -154,7 +158,7 @@ describe('Shell', () => {
     ];
 
     it('opens on Active with the counts and shows only the active runs', async () => {
-      vi.mocked(listRuns).mockResolvedValue({ runs: fixture() });
+      vi.mocked(listRuns).mockImplementation(listRunsFrom(fixture()));
       renderShell();
 
       expect(await screen.findByRole('button', { name: 'Active 3' })).toHaveAttribute('aria-pressed', 'true');
@@ -166,7 +170,7 @@ describe('Shell', () => {
     });
 
     it('opens on Done when the address says ?show=done', async () => {
-      vi.mocked(listRuns).mockResolvedValue({ runs: fixture() });
+      vi.mocked(listRuns).mockImplementation(listRunsFrom(fixture()));
       vi.mocked(useSearchParams).mockReturnValue(
         new URLSearchParams('show=done') as unknown as ReturnType<typeof useSearchParams>,
       );
@@ -177,7 +181,7 @@ describe('Shell', () => {
     });
 
     it('shows every run on ?show=all', async () => {
-      vi.mocked(listRuns).mockResolvedValue({ runs: fixture() });
+      vi.mocked(listRuns).mockImplementation(listRunsFrom(fixture()));
       vi.mocked(useSearchParams).mockReturnValue(
         new URLSearchParams('show=all') as unknown as ReturnType<typeof useSearchParams>,
       );
@@ -189,7 +193,7 @@ describe('Shell', () => {
 
     it('writes the chosen part to the address', async () => {
       const user = userEvent.setup({ delay: null });
-      vi.mocked(listRuns).mockResolvedValue({ runs: fixture() });
+      vi.mocked(listRuns).mockImplementation(listRunsFrom(fixture()));
       renderShell();
 
       await user.click(await screen.findByRole('button', { name: 'Done 134' }));
@@ -207,7 +211,7 @@ describe('Shell', () => {
 
       it('opens a run with ?show= in the address, so the run stays in the list', async () => {
         const user = userEvent.setup({ delay: null });
-        vi.mocked(listRuns).mockResolvedValue({ runs: [merged] });
+        vi.mocked(listRuns).mockImplementation(listRunsFrom([merged]));
         showing('show=done');
         renderShell();
 
@@ -227,7 +231,7 @@ describe('Shell', () => {
 
       it('goes back to the list with ?show= in the address after the open run is removed', async () => {
         const user = userEvent.setup({ delay: null });
-        vi.mocked(listRuns).mockResolvedValue({ runs: [merged] });
+        vi.mocked(listRuns).mockImplementation(listRunsFrom([merged]));
         vi.mocked(removeRun).mockResolvedValue({ key: 'm-0' });
         vi.mocked(usePathname).mockReturnValue('/runs/m-0');
         showing('show=done');
@@ -252,12 +256,12 @@ describe('Shell', () => {
     });
 
     it('counts an epic with a running task once, in Active', async () => {
-      vi.mocked(listRuns).mockResolvedValue({
-        runs: [
+      vi.mocked(listRuns).mockImplementation(
+        listRunsFrom([
           { ...runSummary(), key: 'e-1', name: 'Epic', title: 'Epic', status: 'waiting', state: 'waiting' as const },
           { ...runSummary(), key: 'e-1-A', name: 'Epic task', title: 'Epic task', parentKey: 'e-1' },
-        ],
-      });
+        ]),
+      );
       renderShell();
 
       expect(await screen.findByRole('button', { name: 'Active 1' })).toBeInTheDocument();
@@ -266,7 +270,7 @@ describe('Shell', () => {
 
     it('finds a run by a word of its name', async () => {
       const user = userEvent.setup({ delay: null });
-      vi.mocked(listRuns).mockResolvedValue({ runs: fixture() });
+      vi.mocked(listRuns).mockImplementation(listRunsFrom(fixture()));
       renderShell();
 
       await user.type(await screen.findByPlaceholderText('Filter runs'), 'failed 2');

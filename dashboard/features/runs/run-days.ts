@@ -1,8 +1,5 @@
 import type { RunSummary } from '@contract/api';
-import { nested } from '@contract/run-list';
 import { dayLabel } from '../../lib/format';
-
-export { nested };
 
 /** The top-level runs under day headers by last change, newest day first, the incoming order kept inside a day. */
 export function byDay(tops: RunSummary[], now: number): { label: string; runs: RunSummary[] }[] {

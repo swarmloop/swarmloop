@@ -1,10 +1,13 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useEffect } from 'react';
+import type { RunsPage } from '@contract/run-list';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { listRuns, removeRun } from '../../lib/endpoints';
 import { receive } from '../../test/fake-socket';
 import { runSummary } from '../../test/fixtures';
-import { LiveBridgeProvider } from '../shell';
+import { runsPage } from '../../test/runs-page';
+import { LiveBridgeProvider, useLiveActions } from '../shell';
 import { useRuns } from './use-runs';
 
 vi.mock('../../lib/endpoints', () => ({ listRuns: vi.fn(), removeRun: vi.fn() }));
@@ -30,20 +33,20 @@ function Probe() {
 
 describe('useRuns', () => {
   it('shows the runs from GET /runs on mount', async () => {
-    vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
+    vi.mocked(listRuns).mockResolvedValue(runsPage([runSummary()], { part: 'active' }));
 
     render(<Probe />, { wrapper: LiveBridgeProvider });
 
     expect(await screen.findByText('Run one')).toBeInTheDocument();
-    expect(listRuns).toHaveBeenCalledWith();
+    expect(listRuns).toHaveBeenCalledWith({ part: 'active', q: '' });
   });
 
   it('replaces the list with a runs socket event', async () => {
-    vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
+    vi.mocked(listRuns).mockResolvedValue(runsPage([runSummary()], { part: 'active' }));
     render(<Probe />, { wrapper: LiveBridgeProvider });
     await screen.findByText('Run one');
 
-    act(() => receive('runs', { runs: [{ ...runSummary(), key: 'run-2', name: 'Run two' }] }));
+    act(() => receive('runs', runsPage([{ ...runSummary(), key: 'run-2', name: 'Run two' }], { part: 'active' })));
 
     expect(await screen.findByText('Run two')).toBeInTheDocument();
     expect(screen.queryByText('Run one')).not.toBeInTheDocument();
@@ -61,7 +64,7 @@ describe('useRuns', () => {
     const user = userEvent.setup({ delay: null });
     vi.mocked(listRuns)
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValue({ runs: [runSummary()] });
+      .mockResolvedValue(runsPage([runSummary()], { part: 'active' }));
     function RetryProbe() {
       const { runs, loaded, error, retry } = useRuns();
       return (
@@ -97,7 +100,7 @@ describe('useRuns', () => {
   });
 
   it('shows live on connect and offline on disconnect', async () => {
-    vi.mocked(listRuns).mockResolvedValue({ runs: [] });
+    vi.mocked(listRuns).mockResolvedValue(runsPage([], { part: 'active' }));
     render(<Probe />, { wrapper: LiveBridgeProvider });
     expect(screen.getByText('offline')).toBeInTheDocument();
 
@@ -110,7 +113,7 @@ describe('useRuns', () => {
 
   it('sends DELETE for a removed run and drops its row', async () => {
     const user = userEvent.setup({ delay: null });
-    vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
+    vi.mocked(listRuns).mockResolvedValue(runsPage([runSummary()], { part: 'active' }));
     vi.mocked(removeRun).mockResolvedValue({ key: 'run-1' });
     render(<Probe />, { wrapper: LiveBridgeProvider });
     await user.click(await screen.findByRole('button', { name: 'Remove Run one' }));
@@ -122,7 +125,7 @@ describe('useRuns', () => {
   it('keeps a run that arrives while the DELETE is pending', async () => {
     const user = userEvent.setup({ delay: null });
     let finish: (() => void) | undefined;
-    vi.mocked(listRuns).mockResolvedValue({ runs: [runSummary()] });
+    vi.mocked(listRuns).mockResolvedValue(runsPage([runSummary()], { part: 'active' }));
     vi.mocked(removeRun).mockReturnValue(
       new Promise((resolve) => {
         finish = () => resolve({ key: 'run-1' });
@@ -131,7 +134,9 @@ describe('useRuns', () => {
     render(<Probe />, { wrapper: LiveBridgeProvider });
     await user.click(await screen.findByRole('button', { name: 'Remove Run one' }));
 
-    act(() => receive('runs', { runs: [runSummary(), { ...runSummary(), key: 'run-2', name: 'Run two' }] }));
+    act(() =>
+      receive('runs', runsPage([runSummary(), { ...runSummary(), key: 'run-2', name: 'Run two' }], { part: 'active' })),
+    );
     await act(async () => {
       finish?.();
       await Promise.resolve();
@@ -139,6 +144,67 @@ describe('useRuns', () => {
 
     await waitFor(() => expect(screen.queryByText('Run one')).not.toBeInTheDocument());
     expect(screen.getByText('Run two')).toBeInTheDocument();
+  });
+});
+
+describe('useRuns pages', () => {
+  const merged = (key: string) => ({ ...runSummary(), key, name: key, title: key, state: 'merged' as const });
+  const counts = { active: 0, done: 2, all: 2 };
+
+  function PagesProbe({ part = 'done', q = '' }: { part?: 'active' | 'done'; q?: string }) {
+    const { runs, next, loadingMore, loadMore, listing } = useRuns();
+    const { showList } = useLiveActions();
+    useEffect(() => showList(part, q), [showList, part, q]);
+    return (
+      <div>
+        <p>{listing ? 'listing' : 'listed'}</p>
+        <p>{loadingMore ? 'loading more' : 'idle'}</p>
+        <p>{next === null ? 'last page' : `next ${next}`}</p>
+        {runs.map((run) => (
+          <p key={run.key}>{run.name}</p>
+        ))}
+        <button type="button" onClick={loadMore}>
+          More
+        </button>
+      </div>
+    );
+  }
+
+  it('loads the first page of the chosen view, and the next page appended with one request at a time', async () => {
+    const user = userEvent.setup({ delay: null });
+    let finish: ((value: RunsPage) => void) | undefined;
+    vi.mocked(listRuns).mockImplementation(({ cursor }) =>
+      cursor === undefined
+        ? Promise.resolve({ runs: [merged('m-1')], counts, otherMatches: 0, next: 'c1' })
+        : new Promise((resolve) => {
+            finish = resolve;
+          }),
+    );
+    render(<PagesProbe />, { wrapper: LiveBridgeProvider });
+    expect(await screen.findByText('next c1')).toBeInTheDocument();
+    expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: '' });
+
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    await user.click(screen.getByRole('button', { name: 'More' }));
+    expect(screen.getByText('loading more')).toBeInTheDocument();
+    await act(async () => finish?.({ runs: [merged('m-2')], counts, otherMatches: 0, next: null }));
+
+    expect(await screen.findByText('last page')).toBeInTheDocument();
+    expect(screen.getByText('m-1')).toBeInTheDocument();
+    expect(screen.getByText('m-2')).toBeInTheDocument();
+    expect(screen.getByText('idle')).toBeInTheDocument();
+    expect(vi.mocked(listRuns).mock.calls.filter(([query]) => query.cursor === 'c1')).toHaveLength(1);
+  });
+
+  it('lists again when the counts change while a filter finds nothing', async () => {
+    vi.mocked(listRuns).mockResolvedValue({ runs: [], counts, otherMatches: 1, next: null });
+    render(<PagesProbe part="active" q="zzz" />, { wrapper: LiveBridgeProvider });
+    await screen.findByText('listed');
+    const before = vi.mocked(listRuns).mock.calls.length;
+
+    act(() => receive('run', { rows: [], removed: [], counts: { active: 0, done: 3, all: 3 } }));
+
+    await waitFor(() => expect(vi.mocked(listRuns).mock.calls.length).toBeGreaterThan(before));
   });
 });
 
@@ -151,7 +217,7 @@ describe('useRuns clock', () => {
 
   async function renderAt(status: string): Promise<void> {
     vi.useFakeTimers();
-    vi.mocked(listRuns).mockResolvedValue({ runs: [{ ...runSummary(), status }] });
+    vi.mocked(listRuns).mockResolvedValue(runsPage([{ ...runSummary(), status }], { part: 'active' }));
     render(<NowProbe />, { wrapper: LiveBridgeProvider });
     await act(async () => {});
   }

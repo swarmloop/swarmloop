@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
-import type { Part, PartCounts } from './run-filter';
+import type { Part, PartCounts } from '@contract/run-list';
 
 const LABELS: { part: Part; label: string }[] = [
   { part: 'active', label: 'Active' },

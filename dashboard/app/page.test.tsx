@@ -6,6 +6,7 @@ import { Shell } from '../features/shell';
 import { getReadiness, getStats } from '../lib/endpoints';
 import { receive } from '../test/fake-socket';
 import { runSummary, statsView } from '../test/fixtures';
+import { runsPage } from '../test/runs-page';
 import { QueryWrapper } from '../test/query-wrapper';
 import HomePage from './page';
 
@@ -33,7 +34,7 @@ describe('HomePage', () => {
   it('offers Connect in the empty state', async () => {
     vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null });
     renderPage();
-    act(() => receive('runs', { runs: [] }));
+    act(() => receive('runs', runsPage([], { part: 'active' })));
     expect(await screen.findByRole('link', { name: 'Connect GitHub or GitLab' })).toHaveAttribute(
       'href',
       '/connections',
@@ -59,7 +60,7 @@ describe('HomePage', () => {
   it('shows the statistics under the checks', async () => {
     vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null });
     renderPage();
-    act(() => receive('runs', { runs: [] }));
+    act(() => receive('runs', runsPage([], { part: 'active' })));
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     expect(screen.getByText(/No runs yet/)).toBeInTheDocument();
     expect(await screen.findByLabelText('Runs: 4')).toBeInTheDocument();
@@ -98,7 +99,7 @@ describe('HomePage run line', () => {
       run('epic-task', { state: 'waiting', status: 'waiting', parentKey: 'epic' }),
     ];
     renderPage();
-    act(() => receive('runs', { runs }));
+    act(() => receive('runs', runsPage(runs, { part: 'active' })));
 
     expect(screen.getByText('4 active · 191 done · 195 runs')).toBeInTheDocument();
     await screen.findByLabelText('Runs: 4');
