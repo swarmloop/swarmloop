@@ -26,6 +26,7 @@ import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-t
 import { RunReport } from '../shared/run-report';
 import { RunNames } from '../shared/run-names';
 import { StaleReview } from '../shared/stale-review';
+import { MergeRequestTemplate } from './merge-request-template';
 import { MergeRequestStep } from './merge-request.step';
 
 const KEY = 'PROJ-200';
@@ -89,6 +90,7 @@ describe('merge-request step golden traces', () => {
       app.get(RunReport),
       app.get(StaleReview),
       app.get(RunNames),
+      app.get(MergeRequestTemplate),
     );
     const result = await step.execute(KEY);
     expectGolden(`merge-request.${name}`, {

@@ -14,6 +14,8 @@ import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { RepositoryHost } from '../steps/shared/repository-host';
 import { RepositoryOrigins } from '../steps/shared/repository-origins';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
+import { MergeRequestTemplate } from '../steps/merge-request/merge-request-template';
+import { ImplementChat } from '../steps/shared/implement-chat';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { ChecksStep } from '../steps/checks/checks.step';
@@ -92,6 +94,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     OwnUseMeter,
     Housekeeping,
     MergeRequestStep,
+    MergeRequestTemplate,
+    ImplementChat,
     MergeRequestLookup,
     PipelineStep,
     PlanStep,
