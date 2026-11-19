@@ -27,6 +27,7 @@ import { SettingsService } from './settings.service';
 import { StatsController } from './stats.controller';
 import { SubtaskClose } from './subtask-close';
 import { BacklogStart } from './backlog-start';
+import { PlannerRunCommands } from './planner-run-commands';
 import { RunAnswersService } from './run-answers.service';
 import { RunCommandsService } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
@@ -64,6 +65,7 @@ import { RequestTiming } from './request-timing';
     RunCommandsService,
     RunAnswersService,
     BacklogStart,
+    PlannerRunCommands,
     RunSubtaskCommandsService,
     SubtaskClose,
     RunRebaseService,

@@ -59,6 +59,10 @@ import { BacklogMerge } from './backlog/backlog-merge';
 import { ServerStallWatch } from './server-stalls/server-stall-watch';
 import { BacklogScheduler } from './backlog/backlog-scheduler';
 import { BacklogStartPort } from './backlog/backlog-start-port';
+import { PlannerBacklogCalls } from './backlog/planner/planner-backlog-calls';
+import { PlannerRules } from './backlog/planner/planner-rules';
+import { PlannerRunPort } from './backlog/planner/planner-run-port';
+import { PlannerTurnActions } from './backlog/planner/planner-actions';
 import { StallWatch } from './stall-watch';
 import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
@@ -126,6 +130,10 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BacklogScheduler,
     ServerStallWatch,
     BacklogStartPort,
+    PlannerRules,
+    PlannerBacklogCalls,
+    PlannerRunPort,
+    PlannerTurnActions,
     RunSettler,
     RunRebase,
     MergeRequestDrafts,
@@ -143,6 +151,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BacklogQueries,
     BacklogScheduler,
     BacklogStartPort,
+    PlannerRunPort,
+    PlannerTurnActions,
     SubtaskPort,
     Housekeeping,
     WorkspaceGuard,
