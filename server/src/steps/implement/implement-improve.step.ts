@@ -10,7 +10,7 @@ import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { branchName, summaryForBranch } from '../branch/branch-name';
+import { RunNames } from '../shared/run-names';
 import { withEnvironment } from '../../environment/environment-note';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
@@ -69,6 +69,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     sandbox: SandboxService,
     launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
+    private readonly runNames: RunNames,
     @Optional() private readonly planChat?: PlanChatStore,
   ) {
     super(kernel, sandbox, launcher);
@@ -123,7 +124,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       ),
       ...(answer ? [answerSection(answer)] : []),
     ];
-    const branch = branchName(key, summaryForBranch(input.requirements, key));
+    const branch = await this.runNames.branch(ctx.opened.run, names[0]);
     const heads = await featureHeads(mounts, branch);
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const continued = await resumableChat(root(this.config), key, 'implement-improve', runtime);

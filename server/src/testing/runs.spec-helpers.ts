@@ -8,8 +8,9 @@ import { writeEnvOverrides } from './env.spec-helpers';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { AuthModule } from '../auth/auth.module';
 import { HistoryModule } from '../history/history.module';
-import type { DocumentRepository } from '../history/document.repository';
-import type { RunRepository } from '../history/run.repository';
+import { AppConfig } from '../config/env';
+import { DocumentRepository } from '../history/document.repository';
+import { RunRepository } from '../history/run.repository';
 import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
 import { CommandService } from '../pipeline/command.service';
@@ -33,6 +34,7 @@ import { RunReport } from '../steps/shared/run-report';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
+import { RunNames } from '../steps/shared/run-names';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 export { git };
@@ -75,6 +77,12 @@ export async function boot(
       RunStop,
       RunRebaseService,
       RunRebase,
+      {
+        provide: RunNames,
+        useFactory: (documents: DocumentRepository, config: AppConfig, runs: RunRepository) =>
+          new RunNames({ documents, config, runs } as never),
+        inject: [DocumentRepository, AppConfig, RunRepository],
+      },
       MergeRequestDrafts,
       { provide: WorkspaceGuard, useValue: { ensureForRequest: async () => undefined } },
       { provide: RunRebaseEnvironment, useExisting: EnvironmentService },

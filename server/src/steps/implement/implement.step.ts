@@ -10,7 +10,7 @@ import { isSubtask, settled, withStatuses } from '../../contract/subtask';
 import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { branchName, summaryForBranch } from '../branch/branch-name';
+import { RunNames } from '../shared/run-names';
 import { isChecksReturn, isPipelineReturn, withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
@@ -112,6 +112,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
     private readonly split: SplitImplementStep,
+    private readonly runNames: RunNames,
     @Optional() private readonly planChat?: PlanChatStore,
   ) {
     super(kernel, sandbox, launcher);
@@ -180,7 +181,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       ...merged,
       ...(answer ? [answerSection(answer)] : []),
     ];
-    const branch = branchName(key, summaryForBranch(input.requirements, key));
+    const branch = await this.runNames.branch(ctx.opened.run, names[0]);
     const markerBody = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim();
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
@@ -330,6 +331,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       documents: this.documents,
       flows: this.flows,
       publisher: this.publisher,
+      names: this.runNames,
       environments: this.environments,
       step: this.name,
       runtime,

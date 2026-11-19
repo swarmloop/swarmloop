@@ -452,3 +452,13 @@ test('forbidOutside reports a second state-to-icon table in the dashboard and le
   assert.equal(violations.length, 1);
   assert.match(violations[0], /^dashboard\/features\/run\/flow\/run-screen\/task-look\.ts:1:/);
 });
+
+test('only the naming module builds branch names, commit messages and titles', () => {
+  const text =
+    'const branch = `feature/${key}`;\nconst message = `feat(${key}): ${summary}`;\nrenderTemplate(format, values);\n';
+
+  assert.equal(check({ 'server/src/steps/commit/commit.step.ts': text }).length, 3);
+  assert.deepEqual(check({ 'server/src/git/naming/git-names.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/steps/commit/commit.step.spec.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/testing/flow-harness.ts': text }), []);
+});

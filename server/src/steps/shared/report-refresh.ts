@@ -4,7 +4,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
-import { branchName, summaryForBranch } from '../branch/branch-name';
+import { RunNames } from './run-names';
 import { ARTIFACTS } from '../contract/artifacts';
 import {
   parseMergeRequests,
@@ -28,6 +28,7 @@ export class ReportRefresh {
     private readonly documents: DocumentRepository,
     private readonly runReport: RunReport,
     private readonly registry: CodeHostRegistry,
+    private readonly names: RunNames,
   ) {}
 
   async refresh(opened: RunEntity): Promise<void> {
@@ -51,7 +52,7 @@ export class ReportRefresh {
     if (!requirements?.trim()) {
       return;
     }
-    const branch = branchName(run.key, summaryForBranch(requirements, run.key));
+    const branch = await this.names.branch(run, null);
     const host = await this.registry.hostFor(run);
     const summaries = parseMergeRequestSummaries(stored);
     const records = [];

@@ -7,6 +7,7 @@ import { SandboxModule } from '../sandbox/sandbox.module';
 import { BranchStep } from '../steps/branch/branch.step';
 import { CommitStep } from '../steps/commit/commit.step';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
+import { RunNames } from '../steps/shared/run-names';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { RepositoryHost } from '../steps/shared/repository-host';
@@ -82,6 +83,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     RepositoryHost,
     CheckoutService,
     BranchCheckout,
+    RunNames,
     WorkspaceGuard,
     RunRetention,
     DiskGuard,

@@ -17,6 +17,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
+import { RunNames } from '../shared/run-names';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
@@ -44,19 +45,16 @@ describe('commit step golden traces', () => {
     await seed(app);
     await stub?.();
     const documents = recordingDocuments(app.get(DocumentRepository));
-    const step = new CommitStep(
-      new StepKernel(
-        app.get(RunRepository),
-        documents,
-        app.get(VisitRepository),
-        app.get(FlowRepository),
-        app.get(Clock),
-        app.get(AppConfig),
-        app.get(StepEventLog),
-      ),
-      app.get(RebasedPublisher),
-      new RunStop(),
+    const kernel = new StepKernel(
+      app.get(RunRepository),
+      documents,
+      app.get(VisitRepository),
+      app.get(FlowRepository),
+      app.get(Clock),
+      app.get(AppConfig),
+      app.get(StepEventLog),
     );
+    const step = new CommitStep(kernel, app.get(RebasedPublisher), app.get(RunNames), new RunStop());
     const result = await step.execute(KEY);
     expectGolden(`commit.${name}`, {
       result: { exitCode: result.exitCode, message: result.message },
