@@ -57,6 +57,9 @@ const DEFAULT_REQUIREMENTS_REVIEW = {
   requirements: [{ id: 'R1', status: 'met', note: 'the change does it' }],
 };
 
+/** A backlog planner turn that has nothing to say and nothing to do. */
+const DEFAULT_BACKLOG_TURN = { say: '', actions: [] };
+
 const DEFAULT_ANSWERS: Record<string, unknown> = {
   ...Object.fromEntries(CODE_REVIEWERS.map((name) => [`code-review-${name}`, DEFAULT_REVIEW])),
   'code-review-requirements': DEFAULT_REQUIREMENTS_REVIEW,
@@ -67,6 +70,7 @@ const DEFAULT_ANSWERS: Record<string, unknown> = {
   implement: DEFAULT_IMPLEMENT,
   'implement-improve': DEFAULT_IMPLEMENT_IMPROVE,
   rebase: DEFAULT_REBASE,
+  'backlog-plan': DEFAULT_BACKLOG_TURN,
 };
 
 /** The final text of an agent that ends with its result block: prose for people, a blank line, then the block. */
@@ -89,7 +93,7 @@ function textOf(answer: ScriptedAnswer): string {
 /**
  * A fake `AGENT_RUNNER` that answers every launch with a result block. It records the steps it ran, like
  * `ScriptedFakeAgentRunner`, and the prompt of each launch. A step's script is answered in order, then the step's
- * default value (every step that has one: research, plan, plan-improve, implement, implement-improve, rebase, each code reviewer and the report) is answered for every later launch, so a spec scripts only the answers it cares about.
+ * default value (every step that has one: research, plan, plan-improve, implement, implement-improve, rebase, backlog-plan, each code reviewer and the report) is answered for every later launch, so a spec scripts only the answers it cares about.
  */
 export class BlockAgentRunner {
   readonly steps: string[] = [];

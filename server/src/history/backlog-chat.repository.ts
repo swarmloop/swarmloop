@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource } from 'typeorm';
-import { In, IsNull } from 'typeorm';
+import { In, IsNull, Not } from 'typeorm';
 import { Clock } from '../core/clock';
 import type { TurnStatus } from '../contract/backlog-chat';
 import { BacklogEventEntity } from './backlog.entities';
@@ -16,6 +16,9 @@ import {
   type BacklogTurnRecord,
 } from './backlog-writers';
 import { transaction } from './transaction';
+
+/** The record of what a person or the planner did is state the planner reads, never an event that wakes it. */
+const ACTION_RECORD = 'action';
 
 /** A person's messages and events that no turn has finished, together. */
 interface WaitingItems {
@@ -71,7 +74,7 @@ export class BacklogChatRepository {
       order: { id: 'ASC' },
     });
     const events = await manager.find(BacklogEventEntity, {
-      where: turnless.map((turn) => ({ backlogId, turn })),
+      where: turnless.map((turn) => ({ backlogId, kind: Not(ACTION_RECORD), turn })),
       order: { id: 'ASC' },
     });
     return { messages: messages.map(toMessage), events: events.map(toEvent) };
@@ -84,7 +87,7 @@ export class BacklogChatRepository {
       const turnless = [IsNull(), ...(failed.length > 0 ? [In(failed)] : [])];
       for (const turn of turnless) {
         await manager.update(BacklogMessageEntity, { backlogId, author: 'person', turn }, { turn: turnKey });
-        await manager.update(BacklogEventEntity, { backlogId, turn }, { turn: turnKey });
+        await manager.update(BacklogEventEntity, { backlogId, kind: Not(ACTION_RECORD), turn }, { turn: turnKey });
       }
       return this.itemsOfTurn(turnKey, manager);
     });
@@ -124,7 +127,9 @@ export class BacklogChatRepository {
     const messages = await manager.find(BacklogMessageEntity, {
       where: turnless.map((turn) => ({ author: 'person', turn })),
     });
-    const events = await manager.find(BacklogEventEntity, { where: turnless.map((turn) => ({ turn })) });
+    const events = await manager.find(BacklogEventEntity, {
+      where: turnless.map((turn) => ({ kind: Not(ACTION_RECORD), turn })),
+    });
     const ids = new Set([...messages, ...events].map((item) => item.backlogId));
     return [...ids].sort((left, right) => left - right);
   }

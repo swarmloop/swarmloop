@@ -7,6 +7,7 @@ import type { PipelineCheck } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { AppConfig } from '../../config/env';
 import { testEnv } from '../../config/env.spec-helpers';
+import { BacklogChatRepository } from '../../history/backlog-chat.repository';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { PlanChatStore } from '../../history/plan-chat.store';
@@ -118,7 +119,18 @@ export async function backlogHarness(parallel = 3) {
   let position = 0;
   const { actions, stops } = actionParts(db, config);
 
-  const make = () => new BacklogScheduler(backlogs, runs, host, merge, events, port, config, db.clock);
+  const make = () =>
+    new BacklogScheduler(
+      backlogs,
+      runs,
+      host,
+      merge,
+      events,
+      port,
+      config,
+      db.clock,
+      db.app.get(BacklogChatRepository),
+    );
   let current = make();
 
   const harness = {

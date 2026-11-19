@@ -65,9 +65,9 @@ export { ScriptedFakeAgentRunner, ScriptedStep };
 
 const ADMIN_TOKEN = 'test-admin-token';
 /** The steps whose agent answers in result blocks. */
-const BLOCK_STEPS = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve'];
+const BLOCK_STEPS = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve', 'backlog-plan'];
 
-/** A step whose agent answers in a result block: the ones above, every code reviewer and the report. */
+/** A step whose agent answers in a result block: the ones above (the backlog planner's turn too), every code reviewer and the report. */
 function answersInBlocks(step: string): boolean {
   return BLOCK_STEPS.includes(step) || step.startsWith('code-review-');
 }
