@@ -8,7 +8,7 @@ import { ERROR_CODES } from '../contract/error-codes';
 import type { InterruptionNote } from '../contract/interruption';
 import { REASON, type StateReason } from '../contract/run-state';
 import type { StepName } from '../contract/steps';
-import { hasFinalResult, stepOutput } from '../core/attempt-output';
+import { hasFinalResult, knownAttempts, stepOutput } from '../core/attempt-output';
 import { barrier } from '../core/barrier';
 import { Clock } from '../core/clock';
 import { delay } from '../core/delay';
@@ -151,7 +151,8 @@ export class RunSettler {
     slept: readonly { at: number; ms: number }[],
     decide: () => Promise<RelaunchDecision>,
   ): Promise<RelaunchDecision | null> {
-    const output = stepOutput(this.root, run.key, run.currentStep, run.activeAttempt);
+    const known = knownAttempts(run.activeAttempt, await this.visits.listStats(run.id));
+    const output = stepOutput(this.root, run.key, run.currentStep, run.activeAttempt, known);
     if (hasFinalResult(output)) {
       await this.recordInterrupted(run);
       return this.interrupted(run, output, decide);

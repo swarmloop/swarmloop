@@ -1,8 +1,11 @@
+import fs from 'fs';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
   attemptOutputPath,
+  attemptIdsOf,
+  knownAttempts,
   hasFinalResult,
   isOutputFileOf,
   outputFileFor,
@@ -10,6 +13,7 @@ import {
   stepOutput,
   stepOutputPath,
 } from './attempt-output';
+import { FIXTURE_KEYS, outputNameFixture, referenceIsOutputFileOf } from './attempt-output.spec-helpers';
 
 function rootWith(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-attempt-output-'));
@@ -125,6 +129,52 @@ describe('attempt output', () => {
     it('ignores the old-name file once the step has attempt files', () => {
       const root = rootWith({ 'K-1-implement-output.txt': 'old\n', 'K-1-implement-abc-output.txt': 'new\n' });
       expect(stepOutput(root, 'K-1', 'implement', null)).toBe('new\n');
+    });
+  });
+
+  it('gives the same answer as before for 2 000 names', () => {
+    const names = outputNameFixture();
+    expect(names.length).toBeGreaterThanOrEqual(2000);
+    for (const key of FIXTURE_KEYS) {
+      for (const name of names) {
+        expect([name, isOutputFileOf(name, key)]).toEqual([name, referenceIsOutputFileOf(name, key)]);
+      }
+    }
+  });
+
+  describe('with the attempt ids the database holds', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('lists no folder and returns the newest known attempt file', () => {
+      const root = rootWith({ 'K-1-chat-old-output.txt': 'old\n', 'K-1-chat-new-output.txt': 'new\n' });
+      utimesSync(join(root, 'data', 'K-1-chat-old-output.txt'), 1000, 1000);
+      utimesSync(join(root, 'data', 'K-1-chat-new-output.txt'), 2000, 2000);
+      const listing = jest.spyOn(fs, 'readdirSync');
+      const known = knownAttempts('active', [
+        { attemptId: 'old' },
+        { attemptId: null },
+        { attemptId: 'new' },
+        { attemptId: 'old' },
+      ]);
+      expect(known).toEqual(['old', 'new', 'active']);
+      expect(stepOutputPath(root, 'K-1', 'chat', null, known)).toBe(join(root, 'data', 'K-1-chat-new-output.txt'));
+      expect(attemptIdsOf(root, 'K-1', 'chat', known)).toEqual(['new', 'old']);
+      expect(listing).not.toHaveBeenCalled();
+    });
+
+    it('lists data/ once for a run with no attempt rows', () => {
+      const root = rootWith({ 'K-1-chat-abc-output.txt': 'a\n' });
+      const listing = jest.spyOn(fs, 'readdirSync');
+      const files = new OutputFiles(root, { attempts: [] });
+      expect(files.path('K-1', 'chat', null)).toBe(join(root, 'data', 'K-1-chat-abc-output.txt'));
+      expect(files.attemptIds('K-1', 'chat')).toEqual(['abc']);
+      expect(listing).toHaveBeenCalledTimes(1);
+    });
+
+    it('finds an attempt file no known id names from names listed beforehand', () => {
+      const root = rootWith({ 'K-1-chat-lost-output.txt': 'lost\n' });
+      const files = new OutputFiles(root, { names: ['K-1-chat-lost-output.txt'] });
+      expect(files.read('K-1', 'chat', null)).toBe('lost\n');
     });
   });
 

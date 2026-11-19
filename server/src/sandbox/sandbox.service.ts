@@ -1,8 +1,8 @@
 import { spawn, ChildProcess } from 'child_process';
-import { mkdirSync, readFileSync, rmSync } from 'fs';
+import { mkdirSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { AppConfig, splitList } from '../config/env';
 import { readDefaultSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
@@ -40,6 +40,7 @@ import { RunningWork } from './running-work';
 import { parseDockerStats } from './docker-stats';
 import { memoryCapOf } from './memory-cap';
 import { ContainerGate } from './container-gate';
+import { MetadataRemoval } from './metadata-removal';
 import type { AgentHold } from './container-gate';
 
 export type { DockerRunner };
@@ -51,7 +52,7 @@ export interface SandboxChild extends ChildProcess {
 }
 
 @Injectable()
-export class SandboxService {
+export class SandboxService implements OnModuleDestroy {
   private docker: DockerRunner = defaultDocker;
   private readonly maskFile = join(tmpdir(), 'swarmloop-empty-env');
   private binds: BindMount[] | null = null;
@@ -60,6 +61,7 @@ export class SandboxService {
 
   readonly gate: ContainerGate;
   readonly work: RunningWork;
+  private readonly metadataRemoval = new MetadataRemoval();
 
   constructor(
     @Optional() private readonly config?: AppConfig,
@@ -68,6 +70,10 @@ export class SandboxService {
   ) {
     this.gate = gate ?? new ContainerGate(config);
     this.work = work ?? new RunningWork();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.metadataRemoval.drained();
   }
 
   useDocker(docker: DockerRunner): void {
@@ -149,9 +155,7 @@ export class SandboxService {
       this.work.end(started);
       admitted();
       release();
-      for (const mount of metadata) {
-        rmSync(mount.hostPath, { recursive: true, force: true });
-      }
+      this.metadataRemoval.remove(metadata.map((mount) => mount.hostPath));
     };
     try {
       const memoryCapBytes = await this.containerCap();

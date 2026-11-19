@@ -5,13 +5,11 @@ import { chargeStream } from '../../agent/spend';
 import type { Charge } from '../../agent/spend';
 import { loadPriceTable } from '../../agent/prices';
 import { logStillOpen } from '../../agent/live-output';
-import { OutputFiles, stepOutput } from '../../core/attempt-output';
 import type { Clock } from '../../core/clock';
 import type { StepView, VisitView } from '../../contract/api';
 import type { LiveSample } from '../../contract/live';
 import { visitKey } from '../../contract/visit-key';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
-import { root } from '../../history/run-paths';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { RunRepository } from '../../history/run.repository';
 import type { VisitRepository } from '../../history/visit.repository';
@@ -21,7 +19,7 @@ import { reviewLogDecision } from '../../contract/readable-log-review';
 import { storedReview } from '../../agent-result/stored-review';
 import { requireRun } from '../run-queries-run';
 import type { stepMeta } from '../run-queries-run';
-import { visitLogSize } from '../run-queries-log';
+import { outputsOf, visitLogSize } from '../run-queries-log';
 import { decisionStatus, hasOutput, reviewerOutcome, roundLog } from './chips';
 import { belongsToVisit, documentView } from './documents';
 import { effortOf, exchangesOf, samplesOf } from './visit-parts';
@@ -50,11 +48,12 @@ export class ReviewerSteps {
     const { runs, documents: documentRepository, visits: visitRepository, config, clock, live } = this.deps;
     const run = await requireRun(runs, key);
     const documents = await documentRepository.listDocuments(run.id);
-    const own = (await visitRepository.listStats(run.id)).filter((stat) => stat.step === name);
+    const runStats = await visitRepository.listStats(run.id);
+    const own = runStats.filter((stat) => stat.step === name);
     if (own.length > 0) {
-      return this.angleStep(run, name, documents, own);
+      return this.angleStep(run, name, documents, own, runStats);
     }
-    const stats = (await visitRepository.listStats(run.id)).filter((stat) => stat.step === 'code-review');
+    const stats = runStats.filter((stat) => stat.step === 'code-review');
     const samples = await visitRepository.listSamples(stats.map((stat) => stat.id));
     const kind = reviewKind(name);
     const parentRunning = this.deps.reviewRunning(run);
@@ -62,9 +61,8 @@ export class ReviewerSteps {
       documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
     );
     const attempt = parentRunning ? run.activeAttempt : (ownedStats.at(-1)?.attemptId ?? null);
-    const raw = parentRunning
-      ? roundLog(new OutputFiles(root(config)), run, name)
-      : stepOutput(root(config), key, name, attempt);
+    const outputs = await outputsOf(config, run, runStats, !parentRunning && attempt === null);
+    const raw = parentRunning ? roundLog(outputs, run, name) : outputs.read(key, name, attempt);
     const env = config.env;
     const agent = agentFor(env, run, name);
     const model = agent?.model ?? null;
@@ -105,7 +103,7 @@ export class ReviewerSteps {
         memPeak: stat.memPeak,
         killReason: stat.killReason,
         decision: verdict ? `decision: ${verdict}` : null,
-        ...visitLogSize(config, run, name, stat),
+        ...visitLogSize(outputs, run, name, stat),
         documents: owned.map(documentView),
         exchanges: [],
         samples: samplesOf(samples, stat.id),
@@ -129,13 +127,15 @@ export class ReviewerSteps {
     name: string,
     documents: DocumentEntity[],
     stats: StepStatEntity[],
+    runStats: StepStatEntity[],
   ): Promise<StepView> {
     const { visits: visitRepository, config, live } = this.deps;
     const kind = reviewKind(name);
     const kinds = [kind, 'error'];
+    const parentRunning = this.deps.reviewRunning(run);
+    const outputs = await outputsOf(config, run, runStats, !parentRunning);
     const exchanges = await visitRepository.listExchanges(stats.map((stat) => stat.id));
     const samples = await visitRepository.listSamples(stats.map((stat) => stat.id));
-    const parentRunning = this.deps.reviewRunning(run);
     const visits = stats.map((stat, index) => {
       const verdict =
         storedReview(
@@ -160,7 +160,7 @@ export class ReviewerSteps {
         memPeak: stat.memPeak,
         killReason: stat.killReason,
         decision: verdict ? `decision: ${verdict}` : null,
-        ...visitLogSize(config, run, name, stat, {
+        ...visitLogSize(outputs, run, name, stat, {
           latest: index === stats.length - 1,
           reviewRunning: parentRunning,
         }),
@@ -171,7 +171,7 @@ export class ReviewerSteps {
         samples: samplesOf(samples, stat.id),
       };
     });
-    if (parentRunning && logStillOpen(roundLog(new OutputFiles(root(config)), run, name))) {
+    if (parentRunning && logStillOpen(roundLog(outputs, run, name))) {
       visits.push(this.deps.runningVisit(run, name, stats.at(-1)?.attempt ?? 0, live?.samplesOf(run.key, name)));
     }
     return { step: name, ...(await this.deps.meta(run, name)), visits, checks: [] };

@@ -8,7 +8,7 @@ import type { VisitRepository } from '../history/visit.repository';
 import { documentView, filesOf, withoutServerRecords } from './run-view/documents';
 import { launchView, loopView } from './run-view/live';
 import { requireRun } from './run-queries-run';
-import { visitLogSize } from './run-queries-log';
+import { outputsOf, visitLogSize } from './run-queries-log';
 
 interface HistorySources {
   runs: RunRepository;
@@ -35,6 +35,9 @@ export async function readHistory(
   const calls = await events.listHttpCalls(run.id);
   const launches = await flows.listFlows(run.id);
   const reviewing = reviewRunning(run);
+  const newestReviewerFile =
+    !reviewing && stats.some((stat) => !stat.attemptId && stat.step.startsWith('code-review-'));
+  const outputs = await outputsOf(config, run, stats, newestReviewerFile);
   return {
     launches: launches.map(launchView),
     documents: documents.filter((document) => document.kind !== 'log').map(documentView),
@@ -62,7 +65,7 @@ export async function readHistory(
       source: sample.source ?? 'agent',
     })),
     stats: stats.map((stat) => ({
-      ...visitLogSize(config, run, stat.step, stat, {
+      ...visitLogSize(outputs, run, stat.step, stat, {
         latest: stats.filter((item) => item.step === stat.step).at(-1) === stat,
         reviewRunning: reviewing,
       }),

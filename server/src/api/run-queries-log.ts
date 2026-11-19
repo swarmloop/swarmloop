@@ -2,7 +2,7 @@ import { closeSync, openSync, readSync, statSync } from 'fs';
 import { NotFoundException } from '@nestjs/common';
 import type { AppConfig } from '../config/env';
 import { pipelineStepOf } from '../contract/steps';
-import { attemptIdsOf, OUTPUT_STEPS, stepOutput, stepOutputPath } from '../core/attempt-output';
+import { knownAttempts, listOutputNames, OUTPUT_STEPS, OutputFiles } from '../core/attempt-output';
 import { readCheckOutput } from '../core/check-output';
 import type { RunEntity, StepStatEntity } from '../history/entities';
 import { redact } from '../config/redact';
@@ -12,11 +12,34 @@ import type { VisitRepository } from '../history/visit.repository';
 import { root } from '../history/run-paths';
 import { logPaging, requireRun } from './run-queries-run';
 
+/**
+ * The output files of one request. The attempt ids the run's stats hold find a visit's file with no listing;
+ * `listing` is for a lookup that has no attempt id to start from, which reads the names of `data/` once, asynchronously.
+ */
+export async function outputsOf(
+  config: AppConfig,
+  run: RunEntity,
+  stats: StepStatEntity[],
+  listing: boolean,
+): Promise<OutputFiles> {
+  const dir = root(config);
+  return new OutputFiles(
+    dir,
+    listing ? { names: await listOutputNames(dir) } : { attempts: knownAttempts(run.activeAttempt, stats) },
+  );
+}
+
 /** An attempt is known when a stored stat of this step (or its code-review parent), the active attempt, or (for a reviewer, whose own visits store no attempt id) an attempt file of the step names it. */
-function knownAttempt(dir: string, run: RunEntity, stats: StepStatEntity[], step: string, attempt: string): boolean {
+function knownAttempt(
+  outputs: OutputFiles,
+  run: RunEntity,
+  stats: StepStatEntity[],
+  step: string,
+  attempt: string,
+): boolean {
   const owner = pipelineStepOf(step);
   return (
-    (step.startsWith('code-review-') && attemptIdsOf(dir, run.key, step).includes(attempt)) ||
+    (step.startsWith('code-review-') && outputs.attemptIds(run.key, step).includes(attempt)) ||
     stats.some((stat) => stat.attemptId === attempt && (stat.step === step || stat.step === owner)) ||
     (run.activeAttempt === attempt && (run.currentStep === step || run.currentStep === owner))
   );
@@ -83,12 +106,12 @@ function fileLog(path: string): FileLog | null {
 
 /** The size of a visit's log: its attempt file, or 0 bytes and 0 lines when there is none. */
 export function logSize(
-  dir: string,
+  outputs: OutputFiles,
   key: string,
   step: string,
   attemptId: string | null,
 ): { attemptId: string | null; logBytes: number; logLines: number } {
-  const path = attemptId ? stepOutputPath(dir, key, step, attemptId) : null;
+  const path = attemptId ? outputs.path(key, step, attemptId) : null;
   const file = path ? fileLog(path) : null;
   return { attemptId, logBytes: file?.logBytes ?? 0, logLines: file?.logLines ?? 0 };
 }
@@ -98,7 +121,7 @@ export function logSize(
  * active attempt while the review runs, else the newest attempt file of the step.
  */
 function visitAttempt(
-  dir: string,
+  outputs: OutputFiles,
   run: RunEntity,
   stat: StepStatEntity,
   latest: boolean,
@@ -107,19 +130,18 @@ function visitAttempt(
   if (stat.attemptId || !latest || !stat.step.startsWith('code-review-')) {
     return stat.attemptId;
   }
-  return reviewRunning ? run.activeAttempt : (attemptIdsOf(dir, run.key, stat.step)[0] ?? null);
+  return reviewRunning ? run.activeAttempt : (outputs.attemptIds(run.key, stat.step)[0] ?? null);
 }
 
 /** The size of a stored visit's log, from its file. */
 export function visitLogSize(
-  config: AppConfig,
+  outputs: OutputFiles,
   run: RunEntity,
   step: string,
   stat: StepStatEntity,
   { latest = false, reviewRunning = false } = {},
 ): ReturnType<typeof logSize> {
-  const dir = root(config);
-  return logSize(dir, run.key, step, visitAttempt(dir, run, stat, latest, reviewRunning));
+  return logSize(outputs, run.key, step, visitAttempt(outputs, run, stat, latest, reviewRunning));
 }
 
 /** `from` is the first line (1-based). `tail` is how many lines: the last ones, or the ones from `from`. */
@@ -151,11 +173,11 @@ export async function readStepLog(
     throw new NotFoundException(`${step} has no log`);
   }
   const stats = await visits.listStats(run.id);
-  const dir = root(config);
-  if (attempt && !knownAttempt(dir, run, stats, step, attempt)) {
+  const outputs = await outputsOf(config, run, stats, !attempt || step.startsWith('code-review-'));
+  if (attempt && !knownAttempt(outputs, run, stats, step, attempt)) {
     throw new NotFoundException(`${attempt} is not an attempt of ${step}`);
   }
-  const text = stepOutputPath(dir, run.key, step, attempt) ? stepOutput(dir, run.key, step, attempt) : null;
+  const text = outputs.path(run.key, step, attempt) ? outputs.read(run.key, step, attempt) : null;
   if (text === null) {
     throw new NotFoundException(`${step} has no log`);
   }

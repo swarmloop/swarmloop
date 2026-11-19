@@ -14,6 +14,7 @@ import {
   SOCKET_SYNTAX,
   specRuleBlocks,
 } from './eslint.spec-rules.mjs';
+import { mainThreadPlugin, SYNC_DIRECTORY_ALLOWLIST } from './eslint.main-thread-rules.mjs';
 
 const sourceFiles = ['**/*.{js,mjs,ts,tsx}'];
 const dashboardFiles = ['dashboard/**/*.{js,mjs,ts,tsx}'];
@@ -139,6 +140,13 @@ export default tseslint.config(
       ],
       'no-console': 'error',
     },
+  },
+  {
+    // Its own rule key, so a per-folder block that sets no-restricted-syntax cannot replace it.
+    files: ['server/src/**/*.ts'],
+    ignores: [...TEST_FILES, ...Object.keys(SYNC_DIRECTORY_ALLOWLIST)],
+    plugins: { 'main-thread': mainThreadPlugin },
+    rules: { 'main-thread/no-sync-directory-work': 'error' },
   },
   {
     // The typescript-eslint rule, because a later block that sets the core no-restricted-imports would replace these options.

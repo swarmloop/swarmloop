@@ -48,7 +48,7 @@ import {
   samplesOf,
 } from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
-import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
+import { outputsOf, readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
 import { openItems } from '../steps/shared/open-items';
 import { viewTitle } from './run-view/run-title';
 import type { Part, RunsPage } from '../contract/run-list';
@@ -230,10 +230,12 @@ export class RunQueriesService {
     }
     const run = await requireRun(this.runs, key);
     const documents = await this.documents.listDocuments(run.id);
-    const stats = (await this.visits.listStats(run.id)).filter((stat) => stat.step === name);
+    const runStats = await this.visits.listStats(run.id);
+    const stats = runStats.filter((stat) => stat.step === name);
     const exchanges = await this.visits.listExchanges(stats.map((stat) => stat.id));
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const kinds = [...(STEP_KINDS[name] ?? []), 'error'];
+    const outputs = await outputsOf(this.config, run, runStats, false);
     const visits: VisitView[] = stats.map((stat, index) => {
       const owned = documents.filter((document) => document.stepStatId === stat.id);
       const verdict = name === 'code-review' ? angleVerdict(owned) : null;
@@ -258,7 +260,7 @@ export class RunQueriesService {
         killReason: stat.killReason,
         ...(interruption ? { interruption } : {}),
         decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((document) => document.body).join('\n')),
-        ...visitLogSize(this.config, run, name, stat),
+        ...visitLogSize(outputs, run, name, stat),
         documents: documents
           .filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1))
           .map(documentView),
