@@ -13,6 +13,8 @@ interface MergeOutcome {
   refusal: string | null;
   /** Why a green task's branch could not be fetched to place it on the feature branch. It is a wait with a next try, never a refusal. */
   unfetched: string | null;
+  /** What the worktree of the parent kept when it could not follow the feature branch: both heads. The merges stand. */
+  unmoved: string | null;
 }
 
 /**
@@ -36,6 +38,8 @@ export class SplitMerge {
 
   async run(parent: RunEntity, tasks: Subtask[]): Promise<MergeOutcome> {
     let current = tasks;
+    const unmoved: string[] = [];
+    const note = (): string | null => (unmoved.length > 0 ? unmoved.join('; ') : null);
     for (const queued of tasks.filter((item) => item.status === 'green')) {
       const task = current.find((item) => item.id === queued.id) ?? queued;
       if (task.status !== 'green') continue;
@@ -46,7 +50,12 @@ export class SplitMerge {
         moved = child && hasRequest ? await this.rebases.behind(parent, task, child) : null;
       } catch (error) {
         if (!(error instanceof FetchFailed)) throw error;
-        return { tasks: current, refusal: null, unfetched: `subtask ${task.id} was not merged: ${error.message}` };
+        return {
+          tasks: current,
+          refusal: null,
+          unfetched: `subtask ${task.id} was not merged: ${error.message}`,
+          unmoved: note(),
+        };
       }
       if (moved) {
         current = current.map((item) => (item.id === task.id ? moved : item));
@@ -54,18 +63,22 @@ export class SplitMerge {
       }
       const outcome = await this.merge(parent, task);
       if (!outcome) continue;
-      const { done, refusal } = outcome;
+      const { done, refusal, unmoved: kept } = outcome;
+      if (kept) unmoved.push(kept);
       current = current.map((item) => (item.id === task.id ? done : item));
       if (done.status !== 'merged') {
-        return { tasks: current, refusal, unfetched: null };
+        return { tasks: current, refusal, unfetched: null, unmoved: note() };
       }
       current = await this.rebases.afterMerge(parent, current, done, Object.values(done.merged ?? {}).at(-1) ?? '');
     }
-    return { tasks: current, refusal: null, unfetched: null };
+    return { tasks: current, refusal: null, unfetched: null, unmoved: note() };
   }
 
   /** Merges the requests of a task that no merge recorded yet, one repository after the other. Null for a task with no merge request. */
-  private async merge(parent: RunEntity, task: Subtask): Promise<{ done: Subtask; refusal: string | null } | null> {
+  private async merge(
+    parent: RunEntity,
+    task: Subtask,
+  ): Promise<{ done: Subtask; refusal: string | null; unmoved: string | null } | null> {
     const child = await this.subtasks.find(parent, task.id);
     const requests = child ? await this.subtasks.mergeRequests(child) : [];
     if (!child || requests.length === 0) {
@@ -80,10 +93,14 @@ export class SplitMerge {
     } catch (error) {
       if (error instanceof MergeConflict) {
         await this.subtasks.rebase(child);
-        return { done: { ...task, merged, status: 'running' }, refusal: null };
+        return { done: { ...task, merged, status: 'running' }, refusal: null, unmoved: null };
       }
       if (error instanceof FetchFailed) {
-        return { done: { ...task, merged }, refusal: `subtask ${task.id} was not merged: ${error.message}` };
+        return {
+          done: { ...task, merged },
+          refusal: `subtask ${task.id} was not merged: ${error.message}`,
+          unmoved: null,
+        };
       }
       throw error;
     }
@@ -92,8 +109,8 @@ export class SplitMerge {
     for (const request of requests) {
       await (await this.hostOf(parent)).deleteBranch(request.project, branch);
     }
-    await this.subtasks.fastForward(parent);
-    return { done: { ...task, status: 'merged', merged, note: undefined }, refusal: null };
+    const unmoved = await this.subtasks.fastForward(parent);
+    return { done: { ...task, status: 'merged', merged, note: undefined }, refusal: null, unmoved };
   }
 
   private async mergeOne(parent: RunEntity, request: SubtaskMergeRequest): Promise<string> {

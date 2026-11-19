@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
@@ -7,6 +8,8 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { deriveState, writeRunState } from '../history/run-state';
+import { branchName, summaryForBranch } from '../steps/branch/branch-name';
+import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { RunQueriesService } from '../api/run-queries.service';
 import { git, save } from './runs.spec-helpers';
@@ -252,6 +255,62 @@ describe('a split run is reviewed and delivered as one merge request', () => {
       await app.pipeline.step(step, KEY);
     }
     expect((await parentRun(app))?.currentStep).toBe('done');
+    await assertInvariants(app);
+  });
+
+  it('goes on by itself when the pass that merged the last task failed right after the merge', async () => {
+    const built = await world([task('a')], undefined, { realHost: true, taskWorktrees: true });
+    app = built.app;
+    const feature = `feature/${KEY}-ship-the-field`;
+    const clone = join(app.root, 'demo');
+    await app.pipeline.step('implement', KEY);
+    // The task branch is cut from the feature branch, gets a commit, is pushed and has a merge request.
+    const child = (await app.app.get(RunRepository).findRun(`${KEY}-a`))!;
+    const branch = branchName(child.key, summaryForBranch(requirements, child.key));
+    const tree = join(app.root, 'worktrees', child.key, 'demo');
+    mkdirSync(join(tree, '..'), { recursive: true });
+    git(clone, ['fetch', 'origin']);
+    git(clone, ['worktree', 'add', '-b', branch, tree, `origin/${feature}`]);
+    mkdirSync(join(tree, 'src'), { recursive: true });
+    writeFileSync(join(tree, 'src', 'a.ts'), 'export const a = 1;\n');
+    git(tree, ['add', 'src/a.ts']);
+    git(tree, ['-c', 'user.name=Dev', '-c', 'user.email=dev@example.com', 'commit', '-m', 'feat: a']);
+    git(tree, ['push', 'origin', branch]);
+    built.host.ci.pass(git(tree, ['rev-parse', 'HEAD']));
+    const { record } = await built.host.openMergeRequest({
+      project: 'demo',
+      source: branch,
+      target: feature,
+      title: 'a',
+      summary: '',
+      draft: false,
+    });
+    const documents = app.app.get(DocumentRepository);
+    await documents.putDocument(child, 'requirements', requirements);
+    await documents.putDocument(child, 'repos', 'demo\n');
+    await documents.putDocument(child, 'merge_request', renderMergeRequest([record]));
+    writeRunState(child, { status: 'done', currentStep: 'done' });
+    await app.app.get(RunRepository).saveRun(child);
+    const parent = (await parentRun(app))!;
+    parent.codeHost = 'gitlab';
+    await app.app.get(RunRepository).saveRun(parent);
+    jest.spyOn(app.app.get(SubtaskOps), 'fastForward').mockRejectedValueOnce(new Error('git merge --ff-only failed'));
+
+    for (let tick = 0; tick < 5; tick++) {
+      await app.app.get(Reconciler).resumeSubtaskParents();
+      await settle(app);
+    }
+
+    expect(await statuses(app)).toEqual({ a: 'merged' });
+    expect(deriveState((await app.app.get(RunRepository).findRun(`${KEY}-a`))!).state).toBe('merged');
+    expect((await parentRun(app))?.currentStep).not.toBe('implement');
+    const improve = (await app.app.get(RunQueriesService).flow(KEY)).phases
+      .flatMap((phase) => phase.steps)
+      .find((step) => step.name === 'implement-improve');
+    expect(improve).toMatchObject({ status: 'skipped' });
+    expect(git(join(app.root, 'worktrees', KEY, 'demo'), ['rev-parse', 'HEAD'])).toBe(
+      git(join(app.root, 'demo.git'), ['rev-parse', `refs/heads/feature/${KEY}-ship-the-field`]),
+    );
     await assertInvariants(app);
   });
 

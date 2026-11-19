@@ -41,15 +41,33 @@ export class SubtaskWorktrees {
     }
   }
 
-  /** Moves the worktrees of the parent to the feature branch as it is on origin. */
-  async fastForward(parent: RunEntity, repos: string[], branch: string): Promise<void> {
+  /**
+   * Moves the worktrees of the parent to the feature branch as it is on origin. A worktree with commits the branch
+   * lacks stays where it is; the result names both heads. Null when every worktree moved.
+   */
+  async fastForward(parent: RunEntity, repos: string[], branch: string): Promise<string | null> {
     const hosts = await this.hostsFor(parent);
+    const notes: string[] = [];
     for (const repo of repos) {
       const path = worktreePath(root(this.config), parent.key, repo);
-      if (existsSync(path) && (await fetchBranch(path, repo, branch, hosts))) {
+      if (!existsSync(path) || !(await fetchBranch(path, repo, branch, hosts))) continue;
+      try {
         await git(['-C', path, 'merge', '--ff-only', originRef(branch)]);
+      } catch (error) {
+        const remote = originRef(branch);
+        const ahead = await git(['-C', path, 'merge-base', '--is-ancestor', 'HEAD', remote]).then(
+          () => false,
+          () => true,
+        );
+        if (!ahead) throw error;
+        const local = await git(['-C', path, 'rev-parse', 'HEAD']);
+        const tip = await git(['-C', path, 'rev-parse', remote]);
+        notes.push(
+          `the worktree of ${repo} stays at ${local}: it has commits that ${remote} at ${tip} lacks, so it was not moved to the feature branch`,
+        );
       }
     }
+    return notes.length > 0 ? notes.join('; ') : null;
   }
 
   /**
