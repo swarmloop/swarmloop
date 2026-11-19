@@ -73,6 +73,14 @@ describe('BacklogTurnRunner', () => {
       expect((await h.chat.findTurn('turn-a'))?.tokensIn).toBe(10);
     }));
 
+  it('runs again on Resume after a launch halted its key', () =>
+    withTurn(async (h) => {
+      h.runStop.halt('turn-a');
+      h.agent.script = [turnResult('Back.')];
+      await expect(h.runner.run('one', 'turn-a')).resolves.toEqual({ status: 'done' });
+      expect(h.runStop.halted('turn-a')).toBe(false);
+    }));
+
   it('ends with the time of the next try when every agent of its list is at a usage limit', () =>
     withTurn(
       async (h) => {

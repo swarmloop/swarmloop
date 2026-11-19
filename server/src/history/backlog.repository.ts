@@ -39,11 +39,7 @@ export type { BacklogTaskRecord };
 const FINISHED: SubtaskStatus[] = ['merged', 'skipped'];
 
 /** `touched` hears the key of each run whose label a task write may change. */
-function touching(
-  base: BacklogWriters,
-  manager: EntityManager,
-  touched: (runKey: string) => void,
-): BacklogWriters {
+function touching(base: BacklogWriters, manager: EntityManager, touched: (runKey: string) => void): BacklogWriters {
   return {
     ...base,
     async saveTask(record) {

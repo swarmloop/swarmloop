@@ -260,19 +260,6 @@ export function firstAvailable(agents: readonly Agent[], cooling: ReadonlySet<st
   return agents.find((agent) => !cooling.has(agent.runtime)) ?? null;
 }
 
-/**
- * The first agent of a step's role and tier whose runtime is not cooling down after a provider limit, or null when
- * every one is. The first agent comes back as soon as its cooldown ends, so no step stays on a fallback.
- */
-export function availableAgent(
-  env: AgentEnv,
-  run: AgentRun | null,
-  step: string,
-  cooling: ReadonlySet<string>,
-): Agent | null {
-  return firstAvailable(agentsFor(env, run, step), cooling);
-}
-
 function tierOf(run: AgentRun | null): Tier {
   return run?.parentRunId ? 'subtask' : 'main';
 }

@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { backlogTurn } from '../../../agent-result/definitions/backlog-turn';
 import type { BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
 import type { AgentRunResult } from '../../../agent/agent-runner';
+import { RunStop } from '../../../agent/run-stop';
+import { StepStopped } from '../../../agent/step-stopped';
 import { backlogPlanAgents } from '../../../config/agents';
 import { AppConfig } from '../../../config/env';
 import { effortFields } from '../../../contract/effort';
@@ -70,12 +72,15 @@ export class BacklogTurnRunner {
     private readonly launcher: AgentLauncher,
     private readonly actions: PlannerTurnActions,
     private readonly config: AppConfig,
+    private readonly runStop: RunStop,
   ) {}
 
   /** A launch that ends on a usage limit of every agent is not a failure: the outcome says when to try again. */
   async run(backlogName: string, turnKey: string): Promise<TurnOutcome> {
     const backlog = await this.backlogs.findBacklog(backlogName);
     if (backlog === null) throw new SwarmloopError(`no backlog ${backlogName}`);
+    // A launch that halted this key (a missing credential) must not keep the turn from running again on Resume.
+    this.runStop.clear(turnKey);
     const space = await this.workspace.open(backlog, turnKey);
     try {
       const prompt = await this.prompt.build(backlogName, turnKey, space.mounts, space.names);
@@ -86,6 +91,7 @@ export class BacklogTurnRunner {
       if (error instanceof RuntimeLimit) {
         return { status: 'waiting', reason: error.message, resumesAt: error.resumesAt };
       }
+      if (error instanceof StepStopped) throw new SwarmloopError(error.message);
       throw error;
     } finally {
       await this.workspace.close(turnKey).catch((error: unknown) => {

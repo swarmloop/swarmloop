@@ -232,7 +232,14 @@ describe('LiveGateway', () => {
 
   it('sends a backlog entry to every socket, and stops after destroy', () => {
     const hub = new LiveHub();
-    const gateway = new LiveGateway(hub, {} as unknown as RunQueriesService, auth, new ContainerGate());
+    const gateway = new LiveGateway(
+      hub,
+      {} as unknown as RunQueriesService,
+      auth,
+      new ContainerGate(),
+      {} as RunListRows,
+      new FakeClock(),
+    );
     const sent: unknown[] = [];
     gateway.server = {
       emit: (name: string, entry: unknown) => sent.push([name, entry]),

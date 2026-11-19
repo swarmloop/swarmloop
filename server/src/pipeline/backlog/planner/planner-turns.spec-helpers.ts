@@ -96,7 +96,8 @@ export async function plannerTurnsHarness(
     db.app.get(RuntimeCooldownRepository),
     db.app.get(VisitRepository),
   );
-  const launcher = new AgentLauncher(agent as never, db.app.get(VisitRepository), new RunStop(), failover, config);
+  const runStop = new RunStop();
+  const launcher = new AgentLauncher(agent as never, db.app.get(VisitRepository), runStop, failover, config);
   const workspace = {
     opened: [] as string[],
     closed: [] as string[],
@@ -125,6 +126,7 @@ export async function plannerTurnsHarness(
     launcher,
     turns,
     config,
+    runStop,
   );
   const live = new LiveHub();
   const shown: LiveBacklog[] = [];
@@ -138,6 +140,7 @@ export async function plannerTurnsHarness(
     runner,
     planner: started,
     agent,
+    runStop,
     workspace,
     sent,
     shown,

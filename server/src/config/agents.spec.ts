@@ -8,7 +8,7 @@ import {
   agentFor,
   agentsFor,
   assertAgents,
-  availableAgent,
+  firstAvailable,
   backlogPlanAgents,
   knownModels,
   namedAgentsFor,
@@ -161,38 +161,38 @@ describe('agentFor with a stored choice', () => {
   });
 });
 
-describe('availableAgent', () => {
+describe('firstAvailable', () => {
   const env = testEnv({
     AGENTS_REVIEW: 'claude:review-m,codex:gpt-6.1-sol,cursor:grok-4.7-high',
     AGENTS_SUBTASK_REVIEW: 'cursor:sub-review',
   });
 
   it('is the first agent when nothing cools down, so the first agent returns after a cooldown', () => {
-    expect(availableAgent(env, null, 'code-review-quality', new Set())).toEqual({
+    expect(firstAvailable(agentsFor(env, null, 'code-review-quality'), new Set())).toEqual({
       runtime: 'claude',
       model: 'review-m',
     });
   });
 
   it('skips the cooling runtimes in the order of the role', () => {
-    expect(availableAgent(env, null, 'code-review', new Set(['claude']))).toEqual({
+    expect(firstAvailable(agentsFor(env, null, 'code-review'), new Set(['claude']))).toEqual({
       runtime: 'codex',
       model: 'gpt-6.1-sol',
     });
-    expect(availableAgent(env, null, 'code-review', new Set(['claude', 'codex']))).toEqual({
+    expect(firstAvailable(agentsFor(env, null, 'code-review'), new Set(['claude', 'codex']))).toEqual({
       runtime: 'cursor',
       model: 'grok-4.7-high',
     });
   });
 
   it('is null when every agent of the role cools down, and for a step without an agent', () => {
-    expect(availableAgent(env, null, 'code-review', new Set(['claude', 'codex', 'cursor']))).toBeNull();
-    expect(availableAgent(env, null, 'commit', new Set())).toBeNull();
+    expect(firstAvailable(agentsFor(env, null, 'code-review'), new Set(['claude', 'codex', 'cursor']))).toBeNull();
+    expect(firstAvailable(agentsFor(env, null, 'commit'), new Set())).toBeNull();
     expect(agentsFor(env, null, 'commit')).toEqual([]);
   });
 
   it('keeps to the tier of the run', () => {
-    expect(availableAgent(env, { parentRunId: 4 }, 'code-review', new Set(['claude']))).toEqual({
+    expect(firstAvailable(agentsFor(env, { parentRunId: 4 }, 'code-review'), new Set(['claude']))).toEqual({
       runtime: 'cursor',
       model: 'sub-review',
     });
@@ -379,7 +379,7 @@ describe('agents with an effort', () => {
 
   it('resolves the effort of the next agent when a limit moves the work', () => {
     const env = claudeEnv({ AGENTS_PLAN: 'claude:a:high,codex:b:high' });
-    expect(availableAgent(env, epicRun, 'plan-improve', new Set(['claude']))).toEqual({
+    expect(firstAvailable(agentsFor(env, epicRun, 'plan-improve'), new Set(['claude']))).toEqual({
       runtime: 'codex',
       model: 'b',
       effort: 'xhigh',
