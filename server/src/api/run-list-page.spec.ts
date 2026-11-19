@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { filterRuns } from '../contract/run-list';
+import { filterRuns, nested } from '../contract/run-list';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { pageOf } from './run-list-page';
@@ -53,6 +53,8 @@ describe('pageOf', () => {
       do {
         const page = pageOf(runs, { part: 'done', q: '', cursor });
         seen.push(...page.runs.map((run) => run.key));
+        expect(nested(page.runs).tops).toHaveLength(20);
+        expect(page.next === null).toBe(pages === 2);
         pages += 1;
         cursor = page.next ?? undefined;
       } while (cursor);

@@ -13,7 +13,7 @@ let watch: (key: string | null) => void = () => undefined;
 let setList: (runs: RunSummary[]) => void = () => undefined;
 
 function Probe() {
-  const { runs, loaded, flow, logs, events, connected, paused } = useLiveBridge((snapshot) => snapshot);
+  const { runs, loaded, flow, logs, events, connected, paused, statusStamp } = useLiveBridge((snapshot) => snapshot);
   const { watchRun, setRuns } = useLiveActions();
   useEffect(() => {
     watch = watchRun;
@@ -23,6 +23,7 @@ function Probe() {
     <div>
       <p>{connected ? 'live' : 'offline'}</p>
       <p>{paused ? 'paused' : 'running'}</p>
+      <p>stamp {statusStamp}</p>
       <p>{loaded ? 'loaded' : 'not loaded'}</p>
       {runs.map((run) => (
         <p key={run.key}>{run.name}</p>
@@ -166,6 +167,19 @@ describe('useLiveBridge', () => {
 
     expect(afterRun).toEqual(['First', 'Second renamed']);
     expect(afterRun).toEqual(afterRuns);
+  });
+
+  it('moves the status stamp when a run the list does not hold changes status', () => {
+    const counts = { active: 1, done: 0, all: 1 };
+    const outside = { ...runSummary(), key: 'r-9', status: 'running' as const };
+    render(<Probe />, { wrapper: LiveBridgeProvider });
+    act(() => receive('runs', { runs: [], counts, otherMatches: 0, next: null }));
+    act(() => receive('run', { rows: [outside], removed: [], counts }));
+    const before = screen.getByText(/^stamp/).textContent;
+    act(() => receive('run', { rows: [outside], removed: [], counts }));
+    expect(screen.getByText(/^stamp/).textContent).toBe(before);
+    act(() => receive('run', { rows: [{ ...outside, status: 'failed' }], removed: [], counts }));
+    expect(screen.getByText(/^stamp/).textContent).not.toBe(before);
   });
 
   it('keeps the last events message of the watched run and ignores another run', () => {

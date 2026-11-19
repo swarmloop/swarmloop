@@ -29,6 +29,8 @@ interface LiveSnapshot {
   otherMatches: number;
   /** True while the list of a newly chosen part has not arrived. */
   listing: boolean;
+  /** Moves when a run's status changes or a run goes, whether or not the list holds the run. */
+  statusStamp: number;
   /** The flow of the watched run. */
   flow: FlowView | null;
   /** The latest log per step, and per command for the checks step, of the watched run; the newest entry is last. */
@@ -62,12 +64,15 @@ function createStore(): LiveStore {
     next: null,
     otherMatches: 0,
     listing: false,
+    statusStamp: 0,
     flow: null,
     logs: [],
     events: null,
     paused: false,
   };
   let watched: string | null = null;
+  const statuses = new Map<string, string>();
+  const remember = (rows: RunSummary[]): void => rows.forEach((run) => statuses.set(run.key, run.status));
   const listeners = new Set<() => void>();
   const update = (patch: Partial<LiveSnapshot>): void => {
     snapshot = { ...snapshot, ...patch };
@@ -96,6 +101,7 @@ function createStore(): LiveStore {
       if (view.part !== snapshot.view.part || view.q !== snapshot.view.q) {
         return;
       }
+      remember(page.runs);
       update({
         runs: append ? [...snapshot.runs, ...page.runs] : page.runs,
         counts: page.counts,
@@ -124,15 +130,25 @@ function createStore(): LiveStore {
         }
       };
       const onDisconnect = (): void => update({ connected: false });
-      const onRuns = (page: RunsPage): void =>
-        snapshot.view.part === 'active' && snapshot.view.q === ''
-          ? update({ counts: page.counts, runs: page.runs, loaded: true })
-          : update({ counts: page.counts });
-      const onRun = (change: RunChange): void =>
+      const onRuns = (page: RunsPage): void => {
+        remember(page.runs);
+        if (snapshot.view.part === 'active' && snapshot.view.q === '') {
+          update({ counts: page.counts, runs: page.runs, loaded: true });
+        } else {
+          update({ counts: page.counts });
+        }
+      };
+      const onRun = (change: RunChange): void => {
+        const moved =
+          change.removed.some((key) => statuses.delete(key)) ||
+          change.rows.some((run) => statuses.get(run.key) !== run.status);
+        remember(change.rows);
         update({
+          statusStamp: snapshot.statusStamp + (moved ? 1 : 0),
           counts: change.counts,
           runs: applyRunChange({ runs: snapshot.runs, ...snapshot.view, next: snapshot.next }, change),
         });
+      };
       const onFlow = (body: FlowView): void => {
         if (body.key === watched) {
           update({ flow: body });
