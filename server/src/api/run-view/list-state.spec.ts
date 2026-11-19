@@ -2,6 +2,7 @@ import type { DocumentEntity, PasteEntity, RunEntity } from '../../history/entit
 import { ERROR_CODES } from '../../contract/error-codes';
 import { SUBTASKS_KIND } from '../../contract/subtask';
 import { listPlans, listStates } from './list-state';
+import { ownStates } from './own-state';
 import { childrenByParent } from './status';
 
 function run(id: number, key: string, extra: Partial<RunEntity> = {}): RunEntity {
@@ -56,14 +57,20 @@ async function states({
   const keys = new Map(runs.map((item) => [item.id, item.key]));
   const childrenOf = childrenByParent(runs);
   const stored = storedDocuments(runs, plans, documents);
+  const sources = {
+    documents: stored,
+    checkouts: { listPastes: async () => pasteUrls.map((url) => ({ url }) as PasteEntity) },
+    commands: { queuedRunIds: async (runIds: number[]) => new Set(runIds.filter((id) => queued.includes(id))) },
+  };
   return listStates(
-    stored,
-    { listPastes: async () => pasteUrls.map((url) => ({ url }) as PasteEntity) },
-    { queuedRunIds: async (runIds: number[]) => new Set(runIds.filter((id) => queued.includes(id))) },
     runs,
     { keys, childrenOf, plans: await listPlans(stored, runs, childrenOf) },
-    (key) => claimed.includes(key),
-    (key) => places[key],
+    await ownStates(
+      sources,
+      runs,
+      (key) => claimed.includes(key),
+      (key) => places[key],
+    ),
   );
 }
 

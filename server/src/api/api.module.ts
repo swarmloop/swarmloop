@@ -31,6 +31,7 @@ import { RunAnswersService } from './run-answers.service';
 import { RunCommandsService } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunQueriesService } from './run-queries.service';
+import { RunListRows } from './run-list-rows';
 import { RunRebaseService } from './run-rebase.service';
 import { RequestTiming } from './request-timing';
 
@@ -61,6 +62,7 @@ import { RequestTiming } from './request-timing';
   ],
   providers: [
     RunQueriesService,
+    RunListRows,
     RunCommandsService,
     RunAnswersService,
     BacklogStart,

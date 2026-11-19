@@ -26,9 +26,7 @@ import { FlowView, HistoryView, RunsView, StepView, VisitView } from '../contrac
 import type { LiveSample } from '../contract/live';
 import { runPlace, withPlaceChips } from './run-view/agent-place';
 import { withRestartWait } from './run-view/restart-wait';
-import { mergeWaits, parentOf } from './run-view/merge-wait';
-import { listPlans, listStates } from './run-view/list-state';
-import { childrenByParent, listExtras } from './run-view/status';
+import { parentOf } from './run-view/merge-wait';
 import { epicTotal } from '../steps/shared/epic-total';
 import { STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
@@ -52,9 +50,10 @@ import {
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
 import { openItems } from '../steps/shared/open-items';
-import { requirementBodies, viewTitle } from './run-view/run-title';
+import { viewTitle } from './run-view/run-title';
+import { RunListRows } from './run-list-rows';
 import { readHistory } from './run-queries-history';
-import { openSpend } from './run-queries-spend';
+import { openSpend, spentUsd } from './run-queries-spend';
 import { parseSubtasks, SUBTASKS_KIND } from '../contract/subtask';
 import { conversationView } from './run-view/conversation';
 import { readPlanChat } from '../contract/plan-chat';
@@ -81,6 +80,7 @@ export class RunQueriesService {
     private readonly checkCommands: CheckCommandRepository,
     private readonly runReport: RunReport,
     private readonly backlogs: BacklogRepository,
+    private readonly rows: RunListRows,
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly gate: ContainerGate = new ContainerGate(),
     @Optional() private readonly turns?: PlannerTurns,
@@ -102,45 +102,10 @@ export class RunQueriesService {
   private readonly reviewers: ReviewerSteps;
 
   async list(): Promise<RunsView> {
-    const runs = await this.runs.listRuns();
-    const durations = await this.runs.durationByRun();
-    const keys = new Map(runs.map((run) => [run.id, run.key]));
-    const childrenOf = childrenByParent(runs);
-    const plans = await listPlans(this.documents, runs, childrenOf);
-    const requirements = await requirementBodies(this.documents, runs);
-    const waits = mergeWaits(plans, runs, keys);
-    const states = await listStates(
-      this.documents,
-      this.checkouts,
-      this.commands,
-      runs,
-      { keys, childrenOf, plans },
-      (key) => this.pipeline.claimed(key),
-      (key) => runPlace(this.gate.agentWait(key)),
-    );
-    const labels = await this.backlogs.labelsFor(runs.map((run) => run.key));
-    return {
-      runs: runs.map((run) => ({
-        key: run.key,
-        name: runName(run.key, run.prompt),
-        title: viewTitle(run, requirements.get(run.id) ?? null),
-        status: run.status,
-        currentStep: run.currentStep,
-        createdAt: run.createdAt,
-        updatedAt: run.updatedAt,
-        stepStartedAt: run.stepStartedAt,
-        durationMs: durations.get(run.id) ?? 0,
-        usd: this.usdOf(run),
-        ...listExtras(run, keys),
-        ...(labels.has(run.key) ? { backlog: labels.get(run.key) } : {}),
-        ...waits.get(run.key),
-        ...states[run.key],
-        ...epicTotal(run, childrenOf.get(run.id) ?? [], this.usdOf, this.clock.now()),
-      })),
-    };
+    return (await this.rows.read()).view;
   }
 
-  private readonly usdOf = (run: RunEntity): number => run.spentUsd + openSpend(run, this.pipeline, this.live).usd;
+  private readonly usdOf = (run: RunEntity): number => spentUsd(run, this.pipeline, this.live);
 
   async flow(key: string): Promise<FlowView> {
     const run = await requireRun(this.runs, key);

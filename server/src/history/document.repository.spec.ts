@@ -1,3 +1,4 @@
+import { DataSource } from 'typeorm';
 import { DocumentRepository } from './document.repository';
 import { repositoryDatabase } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
@@ -54,6 +55,50 @@ describe('DocumentRepository', () => {
       expect((await documents.latestDocuments(many, ['subtasks'])).map(({ body }) => body)).toEqual(['new plan']);
       expect(await documents.latestDocuments([], ['subtasks'])).toEqual([]);
       expect(await documents.latestDocuments([other.id], ['error'])).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
+  it('plans the latest documents of runs on the run, kind and id index without scanning documents', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const documents = db.app.get(DocumentRepository);
+      const runs = db.app.get(RunRepository);
+      const dataSource = db.app.get(DataSource);
+      const first = await runs.openWaiting('run-1', '/target');
+      const second = await runs.openWaiting('run-2', '/target');
+      await documents.putDocument(first, 'subtasks', 'plan');
+      await documents.putDocument(second, 'error', 'failed');
+      const runner = dataSource.createQueryRunner();
+      const prototype = Object.getPrototypeOf(runner) as { query: (sql: string, parameters?: unknown[]) => unknown };
+      await runner.release();
+      const sent: { sql: string; parameters: unknown[] }[] = [];
+      const original = prototype.query;
+      const spy = jest.spyOn(prototype, 'query').mockImplementation(function (
+        this: unknown,
+        sql: string,
+        parameters?: unknown[],
+        ...rest: unknown[]
+      ) {
+        sent.push({ sql, parameters: parameters ?? [] });
+        return (original as (...args: unknown[]) => unknown).call(this, sql, parameters, ...rest);
+      });
+      try {
+        await documents.latestDocuments([first.id, second.id], ['subtasks', 'error']);
+      } finally {
+        spy.mockRestore();
+      }
+      const grouped = sent.find(({ sql }) => sql.includes('MAX('));
+      expect(grouped).toBeDefined();
+      const plan: { detail: string }[] = await dataSource.query(
+        `EXPLAIN QUERY PLAN ${grouped?.sql}`,
+        grouped?.parameters,
+      );
+      const details = plan.map(({ detail }) => detail);
+      expect(details.some((detail) => detail.includes('USING COVERING INDEX IDX_documents_run_kind_id'))).toBe(true);
+      expect(details.some((detail) => detail.startsWith('SCAN documents') || detail.startsWith('SCAN document'))).toBe(
+        false,
+      );
     } finally {
       await db.close();
     }

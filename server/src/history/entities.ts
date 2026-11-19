@@ -22,6 +22,7 @@ export { RunEntity } from './run.entity';
 @Entity('documents')
 @Index('IDX_documents_step_stat_id', ['stepStatId'])
 @Index('IDX_documents_run_id', ['runId'])
+@Index('IDX_documents_run_kind_id', ['runId', 'kind', 'id'])
 export class DocumentEntity {
   @PrimaryGeneratedColumn()
   id!: number;

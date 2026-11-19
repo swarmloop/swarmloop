@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { DocumentRepository } from './document.repository';
 import { root, runDir } from './run-paths';
-import { repositoryDatabase } from './repository.spec-helpers';
+import { repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
+import { VisitRepository } from './visit.repository';
 
 describe('RunRepository', () => {
   it('creates, reads, updates and removes a run through the facade', async () => {
@@ -108,6 +109,26 @@ describe('RunRepository', () => {
 
       expect(() => runs.assertSplittable(child)).toThrow('a subtask cannot be split');
       expect(() => runs.assertSplittable(parent)).not.toThrow();
+    } finally {
+      await db.close();
+    }
+  });
+  it('reads the duration of the asked runs only, equal to the full read', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      const visits = db.app.get(VisitRepository);
+      const first = await runs.begin('run-1', 'code-review');
+      await visits.finishVisit(first, repositoryVisit());
+      const second = await runs.begin('run-2', 'code-review');
+      await visits.finishVisit(second, repositoryVisit());
+
+      const all = await runs.durationByRun();
+      const asked = await runs.durationByRun([first.id]);
+
+      expect([...asked.keys()]).toEqual([first.id]);
+      expect(asked.get(first.id)).toBe(all.get(first.id));
+      expect(all.has(second.id)).toBe(true);
     } finally {
       await db.close();
     }

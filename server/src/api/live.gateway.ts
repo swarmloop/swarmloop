@@ -10,6 +10,8 @@ import { Server, Socket } from 'socket.io';
 import { FlowView } from '../contract/api';
 import { ClientToServerEvents, LiveEvents, ServerToClientEvents } from '../contract/live';
 import { RunQueriesService } from '../api/run-queries.service';
+import { RunListRows } from './run-list-rows';
+import { Clock } from '../core/clock';
 import { LiveHub } from '../live/live.hub';
 import { readDefaultSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
@@ -17,6 +19,9 @@ import { allowedOrigins, originAllowed } from '../live/origins';
 import { AuthService } from '../auth/auth.service';
 import { ContainerGate } from '../sandbox/container-gate';
 import { isAllowedHost } from './allowed-hosts';
+
+/** A publish that takes longer than this is logged. */
+const SLOW_PUBLISH_MS = 1000;
 
 const PUBLIC_URL = () => rawEnv().SWARMLOOP_PUBLIC_URL ?? readDefaultSettings().SWARMLOOP_PUBLIC_URL;
 
@@ -48,6 +53,8 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     private readonly runs: RunQueriesService,
     private readonly auth: AuthService,
     private readonly gate: ContainerGate,
+    private readonly rows: RunListRows,
+    private readonly clock: Clock,
   ) {}
 
   /** A socket needs the session cookie or a personal token, like a request. */
@@ -138,22 +145,40 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     );
   }
 
+  /** Sends the run list to every socket and the flow of a run, and of its parent, to the room that watches it. Nothing without a socket. */
   private async publish(key: string): Promise<void> {
+    if (this.server.sockets.sockets.size === 0) {
+      return;
+    }
+    const started = this.clock.now();
     try {
-      const [list, flow] = await Promise.all([this.runs.list(), this.flowOf(key)]);
-      this.server.emit('runs', list);
-      if (flow) {
-        this.server.to(room(key)).emit('flow', flow);
-        // A subtask's step, cost and time show on its parent's page.
-        const watched = flow.parentKey && this.server.sockets.adapter.rooms.has(room(flow.parentKey));
-        const parent = flow.parentKey && watched ? await this.flowOf(flow.parentKey) : null;
-        if (parent) {
-          this.server.to(room(parent.key)).emit('flow', parent);
+      const { view, recomputed } = await this.rows.read();
+      let built = 0;
+      this.server.emit('runs', view);
+      // A subtask's step, cost and time show on its parent's page.
+      const parentKey = view.runs.find((row) => row.key === key)?.parentKey;
+      for (const watched of [key, parentKey]) {
+        if (watched && this.server.sockets.adapter.rooms.has(room(watched))) {
+          built += 1;
+          await this.emitFlow(watched);
         }
+      }
+      const took = this.clock.now() - started;
+      if (took > SLOW_PUBLISH_MS) {
+        this.logger.warn(
+          `live update of ${key} took ${took} ms, recomputed ${recomputed} rows and built ${built} flows`,
+        );
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'live update failed';
       this.logger.error(message);
+    }
+  }
+
+  private async emitFlow(key: string): Promise<void> {
+    const flow = await this.flowOf(key);
+    if (flow) {
+      this.server.to(room(key)).emit('flow', flow);
     }
   }
 

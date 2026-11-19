@@ -1,7 +1,7 @@
 import type { RunEntity } from '../../history/entities';
 import type { RunSummary } from '../../contract/api';
 import { parseSubtasks, shownTaskState, SUBTASKS_KIND, type Subtask, type SubtaskStatus } from '../../contract/subtask';
-import { ownStates, type OwnState, type StateSources } from './own-state';
+import type { OwnState, StateSources } from './own-state';
 
 type ListState = Pick<RunSummary, 'state' | 'stateReason' | 'task' | 'taskCounts'>;
 
@@ -53,16 +53,11 @@ function countsOf(
 }
 
 /** The derived state of every run, its place in its parent's plan, and the task counts of every run with a plan, by run key. */
-export async function listStates(
-  documents: StateSources['documents'],
-  checkouts: StateSources['checkouts'],
-  commands: StateSources['commands'],
+export function listStates(
   runs: RunEntity[],
   { keys, childrenOf, plans }: ListFacts,
-  claimed: (key: string) => boolean,
-  place: (key: string) => string | undefined = () => undefined,
-): Promise<Record<string, ListState>> {
-  const states = await ownStates({ documents, checkouts, commands }, runs, claimed, place);
+  states: Map<string, OwnState>,
+): Record<string, ListState> {
   const result: Record<string, ListState> = {};
   for (const run of runs) {
     const own = states.get(run.key) as OwnState;

@@ -22,6 +22,7 @@ import { RunAnswersService } from '../api/run-answers.service';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
+import { RunListRows } from '../api/run-list-rows';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { ReadinessController } from '../api/readiness.controller';
 import { RunsController } from '../api/runs.controller';
@@ -165,6 +166,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     controllers: [HealthController, ServerController, RunsController, ReadinessController],
     providers: [
       RunQueriesService,
+      RunListRows,
       RunCommandsService,
       RunAnswersService,
       RunSubtaskCommandsService,
