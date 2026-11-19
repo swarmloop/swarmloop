@@ -1,0 +1,173 @@
+import { Injectable } from '@nestjs/common';
+import type { BacklogEventKind, MergeMode, MilestoneStatus, RequirementStatus } from '../../../contract/backlog';
+import type { MessageAuthor } from '../../../contract/backlog-chat';
+import { SwarmloopError } from '../../../core/swarmloop-error';
+import { type Subtask, SUBTASKS_KIND, parseSubtasks } from '../../../contract/subtask';
+import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
+import { BacklogRepository, type BacklogTaskRecord } from '../../../history/backlog.repository';
+import type { MilestoneRecord, RequirementRecord } from '../../../history/backlog-writers';
+import { DocumentRepository } from '../../../history/document.repository';
+import { RunRepository } from '../../../history/run.repository';
+import { deriveState } from '../../../history/run-state';
+import { backlogTasks, type RunFacts } from '../task-readiness';
+import { EventFacts } from './event-facts';
+
+/** How many of the newest messages a turn reads. */
+const TURN_MESSAGES = 20;
+
+interface RequirementState {
+  ref: string;
+  text: string;
+  status: RequirementStatus;
+}
+
+interface SubtaskState {
+  id: string;
+  title: string;
+  status: Subtask['status'];
+  depends: string[];
+  files: string[];
+}
+
+export interface TaskState {
+  slug: string;
+  title: string;
+  description: string;
+  status: Subtask['status'];
+  /** What the task waits for, in the scheduler's words. */
+  wait: string;
+  runKey: string | null;
+  repositories: string[];
+  covers: string[];
+  depends: string[];
+  files: string[];
+  fixesMain: string | null;
+  /** The tasks of a run that split, read from the run's stored task list. */
+  subtasks: SubtaskState[];
+}
+
+interface MilestoneState {
+  number: number;
+  title: string;
+  goal: string;
+  status: MilestoneStatus;
+  requirements: RequirementState[];
+  tasks: TaskState[];
+}
+
+interface TurnEvent {
+  kind: BacklogEventKind;
+  at: string;
+  facts: Record<string, string>;
+}
+
+/** Everything a planner turn knows, read from the database at the start of the turn. */
+export interface TurnState {
+  backlog: { name: string; repositories: string[]; mergeMode: MergeMode; paused: boolean };
+  active: MilestoneState | null;
+  planned: MilestoneState[];
+  /** The tasks that belong to no milestone. */
+  items: TaskState[];
+  decisions: { text: string; who: string; at: string }[];
+  messages: { author: MessageAuthor; text: string; at: string }[];
+  /** How many messages come before the ones shown. */
+  olderMessages: number;
+  events: TurnEvent[];
+}
+
+/** Rebuilds the planner's state for one turn from the database: never from the whole chat, never from a run's chat. */
+@Injectable()
+export class BacklogTurnState {
+  constructor(
+    private readonly backlogs: BacklogRepository,
+    private readonly chat: BacklogChatRepository,
+    private readonly runs: RunRepository,
+    private readonly documents: DocumentRepository,
+    private readonly facts: EventFacts,
+  ) {}
+
+  async read(backlogName: string, turnKey: string): Promise<TurnState> {
+    const backlog = await this.backlogs.findBacklog(backlogName);
+    if (backlog === null) throw new SwarmloopError(`no backlog ${backlogName}`);
+    const id = backlog.id as number;
+    const [milestones, requirements, records, decisions] = await Promise.all([
+      this.backlogs.milestones(id),
+      this.backlogs.requirements(id),
+      this.backlogs.tasks(id),
+      this.backlogs.decisions(id),
+    ]);
+    const tasks = await this.taskStates(milestones, records);
+    const recent = await this.chat.lastMessages(id, TURN_MESSAGES);
+    const milestoneState = (milestone: MilestoneRecord): MilestoneState => ({
+      number: milestone.number,
+      title: milestone.title,
+      goal: milestone.goal,
+      status: milestone.status,
+      requirements: requirements
+        .filter((requirement: RequirementRecord) => requirement.milestoneId === milestone.id)
+        .map(({ ref, text, status }) => ({ ref, text, status })),
+      tasks: tasks.filter((task) => task.milestoneId === milestone.id).map((task) => task.state),
+    });
+    return {
+      backlog: {
+        name: backlog.name,
+        repositories: backlog.repositories,
+        mergeMode: backlog.mergeMode,
+        paused: backlog.paused,
+      },
+      active: milestones.filter((milestone) => milestone.status === 'active').map(milestoneState)[0] ?? null,
+      planned: milestones
+        .filter((milestone) => milestone.status === 'proposed' || milestone.status === 'queued')
+        .map(milestoneState),
+      items: tasks.filter((task) => task.milestoneId === null).map((task) => task.state),
+      decisions: decisions.map(({ text, who, createdAt }) => ({ text, who, at: createdAt })),
+      messages: recent.messages.map(({ author, text, createdAt }) => ({ author, text, at: createdAt })),
+      olderMessages: recent.older,
+      events: await this.eventsOf(backlog.owner, turnKey),
+    };
+  }
+
+  private async eventsOf(owner: string, turnKey: string): Promise<TurnEvent[]> {
+    const events: TurnEvent[] = [];
+    for (const event of (await this.chat.itemsOfTurn(turnKey)).events) {
+      events.push({ kind: event.kind, at: event.createdAt, facts: await this.facts.of(owner, event) });
+    }
+    return events;
+  }
+
+  /** Every task with its shown status, the way the scheduler reads it, and its subtasks when its run split. */
+  private async taskStates(milestones: MilestoneRecord[], records: BacklogTaskRecord[]) {
+    const active = new Set(milestones.filter((milestone) => milestone.status === 'active').map((m) => m.id as number));
+    const runFacts = new Map<string, RunFacts>();
+    for (const record of records) {
+      const run = record.runKey === null ? null : await this.runs.findRun(record.runKey);
+      if (run) runFacts.set(run.key, { state: deriveState(run).state, currentStep: run.currentStep });
+    }
+    const shown = new Map(backlogTasks(records, active, runFacts).map((task) => [task.id, task.status]));
+    const states = [];
+    for (const record of records) {
+      const state: TaskState = {
+        slug: record.slug,
+        title: record.title,
+        description: record.description,
+        status: shown.get(record.slug) ?? record.status,
+        wait: record.note,
+        runKey: record.runKey,
+        repositories: record.repositories,
+        covers: record.covers,
+        depends: record.depends,
+        files: record.files,
+        fixesMain: record.fixesMain,
+        subtasks: await this.subtasksOf(record.runKey),
+      };
+      states.push({ milestoneId: record.milestoneId, state });
+    }
+    return states;
+  }
+
+  private async subtasksOf(runKey: string | null): Promise<SubtaskState[]> {
+    if (runKey === null) return [];
+    const stored = parseSubtasks(await this.documents.latestBody(runKey, SUBTASKS_KIND));
+    return stored.map(({ id, title, status, depends, files }) => ({ id, title, status, depends, files }));
+  }
+}

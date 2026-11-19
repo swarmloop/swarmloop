@@ -54,6 +54,7 @@ export class FakeBacklogHost implements CodeHost {
   private readonly projects = new Map<string, FakeProject>();
   private readonly requests = new Map<string, FakeRequest>();
   private outageAt: string | null = null;
+  private trace = '';
 
   /** The url of a project on this host's domain, for a checkout's origin. */
   static originOf(project: string): string {
@@ -109,6 +110,16 @@ export class FakeBacklogHost implements CodeHost {
     await this.record('readDefaultHead', project);
     const { branch, head } = this.project(project);
     return { branch, sha: head, httpCalls: [] };
+  }
+
+  /** The log a spec gives to `setTrace`, whatever the job. */
+  async readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }> {
+    await this.record('readJobTrace', { project, jobId });
+    return { trace: this.trace, httpCalls: [] };
+  }
+
+  setTrace(trace: string): void {
+    this.trace = trace;
   }
 
   async readBranchHead(ref: PipelineRef): Promise<{ sha: string; httpCalls: HttpCallDraft[] }> {
@@ -219,7 +230,6 @@ export class FakeBacklogHost implements CodeHost {
   cloneUrl = unsupported;
   cloneEnv = unsupported;
   readCurrentUser = unsupported;
-  readJobTrace = unsupported;
   cancelPipeline = unsupported;
   rerunFailedJobs = unsupported;
   readRunNotes = unsupported;
