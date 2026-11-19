@@ -1,3 +1,4 @@
+import type { CommitAuthor } from '../git';
 import type { Clock } from '../../core/clock';
 import type { CodeHostEnv } from '../../integrations/code-host/abstract-code-host';
 import type { RebaseJournal } from './journal';
@@ -14,6 +15,7 @@ export interface RebaseRepoInput {
   prompt: string | null;
   denied: string[];
   message: string;
+  author?: CommitAuthor | null;
   hosts: RebaseHosts;
   journal: RebaseJournal;
   onBase?: (repo: string, sha: string) => void;

@@ -229,6 +229,34 @@ export async function authorArgs(cwd: string): Promise<string[]> {
   return ['-c', `user.name=${name}`, '-c', `user.email=${email}`];
 }
 
+/** The name and email a commit carries. */
+export interface CommitAuthor {
+  name: string;
+  email: string;
+}
+
+/** What a commit call takes: `args` before `commit`, and `env` for the git call. */
+export interface CommitIdentity {
+  args: string[];
+  env?: NodeJS.ProcessEnv;
+}
+
+/** A person is author and committer through the environment of the call; without one the identity is today's. */
+export async function commitIdentity(cwd: string, author?: CommitAuthor | null): Promise<CommitIdentity> {
+  if (!author) {
+    return { args: await authorArgs(cwd) };
+  }
+  return {
+    args: [],
+    env: {
+      GIT_AUTHOR_NAME: author.name,
+      GIT_AUTHOR_EMAIL: author.email,
+      GIT_COMMITTER_NAME: author.name,
+      GIT_COMMITTER_EMAIL: author.email,
+    },
+  };
+}
+
 export async function originUrl(cwd: string, repo: string, failure: string): Promise<string | null> {
   try {
     const url = (

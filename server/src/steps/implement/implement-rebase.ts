@@ -16,6 +16,7 @@ import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { textDocument } from '../shared/handoff';
 import { runJournal } from '../shared/rebase-journal';
 import type { RebasedPublisher } from '../shared/rebased-publisher';
+import type { RunAuthor } from '../shared/run-author';
 import type { RunNames } from '../shared/run-names';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
 import { rebaseConflictPrompt } from './implement.prompts';
@@ -28,6 +29,7 @@ export interface RebaseDeps {
   flows: FlowRepository;
   publisher: RebasedPublisher;
   names: RunNames;
+  author: RunAuthor;
   environments: EnvironmentService;
   step: string;
   runtime: RuntimeName;
@@ -56,6 +58,7 @@ export async function settleRebase(
     prompt: ctx.opened.run.prompt,
     denied: [],
     message: await deps.names.commitMessage(ctx.opened.run, names[0]),
+    author: await deps.author.of(ctx.opened.run),
     hosts: await deps.publisher.hostsFor(ctx.opened.run),
     journal: runJournal(deps.documents, ctx.opened.run),
     onBase: (repo: string, sha: string) => {

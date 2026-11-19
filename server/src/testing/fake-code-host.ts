@@ -32,6 +32,8 @@ export class FakeCodeHost {
   private readonly requests = new Map<number, MergeRequestRecord & { source: string }>();
   /** The pipelines the server asked the host to start, in order. */
   readonly nudged: PipelineRef[] = [];
+  /** The runs the server asked the host to run its failed jobs of again, in order. */
+  readonly reruns: { project: string; id: number }[] = [];
   /** The reason put on the request's timeline with each nudge. */
   readonly nudgeNotes: string[] = [];
   private downUntil = 0;
@@ -343,8 +345,9 @@ export class FakeCodeHost {
     return Promise.resolve({ trace: this.ci.trace(), httpCalls: [] });
   }
 
-  rerunFailedJobs(): Answer<'rerunFailedJobs'> {
+  rerunFailedJobs(project: string, id: number): Answer<'rerunFailedJobs'> {
     this.guard();
+    this.reruns.push({ project, id });
     return Promise.resolve({ httpCalls: [] });
   }
 

@@ -219,7 +219,7 @@ export const ARTIFACTS = {
   }),
   pipelineRef: artifact('pipeline_ref', {
     writers: ['commit', 'implement'],
-    readers: ['branch', 'implement', 'pipeline'],
+    readers: ['branch', 'commit', 'implement', 'pipeline'],
     summarize: pipelineRefSummary,
   }),
   pipelineLog: artifact('pipeline_log', {

@@ -8,6 +8,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { root } from '../history/run-paths';
 import { RunNames } from './shared/run-names';
+import { RunAuthor } from './shared/run-author';
 import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
 import { sameOwnDiff } from '../git/rebase/own-diff';
 import { git } from '../git/git';
@@ -46,6 +47,7 @@ export class RunRebase {
     private readonly drafts: MergeRequestDrafts,
     private readonly registry: CodeHostRegistry,
     private readonly names: RunNames,
+    private readonly author: RunAuthor,
   ) {}
 
   /**
@@ -192,6 +194,7 @@ export class RunRebase {
       prompt: run.prompt,
       denied: [],
       message: await this.names.commitMessage(run, names[0]),
+      author: await this.author.of(run),
       hosts: { ...this.config.env, ...(await this.registry.tokensFor(run.startedBy, run.codeHost)), clock: this.clock },
       journal,
       onBase: (repo, sha) => {

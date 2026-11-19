@@ -20,6 +20,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { ImplementImproveStep } from './implement-improve.step';
+import { RunAuthor } from '../shared/run-author';
 import { ImplementStep } from './implement.step';
 import { SplitImplementStep } from './split-implement.step';
 import { boot, featureTree, seed, writeEnv } from './implement.step.spec-helpers';
@@ -80,6 +81,7 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
             app.get(EnvironmentService),
             app.get(SplitImplementStep),
             app.get(RunNames),
+            app.get(RunAuthor),
           )
         : new ImplementImproveStep(...common, app.get(AgentLauncher), app.get(EnvironmentService), app.get(RunNames));
     const result = await step.execute(input.key, input.options ?? {});

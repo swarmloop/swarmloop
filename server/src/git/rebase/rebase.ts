@@ -5,7 +5,7 @@ import { isAbsolute, join } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { promptBase } from '../base-ref';
 import { allowedPaths, deniedIndexPaths, isDenied, porcelainPaths, stageSelection } from '../../git/commit-paths';
-import { authorArgs, git, gitStderr } from '../git';
+import { commitIdentity, git, gitStderr, type CommitAuthor } from '../git';
 import { worktreePath } from '../../git/repo-names';
 import { unmergedPaths } from './clone-index';
 import { branchHasAllowedChange, readRebaseState } from './conflict';
@@ -39,6 +39,7 @@ export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<Rebase
       prompt: input.prompt,
       denied: input.denied,
       message: input.message,
+      author: input.author,
       hosts: input.hosts,
       journal: input.journal,
       tip,
@@ -80,6 +81,7 @@ async function rebaseFeatureRepo(input: {
   prompt: string | null;
   denied: string[];
   message: string;
+  author?: CommitAuthor | null;
   hosts: RebaseHosts;
   journal: RebaseJournal;
   tip: string | null;
@@ -129,7 +131,7 @@ async function rebaseFeatureRepo(input: {
   ) {
     throw new SwarmloopError(`${repo} rebase failed: ${deniedDirty[0]}`);
   }
-  await commitAllowed(cwd, repo, input.denied, input.message);
+  await commitAllowed(cwd, repo, input.denied, input.message, input.author);
   const after = await gitRawAt(cwd, repo, ['status', '--porcelain=v1', '-z', '-uall']);
   const leftover = porcelainPaths(after).find((path) => !isDenied(path, input.denied));
   if (leftover) {
@@ -148,7 +150,7 @@ async function rebaseFeatureRepo(input: {
     oldHead: await headOf(cwd, repo),
     fingerprint: await fingerprintOf(cwd),
   });
-  await hideDeniedWorktree(cwd, repo, input.denied, input.hosts);
+  await hideDeniedWorktree(cwd, repo, input.denied, input.hosts, input.author);
   await journal.advance(repo, 'applying', { fingerprint: await fingerprintOf(cwd) });
   const scratch = await mkdtemp(join(tmpdir(), 'swarmloop-rebase-'));
   const tmp = join(scratch, 'clone');
@@ -209,6 +211,7 @@ async function resumeRebase(input: {
   repo: string;
   branch: string;
   denied: string[];
+  author?: CommitAuthor | null;
   hosts: RebaseHosts;
   state: RebaseState;
 }): Promise<RebaseStop | null> {
@@ -225,12 +228,15 @@ async function resumeRebase(input: {
   if (add.length > 0) {
     await gitAt(input.cwd, input.repo, ['add', '--', ...add], 'rebase failed', input.hosts);
   }
+  const identity = await commitIdentity(input.cwd, input.author);
   await gitAt(
     input.cwd,
     input.repo,
-    [...(await authorArgs(input.cwd)), 'commit', '--no-verify', '-m', input.state.message],
+    [...identity.args, 'commit', '--no-verify', '-m', input.state.message],
     'rebase failed',
     input.hosts,
+    '',
+    identity.env,
   );
   const target = await resolveGitPath(input.cwd, 'swarmloop-rebase');
   if (target && existsSync(target)) {
