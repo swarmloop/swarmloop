@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { liveLogFinished, logStillOpen } from '../../agent/live-output';
-import { stepOutput, stepOutputPath } from '../../core/attempt-output';
+import type { OutputFiles } from '../../core/attempt-output';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { launchCount } from '../../agent/agent-launches';
 import { CODE_REVIEWERS, isReviewStep, pipelineStepOf, requireReviewer } from '../../contract/steps';
@@ -15,8 +15,8 @@ import type { OpenReviewRound } from '../../steps/shared/open-review-rounds';
 import { wordList } from '../../core/word-list';
 
 /** The log of one reviewer or the report, only when it was written since the open round began. */
-export function roundLog(root: string, run: RunEntity, name: string): string {
-  const path = stepOutputPath(root, run.key, name, run.activeAttempt);
+export function roundLog(outputs: OutputFiles, run: RunEntity, name: string): string {
+  const path = outputs.path(run.key, name, run.activeAttempt);
   if (!path) {
     return '';
   }
@@ -28,7 +28,7 @@ export function roundLog(root: string, run: RunEntity, name: string): string {
   } catch {
     return '';
   }
-  return stepOutput(root, run.key, name, run.activeAttempt);
+  return outputs.read(run.key, name, run.activeAttempt);
 }
 
 /** True while code-review runs: its reviewers and its report belong to the round that began at `stepStartedAt`. */
@@ -76,12 +76,12 @@ export function hasOutput(body: string): boolean {
 }
 
 /** True while code-review is open and none of its reviewers or its report has written a log in this round: the step is still preparing. */
-export function reviewPreparing(root: string, run: RunEntity): boolean {
+export function reviewPreparing(outputs: OutputFiles, run: RunEntity): boolean {
   if (!roundOpen(run)) {
     return false;
   }
   const names = [...REVIEW_KINDS.map((kind) => `code-review-${kind.slice('review_'.length)}`), 'code-review-report'];
-  return names.every((name) => roundLog(root, run, name).trim() === '');
+  return names.every((name) => roundLog(outputs, run, name).trim() === '');
 }
 
 /** Where a reviewer or the report stands in the open round, from what it wrote in this round only. */
@@ -119,7 +119,7 @@ export function reportChip(
   run: RunEntity,
   stats: StepStatEntity[],
   documents: DocumentEntity[],
-  root: string,
+  outputs: OutputFiles,
   preparing = false,
   round?: OpenReviewRound,
   working: string[] = [],
@@ -130,7 +130,7 @@ export function reportChip(
   }
   if (roundOpen(run) && (!round || round.reportDue)) {
     const standing = roundStanding(
-      roundLog(root, run, 'code-review-report'),
+      roundLog(outputs, run, 'code-review-report'),
       saved,
       round ? false : preparing,
       reviewLogDecision,
@@ -157,7 +157,7 @@ export function chipAttempts(
   run: RunEntity,
   stats: StepStatEntity[],
   documents: DocumentEntity[],
-  root: string,
+  outputs: OutputFiles,
   round: { attempts: number; status: string } | null,
 ): number {
   if (isReviewStep(name)) {
@@ -171,8 +171,8 @@ export function chipAttempts(
   if (last === 0) {
     return 0;
   }
-  const recorded = join(root, 'data', `${run.key}-${name}-launches.txt`);
-  if (!existsSync(recorded) || launchCount(root, run.key, name, run.activeAttempt) === 0) {
+  const recorded = join(outputs.root, 'data', `${run.key}-${name}-launches.txt`);
+  if (!existsSync(recorded) || launchCount(outputs.root, run.key, name, run.activeAttempt) === 0) {
     return 0;
   }
   return last;
@@ -198,7 +198,7 @@ export function reviewerRound(
   run: RunEntity,
   stats: StepStatEntity[],
   documents: DocumentEntity[],
-  root: string,
+  outputs: OutputFiles,
   preparing = false,
   round?: OpenReviewRound,
 ): { attempts: number; status: string } | null {
@@ -210,7 +210,7 @@ export function reviewerRound(
     return { attempts: last.attempt, status: storedReviewerStatus(last, documents, requireReviewer(name)) };
   }
   const prior = reviewerAttempts(name, stats, documents);
-  return roundStanding(roundLog(root, run, name), prior, preparing, reviewLogDecision);
+  return roundStanding(roundLog(outputs, run, name), prior, preparing, reviewLogDecision);
 }
 
 function storedReviewerStatus(stat: StepStatEntity, documents: DocumentEntity[], reviewer: string): string {

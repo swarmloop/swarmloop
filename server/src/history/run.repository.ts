@@ -335,7 +335,7 @@ export class RunRepository {
       },
       order: { id: 'ASC' },
     });
-    const reports = await this.visitRepository.codeReviewReportMs();
+    const reports = await this.visitRepository.codeReviewReportMs(...(runIds ?? []));
     const byRun = new Map<number, StepStatEntity[]>();
     for (const stat of stats) {
       const rows = byRun.get(stat.runId) ?? [];

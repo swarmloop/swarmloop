@@ -5,7 +5,7 @@ import { chargeStream } from '../../agent/spend';
 import type { Charge } from '../../agent/spend';
 import { loadPriceTable } from '../../agent/prices';
 import { logStillOpen } from '../../agent/live-output';
-import { stepOutput } from '../../core/attempt-output';
+import { OutputFiles, stepOutput } from '../../core/attempt-output';
 import type { Clock } from '../../core/clock';
 import type { StepView, VisitView } from '../../contract/api';
 import type { LiveSample } from '../../contract/live';
@@ -62,7 +62,9 @@ export class ReviewerSteps {
       documents.some((document) => document.stepStatId === stat.id && document.kind === kind),
     );
     const attempt = parentRunning ? run.activeAttempt : (ownedStats.at(-1)?.attemptId ?? null);
-    const raw = parentRunning ? roundLog(root(config), run, name) : stepOutput(root(config), key, name, attempt);
+    const raw = parentRunning
+      ? roundLog(new OutputFiles(root(config)), run, name)
+      : stepOutput(root(config), key, name, attempt);
     const env = config.env;
     const agent = agentFor(env, run, name);
     const model = agent?.model ?? null;
@@ -169,7 +171,7 @@ export class ReviewerSteps {
         samples: samplesOf(samples, stat.id),
       };
     });
-    if (parentRunning && logStillOpen(roundLog(root(config), run, name))) {
+    if (parentRunning && logStillOpen(roundLog(new OutputFiles(root(config)), run, name))) {
       visits.push(this.deps.runningVisit(run, name, stats.at(-1)?.attempt ?? 0, live?.samplesOf(run.key, name)));
     }
     return { step: name, ...(await this.deps.meta(run, name)), visits, checks: [] };

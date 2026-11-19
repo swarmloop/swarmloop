@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { join } from 'path';
+import { join, resolve, sep } from 'path';
 import { REVIEW_STEPS, STEPS } from '../contract/steps';
 
 /** The output file of one attempt of a step. A relaunch of the step writes another file. */
@@ -36,40 +36,68 @@ export function isOutputFileOf(name: string, key: string): boolean {
   return OUTPUT_STEPS.some((step) => name === `${key}-${step}-output.txt` || isAttemptFile(name, key, step));
 }
 
-/** The file of one attempt, else (without an id) the newest attempt file, else the single file of a run from before attempts. */
-export function stepOutputPath(root: string, key: string, step: string, attemptId: string | null): string | null {
-  const own = attemptId ? attemptOutputPath(root, key, step, attemptId) : null;
-  if (own && existsSync(own)) {
-    return own;
+/**
+ * The output files of one root for the lookups of one flow. It lists `data/` at most once, when a lookup
+ * must search attempt files, so a file written afterwards is not seen by it.
+ */
+export class OutputFiles {
+  private names: string[] | undefined;
+
+  constructor(readonly root: string) {}
+
+  /** The file of one attempt, else (without an id) the newest attempt file, else the single file of a run from before attempts. */
+  path(key: string, step: string, attemptId: string | null): string | null {
+    const own = attemptId ? this.existing(attemptOutputPath(this.root, key, step, attemptId)) : null;
+    if (own) {
+      return own;
+    }
+    const files = this.attemptFiles(key, step);
+    if (files.length > 0) {
+      return attemptId ? null : join(this.root, 'data', files[0].name);
+    }
+    return this.existing(outputFileFor(this.root, key, step, null));
   }
-  const files = attemptFiles(root, key, step);
-  if (files.length > 0) {
-    return attemptId ? null : join(root, 'data', files[0].name);
+
+  /** The file as an absolute path when it exists inside `data/`; a key, step or attempt id that points elsewhere is never looked up. */
+  private existing(file: string): string | null {
+    const inside = resolve(file);
+    return inside.startsWith(resolve(this.root, 'data') + sep) && existsSync(inside) ? inside : null;
   }
-  const old = outputFileFor(root, key, step, null);
-  return existsSync(old) ? old : null;
+
+  /** What one attempt of a step wrote. Never the output of two attempts joined. */
+  read(key: string, step: string, attemptId: string | null): string {
+    const path = this.path(key, step, attemptId);
+    return path ? readFile(path) : '';
+  }
+
+  /** The attempt ids that have an output file for this step, newest first. */
+  attemptIds(key: string, step: string): string[] {
+    const prefix = `${key}-${step}-`;
+    return this.attemptFiles(key, step).map((file) => file.name.slice(prefix.length, -'-output.txt'.length));
+  }
+
+  private attemptFiles(key: string, step: string): { name: string; mtimeMs: number }[] {
+    const directory = join(this.root, 'data');
+    this.names ??= existsSync(directory) ? readdirSync(directory) : [];
+    return this.names
+      .filter((name) => isAttemptFile(name, key, step))
+      .map((name) => ({ name, mtimeMs: modifiedAt(join(directory, name)) }))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  }
 }
 
-function attemptFiles(root: string, key: string, step: string): { name: string; mtimeMs: number }[] {
-  const directory = join(root, 'data');
-  return existsSync(directory)
-    ? readdirSync(directory)
-        .filter((name) => isAttemptFile(name, key, step))
-        .map((name) => ({ name, mtimeMs: modifiedAt(join(directory, name)) }))
-        .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    : [];
+export function stepOutputPath(root: string, key: string, step: string, attemptId: string | null): string | null {
+  return new OutputFiles(root).path(key, step, attemptId);
 }
 
 /** The attempt ids that have an output file for this step, newest first. */
 export function attemptIdsOf(root: string, key: string, step: string): string[] {
-  const prefix = `${key}-${step}-`;
-  return attemptFiles(root, key, step).map((file) => file.name.slice(prefix.length, -'-output.txt'.length));
+  return new OutputFiles(root).attemptIds(key, step);
 }
 
 /** What one attempt of a step wrote. Never the output of two attempts joined. */
 export function stepOutput(root: string, key: string, step: string, attemptId: string | null): string {
-  const path = stepOutputPath(root, key, step, attemptId);
-  return path ? readFile(path) : '';
+  return new OutputFiles(root).read(key, step, attemptId);
 }
 
 /** A file removed while the directory is scanned counts as the oldest. */

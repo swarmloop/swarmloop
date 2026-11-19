@@ -14,7 +14,7 @@ import { readLoopDetail } from '../../history/loop-detail';
 import type { LoopEventEntity } from '../../history/entities';
 import { ARTIFACTS } from '../../steps/contract/artifacts';
 import { shortLine } from '../../contract/short-text';
-import { stepOutput } from '../../core/attempt-output';
+import { OutputFiles } from '../../core/attempt-output';
 import { chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import type { OpenReviewRound } from '../../steps/shared/open-review-rounds';
 export { latest } from './status';
@@ -60,20 +60,21 @@ export function phases(
   for (const stat of stats) {
     latestStats.set(stat.step, stat);
   }
-  const preparing = reviewPreparing(root, run);
+  const outputs = new OutputFiles(root);
+  const preparing = reviewPreparing(outputs, run);
   return PHASES.map((phase) => {
     const steps = phase.steps.map((name) => {
       const parent = pipelineStepOf(name);
       const own = isReviewStep(name) ? latestStats.get(name) : undefined;
       const stat = own ?? latestStats.get(parent);
-      const round = isReviewStep(name) ? reviewerRound(name, run, stats, documents, root, preparing, open) : null;
-      const log = isReviewStep(name) && !own && !round ? stepOutput(root, run.key, name, run.activeAttempt) : '';
+      const round = isReviewStep(name) ? reviewerRound(name, run, stats, documents, outputs, preparing, open) : null;
+      const log = isReviewStep(name) && !own && !round ? outputs.read(run.key, name, run.activeAttempt) : '';
       const status = chipStatus(name, run, stat, documents, round, log);
       return {
         name,
         status,
         current: isReviewStep(name) ? status === 'running' || status === 'preparing' : parent === run.currentStep,
-        attempts: chipAttempts(name, run, stats, documents, root, round),
+        attempts: chipAttempts(name, run, stats, documents, outputs, round),
         ...(status === 'skipped' && name === 'implement-improve' ? { note: IMPROVE_SKIPPED_NOTE } : {}),
         ...(status === 'returned' ? returnNote(name, latestStats.get(parent), documents, loops) : {}),
       };
@@ -84,7 +85,7 @@ export function phases(
     const working = steps.filter((step) => step.current).map((step) => requireReviewer(step.name));
     return {
       phase: phase.phase,
-      steps: [...steps, reportChip(run, stats, documents, root, preparing, open, working)],
+      steps: [...steps, reportChip(run, stats, documents, outputs, preparing, open, working)],
     };
   });
 }

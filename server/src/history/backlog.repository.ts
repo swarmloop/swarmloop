@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
 import { In } from 'typeorm';
@@ -20,6 +20,7 @@ import {
   MilestoneEntity,
   RequirementEntity,
 } from './backlog.entities';
+import { LiveHub } from '../live/live.hub';
 import { transaction } from './transaction';
 
 type Facts = Record<string, string>;
@@ -175,7 +176,8 @@ async function saveRow<Row extends { id: number }>(
   return { ...row, id: Number(inserted.identifiers[0]?.id) };
 }
 
-function writersOn(manager: EntityManager, clock: Clock): BacklogWriters {
+/** `touched` hears the key of each run whose label a task write may change. */
+function writersOn(manager: EntityManager, clock: Clock, touched: (runKey: string) => void): BacklogWriters {
   return {
     async saveBacklog(record) {
       return toBacklog(await saveRow(manager, BacklogEntity, fromBacklog(record)));
@@ -193,13 +195,18 @@ function writersOn(manager: EntityManager, clock: Clock): BacklogWriters {
       return toRequirement(await saveRow(manager, RequirementEntity, { ...record, id: record.id as number }));
     },
     async saveTask(record) {
-      return toTask(await saveRow(manager, BacklogTaskEntity, fromTask(record)));
+      const before = record.id ? await manager.findOne(BacklogTaskEntity, { where: { id: record.id } }) : null;
+      const saved = toTask(await saveRow(manager, BacklogTaskEntity, fromTask(record)));
+      for (const key of [saved.runKey, before?.runKey]) if (key) touched(key);
+      return saved;
     },
     async addDecision(record) {
       return saveRow(manager, DecisionEntity, { ...record, id: record.id as number });
     },
     async deleteTask(id) {
+      const before = await manager.findOne(BacklogTaskEntity, { where: { id } });
       await manager.delete(BacklogTaskEntity, id);
+      if (before?.runKey) touched(before.runKey);
     },
     async recordEvent(backlogId, key, kind, facts) {
       try {
@@ -228,8 +235,9 @@ export class BacklogRepository implements BacklogWriters {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly clock: Clock,
+    @Optional() private readonly live?: LiveHub,
   ) {
-    this.writers = writersOn(dataSource.manager, clock);
+    this.writers = writersOn(dataSource.manager, clock, (key) => this.live?.changed(key));
   }
 
   async listBacklogs(): Promise<BacklogRecord[]> {
@@ -356,7 +364,12 @@ export class BacklogRepository implements BacklogWriters {
   }
 
   /** Runs the work in one transaction; when it throws, nothing it wrote stays. */
-  transaction<T>(work: (writers: BacklogWriters) => Promise<T>): Promise<T> {
-    return transaction(this.dataSource, (manager) => work(writersOn(manager, this.clock)));
+  async transaction<T>(work: (writers: BacklogWriters) => Promise<T>): Promise<T> {
+    const touched = new Set<string>();
+    const result = await transaction(this.dataSource, (manager) =>
+      work(writersOn(manager, this.clock, (key) => touched.add(key))),
+    );
+    for (const key of touched) this.live?.changed(key);
+    return result;
   }
 }

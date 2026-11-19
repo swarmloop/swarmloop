@@ -1,7 +1,15 @@
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { attemptOutputPath, hasFinalResult, isOutputFileOf, outputFileFor, stepOutput } from './attempt-output';
+import {
+  attemptOutputPath,
+  hasFinalResult,
+  isOutputFileOf,
+  outputFileFor,
+  OutputFiles,
+  stepOutput,
+  stepOutputPath,
+} from './attempt-output';
 
 function rootWith(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-attempt-output-'));
@@ -43,6 +51,37 @@ describe('attempt output', () => {
     });
     expect(stepOutput(root, 'K-1', 'implement', null)).toBe('one\n');
     expect(stepOutput(root, 'K-1', 'implement-improve', null)).toBe('two\n');
+  });
+
+  describe('OutputFiles', () => {
+    it('reads the same outputs as the one-file helpers', () => {
+      const root = rootWith({
+        'K-1-implement-abc-output.txt': 'own\n',
+        'K-1-plan-def-output.txt': 'newest\n',
+        'K-1-research-output.txt': 'old\n',
+      });
+      const outputs = new OutputFiles(root);
+      for (const [step, attempt] of [
+        ['implement', 'abc'],
+        ['plan', null],
+        ['research', 'xyz'],
+        ['commit', null],
+      ] as const) {
+        expect(outputs.path('K-1', step, attempt)).toBe(stepOutputPath(root, 'K-1', step, attempt));
+        expect(outputs.read('K-1', step, attempt)).toBe(stepOutput(root, 'K-1', step, attempt));
+      }
+      expect(outputs.read('K-1', 'plan', null)).toBe('newest\n');
+      expect(outputs.attemptIds('K-1', 'plan')).toEqual(['def']);
+    });
+
+    it('lists the data folder once for all lookups of one flow', () => {
+      const root = rootWith({ 'K-1-plan-def-output.txt': 'a\n' });
+      const outputs = new OutputFiles(root);
+      expect(outputs.path('K-1', 'plan', null)).toBe(join(root, 'data', 'K-1-plan-def-output.txt'));
+      writeFileSync(join(root, 'data', 'K-1-commit-ghi-output.txt'), 'b\n');
+      expect(outputs.path('K-1', 'commit', null)).toBeNull();
+      expect(stepOutputPath(root, 'K-1', 'commit', null)).toBe(join(root, 'data', 'K-1-commit-ghi-output.txt'));
+    });
   });
 
   describe('stepOutput', () => {

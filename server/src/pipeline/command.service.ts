@@ -99,6 +99,7 @@ export class CommandService {
       takeOver: await this.takeOverOf(type, options.actor),
       admit: (run) => this.admit(type, key, run, options.run ? null : code),
     });
+    this.runs.notify(key);
     await barrier('after-accept');
     if (accepted.command.state === 'accepted') {
       if (options.run) this.inline.set(accepted.command.id, options.run);
@@ -211,9 +212,10 @@ export class CommandService {
     const run = key ? await this.runs.findRun(key) : null;
     if (run?.status === 'done') {
       await this.commands.finish(command.id, 'succeeded', { value: null });
-      return;
+    } else {
+      await this.commands.finish(command.id, 'failed', { error: { message: 'server restarted' } });
     }
-    await this.commands.finish(command.id, 'failed', { error: { message: 'server restarted' } });
+    if (key) this.runs.notify(key);
   }
 
   /** `code` is the block reason an HTTP Resume is checked against. The CLI passes null: its run never refused a block. */
@@ -272,12 +274,14 @@ export class CommandService {
       const payload = JSON.parse(command.payload) as Record<string, unknown>;
       const value = await handler(key, payload, { commandId: command.id, created: payload.created === true });
       await this.commands.finish(command.id, 'succeeded', { value });
+      this.runs.notify(key);
       this.settle(command.id, { ok: true, value });
     } catch (error) {
       this.logger.warn(`${command.type} of ${key} failed: ${error instanceof Error ? error.message : String(error)}`);
       await this.commands
         .finish(command.id, 'failed', { error: { message: error instanceof Error ? error.message : String(error) } })
         .catch(() => undefined);
+      this.runs.notify(key);
       this.settle(command.id, { ok: false, error });
     } finally {
       this.inline.delete(command.id);

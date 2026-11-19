@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import type { CommandType } from '../contract/command';
 import { ERROR_CODES } from '../contract/error-codes';
 import type { InterruptionNote } from '../contract/interruption';
+import { LiveHub } from '../live/live.hub';
 import { insertAcceptedCommand } from './accepted-command';
 import { releasedColumns } from './run-state';
 import { transaction } from './transaction';
@@ -61,10 +62,13 @@ export class VisitRepository {
     @InjectRepository(HttpCallEntity) private readonly httpCalls: Repository<HttpCallEntity>,
     @InjectRepository(DocumentEntity) private readonly documents: Repository<DocumentEntity>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    @Optional() private readonly live?: LiveHub,
   ) {}
 
   async finishVisit(run: RunEntity, visit: VisitDraft): Promise<StepStatEntity> {
-    return this.insertVisit(this.tables, run, visit, null);
+    const stat = await this.insertVisit(this.tables, run, visit, null);
+    this.live?.changed(run.key);
+    return stat;
   }
 
   /**
@@ -118,6 +122,7 @@ export class VisitRepository {
       this.logger.warn(`stale attempt ${attemptId} of ${run.key}`);
     }
     Object.assign(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
+    this.live?.changed(run.key);
     return stat;
   }
 
@@ -328,14 +333,15 @@ export class VisitRepository {
     return this.exchanges.find({ where: { stepStatId: In(statIds) }, order: { id: 'ASC' } });
   }
 
-  async codeReviewReportMs(runId?: number): Promise<Map<number, number>> {
+  /** The code-review exchange time of each visit: of the runs with these ids, or of every run when none is given. */
+  async codeReviewReportMs(...runIds: number[]): Promise<Map<number, number>> {
     const rows: { stepStatId: number | string; durationMs: number | string | null }[] = await this.exchanges.query(
       `SELECT e.step_stat_id AS stepStatId, SUM(e.duration_ms) AS durationMs
        FROM agent_exchanges e
        INNER JOIN step_stats s ON s.id = e.step_stat_id
-       WHERE s.step = 'code-review'${runId === undefined ? '' : ' AND s.run_id = ?'}
+       WHERE s.step = 'code-review'${runIds.length === 0 ? '' : ` AND s.run_id IN (${runIds.map(() => '?').join(', ')})`}
        GROUP BY e.step_stat_id`,
-      runId === undefined ? [] : [runId],
+      runIds,
     );
     const totals = new Map<number, number>();
     for (const row of rows) {

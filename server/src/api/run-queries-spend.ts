@@ -10,3 +10,8 @@ export function openSpend(run: RunEntity, pipeline: PipelineService, live?: Live
   }
   return live?.spendOf(run.key) ?? { tokensIn: 0, tokensOut: 0, usd: 0 };
 }
+
+/** What a run has cost: the stored spend and what its open visits have used so far. */
+export function spentUsd(run: RunEntity, pipeline: PipelineService, live?: LiveHub): number {
+  return run.spentUsd + openSpend(run, pipeline, live).usd;
+}
