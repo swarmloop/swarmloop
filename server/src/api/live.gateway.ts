@@ -12,6 +12,7 @@ import { ClientToServerEvents, LiveEvents, ServerToClientEvents } from '../contr
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunListRows } from './run-list-rows';
 import { Clock } from '../core/clock';
+import { markEntered } from '../core/entered-marks';
 import { LiveHub } from '../live/live.hub';
 import { readDefaultSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
@@ -140,6 +141,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       key,
       setTimeout(() => {
         this.pending.delete(key);
+        markEntered(`live update ${key}`);
         void this.publish(key);
       }, 40),
     );

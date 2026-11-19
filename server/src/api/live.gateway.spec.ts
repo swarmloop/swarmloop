@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import type { RunQueriesService } from '../api/run-queries.service';
 import type { RunListRows } from './run-list-rows';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
+import { enteredBefore } from '../core/entered-marks';
 import { allowHandshake, LiveGateway } from './live.gateway';
 import type { AuthService } from '../auth/auth.service';
 import { LiveHub } from '../live/live.hub';
@@ -147,6 +148,18 @@ describe('LiveGateway', () => {
       expect(rows.read).not.toHaveBeenCalled();
       expect(emit).not.toHaveBeenCalled();
       expect(sent).toEqual([]);
+    });
+
+    it('names the live update as the callback it is blocked in', async () => {
+      let entered: string | null = null;
+      await publishOf({
+        connected: 1,
+        watched: [],
+        read: () => {
+          entered = enteredBefore(Date.now());
+        },
+      });
+      expect(entered).toBe('live update run-1');
     });
 
     it('sends a flow only to a watched room', async () => {
