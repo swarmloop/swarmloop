@@ -9,6 +9,7 @@ import type { CodeHostEnv } from '../abstract-code-host';
 import { GithubMergeRequests, repoPath } from './github-merge-requests';
 import { snapshotOf } from '../check-status';
 import { githubRepositories } from './github-repositories';
+import { githubAuthor } from './github-author';
 import { apiRoot, type GithubPull } from './github-pull';
 import { asJob, awaitedChecks, checkStatus, listJobs, readChecks, runsOf, type GithubRun } from './github-checks';
 import type {
@@ -252,6 +253,18 @@ export class GithubCodeHost extends GithubMergeRequests {
       });
       this.assertStatus(response, calls, 'github pipeline failed');
       return { trace: response.body.toString('utf8'), httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async readAuthor(login: string): Promise<{ name: string | null; email: string | null; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const host = new URL(this.env.GITHUB_BASE_URL).hostname.toLowerCase();
+      const author = await githubAuthor((url) => this.readJson(url, headers, calls), root, login, host);
+      return { ...author, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }
