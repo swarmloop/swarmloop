@@ -60,6 +60,7 @@ export interface SwarmloopEnv extends CodeHostServerEnv, CodeHostLoginEnv {
   AGENTS_SUBTASK_PLAN: string;
   AGENTS_SUBTASK_IMPLEMENT: string;
   AGENTS_SUBTASK_REVIEW: string;
+  AGENTS_BACKLOG_PLAN: string;
   EPIC_EFFORT: string;
   SPLIT: 'auto' | 'off';
   SPLIT_MAX_TASKS: number;
@@ -179,6 +180,7 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
     AGENTS_SUBTASK_PLAN: config.getOrThrow<string>('AGENTS_SUBTASK_PLAN'),
     AGENTS_SUBTASK_IMPLEMENT: config.getOrThrow<string>('AGENTS_SUBTASK_IMPLEMENT'),
     AGENTS_SUBTASK_REVIEW: config.getOrThrow<string>('AGENTS_SUBTASK_REVIEW'),
+    AGENTS_BACKLOG_PLAN: config.getOrThrow<string>('AGENTS_BACKLOG_PLAN'),
     EPIC_EFFORT: config.getOrThrow<string>('EPIC_EFFORT'),
     SPLIT: config.getOrThrow<'auto' | 'off'>('SPLIT'),
     SPLIT_MAX_TASKS: config.getOrThrow<number>('SPLIT_MAX_TASKS'),

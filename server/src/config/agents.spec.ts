@@ -9,8 +9,10 @@ import {
   agentsFor,
   assertAgents,
   availableAgent,
+  backlogPlanAgents,
   knownModels,
   namedAgentsFor,
+  namedBacklogPlanAgents,
   parseAgent,
   parseAgentList,
   ROLE_OF_STEP,
@@ -60,7 +62,7 @@ describe('the role of a step', () => {
   it('gives plan, implement and review their steps, and the steps that run no agent none', () => {
     const roles = (role: string): string[] =>
       Object.keys(ROLE_OF_STEP).filter((step) => ROLE_OF_STEP[step as never] === role);
-    expect(roles('plan')).toEqual(['research', 'plan', 'plan-improve', 'merge-request']);
+    expect(roles('plan')).toEqual(['research', 'plan', 'plan-improve', 'merge-request', 'backlog-plan']);
     expect(roles('implement')).toEqual(['implement', 'implement-improve', 'chat', 'shell', 'rebase']);
     expect(roles('review')).toContain('code-review');
     expect(roles('review')).toHaveLength(7);
@@ -423,5 +425,53 @@ describe('the shipped defaults', () => {
       effort: 'xhigh',
       effortNote: 'epic',
     });
+  });
+});
+
+describe('the backlog tier', () => {
+  const env = testEnv({
+    AGENTS_PLAN: 'cursor:main-plan',
+    AGENTS_SUBTASK_PLAN: 'cursor:sub-plan',
+    AGENTS_BACKLOG_PLAN: 'claude:backlog-a,codex:backlog-b',
+  });
+
+  it('has its own list, with the fallback order', () => {
+    expect(backlogPlanAgents(env)).toEqual([
+      { runtime: 'claude', model: 'backlog-a' },
+      { runtime: 'codex', model: 'backlog-b' },
+    ]);
+  });
+
+  it('gives a stored choice before env', () => {
+    const stored = { backlog: { plan: [{ runtime: 'codex', model: 'mine' }] } };
+    expect(backlogPlanAgents(env, stored)).toEqual([{ runtime: 'codex', model: 'mine' }]);
+  });
+
+  it('falls back to the main plan role when its list is empty', () => {
+    const empty = testEnv({ AGENTS_PLAN: 'cursor:main-plan', AGENTS_BACKLOG_PLAN: '' });
+    expect(backlogPlanAgents(empty)).toEqual([{ runtime: 'cursor', model: 'main-plan' }]);
+    expect(namedBacklogPlanAgents(empty)).toEqual([{ runtime: 'cursor', model: 'main-plan' }]);
+  });
+
+  it('resolves the effort and caps it to the runtime levels', () => {
+    const high = testEnv({ AGENTS_BACKLOG_PLAN: 'claude:claude-opus-5-5:xhigh' });
+    expect(backlogPlanAgents(high)[0]).toMatchObject({ runtime: 'claude', model: 'claude-opus-5-5' });
+    const capped = backlogPlanAgents(testEnv({ AGENTS_BACKLOG_PLAN: 'claude:claude-sonnet-5-5:max' }))[0];
+    expect(capped.effort).toBeDefined();
+  });
+
+  it('is listed by the readers of every list, and by the start-up check', () => {
+    expect(runtimesInUse(env)).toEqual(['cursor', 'claude', 'codex']);
+    expect(knownModels(env)).toMatchObject({ claude: ['backlog-a'], codex: ['backlog-b'] });
+    expect(runtimesNamingEffort(testEnv({ AGENTS_BACKLOG_PLAN: 'claude:m:high' }))).toEqual(['claude']);
+    expect(() => assertAgents({ ...testEnv({ AGENTS_BACKLOG_PLAN: 'gemini:g' }), ...KEYS })).toThrow(
+      /AGENTS_BACKLOG_PLAN.*gemini/,
+    );
+  });
+
+  it('leaves the agents of a run as they were', () => {
+    expect(agentFor(env, null, 'plan')).toEqual({ runtime: 'cursor', model: 'main-plan' });
+    expect(agentsFor(env, { parentRunId: 1 }, 'plan')).toEqual([{ runtime: 'cursor', model: 'sub-plan' }]);
+    expect(runAgents(env, null).map((agent) => agent.model)).not.toContain('backlog-a');
   });
 });

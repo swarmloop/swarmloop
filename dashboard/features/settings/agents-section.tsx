@@ -11,10 +11,14 @@ import type { SettingsView } from '@contract/settings';
 import { agentOf, entryOf } from './agent-entry';
 import { AgentList } from './agent-list';
 
-const TIERS = ['main', 'subtask'] as const;
-const ROLES = ['plan', 'implement', 'review'] as const;
-type Tier = (typeof TIERS)[number];
-type Role = (typeof ROLES)[number];
+const ROLES_OF = {
+  main: ['plan', 'implement', 'review'],
+  subtask: ['plan', 'implement', 'review'],
+  backlog: ['plan'],
+} as const;
+const TIERS = Object.keys(ROLES_OF) as (keyof typeof ROLES_OF)[];
+type Tier = keyof typeof ROLES_OF;
+type Role = 'plan' | 'implement' | 'review';
 
 /** The role lists of the person; a key left out is the server default. */
 export function AgentsSection({
@@ -53,7 +57,8 @@ export function AgentsSection({
           <Typography variant="h6" component="h3" sx={{ textTransform: 'capitalize', mb: 1 }}>
             {tier}
           </Typography>
-          {ROLES.map((role) => {
+          {ROLES_OF[tier].map((role) => {
+            const fallback: string[] = view.defaults.agents[tier][role as 'plan'];
             const own = draft.agents?.[tier]?.[role]?.map(entryOf);
             const label = `${tier} ${role}`;
             return (
@@ -62,9 +67,7 @@ export function AgentsSection({
                   control={
                     <Switch
                       checked={own === undefined}
-                      onChange={(_event, useDefault) =>
-                        setList(tier, role, useDefault ? undefined : [...view.defaults.agents[tier][role]])
-                      }
+                      onChange={(_event, useDefault) => setList(tier, role, useDefault ? undefined : [...fallback])}
                       slotProps={{ input: { 'aria-label': `Use server default for ${label}` } }}
                     />
                   }
@@ -72,7 +75,7 @@ export function AgentsSection({
                 />
                 {own === undefined ? (
                   <Typography variant="body2" color="text.secondary" aria-label={`Server default for ${label}`}>
-                    {view.defaults.agents[tier][role].join(', ') || 'none'}
+                    {fallback.join(', ') || 'none'}
                   </Typography>
                 ) : (
                   <AgentList
