@@ -105,6 +105,7 @@ const RESUMABLE_BLOCKS: readonly string[] = [
   ERROR_CODES.BRANCH_IN_USE,
   ERROR_CODES.BRANCH_DIVERGED,
   ERROR_CODES.SUBTASK_BLOCKED,
+  ERROR_CODES.PARENT_TREE_CONFLICT,
   ...IMAGE_ERROR_CODES,
 ];
 
@@ -131,6 +132,7 @@ export const NEEDS_PERSON: Readonly<Record<string, RunAction>> = {
   [REASON.ciTimeout]: 'resume',
   [ERROR_CODES.PIPELINE_UNFIXED]: 'resume',
   [ERROR_CODES.SUBTASK_BLOCKED]: 'resume',
+  [ERROR_CODES.PARENT_TREE_CONFLICT]: 'resume',
   [ERROR_CODES.DISK_LOW]: 'resume',
   [ERROR_CODES.TEST_FLAKY]: 'resume',
   [ERROR_CODES.INPUT_MISSING]: 'replay',
@@ -274,6 +276,7 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
   [ERROR_CODES.SUBTASKS_RUNNING]: 'subtasks',
   [ERROR_CODES.SUBTASK_WAITING]: 'subtasks',
   [ERROR_CODES.SUBTASK_BLOCKED]: 'state',
+  [ERROR_CODES.PARENT_TREE_CONFLICT]: 'state',
   [ERROR_CODES.HOST_UNAVAILABLE]: 'retrying',
   [ERROR_CODES.CI_NOT_STARTED]: 'retrying',
   [ERROR_CODES.CI_NOT_RUN]: 'state',

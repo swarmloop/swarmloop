@@ -62,7 +62,16 @@ export class SplitPass {
   }
 
   async run(subtasks: Subtask[], ctx: StepContext): Promise<StepResult> {
-    const { run } = ctx.opened;
+    const { run, startedAt } = ctx.opened;
+    const own = await this.deps.subtasks.commitOwnEdits(run);
+    if (own.conflict) {
+      const text = [`${startedAt} ${own.conflict}`, own.committed].filter(Boolean).join('; ');
+      return {
+        route: { to: 'block', reason: `${startedAt} ${own.conflict}`, code: ERROR_CODES.PARENT_TREE_CONFLICT },
+        summary: text,
+        outputs: [],
+      };
+    }
     const before = JSON.stringify(withStatuses(subtasks));
     const read = (await ctx.reread(ARTIFACTS.contract)) ?? '';
     const asked = (await ctx.reread(ARTIFACTS.subtaskQuestions)) ?? '';
@@ -90,7 +99,8 @@ export class SplitPass {
         : [{ artifact: ARTIFACTS.questionParts, value: parts }]),
     ];
     const result = await this.route(ctx, tasks, open, outputs, { refusal, unfetched });
-    return unmoved ? this.withUnmoved(result, unmoved) : result;
+    const noted = unmoved ? this.withUnmoved(result, unmoved) : result;
+    return own.committed ? { ...noted, summary: `${noted.summary}; ${own.committed}` } : noted;
   }
 
   /** The note of a worktree that kept its commits goes into the summary, and into the reason of a wait or a block. */

@@ -73,3 +73,70 @@ describe('moving the worktree of the parent to the feature branch', () => {
     expect(git(tree, ['rev-parse', 'HEAD'])).toBe(local);
   });
 });
+
+describe('committing the own edits of the parent before it is brought to the feature branch', () => {
+  const branch = 'feature/proj-93-ship-the-field';
+  const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
+  const lines = (first: string, fifth = 'five') => [first, 'two', 'three', 'four', fifth, ''].join('\n');
+  const setup = async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-own-edits-'));
+    const { tree } = featureWorktree(root, 'proj-93');
+    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
+    const shared = join(tree, 'src', 'shared.ts');
+    writeFileSync(shared, lines('one'));
+    git(tree, ['add', '.']);
+    git(tree, ['commit', '-m', 'shared']);
+    // The host gets a commit the worktree of the parent does not have yet: a merged task changed line 1.
+    writeFileSync(shared, lines('task one'));
+    git(tree, ['commit', '-am', 'task']);
+    git(tree, ['push', 'origin', branch]);
+    const tip = git(tree, ['rev-parse', 'HEAD']);
+    git(tree, ['reset', '--hard', 'HEAD~1']);
+    const commit = () =>
+      new SubtaskWorktrees(config, clock).commitOwnEdits(
+        { key: 'proj-93' } as RunEntity,
+        ['demo'],
+        branch,
+        'own edits',
+      );
+    return { tree, shared, tip, commit };
+  };
+
+  it('leaves a clean parent tree as it is and reports nothing', async () => {
+    const { tree, commit } = await setup();
+    const head = git(tree, ['rev-parse', 'HEAD']);
+
+    expect(await commit()).toEqual({ committed: null, conflict: null });
+    expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
+  });
+
+  it('commits edits to other lines on top of the feature branch and names the paths', async () => {
+    const { tree, shared, tip, commit } = await setup();
+    writeFileSync(shared, lines('one', 'own five'));
+    writeFileSync(join(tree, 'src', 'own.ts'), 'own\n');
+
+    const result = await commit();
+
+    expect(result.conflict).toBeNull();
+    expect(result.committed).toContain('src/shared.ts');
+    expect(result.committed).toContain('src/own.ts');
+    expect(git(tree, ['rev-parse', 'HEAD~1'])).toBe(tip);
+    expect(git(tree, ['status', '--porcelain'])).toBe('');
+  });
+
+  it('leaves conflicting edits uncommitted and names the file and both heads', async () => {
+    const { tree, shared, tip, commit } = await setup();
+    const head = git(tree, ['rev-parse', 'HEAD']);
+    writeFileSync(shared, lines('own one'));
+
+    const result = await commit();
+
+    expect(result.committed).toBeNull();
+    expect(result.conflict).toContain('src/shared.ts');
+    expect(result.conflict).toContain(head);
+    expect(result.conflict).toContain(tip);
+    expect(result.conflict).not.toMatch(/CONFLICT|fatal:/);
+    expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
+    expect(git(tree, ['status', '--porcelain'])).toContain('src/shared.ts');
+  });
+});

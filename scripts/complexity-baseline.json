@@ -45,9 +45,6 @@
   "server/src/git/rebase/rebase.ts": {
     "Async function 'rebaseFeatureRepo'": 33
   },
-  "server/src/history/run-state.ts": {
-    "Function 'blockedState'": 21
-  },
   "server/src/integrations/issue-tracker/jira/adf.ts": {
     "Function 'adfToMarkdown'": 34
   },

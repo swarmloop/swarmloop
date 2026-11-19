@@ -234,6 +234,15 @@ describe('deriveState of a split run between passes', () => {
       ),
     ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.SUBTASK_BLOCKED } });
   });
+
+  it('keeps PARENT_TREE_CONFLICT for a blocked run', () => {
+    expect(
+      deriveState(
+        { status: 'blocked', stateReason: reason(ERROR_CODES.PARENT_TREE_CONFLICT) },
+        { blockCode: REASON.blocked },
+      ),
+    ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.PARENT_TREE_CONFLICT } });
+  });
 });
 
 describe('deriveState of a run with a next try', () => {

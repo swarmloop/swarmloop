@@ -4,14 +4,14 @@ import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { repoNames } from '../git/repo-names';
 import { parseMergeRequests } from '../steps/merge-request/merge-request-record';
-import { branchName, summaryForBranch } from '../steps/branch/branch-name';
+import { branchName, commitMessage, summaryForBranch } from '../steps/branch/branch-name';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { deriveState, writeRunState } from '../history/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND, withStatuses, type Subtask } from '../contract/subtask';
-import { SubtaskOps, type RebaseEvent, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
+import { SubtaskOps, type OwnEdits, type RebaseEvent, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
 import { disagrees } from '../steps/shared/subtask-status';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -211,6 +211,16 @@ export class SubtaskPort extends SubtaskOps {
         `The files of the merge of ${run.key} were not read: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  override async commitOwnEdits(parent: RunEntity): Promise<OwnEdits> {
+    const requirements = (await this.documents.latestBody(parent.key, ARTIFACTS.requirements.kind)) ?? '';
+    const message = commitMessage(parent.key, summaryForBranch(requirements, parent.key));
+    // A parent that has no repositories yet has no worktree to hold edits.
+    if (!(await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind))?.trim()) {
+      return { committed: null, conflict: null };
+    }
+    return this.worktrees.commitOwnEdits(parent, await this.reposOf(parent), await this.branchOf(parent), message);
   }
 
   override async fastForward(parent: RunEntity): Promise<string | null> {

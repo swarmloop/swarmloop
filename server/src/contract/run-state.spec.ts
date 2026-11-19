@@ -27,6 +27,12 @@ describe('actionsFor a block that a person can fix', () => {
   });
 });
 
+describe('actionsFor a parent whose own edits conflict with a merged task', () => {
+  it('offers Resume after PARENT_TREE_CONFLICT', () => {
+    expect(actionsFor('blocked', ERROR_CODES.PARENT_TREE_CONFLICT)).toEqual(['resume', 'replay']);
+  });
+});
+
 describe('actionsFor a split run between passes', () => {
   it.each([ERROR_CODES.SUBTASKS_RUNNING, ERROR_CODES.SUBTASK_WAITING])('offers Stop and Resume while %s', (code) => {
     expect(actionsFor('waiting', code)).toEqual(['stop', 'resume', 'replay', 'rebase']);
