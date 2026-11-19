@@ -6,11 +6,15 @@ import { FetchFailed } from '../core/swarmloop-error';
 import { fetchBranch } from '../git/rebase';
 import { originRef } from '../git/base-ref';
 import { git } from '../git/git';
+import { mergeConflicts } from '../git/merge-tree';
 import { worktreePath } from '../git/repo-names';
 import { root } from '../history/run-paths';
 import { originProject } from '../steps/pipeline/pipeline-report';
 import type { RunEntity } from '../history/entities';
 import type { RebasedPublisher } from '../steps/shared/rebased-publisher';
+import type { OwnEdits } from '../steps/shared/subtask-ops';
+import { status, type Tree } from '../steps/commit/commit-git';
+import { ParentTreeSync } from './parent-tree-sync';
 
 /** The git side of the subtask operations: what the worktrees of a parent and its subtask runs hold against the feature branch on origin. */
 export class SubtaskWorktrees {
@@ -39,6 +43,30 @@ export class SubtaskWorktrees {
         this.logger.warn(`${run.key} was not caught up: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+  }
+
+  /**
+   * Commits the uncommitted edits of the parent's worktrees onto the feature branch as it is on origin, so the
+   * fast-forward that follows never meets them. Stops at the first repository whose edits conflict.
+   */
+  async commitOwnEdits(parent: RunEntity, repos: string[], branch: string, message: string): Promise<OwnEdits> {
+    const hosts = await this.hostsFor(parent);
+    const sync = new ParentTreeSync(this.publisher);
+    const lines: string[] = [];
+    for (const repo of repos) {
+      const path = worktreePath(root(this.config), parent.key, repo);
+      if (!existsSync(path) || !(await this.hasEdits({ repo, path }))) continue;
+      if (!(await fetchBranch(path, repo, branch, hosts))) continue;
+      const { paths, conflict } = await sync.commit(parent, { repo, path }, branch, message);
+      if (paths.length > 0) lines.push(`committed the parent's own edits in ${repo}: ${paths.join(', ')}`);
+      if (conflict) return { committed: lines.join('; ') || null, conflict };
+    }
+    return { committed: lines.join('; ') || null, conflict: null };
+  }
+
+  /** True when the worktree has edits that are not committed. A directory git cannot read has none to commit. */
+  private async hasEdits(tree: Tree): Promise<boolean> {
+    return (await status(tree).catch(() => '')) !== '';
   }
 
   /**
@@ -134,21 +162,7 @@ export class SubtaskWorktrees {
     for (const repo of repos) {
       const path = worktreePath(root(this.config), run.key, repo);
       if (!existsSync(path) || !(await fetchBranch(path, repo, branch, hosts))) continue;
-      try {
-        await git([
-          '-C',
-          path,
-          'merge-tree',
-          '--write-tree',
-          '--name-only',
-          '--no-messages',
-          originRef(branch),
-          'HEAD',
-        ]);
-      } catch (error) {
-        const out = error instanceof Error && 'stdout' in error ? String(error.stdout) : '';
-        files.push(...out.split('\n').slice(1).filter(Boolean));
-      }
+      files.push(...(await mergeConflicts(path, originRef(branch))));
     }
     return files;
   }

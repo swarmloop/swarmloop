@@ -6,6 +6,7 @@ import { Reconciler } from '../pipeline/reconciler';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
+import { StepEventLog } from '../history/step-event.log';
 import { VisitRepository } from '../history/visit.repository';
 import { deriveState, writeRunState } from '../history/run-state';
 import { branchName, summaryForBranch } from '../steps/branch/branch-name';
@@ -312,6 +313,141 @@ describe('a split run is reviewed and delivered as one merge request', () => {
       git(join(app.root, 'demo.git'), ['rev-parse', `refs/heads/feature/${KEY}-ship-the-field`]),
     );
     await assertInvariants(app);
+  });
+
+  /**
+   * A parent whose last pass merged task a and failed before its worktree followed: the worktree is behind the feature
+   * branch on origin, where task a changed line 1 of src/shared.ts. The edits are written by `edit` into that worktree.
+   */
+  async function behindWithEdits(edit: (shared: string, tree: string) => void) {
+    const built = await world([task('a')], undefined, { realHost: true, taskWorktrees: true });
+    app = built.app;
+    const feature = `feature/${KEY}-ship-the-field`;
+    const clone = join(app.root, 'demo');
+    const bare = join(app.root, 'demo.git');
+    const parentTree = join(app.root, 'worktrees', KEY, 'demo');
+    const shared = join(parentTree, 'src', 'shared.ts');
+    mkdirSync(join(parentTree, 'src'), { recursive: true });
+    writeFileSync(shared, lines('one'));
+    git(parentTree, ['add', 'src/shared.ts']);
+    git(parentTree, ['-c', 'user.name=Dev', '-c', 'user.email=dev@example.com', 'commit', '-m', 'feat: shared']);
+    git(parentTree, ['push', 'origin', feature]);
+    await app.pipeline.step('implement', KEY);
+    const child = (await app.app.get(RunRepository).findRun(`${KEY}-a`))!;
+    const branch = branchName(child.key, summaryForBranch(requirements, child.key));
+    const tree = join(app.root, 'worktrees', child.key, 'demo');
+    mkdirSync(join(tree, '..'), { recursive: true });
+    git(clone, ['fetch', 'origin']);
+    git(clone, ['worktree', 'add', '-b', branch, tree, `origin/${feature}`]);
+    writeFileSync(join(tree, 'src', 'shared.ts'), lines('task one'));
+    writeFileSync(join(tree, 'src', 'a.ts'), 'export const a = 1;\n');
+    git(tree, ['add', 'src']);
+    git(tree, ['-c', 'user.name=Dev', '-c', 'user.email=dev@example.com', 'commit', '-m', 'feat: a']);
+    git(tree, ['push', 'origin', branch]);
+    built.host.ci.pass(git(tree, ['rev-parse', 'HEAD']));
+    const { record } = await built.host.openMergeRequest({
+      project: 'demo',
+      source: branch,
+      target: feature,
+      title: 'a',
+      summary: '',
+      draft: false,
+    });
+    const documents = app.app.get(DocumentRepository);
+    await documents.putDocument(child, 'requirements', requirements);
+    await documents.putDocument(child, 'repos', 'demo\n');
+    await documents.putDocument(child, 'merge_request', renderMergeRequest([record]));
+    writeRunState(child, { status: 'done', currentStep: 'done' });
+    await app.app.get(RunRepository).saveRun(child);
+    const parent = (await parentRun(app))!;
+    parent.codeHost = 'gitlab';
+    await app.app.get(RunRepository).saveRun(parent);
+    const originHead = () => git(bare, ['rev-parse', `refs/heads/${feature}`]);
+    const heads: { worktree: string; origin: string }[] = [];
+    // The pass that merged a fails once, as f98's did, with the worktree behind the feature branch and edits in it.
+    jest.spyOn(app.app.get(SubtaskOps), 'fastForward').mockImplementationOnce(() => {
+      heads.push({ worktree: git(parentTree, ['rev-parse', 'HEAD']), origin: originHead() });
+      edit(shared, parentTree);
+      return Promise.reject(new Error('git merge --ff-only failed'));
+    });
+    const tick = async () => {
+      await app.app.get(Reconciler).resumeSubtaskParents();
+      await settle(app);
+    };
+    await tick();
+    expect(heads[0]?.worktree).not.toBe(originHead());
+    return {
+      parentTree,
+      shared,
+      bare,
+      feature,
+      originHead,
+      before: heads[0]?.origin ?? '',
+      tick,
+      worktreeHead: heads[0]?.worktree ?? '',
+    };
+  }
+
+  const lines = (first: string, fifth = 'five') => [first, 'two', 'three', 'four', fifth, ''].join('\n');
+
+  it("commits the parent's own edits to other lines, brings the feature branch and goes on with no person", async () => {
+    const { parentTree, bare, feature, originHead, before, tick } = await behindWithEdits((shared, tree) => {
+      writeFileSync(shared, lines('one', 'own five'));
+      writeFileSync(join(tree, 'src', 'own.ts'), 'own\n');
+    });
+
+    for (let count = 0; count < 5; count++) await tick();
+
+    const events = (await app.app.get(StepEventLog).page((await parentRun(app))!.id, { limit: 2000 })).events;
+    const summaries = events
+      .filter((event) => event.step === 'implement' && 'summary' in event)
+      .map((e) => String((e as { summary?: string }).summary));
+    expect(summaries.join('\n')).toContain('src/shared.ts, src/own.ts');
+    expect(await statuses(app)).toEqual({ a: 'merged' });
+    expect((await parentRun(app))?.currentStep).not.toBe('implement');
+    expect(deriveState((await parentRun(app))!).state).not.toBe('blocked');
+    expect(git(bare, ['show', `refs/heads/${feature}:src/shared.ts`])).toBe(lines('task one', 'own five').trimEnd());
+    expect(git(bare, ['show', `refs/heads/${feature}:src/own.ts`])).toBe('own');
+    expect(git(parentTree, ['status', '--porcelain'])).toBe('');
+    expect(git(parentTree, ['rev-parse', 'HEAD'])).toBe(originHead());
+    expect(originHead()).not.toBe(before);
+    await assertInvariants(app);
+  });
+
+  it("blocks with PARENT_TREE_CONFLICT naming the file when the parent's edits touch the lines a merged task changed", async () => {
+    const { parentTree, originHead, before, tick, worktreeHead } = await behindWithEdits((shared) =>
+      writeFileSync(shared, lines('own one')),
+    );
+
+    for (let count = 0; count < 3; count++) await tick();
+
+    const parent = (await parentRun(app))!;
+    const { state, reason } = deriveState(parent);
+    expect(state).toBe('blocked');
+    expect(reason?.code).toBe('PARENT_TREE_CONFLICT');
+    expect(reason?.message).toContain('src/shared.ts');
+    expect(reason?.message).toContain(before);
+    expect(reason?.message).toContain(worktreeHead);
+    expect(reason?.message).not.toContain('merge --ff-only');
+    expect(git(parentTree, ['status', '--porcelain'])).toContain('src/shared.ts');
+    expect(originHead()).toBe(before);
+    await assertInvariants(app);
+  });
+
+  it('goes on after Resume once the person resolved the conflicting file', async () => {
+    const { parentTree, shared, bare, feature, tick } = await behindWithEdits((file) =>
+      writeFileSync(file, lines('own one')),
+    );
+    expect(deriveState((await parentRun(app))!).reason?.code).toBe('PARENT_TREE_CONFLICT');
+
+    writeFileSync(shared, lines('task one', 'own five'));
+    await app.app.get(CommandService).accept('resume', KEY, {});
+    await settle(app);
+    await tick();
+
+    expect((await parentRun(app))?.currentStep).not.toBe('implement');
+    expect(git(bare, ['show', `refs/heads/${feature}:src/shared.ts`])).toBe(lines('task one', 'own five').trimEnd());
+    expect(git(parentTree, ['status', '--porcelain'])).toBe('');
   });
 
   it('waits for the CI of a head a subtask merge moved and returns to implement on its red', async () => {

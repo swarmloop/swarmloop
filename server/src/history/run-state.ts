@@ -71,17 +71,22 @@ function reasonOf(code: string, message: string): StateReason {
   return { code, message };
 }
 
-function blockedState(stored: StateReason | null, facts: StateFacts): { state: RunState; reason: StateReason } {
-  // A code the stop path or a step wrote stays: the error text of the last visit cannot say it.
+/** A code the stop path or a step wrote stays: the error text of the last visit cannot say it. */
+function keptCode(stored: StateReason | null): string | null {
   const kept =
     stored?.code === REASON.stopped ||
     stored?.code === ERROR_CODES.RESOURCE_UNKNOWN ||
     stored?.code === ERROR_CODES.INPUT_MISSING ||
     stored?.code === ERROR_CODES.SUBTASK_BLOCKED ||
+    stored?.code === ERROR_CODES.PARENT_TREE_CONFLICT ||
     stored?.code === REASON.loopLimit ||
     stored?.code === ERROR_CODES.SPEND_LIMIT ||
     stored?.code === ERROR_CODES.PIPELINE_UNFIXED;
-  const code = kept ? stored.code : (facts.blockCode ?? stored?.code ?? REASON.blocked);
+  return kept ? stored.code : null;
+}
+
+function blockedState(stored: StateReason | null, facts: StateFacts): { state: RunState; reason: StateReason } {
+  const code = keptCode(stored) ?? facts.blockCode ?? stored?.code ?? REASON.blocked;
   return {
     state: code === REASON.stopped ? 'stopped' : 'blocked',
     reason: reasonOf(code, stored?.message ?? 'blocked'),

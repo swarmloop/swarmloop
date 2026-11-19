@@ -16,6 +16,12 @@ export interface RebaseEvent {
   note: string;
 }
 
+/** What committing the own edits of a parent left: the line that names the committed paths, and the words of a conflict. */
+export interface OwnEdits {
+  committed: string | null;
+  conflict: string | null;
+}
+
 /**
  * What the split pass needs of the runs of its subtasks. It is a token: the pipeline layer provides it, so a step
  * never imports `pipeline` or `api`.
@@ -44,6 +50,8 @@ export abstract class SubtaskOps {
    * and the files its merge changed.
    */
   abstract recordMerged(parent: RunEntity, run: RunEntity, merged: Record<string, string>): Promise<void>;
+  /** Commits the uncommitted edits of the parent's worktrees onto the feature branch before a pass brings it from the host. */
+  abstract commitOwnEdits(parent: RunEntity): Promise<OwnEdits>;
   /**
    * Moves the worktrees of the parent to the feature branch as it is on origin. Null when they moved; otherwise the
    * words that say which worktree stayed, with both heads.
