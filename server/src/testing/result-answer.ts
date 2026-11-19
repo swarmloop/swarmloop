@@ -1,3 +1,4 @@
+import { OWN_CONFLICT_LEAD } from '../steps/implement/implement.prompts';
 import { PERSON_WORDS } from '../steps/plan/plan.prompts';
 import { CODE_REVIEWERS } from '../contract/steps';
 import { emptyResult } from '../agent/agent-result';
@@ -80,7 +81,8 @@ export function resultAnswer(prose: string, value: unknown): string {
 
 /** The script a launch belongs to: a conflict resolution is the implement step's agent, and has its own script, `rebase`. */
 function scriptOf(input: { step: string; prompt?: string }): string {
-  return input.step === 'implement' && input.prompt?.includes('The commit being replayed is') ? 'rebase' : input.step;
+  const resolving = input.prompt?.includes('The commit being replayed is') || input.prompt?.includes(OWN_CONFLICT_LEAD);
+  return input.step === 'implement' && resolving ? 'rebase' : input.step;
 }
 
 /** One answer of a script: a value that becomes a result block, or the raw text of the answer. */

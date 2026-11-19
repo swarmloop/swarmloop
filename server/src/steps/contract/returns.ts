@@ -13,7 +13,7 @@ export const RETURNS: Partial<Record<StepName, readonly StepName[]>> = {
 /** The steps a step may jump to, past the ones that follow it. */
 export const JUMPS: Partial<Record<StepName, readonly StepName[]>> = {
   commit: ['done'],
-  implement: ['commit', 'checks', 'code-review'],
+  implement: ['implement', 'commit', 'checks', 'code-review'],
   'merge-request': ['done', 'code-review'],
   pipeline: ['code-review'],
   plan: ['branch'],

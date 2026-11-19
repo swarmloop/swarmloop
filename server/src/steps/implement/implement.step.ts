@@ -35,7 +35,8 @@ import { withEnvironment } from '../../environment/environment-note';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { storedPlan } from '../step';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
-import { settleRebase, type RebaseDeps } from './implement-rebase';
+import { settleRebase } from './implement-rebase';
+import type { RebaseDeps } from './rebase-resolved';
 import {
   assertUncommitted,
   checkoutSnapshot,

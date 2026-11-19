@@ -47,9 +47,16 @@ export class SubtaskWorktrees {
 
   /**
    * Commits the uncommitted edits of the parent's worktrees onto the feature branch as it is on origin, so the
-   * fast-forward that follows never meets them. Stops at the first repository whose edits conflict.
+   * fast-forward that follows never meets them. Stops at the first repository whose edits conflict. With `park` a
+   * conflict stays in that worktree as a rebase that stopped, for the implement agent to resolve.
    */
-  async commitOwnEdits(parent: RunEntity, repos: string[], branch: string, message: string): Promise<OwnEdits> {
+  async commitOwnEdits(
+    parent: RunEntity,
+    repos: string[],
+    branch: string,
+    message: string,
+    park: boolean,
+  ): Promise<OwnEdits> {
     const hosts = await this.hostsFor(parent);
     const sync = new ParentTreeSync(this.publisher);
     const lines: string[] = [];
@@ -57,7 +64,7 @@ export class SubtaskWorktrees {
       const path = worktreePath(root(this.config), parent.key, repo);
       if (!existsSync(path) || !(await this.hasEdits({ repo, path }))) continue;
       if (!(await fetchBranch(path, repo, branch, hosts))) continue;
-      const { paths, conflict } = await sync.commit(parent, { repo, path }, branch, message);
+      const { paths, conflict } = await sync.commit(parent, { repo, path }, branch, message, park);
       if (paths.length > 0) lines.push(`committed the parent's own edits in ${repo}: ${paths.join(', ')}`);
       if (conflict) return { committed: lines.join('; ') || null, conflict };
     }

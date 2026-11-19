@@ -35,6 +35,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.subtasks,
     ARTIFACTS.implementation,
     ARTIFACTS.implementationResult,
+    ARTIFACTS.rebaseConflict,
     ARTIFACTS.contract,
     ARTIFACTS.subtaskQuestions,
     ARTIFACTS.questionParts,

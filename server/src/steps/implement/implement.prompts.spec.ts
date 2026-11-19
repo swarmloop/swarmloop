@@ -1,6 +1,6 @@
 import { withCommand } from '../../environment/check-failures';
 import { markedTail } from '../../core/run-logs';
-import { implementImproveFollowUp } from './implement.prompts';
+import { implementImproveFollowUp, OWN_CONFLICT_LEAD, ownConflictPrompt } from './implement.prompts';
 
 const notesOf = (tail: string) => `## checks\nrepo: required check failed (exit 1):\n${withCommand('npm test', tail)}`;
 
@@ -16,5 +16,24 @@ describe('the failed-check return prompt', () => {
     const at = before.indexOf('$ npm test\n') + '$ npm test\n'.length;
     expect(after).toBe(`${before.slice(0, at)}${mark}${before.slice(at)}`);
     expect(after.length).toBe(before.length + mark.length);
+  });
+});
+
+describe('the prompt for the conflict of the parent’s own edits', () => {
+  const prompt = ownConflictPrompt({
+    repo: 'demo',
+    files: ['src/shared.ts'],
+    conflict: 'the worktree is at aaa111, origin/feature/x is at bbb222',
+    requirements: 'Ship the field.',
+    handoff: null,
+  });
+
+  it('names the files and both heads and asks to keep both sides', () => {
+    expect(prompt.startsWith(`${OWN_CONFLICT_LEAD} demo`)).toBe(true);
+    expect(prompt).toContain('- src/shared.ts');
+    expect(prompt).toContain('aaa111');
+    expect(prompt).toContain('bbb222');
+    expect(prompt).toContain("keep both the parent's own edits and the merged tasks' changes");
+    expect(prompt).not.toContain('The commit being replayed is');
   });
 });

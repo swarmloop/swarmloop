@@ -50,8 +50,11 @@ export abstract class SubtaskOps {
    * and the files its merge changed.
    */
   abstract recordMerged(parent: RunEntity, run: RunEntity, merged: Record<string, string>): Promise<void>;
-  /** Commits the uncommitted edits of the parent's worktrees onto the feature branch before a pass brings it from the host. */
-  abstract commitOwnEdits(parent: RunEntity): Promise<OwnEdits>;
+  /**
+   * Commits the uncommitted edits of the parent's worktrees onto the feature branch before a pass brings it from the
+   * host. With `park` a conflict stays in the worktree as a rebase that stopped, for the implement agent to resolve.
+   */
+  abstract commitOwnEdits(parent: RunEntity, park: boolean): Promise<OwnEdits>;
   /**
    * Moves the worktrees of the parent to the feature branch as it is on origin. Null when they moved; otherwise the
    * words that say which worktree stayed, with both heads.

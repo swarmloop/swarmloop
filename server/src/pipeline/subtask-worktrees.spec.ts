@@ -1,7 +1,7 @@
-import { writeFileSync } from 'fs';
+import { existsSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import type { AppConfig } from '../config/env';
 import type { Clock } from '../core/clock';
 import type { RunEntity } from '../history/entities';
@@ -92,12 +92,13 @@ describe('committing the own edits of the parent before it is brought to the fea
     git(tree, ['push', 'origin', branch]);
     const tip = git(tree, ['rev-parse', 'HEAD']);
     git(tree, ['reset', '--hard', 'HEAD~1']);
-    const commit = () =>
+    const commit = (park = false) =>
       new SubtaskWorktrees(config, clock).commitOwnEdits(
         { key: 'proj-93' } as RunEntity,
         ['demo'],
         branch,
         'own edits',
+        park,
       );
     return { tree, shared, tip, commit };
   };
@@ -136,7 +137,22 @@ describe('committing the own edits of the parent before it is brought to the fea
     expect(result.conflict).toContain(head);
     expect(result.conflict).toContain(tip);
     expect(result.conflict).not.toMatch(/CONFLICT|fatal:/);
+    expect(result.conflict).not.toContain('resolve the files');
     expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
     expect(git(tree, ['status', '--porcelain'])).toContain('src/shared.ts');
+  });
+
+  it('parks conflicting edits on top of the feature branch for the agent', async () => {
+    const { tree, shared, tip, commit } = await setup();
+    writeFileSync(shared, lines('own one'));
+
+    const result = await commit(true);
+
+    expect(result.conflict).toContain('src/shared.ts');
+    expect(result.conflict).toContain('implement agent resolves');
+    expect(existsSync(resolve(tree, git(tree, ['rev-parse', '--git-path', 'rebase-merge'])))).toBe(true);
+    expect(git(tree, ['diff', '--name-only', '--diff-filter=U'])).toBe('src/shared.ts');
+    expect(git(tree, ['rev-parse', 'HEAD'])).toBe(tip);
+    expect(git(tree, ['rev-parse', 'refs/remotes/origin/feature/proj-93-ship-the-field'])).toBe(tip);
   });
 });

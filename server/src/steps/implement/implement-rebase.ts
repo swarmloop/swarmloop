@@ -1,8 +1,4 @@
-import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
-import type { DocumentRepository } from '../../history/document.repository';
-import type { FlowRepository } from '../../history/flow.repository';
 import { root } from '../../history/run-paths';
-import type { AppConfig } from '../../config/env';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { commitMessage, summaryForBranch } from '../branch/branch-name';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -10,27 +6,14 @@ import type { StepResult } from '../contract/step-contract';
 import type { ModelStepContext } from '../agent-step';
 import { git, gitDetail } from '../../git/git';
 import { type RebaseStop, completeRebase, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
-import { worktreeStatus } from '../../git/worktree-git';
 import { mountsForStep, worktreePath } from '../../git/repo-names';
-import type { EnvironmentService } from '../../environment/environment.service';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
-import { textDocument } from '../shared/handoff';
 import { runJournal } from '../shared/rebase-journal';
-import type { RebasedPublisher } from '../shared/rebased-publisher';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
+import { failConflict, resolvedResult, type RebaseDeps } from './rebase-resolved';
+import { settleOwnConflict } from './implement-own-conflict';
+import { ownConflictOf } from './own-conflict-marker';
 import { rebaseConflictPrompt } from './implement.prompts';
-import { firstPass, renderImplementation } from './implement-record';
-
-/** What finishing an open rebase needs from the implement step. */
-export interface RebaseDeps {
-  config: AppConfig;
-  documents: DocumentRepository;
-  flows: FlowRepository;
-  publisher: RebasedPublisher;
-  environments: EnvironmentService;
-  step: string;
-  runtime: RuntimeName;
-}
 
 /** Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the checklist prompt. */
 export async function settleRebase(
@@ -45,6 +28,10 @@ export async function settleRebase(
   const { key } = ctx.opened.run;
   if (marker !== 'pending' && marker !== 'pending-implement') {
     return null;
+  }
+  const own = ownConflictOf(storedStderr);
+  if (marker === 'pending' && own !== null) {
+    return settleOwnConflict(deps, requirements, ctx, names, branch, own);
   }
   const bases = new Map<string, string>();
   const input = {
@@ -128,38 +115,5 @@ export async function settleRebase(
     return null;
   }
   await deps.publisher.publishRebased(key, branch, outcome.leases);
-  // The rebased code is checked again before it is reviewed, when the run has the checks phase.
-  const next = (await deps.flows.activePhases(ctx.opened.run.id)).includes('checks') ? 'checks' : 'code-review';
-  await deps.flows.noteFlow(key, next === 'checks' ? ['checks', 'code-review', 'ci'] : ['code-review', 'ci'], next);
-  const existing = await firstPass(ctx);
-  if (!existing?.implementation.length) {
-    throw new SwarmloopError('implementation is missing');
-  }
-  const body = renderImplementation(existing.implementation);
-  const status = await worktreeStatus(mounts);
-  return {
-    route: { to: 'jump', step: next },
-    summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}\n${status}`,
-    outputs: [
-      { artifact: ARTIFACTS.implementation, value: body },
-      { artifact: ARTIFACTS.implementationResult, value: existing },
-    ],
-    handoff: '- resolved the rebase\n',
-    visit: {
-      documents: [
-        textDocument(ARTIFACTS.rebaseConflict.kind, 'review\n'),
-        textDocument(ARTIFACTS.rebaseMergeSkip.kind, 'skip\n'),
-      ],
-    },
-  };
-}
-
-function failConflict(
-  deps: RebaseDeps,
-  ctx: ModelStepContext,
-  outcome: Extract<RebaseStop, { kind: 'conflict' }>,
-): StepResult {
-  const detail = [outcome.files.join(', '), outcome.stderr.trim()].filter((part) => part.length > 0).join('\n');
-  const line = `${ctx.opened.startedAt} ${outcome.repo} rebase failed: ${detail}`;
-  return { route: { to: 'fail', error: { code: deps.step, message: line } }, summary: line, outputs: [] };
+  return resolvedResult(deps, ctx, mounts, '- resolved the rebase\n');
 }
