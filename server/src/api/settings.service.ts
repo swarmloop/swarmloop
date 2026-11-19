@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { loadPriceTable } from '../agent/prices';
 import { useCachedModelList } from '../agent/runtime-model-lists';
-import { knownModels, missingCredential, namedAgentsFor, parseAgent } from '../config/agents';
+import { knownModels, missingCredential, namedAgentsFor, namedBacklogPlanAgents, parseAgent } from '../config/agents';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { rawEnv } from '../config/process-env';
@@ -15,10 +15,12 @@ import { UserSettingRepository } from '../history/user-setting.repository';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { RUNTIME_NAMES, runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
-const TIERS = ['main', 'subtask'] as const;
+const TIERS = ['main', 'subtask', 'backlog'] as const;
 /** The role and the step whose agents are that role's list. */
 const ROLE_STEPS = { plan: 'plan', implement: 'implement', review: 'code-review' } as const;
 const ROLES = Object.keys(ROLE_STEPS) as (keyof typeof ROLE_STEPS)[];
+/** The backlog's planner has the plan role only. */
+const BACKLOG_ROLES = ['plan'] as const;
 
 /** The settings that stay env only, in the order the Server section shows them. */
 const SERVER_NAMES = [
@@ -128,7 +130,10 @@ export class SettingsService {
           ),
         ]),
       ) as Record<keyof typeof ROLE_STEPS, string[]>;
-    return { main: listOf(null), subtask: listOf(1) };
+    const backlog = namedBacklogPlanAgents(env).map(
+      (agent) => `${agent.runtime}:${agent.model}${agent.effort ? `:${agent.effort}` : ''}`,
+    );
+    return { main: listOf(null), subtask: listOf(1), backlog: { plan: backlog } };
   }
 
   /** Per connected runtime: the models env names, then its priced models, and the levels of each. Limited when a table could not be read. */
@@ -180,12 +185,12 @@ export class SettingsService {
         continue;
       }
       const roles = this.record(tiers[tier], `agents.${tier}`);
-      this.onlyKeys(roles, ROLES, `agents.${tier}`);
+      const allowed = tier === 'backlog' ? BACKLOG_ROLES : ROLES;
+      this.onlyKeys(roles, allowed, `agents.${tier}`);
       agents[tier] = Object.fromEntries(
-        ROLES.filter((role) => roles[role] !== undefined).map((role) => [
-          role,
-          this.validateList(roles[role], role, runtimes),
-        ]),
+        allowed
+          .filter((role) => roles[role] !== undefined)
+          .map((role) => [role, this.validateList(roles[role], role, runtimes)]),
       );
     }
     return agents;
