@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { deniedIndexPaths, isDenied, stageSelection } from '../../git/commit-paths';
-import { authorArgs, git, gitMissing, gitRaw, gitStderr } from '../git';
+import { commitIdentity, git, type CommitAuthor, gitMissing, gitRaw, gitStderr } from '../git';
 import type { RebaseHosts } from './types';
 import { gitAt, gitRawAt, rebaseStderr } from './workflow';
 import { removeCopiedPath } from './clone-index';
@@ -74,7 +74,13 @@ export async function resolveGitPath(cwd: string, name: string): Promise<string 
   }
 }
 
-export async function commitAllowed(cwd: string, repo: string, denied: string[], message: string): Promise<void> {
+export async function commitAllowed(
+  cwd: string,
+  repo: string,
+  denied: string[],
+  message: string,
+  author?: CommitAuthor | null,
+): Promise<void> {
   const porcelain = await gitRawAt(cwd, repo, ['status', '--porcelain=v1', '-z', '-uall']);
   const held = deniedIndexPaths(porcelain, denied);
   if (held.length > 0) {
@@ -87,7 +93,16 @@ export async function commitAllowed(cwd: string, repo: string, denied: string[],
   if (selection.add.length === 0 && selection.staged.length === 0) {
     return;
   }
-  await gitAt(cwd, repo, [...(await authorArgs(cwd)), 'commit', '--no-verify', '-m', message], 'commit failed');
+  const identity = await commitIdentity(cwd, author);
+  await gitAt(
+    cwd,
+    repo,
+    [...identity.args, 'commit', '--no-verify', '-m', message],
+    'commit failed',
+    undefined,
+    '',
+    identity.env,
+  );
 }
 
 function deniedInWorktree(porcelain: string, denied: string[]): string[] {
@@ -124,6 +139,7 @@ export async function hideDeniedWorktree(
   repo: string,
   denied: string[],
   hosts: RebaseHosts,
+  author?: CommitAuthor | null,
 ): Promise<void> {
   const dirty = deniedInWorktree(await gitRawAt(cwd, repo, ['status', '--porcelain=v1', '-z', '-uall']), denied);
   if (dirty.length === 0) {
@@ -132,13 +148,14 @@ export async function hideDeniedWorktree(
   const scratch = await mkdtemp(join(tmpdir(), 'swarmloop-hide-'));
   try {
     const env = { GIT_INDEX_FILE: join(scratch, 'index') };
+    const committer = { ...env, ...(await commitIdentity(cwd, author)).env };
     await git(['-C', cwd, 'read-tree', '--empty'], env);
     const present = dirty.filter((path) => worktreeFile(join(cwd, path)));
     if (present.length > 0) {
       await git(['-C', cwd, 'update-index', '--add', '--', ...present], env);
     }
     const tree = await git(['-C', cwd, 'write-tree'], env);
-    const commit = await git(['-C', cwd, 'commit-tree', tree, '-m', hiddenMessage(dirty)], env);
+    const commit = await git(['-C', cwd, 'commit-tree', tree, '-m', hiddenMessage(dirty)], committer);
     await gitAt(cwd, repo, ['update-ref', HIDDEN_REF, commit], 'rebase failed', hosts, '');
   } finally {
     rmSync(scratch, { recursive: true, force: true });

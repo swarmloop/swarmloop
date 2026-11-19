@@ -11,6 +11,7 @@ import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { RunNames } from '../shared/run-names';
+import { RunAuthor } from '../shared/run-author';
 import { isChecksReturn, isPipelineReturn, withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
@@ -113,6 +114,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     private readonly environments: EnvironmentService,
     private readonly split: SplitImplementStep,
     private readonly runNames: RunNames,
+    private readonly runAuthor: RunAuthor,
     @Optional() private readonly planChat?: PlanChatStore,
   ) {
     super(kernel, sandbox, launcher);
@@ -332,6 +334,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       flows: this.flows,
       publisher: this.publisher,
       names: this.runNames,
+      author: this.runAuthor,
       environments: this.environments,
       step: this.name,
       runtime,

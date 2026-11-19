@@ -8,6 +8,7 @@ import { BranchStep } from '../steps/branch/branch.step';
 import { CommitStep } from '../steps/commit/commit.step';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
 import { RunNames } from '../steps/shared/run-names';
+import { RunAuthor } from '../steps/shared/run-author';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { RepositoryHost } from '../steps/shared/repository-host';
@@ -84,6 +85,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CheckoutService,
     BranchCheckout,
     RunNames,
+    RunAuthor,
     WorkspaceGuard,
     RunRetention,
     DiskGuard,

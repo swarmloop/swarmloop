@@ -7,6 +7,8 @@ import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { FlowRepository } from '../../history/flow.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { HostUnavailable } from '../../core/swarmloop-error';
 import { CI_SKIPPED } from './commit.step';
 import { NOT_DELIVERED } from './commit-delivered';
 import { boot, featureTree, git, hostPush, seed } from './commit.step.spec-helpers';
@@ -73,40 +75,81 @@ describe('commit step on a clean tree', () => {
     }
   });
 
-  it('pushes an empty Re-run CI commit when a ci_rerun is pending and the tree is clean', async () => {
+  /** A pushed head with a ci_rerun pending, on a host whose last pipeline of the branch is red. */
+  async function rerunWorld(
+    key: string,
+    rerun: (project: string, id: number) => Promise<{ httpCalls: never[] }>,
+  ): Promise<{ app: Awaited<ReturnType<typeof boot>>; tree: string; head: string; restore: () => void }> {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-rerun-'));
-    const tree = featureTree(root, 'PROJ-130');
-    const branch = 'feature/PROJ-130-ship-the-field';
-    const bare = join(root, 'demo.git');
-    const token = 'rerun-token';
+    const tree = featureTree(root, key);
+    const branch = `feature/${key}-ship-the-field`;
     git(tree, ['push', '-u', 'origin', branch]);
-    const old = git(tree, ['rev-parse', 'HEAD']);
+    const head = git(tree, ['rev-parse', 'HEAD']);
     git(tree, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
-    const restore = hostPush(bare, token);
+    const restore = hostPush(join(root, 'demo.git'), 'rerun-token');
+    const app = await boot(root, 'gitlab', { baseUrl: 'https://gitlab.example', token: 'rerun-token' });
+    await seed(app, key, 'gitlab');
+    const red = { id: 5, status: 'failed', url: '', jobs: [] };
+    const host = {
+      readBranchHead: async () => ({ sha: head, httpCalls: [] }),
+      readBranchPipeline: async () => ({
+        snapshot: { ...red, runs: [red], checks: [], awaiting: [] },
+        httpCalls: [],
+      }),
+      rerunFailedJobs: rerun,
+    };
+    jest.spyOn(app.get(CodeHostRegistry), 'hostFor').mockResolvedValue(host as never);
+    const seeded = await app.get(RunRepository).findRun(key);
+    const documents = app.get(DocumentRepository);
+    await documents.putDocument(seeded!, 'pipeline_ref', `project: group/demo\nref: ${branch}\nsha: ${head}\n`);
+    await documents.putDocument(seeded!, 'ci_rerun', `demo ${head} -> ${head}\n`);
+    return { app, tree, head, restore };
+  }
+
+  it('asks the host to run the failed jobs again on a pushed head and adds no commit', async () => {
+    const asked: string[] = [];
+    const { app, tree, head, restore } = await rerunWorld('PROJ-130', async (project, id) => {
+      asked.push(`${project} ${id}`);
+      return { httpCalls: [] };
+    });
     try {
-      const app = await boot(root, 'gitlab', { baseUrl: 'https://gitlab.example', token });
-      try {
-        await seed(app, 'PROJ-130', 'gitlab');
-        const runs = app.get(RunRepository);
-        const documents = app.get(DocumentRepository);
-        const seeded = await runs.findRun('PROJ-130');
-        await documents.putDocument(seeded!, 'ci_rerun', `demo ${old} -> ${old}\n`);
-        const pushed = await app.get(PipelineService).step('commit', 'PROJ-130');
-        expect(pushed.exitCode).toBe(0);
-        expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
-        expect(git(tree, ['log', '-1', '--format=%s'])).toBe('Re-run CI');
-        const head = git(tree, ['rev-parse', 'HEAD']);
-        expect(git(bare, ['rev-parse', `refs/heads/${branch}`])).toBe(head);
-        expect(await documents.latestBody('PROJ-130', 'pipeline_ref')).toContain(`sha: ${head}`);
-        expect(await documents.latestBody('PROJ-130', 'commit')).toContain(`demo ${head}`);
-        const again = await app.get(PipelineService).step('commit', 'PROJ-130');
-        expect(again.exitCode).toBe(0);
-        expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
-      } finally {
-        await app.close();
-      }
+      const done = await app.get(PipelineService).step('commit', 'PROJ-130');
+      expect(done.exitCode).toBe(0);
+      expect(asked).toEqual(['group/demo 5']);
+      expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('1');
+      expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
+      expect(await app.get(DocumentRepository).latestBody('PROJ-130', 'pipeline_ref')).toContain(`sha: ${head}`);
+      expect(await app.get(DocumentRepository).latestBody('PROJ-130', 'commit')).toContain(`demo ${head}`);
     } finally {
       restore();
+      await app.close();
+    }
+  });
+
+  it('fails with the host words when the host refuses the rerun', async () => {
+    const { app, restore } = await rerunWorld('PROJ-134', async () => {
+      throw new Error('pipeline is too old');
+    });
+    try {
+      const done = await app.get(PipelineService).step('commit', 'PROJ-134');
+      expect(done.exitCode).toBe(1);
+      expect(done.message).toContain('pipeline is too old');
+    } finally {
+      restore();
+      await app.close();
+    }
+  });
+
+  it('waits when the host is down', async () => {
+    const { app, restore } = await rerunWorld('PROJ-135', async () => {
+      throw new HostUnavailable('gitlab', 'HTTP 503', '2026-11-19T00:00:00.000Z');
+    });
+    try {
+      await app.get(PipelineService).step('commit', 'PROJ-135');
+      expect((await app.get(RunRepository).findRun('PROJ-135'))?.status).toBe('waiting');
+    } finally {
+      restore();
+      await app.close();
     }
   });
 

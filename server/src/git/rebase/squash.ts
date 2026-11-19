@@ -1,6 +1,6 @@
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
-import { git, gitDetail, gitMissing, gitStderr } from '../git';
+import { git, gitDetail, gitMissing, gitStderr, type CommitAuthor, type CommitIdentity } from '../git';
 import type { RebaseHosts, RebaseStop } from './types';
 import type { RebaseJournal } from './journal';
 import { cloneArgs, cloneAuthor, cloneSource, cloneUnmerged, indexDirty } from './clone-index';
@@ -15,6 +15,7 @@ export async function squashOffMount(input: {
   prompt: string | null;
   denied: string[];
   message: string;
+  author?: CommitAuthor | null;
   hosts: RebaseHosts;
   journal: RebaseJournal;
   base: string;
@@ -27,7 +28,7 @@ export async function squashOffMount(input: {
   } catch (error) {
     throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(gitStderr(error), input.hosts)}`);
   }
-  const author = await cloneAuthor(input.cwd);
+  const author = await cloneAuthor(input.cwd, input.author);
   const merged = await squashMerge(input.tmp, tipSha, author);
   const unmerged = await cloneUnmerged(input.tmp, input.repo, input.hosts);
   if (unmerged.length > 0) {
@@ -45,7 +46,7 @@ export async function squashOffMount(input: {
     return null;
   }
   try {
-    await git(cloneArgs(input.tmp, [...author, 'commit', '--no-verify', '-m', input.message]));
+    await git(cloneArgs(input.tmp, [...author.args, 'commit', '--no-verify', '-m', input.message]), author.env);
   } catch (error) {
     throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(gitStderr(error), input.hosts)}`);
   }
@@ -80,9 +81,9 @@ export async function baseRefFor(cwd: string, prompt: string | null, sha: string
   return originRef(names[0] ?? 'main');
 }
 
-async function squashMerge(tmp: string, tipSha: string, author: string[]): Promise<string> {
+async function squashMerge(tmp: string, tipSha: string, author: CommitIdentity): Promise<string> {
   try {
-    await git(cloneArgs(tmp, [...author, 'merge', '--squash', tipSha]));
+    await git(cloneArgs(tmp, [...author.args, 'merge', '--squash', tipSha]), author.env);
     return '';
   } catch (error) {
     return gitStderr(error);
