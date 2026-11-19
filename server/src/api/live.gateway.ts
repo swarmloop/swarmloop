@@ -10,6 +10,9 @@ import { Server, Socket } from 'socket.io';
 import { FlowView } from '../contract/api';
 import { ClientToServerEvents, LiveEvents, ServerToClientEvents } from '../contract/live';
 import { RunQueriesService } from '../api/run-queries.service';
+import { filterRuns } from '../contract/run-list';
+import { RunListChanges } from './run-list-changes';
+import { pageOf } from './run-list-page';
 import { RunListRows } from './run-list-rows';
 import { Clock } from '../core/clock';
 import { markEntered } from '../core/entered-marks';
@@ -20,6 +23,9 @@ import { allowedOrigins, originAllowed } from '../live/origins';
 import { AuthService } from '../auth/auth.service';
 import { ContainerGate } from '../sandbox/container-gate';
 import { isAllowedHost } from './allowed-hosts';
+
+/** Changes within this window go out as one `run` event. */
+const BATCH_MS = 100;
 
 /** A publish that takes longer than this is logged. */
 const SLOW_PUBLISH_MS = 1000;
@@ -46,7 +52,9 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
 
   private readonly logger = new Logger(LiveGateway.name);
   private readonly stop: Array<() => void> = [];
-  private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly changes = new RunListChanges();
+  private readonly batch = new Set<string>();
+  private batchTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly eventWindows = new Map<string, { timer: ReturnType<typeof setTimeout>; latest: LiveEvents }>();
 
   constructor(
@@ -85,9 +93,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     for (const stop of this.stop) {
       stop();
     }
-    for (const timer of this.pending.values()) {
-      clearTimeout(timer);
-    }
+    clearTimeout(this.batchTimer);
     for (const { timer } of this.eventWindows.values()) {
       clearTimeout(timer);
     }
@@ -95,7 +101,11 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
 
   async handleConnection(client: Socket<ClientToServerEvents, ServerToClientEvents>): Promise<void> {
     client.emit('server', { paused: this.gate.paused() });
-    client.emit('runs', await this.runs.list());
+    const { view } = await this.rows.read();
+    if (!this.changes.hasBaseline()) {
+      this.changes.reset(view);
+    }
+    client.emit('runs', pageOf(view.runs, { part: 'active', q: '' }));
   }
 
   @SubscribeMessage('watch')
@@ -133,42 +143,48 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
   }
 
   private queue(key: string): void {
-    const existing = this.pending.get(key);
-    if (existing) {
-      clearTimeout(existing);
-    }
-    this.pending.set(
-      key,
-      setTimeout(() => {
-        this.pending.delete(key);
-        markEntered(`live update ${key}`);
-        void this.publish(key);
-      }, 40),
-    );
+    this.batch.add(key);
+    this.batchTimer ??= setTimeout(() => {
+      const keys = [...this.batch];
+      this.batch.clear();
+      this.batchTimer = undefined;
+      markEntered(`live update ${keys.join(', ')}`);
+      void this.publish(keys);
+    }, BATCH_MS);
   }
 
-  /** Sends the run list to every socket and the flow of a run, and of its parent, to the room that watches it. Nothing without a socket. */
-  private async publish(key: string): Promise<void> {
+  /** Sends the changed rows to every socket and the flow of each run, and of its parent, to the room that watches it. Nothing without a socket. */
+  private async publish(keys: string[]): Promise<void> {
     if (this.server.sockets.sockets.size === 0) {
       return;
     }
     const started = this.clock.now();
     try {
       const { view, recomputed } = await this.rows.read();
-      let built = 0;
-      this.server.emit('runs', view);
+      const { rows, removed } = this.changes.since(view, keys);
+      if (rows.length > 0 || removed.length > 0) {
+        this.server.emit('run', { rows, removed, counts: filterRuns(view.runs, '', 'all').counts });
+      }
       // A subtask's step, cost and time show on its parent's page.
-      const parentKey = view.runs.find((row) => row.key === key)?.parentKey;
-      for (const watched of [key, parentKey]) {
-        if (watched && this.server.sockets.adapter.rooms.has(room(watched))) {
+      const watched = new Set<string>();
+      for (const key of keys) {
+        watched.add(key);
+        const parentKey = view.runs.find((row) => row.key === key)?.parentKey;
+        if (parentKey) {
+          watched.add(parentKey);
+        }
+      }
+      let built = 0;
+      for (const key of watched) {
+        if (this.server.sockets.adapter.rooms.has(room(key))) {
           built += 1;
-          await this.emitFlow(watched);
+          await this.emitFlow(key);
         }
       }
       const took = this.clock.now() - started;
       if (took > SLOW_PUBLISH_MS) {
         this.logger.warn(
-          `live update of ${key} took ${took} ms, recomputed ${recomputed} rows and built ${built} flows`,
+          `live update of ${keys.join(', ')} took ${took} ms, recomputed ${recomputed} rows and built ${built} flows`,
         );
       }
     } catch (error) {

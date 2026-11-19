@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { BadRequestException } from '@nestjs/common';
 import type { CommandService } from '../pipeline/command.service';
 import type { RunCommandsService } from './run-commands.service';
 import type { RunQueriesService } from './run-queries.service';
@@ -35,6 +36,18 @@ describe('httpStatus', () => {
 });
 
 describe('RunsController', () => {
+  it('answers 400 when part, q or cursor is given twice', () => {
+    const controller = controllerWith();
+    for (const repeated of [
+      ['a', 'b'],
+      ['all', 'done'],
+    ]) {
+      expect(() => controller.list(undefined, repeated as unknown as string)).toThrow(BadRequestException);
+      expect(() => controller.list(repeated as unknown as string)).toThrow(BadRequestException);
+      expect(() => controller.list('all', 'a', repeated as unknown as string)).toThrow(BadRequestException);
+    }
+  });
+
   it('passes the paging of the events to the queries', async () => {
     const page = { events: [], next: null };
     const queries = { stepEventPage: jest.fn().mockResolvedValue(page) };

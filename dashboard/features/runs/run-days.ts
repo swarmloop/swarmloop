@@ -1,20 +1,8 @@
 import type { RunSummary } from '@contract/api';
+import { nested } from '@contract/run-list';
 import { dayLabel } from '../../lib/format';
 
-/** The runs that are not shown under a parent, and each parent's subtasks in list order. */
-export function nested(visible: RunSummary[]): { tops: RunSummary[]; children: Map<string, RunSummary[]> } {
-  const keys = new Set(visible.map((run) => run.key));
-  const children = new Map<string, RunSummary[]>();
-  const tops: RunSummary[] = [];
-  for (const run of visible) {
-    if (run.parentKey && keys.has(run.parentKey)) {
-      children.set(run.parentKey, [...(children.get(run.parentKey) ?? []), run]);
-    } else {
-      tops.push(run);
-    }
-  }
-  return { tops, children };
-}
+export { nested };
 
 /** The top-level runs under day headers by last change, newest day first, the incoming order kept inside a day. */
 export function byDay(tops: RunSummary[], now: number): { label: string; runs: RunSummary[] }[] {

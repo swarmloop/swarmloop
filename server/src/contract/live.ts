@@ -1,4 +1,5 @@
-import type { FlowView, RunsView } from './api';
+import type { FlowView } from './api';
+import type { RunChange, RunsPage } from './run-list';
 import type { ServerState } from './server-pause';
 
 export interface LiveUsage {
@@ -33,7 +34,8 @@ export interface LiveEvents {
 
 /** Type aliases, not interfaces: socket.io's EventsMap needs an index signature that interfaces lack. */
 export type ServerToClientEvents = {
-  runs: (view: RunsView) => void;
+  runs: (page: RunsPage) => void;
+  run: (change: RunChange) => void;
   flow: (view: FlowView) => void;
   log: (entry: LiveLog) => void;
   events: (entry: LiveEvents) => void;
