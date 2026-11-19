@@ -232,6 +232,7 @@ class ItemBuilder {
       case 'attempt.started':
       case 'command.finished':
       case 'activity.finished':
+      case 'host.suspended':
         return;
       case 'input.received':
       case 'handoff.received':
@@ -242,7 +243,6 @@ class ItemBuilder {
       case 'attempt.finished':
       case 'attempt.interrupted':
       case 'http.call':
-      case 'host.suspended':
       case 'agent.limited':
       case 'agent.effort_capped':
       case 'agent.loop_hint':

@@ -86,7 +86,7 @@ export class AgentLaunch {
     const launch = this.launchPrep.prepare(input, runtime, resumed);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime.name, this.clock.now());
     let started = this.clock.now();
-    let awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
+    let awake = new AwakeTime(this.clock, SAMPLE_MS);
     let held = false;
     const workMounts = readOnlyTree(runtime.name, input.mode)
       ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
@@ -124,7 +124,7 @@ export class AgentLaunch {
     if (held) {
       // The wait for the pause to end or for an agent place is neither the visit's time nor a host suspension.
       started = this.clock.now();
-      awake = new AwakeTime(this.clock, SAMPLE_MS, input.onSuspended);
+      awake = new AwakeTime(this.clock, SAMPLE_MS);
       this.live?.changed(input.runKey);
     }
     await recordLaunch(input.outputFile, input.runKey, step);

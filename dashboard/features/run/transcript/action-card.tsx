@@ -14,7 +14,6 @@ type Activity = Extract<
       | 'attempt.finished'
       | 'attempt.interrupted'
       | 'http.call'
-      | 'host.suspended'
       | 'agent.limited'
       | 'agent.effort_capped'
       | 'agent.loop_hint';
@@ -66,13 +65,6 @@ export function ActionCard({ event, outcome }: { event: Activity; outcome?: stri
     return (
       <Bubble side="left" title={event.ended ? 'Agent looping' : 'Repeated command'} type="warning">
         {loopSentence(event)}
-      </Bubble>
-    );
-  }
-  if (event.kind === 'host.suspended') {
-    return (
-      <Bubble side="left" title="Host suspended" type="activity">
-        {duration(event.durationMs)}, not counted
       </Bubble>
     );
   }

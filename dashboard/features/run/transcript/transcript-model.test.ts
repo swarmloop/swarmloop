@@ -27,7 +27,6 @@ const bodies: [StepEventBody, 'left' | 'right'][] = [
   [{ kind: 'attempt.finished', route: 'next', summary: 'ok' }, 'left'],
   [{ kind: 'attempt.interrupted', route: 'wait', summary: 'stopped' }, 'left'],
   [{ kind: 'http.call', method: 'GET', url: 'https://x.test', statusCode: 200, durationMs: 5 }, 'left'],
-  [{ kind: 'host.suspended', durationMs: 2_400_000 }, 'left'],
   [
     {
       kind: 'agent.effort_capped',
@@ -296,7 +295,6 @@ describe('actorOf', () => {
     expect(kindOf({ kind: 'http.call', method: 'GET', url: 'https://x.test', statusCode: 200, durationMs: 5 })).toBe(
       'server',
     );
-    expect(kindOf({ kind: 'host.suspended', durationMs: 2_400_000 })).toBe('server');
     expect(kindOf({ kind: 'activity.started', spanId: 'a', title: 'Check out' })).toBe('server');
     expect(kindOf({ kind: 'handoff.received', handoffId: 4, issueIds: [] })).toBe('pipeline');
     expect(kindOf({ kind: 'input.received', name: 'plan', inputKind: 'plan', documentId: 1, summary: 's' })).toBe(
@@ -348,6 +346,25 @@ describe('groupByActor', () => {
       stepEvent(2, { kind: 'handoff.received', handoffId: 2, issueIds: [] }),
     ];
     expect(grouped(events)).toEqual([false, false]);
+  });
+
+  it('makes no item for a stored host suspension and groups the cards around it as without it', () => {
+    const suspended = stepEvent(3, { kind: 'host.suspended', durationMs: 40 * 60_000 });
+    const tool = (seq: number) =>
+      stepEvent(seq, { kind: 'agent.tool', tool: 'shell', target: 'ls', status: 'ok', durationMs: 1, resultLine: '' });
+    const shape = (events: StepEvent[]) =>
+      groupByActor(groupByAttempt(events).flatMap((group) => group.items)).map((item) => ({
+        kind: item.event.kind,
+        grouped: item.grouped,
+        work: item.bubble?.work.map((work) => work.kind),
+      }));
+    const agentEvents = [stepEvent(1, { kind: 'agent.launched', ...launch }), tool(2), suspended, tool(4)];
+    expect(shape(agentEvents)).toEqual(shape(agentEvents.filter((event) => event !== suspended)));
+
+    const reads = (events: StepEvent[]) =>
+      groupByAttempt(events).flatMap((group) => group.items.map((item) => item.reads));
+    const read = (seq: number, span: string) => commandEvents(seq, span, { executable: 'git', args: ['status'] });
+    expect(reads([...read(1, 'a'), suspended, ...read(4, 'b')])).toEqual([2]);
   });
 
   it('breaks at an attempt boundary when it is applied to each attempt', () => {

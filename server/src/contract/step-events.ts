@@ -111,6 +111,7 @@ export type StepEventBody =
       ended?: true;
     }
   | { kind: 'agent.message'; text: string; chars: number }
+  // Only rows written before f109 carry this kind; the server no longer writes it.
   | { kind: 'host.suspended'; durationMs: number }
   /** The model supports a lower level than the one wanted, so the agent ran at `level`. */
   | { kind: 'agent.effort_capped'; model: string; level: string; wanted: string; text: string }

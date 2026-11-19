@@ -51,8 +51,7 @@ export interface AgentRunInput {
   loop?: { pending(): 'hint' | 'end' | null; resumePrompt(): string | null };
   /** Called with each chunk of the agent's output as it arrives. */
   onOutput?: (chunk: string) => void;
-  /** `onSuspended` gets the length of a host suspension that is not counted. `onLaunchEnd` runs when a launch ends, whatever the reason. */
-  onSuspended?: (ms: number) => void;
+  /** `onLaunchEnd` runs when a launch ends, whatever the reason. */
   onLaunchEnd?: () => void;
   /** Run in the project image with the CLI mounted into it, instead of the agent image. */
   project?: ProjectLaunch;

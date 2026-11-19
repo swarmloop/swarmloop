@@ -140,22 +140,6 @@ describe('AgentProcessRunner resume output', () => {
 });
 
 describe('AgentProcessRunner wait line', () => {
-  it('records no host suspension for an agent that starts at once', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-suspended-'));
-    const outputFile = join(root, 'data', 'run1-implement-output.txt');
-    mkdirSync(join(root, 'data'), { recursive: true });
-    writePriceCache(root);
-    const spawn = jest.fn(() => Promise.resolve(fakeChild(['agent-output\n'], 0)));
-    const suspended: number[] = [];
-    const runner = new AgentProcessRunner(config(root), new SystemClock(), sandbox(spawn), new RunStop());
-    const result = await runner.run({
-      ...input(root, outputFile, { resumeChatId: null }),
-      onSuspended: (ms) => suspended.push(ms),
-    });
-    expect(suspended).toEqual([]);
-    expect(result.output).toContain('agent-output');
-  });
-
   it('writes no wait line when the agent starts at once', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-nowait-'));
     const outputFile = join(root, 'data', 'run1-implement-output.txt');
@@ -199,7 +183,6 @@ describe('AgentProcessRunner while the server is paused', () => {
       changed: jest.fn(),
     };
     const clock = new FakeClock();
-    const suspended: number[] = [];
     const runner = new AgentProcessRunner(
       config(root),
       clock,
@@ -207,16 +190,12 @@ describe('AgentProcessRunner while the server is paused', () => {
       new RunStop(),
       live as unknown as LiveHub,
     );
-    const running = runner.run({
-      ...input(root, outputFile, { resumeChatId: null }),
-      onSuspended: (ms) => suspended.push(ms),
-    });
+    const running = runner.run(input(root, outputFile, { resumeChatId: null }));
     await noted;
     expect(reached).not.toHaveBeenCalled();
     clock.advance(10 * 60_000);
     gate.resume();
     const result = await running;
-    expect(suspended).toEqual([]);
     expect(reached).toHaveBeenCalledTimes(1);
     expect(result.output).toContain('agent-output');
   });

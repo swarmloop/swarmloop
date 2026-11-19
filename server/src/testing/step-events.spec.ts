@@ -63,7 +63,8 @@ class ProbeStep extends BaseStep<typeof INPUTS> {
 }
 
 /** Every kind a scenario wrote, so the last spec can check that none of the union is missing. */
-const seen = new Set<string>();
+// No scenario writes 'host.suspended' any more: only rows stored before f109 carry it.
+const seen = new Set<string>(['host.suspended']);
 
 const ALL_KINDS: Record<StepEventKind, true> = {
   'input.received': true,
@@ -373,16 +374,6 @@ describe('step events', () => {
       { command: 'npm test', errorLine: 'boom', count: 8, ended: true },
     ]);
     expect(events.at(-1)).toMatchObject({ kind: 'attempt.finished', route: 'failed', summary: 'process killed: loop' });
-  });
-
-  it('stores the length of a host suspension that the step did not count', async () => {
-    await seed('E-1');
-    await probe('commit', (ctx) => {
-      recordStepEvent({ kind: 'host.suspended', durationMs: 2_400_000 });
-      return Promise.resolve(finished(ctx));
-    }).execute('E-1');
-    const events = await eventsOf('E-1');
-    expect(events.find((event) => event.kind === 'host.suspended')).toMatchObject({ durationMs: 2_400_000 });
   });
 
   it('stores that a model ran at a lower effort than wanted', async () => {
