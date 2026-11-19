@@ -1,6 +1,6 @@
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { reviewLog } from '../../testing/result-answer';
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
+import fs, { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LoopEventEntity } from '../../history/entities';
@@ -112,6 +112,29 @@ describe('reviewer chip in a later round', () => {
 
   it('shows only the running attempt', () => {
     expect(chipOf('process started\nthinking\n').status).toBe('running');
+  });
+
+  it('lists no folder when the run has attempt rows, and shows the same chip', () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-chip-rows-'));
+    mkdirSync(join(root, 'data'));
+    writeFileSync(join(root, 'data', 'K-1-code-review-quality-zzz-output.txt'), finished);
+    writeFileSync(join(root, 'data', 'K-1-code-review-quality-aaa-output.txt'), 'process started\nthinking\n');
+    const run = {
+      key: 'K-1',
+      status: 'running',
+      currentStep: 'code-review',
+      activeAttempt: 'aaa',
+      stepStartedAt: new Date(2000).toISOString(),
+    } as RunEntity;
+    const listing = jest.spyOn(fs, 'readdirSync');
+    try {
+      const flow = phases(run, [{ attemptId: 'zzz', step: 'code-review' }] as StepStatEntity[], [], root);
+      const step = flow.flatMap((phase) => phase.steps).find((item) => item.name === 'code-review-quality');
+      expect(step!.status).toBe('running');
+      expect(listing).not.toHaveBeenCalled();
+    } finally {
+      listing.mockRestore();
+    }
   });
 });
 

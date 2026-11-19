@@ -61,6 +61,36 @@ describe('LiveGateway', () => {
     }
   });
 
+  describe('a live log line', () => {
+    function logTo(watched: string[]) {
+      const hub = new LiveHub();
+      const gateway = new LiveGateway(
+        hub,
+        {} as unknown as RunQueriesService,
+        auth,
+        new ContainerGate(),
+        {} as unknown as RunListRows,
+        new FakeClock(),
+      );
+      const sent: Array<{ room: string; entry: unknown }> = [];
+      gateway.server = serverOf(1, watched, sent);
+      gateway.onModuleInit();
+      const entry = { key: 'run-1', step: 'plan', line: 'hello' };
+      hub.log(entry as unknown as Parameters<LiveHub['log']>[0]);
+      gateway.onModuleDestroy();
+      return { sent, entry };
+    }
+
+    it('is encoded for nobody when no socket watches the run', () => {
+      expect(logTo([]).sent).toEqual([]);
+    });
+
+    it('arrives in the room of the run when a socket watches it', () => {
+      const { sent, entry } = logTo(['run:run-1']);
+      expect(sent).toEqual([{ room: 'run:run-1', entry }]);
+    });
+  });
+
   describe('a change to a subtask', () => {
     async function publish(watchedRooms: string[]) {
       jest.useFakeTimers();

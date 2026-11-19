@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
+import fsPromises, { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { checkOutputPath } from '../core/check-output';
@@ -47,6 +47,34 @@ describe('step log api', () => {
       expect(await queries.stepLog('proj-1', 'implement', 'att-1')).toBe('first\n');
       expect(await queries.stepLog('proj-1', 'implement', null)).toBe('first\n');
       expect(await queries.stepLog('proj-1', 'code-review-security', 'rev-1')).toBe('reviewer\n');
+    });
+  });
+
+  it('reads the newest chat output with attempt rows stored, though no row names the chat attempt', async () => {
+    await withApp(async (queries, app, root) => {
+      const run = await save(app.get(RunRepository), 'proj-4', 'implement', 'waiting');
+      await attempt(app.get(VisitRepository), run, 'att-1', 'implement');
+      await log(root, 'proj-4-implement-att-1-output.txt', 'work\n');
+      await log(root, 'proj-4-chat-talk-9-output.txt', 'answer\n');
+      expect(await queries.stepLog('proj-4', 'chat', null)).toBe('answer\n');
+    });
+  });
+
+  it('lists data/ only for a lookup with no attempt to start from', async () => {
+    await withApp(async (queries, app, root) => {
+      const run = await save(app.get(RunRepository), 'proj-5', 'implement', 'waiting');
+      await attempt(app.get(VisitRepository), run, 'att-1', 'implement');
+      await log(root, 'proj-5-implement-att-1-output.txt', 'work\n');
+      const listing = jest.spyOn(fsPromises, 'readdir');
+      try {
+        expect(await queries.stepLog('proj-5', 'implement', 'att-1')).toBe('work\n');
+        expect((await queries.step('proj-5', 'implement')).visits[0].logBytes).toBe(5);
+        expect(listing).not.toHaveBeenCalled();
+        await queries.stepLog('proj-5', 'implement', null);
+        expect(listing).toHaveBeenCalledTimes(1);
+      } finally {
+        listing.mockRestore();
+      }
     });
   });
 

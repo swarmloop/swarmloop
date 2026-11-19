@@ -14,7 +14,7 @@ import { readLoopDetail } from '../../history/loop-detail';
 import type { LoopEventEntity } from '../../history/entities';
 import { ARTIFACTS } from '../../steps/contract/artifacts';
 import { shortLine } from '../../contract/short-text';
-import { OutputFiles } from '../../core/attempt-output';
+import { knownAttempts, OutputFiles } from '../../core/attempt-output';
 import { chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import type { OpenReviewRound } from '../../steps/shared/open-review-rounds';
 export { latest } from './status';
@@ -60,7 +60,7 @@ export function phases(
   for (const stat of stats) {
     latestStats.set(stat.step, stat);
   }
-  const outputs = new OutputFiles(root);
+  const outputs = new OutputFiles(root, { attempts: knownAttempts(run.activeAttempt, stats) });
   const preparing = reviewPreparing(outputs, run);
   return PHASES.map((phase) => {
     const steps = phase.steps.map((name) => {
