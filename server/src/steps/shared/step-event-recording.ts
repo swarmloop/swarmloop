@@ -9,7 +9,8 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { StepEventLog } from '../../history/step-event.log';
 import type { DocumentDraft } from '../../history/visit';
 import { firstLine } from '../contract/artifact';
-import { ARTIFACTS, LOG_KIND, REVIEWS, artifactOf, summarizePlan, summarizeReview } from '../contract/artifacts';
+import { ARTIFACTS, LOG_KIND, REVIEWS, artifactOf } from '../contract/artifacts';
+import { summarizePlan, summarizeReview } from '../contract/artifact-summaries';
 import type { InputSpec, Issue } from '../contract/step-contract';
 import { recordStepEvent } from '../../core/step-event-scope';
 

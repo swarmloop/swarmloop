@@ -17,11 +17,10 @@ import { rebaseResolution, type RebaseResolutionResult } from '../../agent-resul
 import { reviewReport, isLegacyReport } from '../../agent-result/definitions/review-report';
 import { reviewReportCodec } from '../../agent-result/review-report-codec';
 import { reviewDefinition, reviewStoredDefinition, type ReviewResult } from '../../agent-result/definitions/review';
-import { legacyReview } from '../../agent-result/legacy/review';
 import { resultArtifactCodec } from '../../agent-result/result-codec';
 import { PLAN_CHAT_KIND, readPlanChat, type PlanChatLog } from '../../contract/plan-chat';
-import { requirementsView } from '../../contract/requirements-view';
 import { pipelineRefSummary } from './pipeline-ref-summary';
+import { summarizePipeline, summarizeRequirements, summarizeReviewResult } from './artifact-summaries';
 import {
   artifact,
   artifactFamily,
@@ -35,42 +34,6 @@ import {
 
 const WORK_STEPS: readonly StepName[] = STEPS.filter((step) => step !== 'done');
 const AGENT_STEPS: readonly StepName[] = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve'];
-
-/** The title of the requirements, or the first line of a body that is not a requirements record. */
-function summarizeRequirements(body: string): string {
-  return requirementsView(body)?.title || firstLine(body.replace(/^#+\s*/gm, ''));
-}
-
-/** `<n> checklist items: <first item>` of the plan inside a requirements document. */
-export function summarizePlan(body: string): string | null {
-  const plan = requirementsView(body)?.plan;
-  return plan && plan.items.length > 0 ? listSummary(plan.items.length, 'checklist items', plan.items[0]) : null;
-}
-
-/** `pass`, or `fail: <job>` for the job the log names first. */
-function summarizePipeline(body: string): string {
-  const result = /^result:\s*(\S+)/m.exec(body)?.[1] ?? '';
-  if (result === 'fail') {
-    const job = /^job:\s*(.+)$/m.exec(body)?.[1];
-    return job ? `fail: ${job.trim()}` : 'fail';
-  }
-  return result === 'pass' ? 'pass' : firstLine(body);
-}
-
-/** The decision of a review and the first line of what it found. */
-function reviewLine(decision: string | undefined, text: string): string {
-  return [decision ? `decision: ${decision}` : '', firstLine(text)].filter(Boolean).join(' · ');
-}
-
-/** The line of a rendered review, for a run from before results were stored. */
-export function summarizeReview(body: string): string {
-  const review = legacyReview(body);
-  return reviewLine(review?.decision, review?.review ?? body);
-}
-
-export function summarizeReviewResult(result: ReviewResult): string {
-  return reviewLine(result.decision, result.review);
-}
 
 /** `review_<reviewer>_result`: one reviewer's validated object, stored and read through its own definition. */
 function reviewResultArtifact(reviewer: (typeof CODE_REVIEWERS)[number]): Artifact<ReviewResult> {
@@ -232,6 +195,27 @@ export const ARTIFACTS = {
     readers: ['plan-improve', 'code-review'],
     codec: jsonArrayCodec<KeepLine>(),
     summarize: (lines) => listSummary(lines.length, 'kept capabilities', lines[0]?.capability),
+  }),
+  // The branch name of each repository, stored by the branch step (which declares it when it writes it); every later step reads it.
+  branchNames: artifact('branch_names', {
+    writers: [],
+    external: true,
+    readers: ['implement', 'implement-improve', 'commit', 'merge-request', 'pipeline'],
+    summarize: firstLine,
+  }),
+  // What a host said when it refused a push or a title, and the refused name; the implement step answers it once.
+  gitRefusal: artifact('git_refusal', {
+    writers: [],
+    external: true,
+    readers: ['implement'],
+    summarize: firstLine,
+  }),
+  // The git rules the agent learned and the server could not write into the repository; the merge request ends with them.
+  gitRulesNote: artifact('git_rules_note', {
+    writers: [],
+    external: true,
+    readers: ['merge-request'],
+    summarize: firstLine,
   }),
   pipelineRef: artifact('pipeline_ref', {
     writers: ['commit', 'implement'],

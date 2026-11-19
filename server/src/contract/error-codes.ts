@@ -27,6 +27,7 @@ export const ERROR_CODES = {
   PIPELINE_UNFIXED: 'PIPELINE_UNFIXED',
   SPEND_LIMIT: 'SPEND_LIMIT',
   TEST_FLAKY: 'TEST_FLAKY',
+  GIT_RULES: 'GIT_RULES',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
