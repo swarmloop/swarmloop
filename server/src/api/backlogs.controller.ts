@@ -7,6 +7,7 @@ import type {
   AddRequirementsBody,
   AddTaskBody,
   ChangeTaskBody,
+  CloseRequirementBody,
   CreateBacklogBody,
   MoveItemBody,
   ProposeMilestoneBody,
@@ -105,6 +106,16 @@ export class BacklogsController {
     @Body() body: AddRequirementsBody,
   ): Promise<BacklogView> {
     return this.actions.addRequirements(actor, name, number, body);
+  }
+
+  @Post(':name/requirements/:ref/close')
+  closeRequirement(
+    @Actor() actor: string | null,
+    @Param('name') name: string,
+    @Param('ref') ref: string,
+    @Body() body: CloseRequirementBody,
+  ): Promise<BacklogView> {
+    return this.actions.closeRequirement(actor, name, ref, body);
   }
 
   @Post(':name/tasks')

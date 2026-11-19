@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { BacklogView } from '../../contract/backlog';
 import type {
   AddItemBody,
@@ -6,6 +6,7 @@ import type {
   AddRequirementsBody,
   AddTaskBody,
   ChangeTaskBody,
+  CloseRequirementBody,
   CreateBacklogBody,
   MoveItemBody,
   ProposeMilestoneBody,
@@ -17,7 +18,13 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { Clock } from '../../core/clock';
 import { BacklogRepository } from '../../history/backlog.repository';
 import { root } from '../../history/run-paths';
-import { BacklogActionSupport, type Milestone } from './backlog-action-support';
+import {
+  BacklogActionSupport,
+  outcome,
+  type Milestone,
+  type Outcome,
+  type PlannerContext,
+} from './backlog-action-support';
 import { BacklogQueries } from './backlog-queries';
 import { BacklogTaskActions } from './backlog-task-actions';
 import {
@@ -65,13 +72,20 @@ export class BacklogActions {
     return this.queries.view(name);
   }
 
-  async proposeMilestone(actor: string | null, name: string, body: ProposeMilestoneBody): Promise<BacklogView> {
+  async proposeMilestone<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    body: ProposeMilestoneBody,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
+    const backlog = await this.support.load(name, context);
     const title = checkText(body.title, 'the title');
     const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
-    const number = nextMilestoneNumber((await this.backlogs.milestones(backlog.id as number)).map((m) => m.number));
-    await this.backlogs.transaction(async (writers) => {
+    const number = nextMilestoneNumber(
+      (await this.support.reads(context).milestones(backlog.id as number)).map((m) => m.number),
+    );
+    await this.support.write(context, async (writers) => {
       await writers.saveMilestone({
         backlogId: backlog.id as number,
         number,
@@ -80,24 +94,43 @@ export class BacklogActions {
         status: 'proposed',
         createdAt: this.clock.iso(),
       });
-      await this.support.record(writers, backlog.id as number, who, 'propose milestone', { milestone: `M${number}` });
+      await this.support.record(
+        writers,
+        backlog.id as number,
+        who,
+        'propose milestone',
+        { milestone: `M${number}` },
+        context,
+      );
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
   /** Accepting is the owner's; the milestone queued behind this one starts in the same write. */
-  async acceptMilestone(actor: string | null, name: string, number: number): Promise<BacklogView> {
-    const { who, backlog } = await this.support.owned(actor, name);
-    const milestones = await this.backlogs.milestones(backlog.id as number);
+  async acceptMilestone<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    number: number,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    const { who, backlog } = await this.support.owned(actor, name, context);
+    const milestones = await this.support.reads(context).milestones(backlog.id as number);
     const milestone = this.support.milestone(milestones, number);
     checkTransition(milestone.status, 'accepted');
     const next = milestones.find((other) => other.queuedAfterId === milestone.id && other.status === 'queued');
-    await this.backlogs.transaction(async (writers) => {
+    await this.support.write(context, async (writers) => {
       await writers.saveMilestone({ ...milestone, status: 'accepted' });
       if (next) await writers.saveMilestone({ ...next, status: 'active', queuedAfterId: null });
-      await this.support.record(writers, backlog.id as number, who, 'accept milestone', { milestone: `M${number}` });
+      await this.support.record(
+        writers,
+        backlog.id as number,
+        who,
+        'accept milestone',
+        { milestone: `M${number}` },
+        context,
+      );
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
   async runMilestone(actor: string | null, name: string, number: number): Promise<BacklogView> {
@@ -131,36 +164,51 @@ export class BacklogActions {
     return this.queries.view(name);
   }
 
-  async addRequirements(
+  async addRequirements<Context extends PlannerContext | undefined = undefined>(
     actor: string | null,
     name: string,
     number: number,
     body: AddRequirementsBody,
-  ): Promise<BacklogView> {
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
-    const milestone = this.support.milestone(await this.backlogs.milestones(backlog.id as number), number);
+    const backlog = await this.support.load(name, context);
+    const reads = this.support.reads(context);
+    const milestone = this.support.milestone(await reads.milestones(backlog.id as number), number);
     if (!Array.isArray(body.texts) || body.texts.length === 0) throw new BadRequestException('no requirement given');
     const texts = body.texts.map((text) => checkText(text, 'a requirement'));
-    const taken = (await this.backlogs.requirements(backlog.id as number)).map((requirement) => requirement.ref);
+    const taken = (await reads.requirements(backlog.id as number)).map((requirement) => requirement.ref);
     const refs = nextRequirementRefs(number, taken, texts.length);
-    await this.backlogs.transaction(async (writers) => {
+    await this.support.write(context, async (writers) => {
       for (const [index, text] of texts.entries()) {
         await writers.saveRequirement({ milestoneId: milestone.id as number, ref: refs[index], text, status: 'open' });
       }
-      await this.support.record(writers, backlog.id as number, who, 'add requirements', {
-        requirements: refs.join(', '),
-      });
+      await this.support.record(
+        writers,
+        backlog.id as number,
+        who,
+        'add requirements',
+        { requirements: refs.join(', ') },
+        context,
+      );
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
-  pause(actor: string | null, name: string): Promise<BacklogView> {
-    return this.setPaused(actor, name, true);
+  pause<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.setPaused(actor, name, true, context);
   }
 
-  unpause(actor: string | null, name: string): Promise<BacklogView> {
-    return this.setPaused(actor, name, false);
+  unpause<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.setPaused(actor, name, false, context);
   }
 
   async addRepository(actor: string | null, name: string, body: AddRepositoryBody): Promise<BacklogView> {
@@ -174,31 +222,86 @@ export class BacklogActions {
     return this.queries.view(name);
   }
 
-  async recordDecision(actor: string | null, name: string, body: RecordDecisionBody): Promise<BacklogView> {
+  async recordDecision<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    body: RecordDecisionBody,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
+    const backlog = await this.support.load(name, context);
     const text = checkText(body.text, 'the decision');
-    await this.backlogs.transaction(async (writers) => {
+    await this.support.write(context, async (writers) => {
       await writers.addDecision({ backlogId: backlog.id as number, text, who, createdAt: this.clock.iso() });
-      await this.support.record(writers, backlog.id as number, who, 'record decision', {});
+      await this.support.record(writers, backlog.id as number, who, 'record decision', {}, context);
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
-  addTasks(actor: string | null, name: string, body: AddTaskBody[]): Promise<BacklogView> {
-    return this.taskActions.addTasks(actor, name, body);
+  /** Closing is the owner's: an open requirement is closed by hand, with what shows it is met. */
+  async closeRequirement<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    ref: string,
+    body: CloseRequirementBody,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    const { who, backlog } = await this.support.owned(actor, name, context);
+    const evidence = checkText(body.evidence, 'the evidence');
+    const requirement = (await this.support.reads(context).requirements(backlog.id as number)).find(
+      (other) => other.ref === ref,
+    );
+    if (requirement === undefined) throw new NotFoundException(`no requirement ${ref}`);
+    if (requirement.status === 'closed') throw new ConflictException(`${ref} is already closed`);
+    await this.support.write(context, async (writers) => {
+      await writers.saveRequirement({ ...requirement, status: 'closed' });
+      await this.support.record(
+        writers,
+        backlog.id as number,
+        who,
+        'close requirement',
+        { requirement: ref, evidence },
+        context,
+      );
+    });
+    return outcome(this.queries, name, context);
   }
 
-  changeTask(actor: string | null, name: string, slug: string, body: ChangeTaskBody): Promise<BacklogView> {
-    return this.taskActions.changeTask(actor, name, slug, body);
+  addTasks<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    body: AddTaskBody[],
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.taskActions.addTasks(actor, name, body, context);
   }
 
-  deleteTask(actor: string | null, name: string, slug: string): Promise<BacklogView> {
-    return this.taskActions.deleteTask(actor, name, slug);
+  changeTask<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    body: ChangeTaskBody,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.taskActions.changeTask(actor, name, slug, body, context);
   }
 
-  skipTask(actor: string | null, name: string, slug: string): Promise<BacklogView> {
-    return this.taskActions.skipTask(actor, name, slug);
+  deleteTask<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.taskActions.deleteTask(actor, name, slug, context);
+  }
+
+  skipTask<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.taskActions.skipTask(actor, name, slug, context);
   }
 
   mergeTask(actor: string | null, name: string, slug: string): Promise<BacklogView> {
@@ -209,26 +312,47 @@ export class BacklogActions {
     return this.taskActions.runTaskNow(actor, name, slug);
   }
 
-  dropItem(actor: string | null, name: string, slug: string): Promise<BacklogView> {
-    return this.taskActions.dropItem(actor, name, slug);
+  dropItem<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.taskActions.dropItem(actor, name, slug, context);
   }
 
-  addItem(actor: string | null, name: string, body: AddItemBody): Promise<BacklogView> {
-    return this.taskActions.addItem(actor, name, body);
+  addItem<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    body: AddItemBody,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.taskActions.addItem(actor, name, body, context);
   }
 
-  moveItem(actor: string | null, name: string, slug: string, body: MoveItemBody): Promise<BacklogView> {
-    return this.taskActions.moveItem(actor, name, slug, body);
+  moveItem<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    body: MoveItemBody,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.taskActions.moveItem(actor, name, slug, body, context);
   }
 
-  private async setPaused(actor: string | null, name: string, paused: boolean): Promise<BacklogView> {
+  private async setPaused<Context extends PlannerContext | undefined>(
+    actor: string | null,
+    name: string,
+    paused: boolean,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
-    await this.backlogs.transaction(async (writers) => {
+    const backlog = await this.support.load(name, context);
+    await this.support.write(context, async (writers) => {
       await writers.saveBacklog({ ...backlog, paused });
-      await this.support.record(writers, backlog.id as number, who, paused ? 'pause' : 'unpause', {});
+      await this.support.record(writers, backlog.id as number, who, paused ? 'pause' : 'unpause', {}, context);
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
   private checkouts(): string[] {
