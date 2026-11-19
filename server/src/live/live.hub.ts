@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { Injectable } from '@nestjs/common';
+import type { LiveBacklog } from '../contract/backlog-chat';
 import { LiveEvents, LiveLog, LiveSample, LiveUsage } from '../contract/live';
 
 interface LivePeaks {
@@ -54,6 +55,10 @@ export class LiveHub {
     this.events.emit('events', entry);
   }
 
+  backlog(entry: LiveBacklog): void {
+    this.events.emit('backlog', entry);
+  }
+
   spendOf(key: string): LiveUsage | undefined {
     const steps = this.spend.get(key);
     if (!steps || steps.size === 0) {
@@ -104,6 +109,11 @@ export class LiveHub {
   onEvents(listener: (entry: LiveEvents) => void): () => void {
     this.events.on('events', listener);
     return () => this.events.off('events', listener);
+  }
+
+  onBacklog(listener: (entry: LiveBacklog) => void): () => void {
+    this.events.on('backlog', listener);
+    return () => this.events.off('backlog', listener);
   }
 
   onSpend(listener: (key: string) => void): () => void {

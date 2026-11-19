@@ -1,4 +1,5 @@
 import type { FlowView, RunsView } from './api';
+import type { LiveBacklog } from './backlog-chat';
 import type { ServerState } from './server-pause';
 
 export interface LiveUsage {
@@ -38,6 +39,7 @@ export type ServerToClientEvents = {
   log: (entry: LiveLog) => void;
   events: (entry: LiveEvents) => void;
   server: (state: ServerState) => void;
+  backlog: (entry: LiveBacklog) => void;
 };
 
 export type ClientToServerEvents = {
