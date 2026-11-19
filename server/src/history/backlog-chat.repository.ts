@@ -119,6 +119,12 @@ export class BacklogChatRepository {
     return rows.map(toTurn);
   }
 
+  /** The turns of one backlog, oldest first. */
+  async turnsOf(backlogId: number): Promise<BacklogTurnRecord[]> {
+    const rows = await this.dataSource.manager.find(BacklogTurnEntity, { where: { backlogId }, order: { id: 'ASC' } });
+    return rows.map(toTurn);
+  }
+
   /** The backlogs that have a person's message or an event waiting for a turn, in id order. */
   async backlogsWithWaitingWork(): Promise<number[]> {
     const manager = this.dataSource.manager;

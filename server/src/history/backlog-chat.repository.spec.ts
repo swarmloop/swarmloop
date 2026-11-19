@@ -87,6 +87,15 @@ describe('BacklogChatRepository', () => {
       expect(await db.chat.findTurn('none')).toBeNull();
     }));
 
+  it('lists the turns of one backlog only', () =>
+    withPlanner(async (db) => {
+      const id = await db.addBacklog();
+      await db.chat.saveTurn(turn(id, 'a', 'done'));
+      await db.chat.saveTurn(turn(id + 1, 'other', 'done'));
+      await db.chat.saveTurn(turn(id, 'b', 'failed'));
+      expect((await db.chat.turnsOf(id)).map((row) => row.turnKey)).toEqual(['a', 'b']);
+    }));
+
   it('keeps a merged task unhandled until its turn is done', () =>
     withPlanner(async (db) => {
       const id = await db.addBacklog();

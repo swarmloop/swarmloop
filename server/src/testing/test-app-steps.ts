@@ -8,6 +8,9 @@ import type { StepCapabilities, StepResult } from '../steps/contract/step-contra
 import type { Step, StepSnapshot } from '../steps/step';
 import type { StepName } from '../contract/steps';
 import type { StepOptions } from '../core/pipeline-result';
+import type { BacklogTurnResult } from '../agent-result/definitions/backlog-turn';
+import type { AddTaskBody } from '../contract/backlog-actions';
+import { BlockAgentRunner } from './result-answer';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 
@@ -83,4 +86,43 @@ export function seededStep(real: Step, module: TestingModule, root: string): Ste
       },
     },
   }) as Step;
+}
+
+/** What a scripted planner proposes: one milestone with its requirements and tasks. */
+interface ScriptedMilestone {
+  title: string;
+  goal: string;
+  requirements: string[];
+  tasks: AddTaskBody[];
+}
+
+/**
+ * A fake agent whose `backlog-plan` turns follow the prompt: the turn that reads a person's message and no milestone yet
+ * proposes `milestone`; the turn that reads a ready milestone accepts it; every other turn does nothing.
+ */
+export function scriptedBacklogTurns(milestone: ScriptedMilestone): BlockAgentRunner {
+  const proposal: BacklogTurnResult = {
+    say: 'Here is a milestone. Shall I run it?',
+    actions: [
+      { action: 'proposeMilestone', title: milestone.title, goal: milestone.goal },
+      { action: 'addRequirements', milestone: 1, texts: milestone.requirements },
+      { action: 'addTasks', tasks: milestone.tasks },
+    ],
+  };
+  const acceptance: BacklogTurnResult = {
+    say: 'Every requirement is closed, so the milestone is accepted.',
+    actions: [{ action: 'acceptMilestone', milestone: 1, reason: 'every requirement is closed' }],
+  };
+  return new (class extends BlockAgentRunner {
+    override run(input: Parameters<BlockAgentRunner['run']>[0]) {
+      if (input.step !== 'backlog-plan') return super.run(input);
+      const prompt = input.prompt ?? '';
+      const answer = prompt.includes('milestone ready at')
+        ? acceptance
+        : prompt.includes(milestone.title)
+          ? { say: '', actions: [] }
+          : proposal;
+      return new BlockAgentRunner({ 'backlog-plan': [{ block: answer }] }).run(input);
+    }
+  })();
 }

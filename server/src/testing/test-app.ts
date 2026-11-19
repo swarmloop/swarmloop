@@ -14,6 +14,8 @@ import { SESSION_COOKIE, SessionService } from '../auth/session.service';
 import type { Role } from '../contract/people';
 import { CommandHandlers } from '../api/command-handlers';
 import { ChatService } from '../api/chat.service';
+import { BacklogChatService } from '../api/backlog-chat.service';
+import { PlannerRunCommands } from '../api/planner-run-commands';
 import { PlanChatService } from '../api/plan-chat.service';
 import { HealthController } from '../api/health.controller';
 import { LiveGateway } from '../api/live.gateway';
@@ -172,6 +174,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       RunRebaseService,
       ChatService,
       PlanChatService,
+      PlannerRunCommands,
+      BacklogChatService,
       ShellService,
       CommandHandlers,
       LiveGateway,

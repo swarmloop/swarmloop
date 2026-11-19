@@ -11,6 +11,9 @@ import { BacklogScheduler } from '../backlog-scheduler';
 import { PlannerTurnActions } from './planner-actions';
 import { BacklogTurnRunner } from './turn-runner';
 
+/** The backlog has no failed turn for Resume to run again. */
+export class NoFailedTurn extends SwarmloopError {}
+
 /** What a person reads when a turn fails for a reason that is not theirs to fix. */
 const UNEXPECTED = 'The planner could not finish this turn. The reason is in the server log.';
 
@@ -78,7 +81,7 @@ export class BacklogPlanner implements OnModuleInit, OnModuleDestroy {
     const failed = turns
       .filter((turn) => turn.backlogId === id && (turn.status === 'failed' || turn.reason !== ''))
       .pop();
-    if (!failed) throw new SwarmloopError(`${backlogName} has no failed turn to resume`);
+    if (!failed) throw new NoFailedTurn(`${backlogName} has no failed turn to resume`);
     if (this.running.has(id)) throw new SwarmloopError(`${backlogName}: the planner is working on a turn`);
     this.begin(id, () => this.execute(backlog, failed.turnKey));
   }

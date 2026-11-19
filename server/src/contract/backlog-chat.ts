@@ -20,9 +20,26 @@ export interface BacklogTurnView {
   reason: string;
   /** When a waiting turn tries again. */
   nextTryAt: string | null;
+  /** What the turn's agent used, once it launched. */
+  runtime?: string;
+  model?: string;
+  effort?: string | null;
+  tokensIn?: number;
+  tokensOut?: number;
+  /** Cost in dollars. */
+  usd?: number;
+  durationMs?: number;
+  startedAt?: string;
 }
 
-/** The body of `POST /backlogs/:id/messages`; the route that reads it comes with the chat routes. @public */
+/** What `GET /backlogs/:name/messages` answers; `older` is how many earlier messages the list leaves out. */
+export interface BacklogChatView {
+  messages: BacklogMessageView[];
+  older: number;
+  turns: BacklogTurnView[];
+}
+
+/** The body of `POST /backlogs/:id/messages`. @public */
 export interface PostBacklogMessageBody {
   text: string;
 }

@@ -162,6 +162,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BacklogActions,
     BacklogQueries,
     BacklogScheduler,
+    BacklogPlanner,
+    BacklogActionSupport,
     BacklogStartPort,
     PlannerRunPort,
     PlannerTurnActions,
