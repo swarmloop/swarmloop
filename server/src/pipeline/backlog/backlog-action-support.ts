@@ -1,10 +1,31 @@
 import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Clock } from '../../core/clock';
+import type { BacklogView } from '../../contract/backlog';
 import { BacklogRepository } from '../../history/backlog.repository';
+import type { BacklogWriters } from '../../history/backlog-writers';
+import type { BacklogQueries } from './backlog-queries';
 
 export type Backlog = NonNullable<Awaited<ReturnType<BacklogRepository['findBacklog']>>>;
 export type Milestone = Awaited<ReturnType<BacklogRepository['milestones']>>[number];
+
+/** The planner's turn: its actions read and write on the turn's own writers, and their records say so. */
+export interface PlannerContext {
+  turn: string;
+  writers: BacklogWriters;
+}
+
+/** What an action answers: the view of the backlog for a route, nothing for the planner, which reads its own state. */
+export type Outcome<Context extends PlannerContext | undefined> = Context extends PlannerContext ? void : BacklogView;
+
+/** The answer of an action once its writes are done. */
+export function outcome<Context extends PlannerContext | undefined>(
+  queries: Pick<BacklogQueries, 'view'>,
+  name: string,
+  context?: Context,
+): Promise<Outcome<Context>> {
+  return (context ? Promise.resolve() : queries.view(name)) as Promise<Outcome<Context>>;
+}
 
 /** What every backlog action needs: who acts, the backlog it acts on, and the record of the action. */
 @Injectable()
@@ -19,15 +40,29 @@ export class BacklogActionSupport {
     return actor;
   }
 
-  async load(name: string): Promise<Backlog> {
-    const backlog = await this.backlogs.findBacklog(name);
+  /** Where an action reads: the planner's writers inside its turn, the repository for a person. */
+  reads(context?: PlannerContext): BacklogWriters {
+    return context?.writers ?? this.backlogs;
+  }
+
+  /** Runs the writes of an action in the planner's transaction, or in one of their own. */
+  write<T>(context: PlannerContext | undefined, work: (writers: BacklogWriters) => Promise<T>): Promise<T> {
+    return context ? work(context.writers) : this.backlogs.transaction(work);
+  }
+
+  async load(name: string, context?: PlannerContext): Promise<Backlog> {
+    const backlog = await this.reads(context).findBacklog(name);
     if (backlog === null) throw new NotFoundException(`no backlog ${name}`);
     return backlog;
   }
 
-  async owned(actor: string | null, name: string): Promise<{ who: string; backlog: Backlog }> {
+  async owned(
+    actor: string | null,
+    name: string,
+    context?: PlannerContext,
+  ): Promise<{ who: string; backlog: Backlog }> {
     const who = this.person(actor);
-    const backlog = await this.load(name);
+    const backlog = await this.load(name, context);
     if (backlog.owner !== who) throw new ForbiddenException(`only ${backlog.owner} can do this on ${name}`);
     return { who, backlog };
   }
@@ -44,9 +79,11 @@ export class BacklogActionSupport {
     who: string,
     action: string,
     facts: Record<string, string>,
+    context?: PlannerContext,
   ): Promise<void> {
     await writers.recordEvent(backlogId, `action:${randomUUID()}`, 'action', {
       ...facts,
+      ...(context ? { via: 'the planner', turn: context.turn } : {}),
       action,
       who,
       at: this.clock.iso(),

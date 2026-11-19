@@ -19,6 +19,18 @@ describe('LiveHub', () => {
     expect(logs).toEqual(['hello\n']);
   });
 
+  it('tells listeners when a backlog conversation changes, until they stop', () => {
+    const hub = new LiveHub();
+    const seen: string[] = [];
+    const stop = hub.onBacklog((entry) => seen.push(entry.backlog));
+
+    hub.backlog({ backlog: 'alpha' });
+    stop();
+    hub.backlog({ backlog: 'beta' });
+
+    expect(seen).toEqual(['alpha']);
+  });
+
   it('sums parallel reviewer spend and drops a finished one', () => {
     const hub = new LiveHub();
     hub.log({ key: 'run-1', step: 'code-review-quality', body: 'q\n', usage: { tokensIn: 10, tokensOut: 1, usd: 2 } });

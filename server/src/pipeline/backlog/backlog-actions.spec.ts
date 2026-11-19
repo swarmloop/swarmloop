@@ -166,4 +166,78 @@ describe('BacklogActions', () => {
       expect(view.events.map((event) => event.kind)).toEqual(['action', 'action']);
       expect(view.milestones).toEqual([{ number: 1, title: 'Part 1', goal: 'Goal', status: 'proposed' }]);
     }));
+
+  it('closes an open requirement with its evidence, and refuses a closed or unknown one and another login', () =>
+    withActions(async (harness) => {
+      await withMilestones(harness, 1);
+      await harness.actions.addRequirements('ada', 'shop', 1, { texts: ['First', 'Second'] });
+      const view = await harness.actions.closeRequirement('ada', 'shop', 'M1.R1', { evidence: 'merged in a1b2' });
+      expect(view.requirements.map((requirement) => requirement.status)).toEqual(['closed', 'open']);
+      const events = await harness.actionEvents('shop');
+      expect(events[events.length - 1].facts).toMatchObject({
+        action: 'close requirement',
+        requirement: 'M1.R1',
+        evidence: 'merged in a1b2',
+      });
+      await expect(harness.actions.closeRequirement('ada', 'shop', 'M1.R1', { evidence: 'again' })).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(harness.actions.closeRequirement('ada', 'shop', 'M1.R9', { evidence: 'x' })).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(harness.actions.closeRequirement('ada', 'shop', 'M1.R2', { evidence: ' ' })).rejects.toThrow(
+        'empty',
+      );
+      await expect(harness.actions.closeRequirement('bob', 'shop', 'M1.R2', { evidence: 'x' })).rejects.toThrow(
+        ForbiddenException,
+      );
+    }));
+
+  it('runs the planner context in one transaction: later actions see earlier writes and the record says who', () =>
+    withActions(async (harness) => {
+      await withMilestones(harness, 1);
+      await harness.backlogs.transaction(async (writers) => {
+        const context = { turn: 'turn-1', writers };
+        await harness.actions.addRequirements('ada', 'shop', 1, { texts: ['First'] }, context);
+        await harness.actions.closeRequirement('ada', 'shop', 'M1.R1', { evidence: 'seen' }, context);
+        expect(await harness.actions.recordDecision('ada', 'shop', { text: 'd' }, context)).toBeUndefined();
+      });
+      const view = await harness.queries.view('shop');
+      expect(view.requirements.map((requirement) => requirement.status)).toEqual(['closed']);
+      const events = (await harness.actionEvents('shop')).slice(2);
+      expect(events.map((event) => [event.facts.action, event.facts.via, event.facts.turn])).toEqual([
+        ['add requirements', 'the planner', 'turn-1'],
+        ['close requirement', 'the planner', 'turn-1'],
+        ['record decision', 'the planner', 'turn-1'],
+      ]);
+      expect((await harness.actionEvents('shop'))[1].facts).not.toHaveProperty('via');
+    }));
+
+  it('rolls every write of the planner context back when one action throws', () =>
+    withActions(async (harness) => {
+      await withMilestones(harness, 1);
+      await expect(
+        harness.backlogs.transaction(async (writers) => {
+          const context = { turn: 'turn-1', writers };
+          await harness.actions.addRequirements('ada', 'shop', 1, { texts: ['First'] }, context);
+          await harness.actions.closeRequirement('ada', 'shop', 'M1.R5', { evidence: 'x' }, context);
+        }),
+      ).rejects.toThrow(NotFoundException);
+      expect((await harness.queries.view('shop')).requirements).toEqual([]);
+    }));
+
+  it('puts a task that fixes main first in the plan for the planner, and last for a person', () =>
+    withActions(async (harness) => {
+      await withMilestones(harness, 1);
+      await harness.actions.runMilestone('ada', 'shop', 1);
+      const task = { title: 'T', description: 'D', repositories: ['web'], milestone: 1 };
+      await harness.actions.addTasks('ada', 'shop', [{ id: 'one', ...task }]);
+      await harness.actions.addTasks('ada', 'shop', [{ id: 'fix', ...task, fixesMain: 'web' }]);
+      expect((await harness.backlogs.tasks(1)).map((record) => record.slug)).toEqual(['one', 'fix']);
+      await harness.backlogs.transaction(async (writers) => {
+        const context = { turn: 'turn-1', writers };
+        await harness.actions.addTasks('ada', 'shop', [{ id: 'fix-two', ...task, fixesMain: 'web' }], context);
+      });
+      expect((await harness.backlogs.tasks(1)).map((record) => record.slug)).toEqual(['fix-two', 'one', 'fix']);
+    }));
 });

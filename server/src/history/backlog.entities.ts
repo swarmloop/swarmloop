@@ -167,6 +167,7 @@ export class DecisionEntity {
 /** An event of a backlog, written once per key. Facts are a JSON map. The turn is empty until a planner handles it. */
 @Entity('backlog_events')
 @Index('IDX_backlog_events_backlog_key', ['backlogId', 'eventKey'], { unique: true })
+@Index('IDX_backlog_events_backlog_turn', ['backlogId', 'turn'])
 export class BacklogEventEntity {
   @PrimaryGeneratedColumn()
   id!: number;

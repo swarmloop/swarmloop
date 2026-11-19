@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { BacklogView } from '../../contract/backlog';
 import { BacklogRepository } from '../../history/backlog.repository';
+import { shownFacts } from './planner/planner-record-facts';
 
 const EVENT_LIMIT = 50;
 
@@ -56,7 +57,7 @@ export class BacklogQueries {
         merged: task.merged,
       })),
       decisions: decisions.map(({ text, who, createdAt }) => ({ text, who, at: createdAt })),
-      events: events.map(({ kind, facts, createdAt }) => ({ kind, facts, at: createdAt })),
+      events: events.map(({ kind, facts, createdAt }) => ({ kind, facts: shownFacts(facts), at: createdAt })),
     };
   }
 }

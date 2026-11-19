@@ -15,7 +15,7 @@ vi.mock('../shell', () => ({ ThemeModeSwitch: () => <p>theme switch</p> }));
 const roles = { plan: ['claude:opus'], implement: ['claude:sonnet'], review: ['claude:sonnet'] };
 const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
   settings,
-  defaults: { agents: { main: roles, subtask: roles } },
+  defaults: { agents: { main: roles, subtask: roles, backlog: { plan: ['claude:opus:high'] } } },
   runtimes: [
     { runtime: 'claude', models: ['opus', 'sonnet'], efforts: { opus: ['low', 'high'], sonnet: [] } },
     { runtime: 'codex', models: ['gpt', 'gpt-priced'], efforts: {} },
@@ -65,6 +65,14 @@ describe('SettingsPage', () => {
 
     expect(saveSettings).toHaveBeenCalledWith({});
     expect(await screen.findByText('Saved')).toBeInTheDocument();
+  });
+
+  it('shows the backlog tier with its plan role only', async () => {
+    render(<SettingsPage />);
+    expect(await screen.findByLabelText('Server default for backlog plan')).toHaveTextContent('claude:opus:high');
+    expect(screen.getByLabelText('Use server default for backlog plan')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Use server default for backlog implement')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Use server default for backlog review')).not.toBeInTheDocument();
   });
 
   it('says which effort the default agents work at and what the epic effort lifts', async () => {

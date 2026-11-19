@@ -11,6 +11,8 @@ type StoredRoleLists = Partial<Record<'plan' | 'implement' | 'review', StoredAge
 export interface StoredAgents {
   main?: StoredRoleLists;
   subtask?: StoredRoleLists;
+  /** The backlog's planner: the plan role only, which settings refuse to save for any other. */
+  backlog?: StoredRoleLists;
 }
 
 /** What a person sets for their own runs. A key that is absent is "Use server default". */
@@ -37,7 +39,9 @@ export interface SettingsView {
   settings: SettingsBody;
   defaults: {
     /** Each agent as `runtime:model[:effort]`. */
-    agents: Record<'main' | 'subtask', Record<'plan' | 'implement' | 'review', string[]>>;
+    agents: Record<'main' | 'subtask', Record<'plan' | 'implement' | 'review', string[]>> & {
+      backlog: { plan: string[] };
+    };
   };
   /** The runtimes with a credential, each with env's models, then its priced models, and the levels per model. */
   runtimes: { runtime: string; models: string[]; efforts: Record<string, string[]> }[];

@@ -7,8 +7,10 @@ import type { PipelineCheck } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { AppConfig } from '../../config/env';
 import { testEnv } from '../../config/env.spec-helpers';
+import { BacklogChatRepository } from '../../history/backlog-chat.repository';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { DocumentRepository } from '../../history/document.repository';
+import { PlanChatStore } from '../../history/plan-chat.store';
 import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
@@ -91,7 +93,14 @@ export async function backlogHarness(parallel = 3) {
       return { replayed };
     },
   } as unknown as CommandService;
-  const events = new BacklogEvents(backlogs, runs, db.app.get(VisitRepository), documents, host);
+  const events = new BacklogEvents(
+    backlogs,
+    runs,
+    db.app.get(VisitRepository),
+    documents,
+    host,
+    db.app.get(PlanChatStore),
+  );
   const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands, events);
   const starts: BacklogStart[] = [];
   const mode = { current: 'ok' as StartMode };
@@ -110,7 +119,18 @@ export async function backlogHarness(parallel = 3) {
   let position = 0;
   const { actions, stops } = actionParts(db, config);
 
-  const make = () => new BacklogScheduler(backlogs, runs, host, merge, events, port, config, db.clock);
+  const make = () =>
+    new BacklogScheduler(
+      backlogs,
+      runs,
+      host,
+      merge,
+      events,
+      port,
+      config,
+      db.clock,
+      db.app.get(BacklogChatRepository),
+    );
   let current = make();
 
   const harness = {

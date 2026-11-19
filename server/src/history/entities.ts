@@ -7,6 +7,7 @@ import {
   MilestoneEntity,
   RequirementEntity,
 } from './backlog.entities';
+import { BacklogMessageEntity, BacklogTurnEntity } from './backlog-planner.entities';
 import { CredentialCooldownEntity } from './credential-cooldown.entity';
 import { PersonEntity, PersonalTokenEntity } from './people-entities';
 import { RunEntity } from './run.entity';
@@ -356,6 +357,8 @@ export const entities = [
   BacklogTaskEntity,
   DecisionEntity,
   BacklogEventEntity,
+  BacklogMessageEntity,
+  BacklogTurnEntity,
   PersonEntity,
   PersonalTokenEntity,
   ServerStallEntity,

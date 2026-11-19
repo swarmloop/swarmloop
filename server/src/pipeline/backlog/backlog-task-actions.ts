@@ -3,12 +3,20 @@ import type { BacklogView } from '../../contract/backlog';
 import type { AddItemBody, AddTaskBody, ChangeTaskBody, MoveItemBody } from '../../contract/backlog-actions';
 import type { Subtask } from '../../contract/subtask';
 import { Clock } from '../../core/clock';
+import type { BacklogWriters } from '../../history/backlog-writers';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { RunRepository } from '../../history/run.repository';
 import { deriveState } from '../../history/run-state';
 import { chainSharedFiles } from '../../steps/plan/plan-tasks';
 import { CommandService } from '../command.service';
-import { BacklogActionSupport, type Backlog, type Milestone } from './backlog-action-support';
+import {
+  BacklogActionSupport,
+  outcome,
+  type Backlog,
+  type Milestone,
+  type Outcome,
+  type PlannerContext,
+} from './backlog-action-support';
 import { BacklogQueries } from './backlog-queries';
 import { checkText } from './backlog-rules';
 import {
@@ -38,38 +46,52 @@ export class BacklogTaskActions {
   ) {}
 
   /** Tasks added together go to the end of the plan order; the ones that share a file are chained. */
-  async addTasks(actor: string | null, name: string, body: AddTaskBody[]): Promise<BacklogView> {
+  async addTasks<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    body: AddTaskBody[],
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
+    const backlog = await this.support.load(name, context);
+    const reads = this.support.reads(context);
     if (!Array.isArray(body) || body.length === 0) throw new BadRequestException('no task given');
-    const existing = await this.backlogs.tasks(backlog.id as number);
-    const milestones = await this.backlogs.milestones(backlog.id as number);
+    const existing = await reads.tasks(backlog.id as number);
+    const milestones = await reads.milestones(backlog.id as number);
     const slugs = checkNewSlugs(
       body.map((task) => task.id),
       existing.map((task) => task.slug),
     );
     const last = existing.reduce((top, task) => Math.max(top, task.position), 0);
     const added = body.map((task, index) => this.newTask(backlog, slugs[index], task, last + index + 1, milestones));
-    const scope = await this.scope(backlog, existing);
+    if (context) this.fixesFirst(added, existing);
+    const scope = await this.scope(backlog, existing, reads);
     checkTasks(added, scope);
     added.forEach(checkRunnable);
     this.chain(added);
     checkTasks(added, scope);
-    await this.backlogs.transaction(async (writers) => {
+    await this.support.write(context, async (writers) => {
       for (const task of added) await writers.saveTask(task);
-      await this.support.record(writers, backlog.id as number, who, 'add tasks', { tasks: slugs.join(', ') });
+      await this.support.record(writers, backlog.id as number, who, 'add tasks', { tasks: slugs.join(', ') }, context);
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
-  async changeTask(actor: string | null, name: string, slug: string, body: ChangeTaskBody): Promise<BacklogView> {
+  async changeTask<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    body: ChangeTaskBody,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
-    const existing = await this.backlogs.tasks(backlog.id as number);
+    const backlog = await this.support.load(name, context);
+    const reads = this.support.reads(context);
+    const existing = await reads.tasks(backlog.id as number);
     const task = this.find(existing, slug);
     checkNotStartedForChange(task);
     checkNotSettled(task);
-    const milestones = await this.backlogs.milestones(backlog.id as number);
+    const milestones = await reads.milestones(backlog.id as number);
     const changed: BacklogTaskRecord = {
       ...task,
       title: body.title === undefined ? task.title : checkText(body.title, 'the title'),
@@ -86,35 +108,46 @@ export class BacklogTaskActions {
       await this.scope(
         backlog,
         existing.filter((other) => other.slug !== slug),
+        reads,
       ),
     );
     checkRunnable(changed);
-    await this.backlogs.transaction(async (writers) => {
+    await this.support.write(context, async (writers) => {
       await writers.saveTask(changed);
-      await this.support.record(writers, backlog.id as number, who, 'change task', { task: slug });
+      await this.support.record(writers, backlog.id as number, who, 'change task', { task: slug }, context);
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
-  deleteTask(actor: string | null, name: string, slug: string): Promise<BacklogView> {
-    return this.remove(actor, name, slug, 'delete task');
+  deleteTask<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.remove(actor, name, slug, 'delete task', context);
   }
 
   /** A task with a run that has not ended is stopped first; then it is skipped. */
-  async skipTask(actor: string | null, name: string, slug: string): Promise<BacklogView> {
+  async skipTask<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
-    const task = this.find(await this.backlogs.tasks(backlog.id as number), slug);
+    const backlog = await this.support.load(name, context);
+    const task = this.find(await this.support.reads(context).tasks(backlog.id as number), slug);
     checkNotSettled(task);
     const run = task.runKey === null ? null : await this.runs.findRun(task.runKey);
     if (task.runKey !== null && run !== null && !ENDED.includes(deriveState(run).state)) {
       await this.commands.submit('stop', task.runKey, {});
     }
-    await this.backlogs.transaction(async (writers) => {
+    await this.support.write(context, async (writers) => {
       await writers.saveTask({ ...task, status: 'skipped', note: '' });
-      await this.support.record(writers, backlog.id as number, who, 'skip task', { task: slug });
+      await this.support.record(writers, backlog.id as number, who, 'skip task', { task: slug }, context);
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
   /** The OK of a task that has started and waits for it. */
@@ -148,55 +181,82 @@ export class BacklogTaskActions {
   }
 
   /** A backlog item is a task with no milestone: a title and a description until it is planned. */
-  async addItem(actor: string | null, name: string, body: AddItemBody): Promise<BacklogView> {
+  async addItem<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    body: AddItemBody,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
-    const existing = await this.backlogs.tasks(backlog.id as number);
+    const backlog = await this.support.load(name, context);
+    const existing = await this.support.reads(context).tasks(backlog.id as number);
     const [slug] = checkNewSlugs(
       [body.id],
       existing.map((task) => task.slug),
     );
     const last = existing.reduce((top, task) => Math.max(top, task.position), 0);
     const item = this.newTask(backlog, slug, { ...body, milestone: null }, last + 1, []);
-    await this.backlogs.transaction(async (writers) => {
+    await this.support.write(context, async (writers) => {
       await writers.saveTask(item);
-      await this.support.record(writers, backlog.id as number, who, 'add item', { task: slug });
+      await this.support.record(writers, backlog.id as number, who, 'add item', { task: slug }, context);
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
-  async moveItem(actor: string | null, name: string, slug: string, body: MoveItemBody): Promise<BacklogView> {
+  async moveItem<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    body: MoveItemBody,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
-    const task = this.find(await this.backlogs.tasks(backlog.id as number), slug);
+    const backlog = await this.support.load(name, context);
+    const reads = this.support.reads(context);
+    const task = this.find(await reads.tasks(backlog.id as number), slug);
     checkNotStartedForChange(task);
     checkNotSettled(task);
-    const milestoneId = this.milestoneId(await this.backlogs.milestones(backlog.id as number), body.milestone);
+    const milestoneId = this.milestoneId(await reads.milestones(backlog.id as number), body.milestone);
     checkRunnable({ ...task, milestoneId });
-    await this.backlogs.transaction(async (writers) => {
+    await this.support.write(context, async (writers) => {
       await writers.saveTask({ ...task, milestoneId });
-      await this.support.record(writers, backlog.id as number, who, 'move item', {
-        task: slug,
-        milestone: `M${body.milestone}`,
-      });
+      await this.support.record(
+        writers,
+        backlog.id as number,
+        who,
+        'move item',
+        { task: slug, milestone: `M${body.milestone}` },
+        context,
+      );
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
-  dropItem(actor: string | null, name: string, slug: string): Promise<BacklogView> {
-    return this.remove(actor, name, slug, 'drop item');
+  dropItem<Context extends PlannerContext | undefined = undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
+    return this.remove(actor, name, slug, 'drop item', context);
   }
 
-  private async remove(actor: string | null, name: string, slug: string, action: string): Promise<BacklogView> {
+  private async remove<Context extends PlannerContext | undefined>(
+    actor: string | null,
+    name: string,
+    slug: string,
+    action: string,
+    context?: Context,
+  ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
-    const backlog = await this.support.load(name);
-    const task = this.find(await this.backlogs.tasks(backlog.id as number), slug);
+    const backlog = await this.support.load(name, context);
+    const task = this.find(await this.support.reads(context).tasks(backlog.id as number), slug);
     checkNotStartedForDelete(task);
-    await this.backlogs.transaction(async (writers) => {
+    await this.support.write(context, async (writers) => {
       await writers.deleteTask(task.id as number);
-      await this.support.record(writers, backlog.id as number, who, action, { task: slug });
+      await this.support.record(writers, backlog.id as number, who, action, { task: slug }, context);
     });
-    return this.queries.view(name);
+    return outcome(this.queries, name, context);
   }
 
   private find(tasks: BacklogTaskRecord[], slug: string): BacklogTaskRecord {
@@ -213,8 +273,12 @@ export class BacklogTaskActions {
     return milestone.id as number;
   }
 
-  private async scope(backlog: Backlog, others: BacklogTaskRecord[]): Promise<TaskScope> {
-    const requirements = await this.backlogs.requirements(backlog.id as number);
+  private async scope(
+    backlog: Backlog,
+    others: BacklogTaskRecord[],
+    reads: Pick<BacklogWriters, 'requirements'> = this.backlogs,
+  ): Promise<TaskScope> {
+    const requirements = await reads.requirements(backlog.id as number);
     return { repositories: backlog.repositories, refs: requirements.map(({ ref }) => ref), others };
   }
 
@@ -248,6 +312,15 @@ export class BacklogTaskActions {
       position,
       createdAt: this.clock.iso(),
     };
+  }
+
+  /** In the planner's hands, a task that fixes a red main goes before every task that is already planned. */
+  private fixesFirst(added: BacklogTaskRecord[], existing: BacklogTaskRecord[]): void {
+    const fixes = added.filter((task) => task.fixesMain !== null);
+    const first = existing.reduce((low, task) => Math.min(low, task.position), 1);
+    fixes.forEach((task, index) => {
+      task.position = first - fixes.length + index;
+    });
   }
 
   /** Chains the tasks that share a file within the batch, and copies the added dependencies onto them. */

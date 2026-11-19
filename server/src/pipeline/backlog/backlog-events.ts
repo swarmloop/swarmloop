@@ -6,6 +6,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { deriveState } from '../../history/run-state';
 import { VisitRepository } from '../../history/visit.repository';
+import { PlanChatStore } from '../../history/plan-chat.store';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import { backlogProgress } from './backlog-progress';
 import { heldBack } from './held-back';
@@ -26,6 +27,7 @@ export class BacklogEvents {
     private readonly visits: VisitRepository,
     private readonly documents: DocumentRepository,
     private readonly host: RepositoryHost,
+    private readonly chats: PlanChatStore,
   ) {}
 
   taskMerged(backlogId: number, slug: string): Promise<boolean> {
@@ -50,6 +52,7 @@ export class BacklogEvents {
       const id = backlog.id as number;
       const records = await this.backlogs.tasks(id);
       await this.observeRuns(id, records);
+      await this.observeChats(id, records);
       await this.observeMains(backlog, records, mains);
       await this.observeProgress(id, records);
     }
@@ -86,6 +89,28 @@ export class BacklogEvents {
           slug: record.slug,
           runKey: run.key,
         });
+      }
+    }
+  }
+
+  /** A person's message to the planner of a run and the planner's reply are one event, once per reply, so every level above learns what was said below. */
+  private async observeChats(backlogId: number, records: BacklogTaskRecord[]): Promise<void> {
+    for (const record of records.filter((task) => !settled(task) && task.runKey !== null)) {
+      const runKey = record.runKey as string;
+      let said: string[] = [];
+      for (const entry of (await this.chats.read(runKey)).entries) {
+        if (entry.kind !== undefined) continue;
+        if (entry.role === 'person') {
+          said.push(entry.text);
+          continue;
+        }
+        await this.backlogs.recordEvent(backlogId, `run-chat:${runKey}:${entry.key}`, 'run-chat', {
+          slug: record.slug,
+          runKey,
+          message: said.join('\n\n'),
+          reply: entry.text,
+        });
+        said = [];
       }
     }
   }

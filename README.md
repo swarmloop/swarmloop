@@ -392,6 +392,7 @@ When the API is on another machine, set the URL in `env`:
 | `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). The default is `high`. Each person can override it in Settings. |
 | `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). The default is `high`. Each person can override it in Settings. |
 | `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent; the default is `medium`. Empty: the main role. Each person can override it in Settings. |
+| `AGENTS_BACKLOG_PLAN` | Agents of the backlog planner (plan role only), `runtime:model[:effort]`, comma-separated; the default is `xhigh`. Empty: `AGENTS_PLAN`. Each person can override it in Settings. |
 | `EPIC_EFFORT` | The effort that lifts only the planning of the parent of a split run: `low`, `medium`, `high`, `xhigh` or `max`. It only raises an agent's own effort. Default `xhigh`; empty turns it off. |
 | `SPLIT` | `auto`: the planner may split a big task into subtasks, `off`: it never does; set per server, not per run in the dashboard. Default `auto`. |
 | `ISSUE_TRACKER` | `jira` |
