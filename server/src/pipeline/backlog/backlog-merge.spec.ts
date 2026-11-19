@@ -40,7 +40,7 @@ describe('BacklogMerge', () => {
         note: '',
         merged: { web: 'acme/web-merge-1' },
       });
-      expect(mergeCalls(h)[0].args).toEqual(['acme/web', 5, 'acme/web-pr-5']);
+      expect(mergeCalls(h)[0].args).toEqual(['acme/web', 5, 'acme/web-pr-5', { method: 'squash' }]);
     }));
 
   it('waits for a draft and for unknown mergeability', () =>

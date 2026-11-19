@@ -168,7 +168,7 @@ export class BacklogMerge {
     mains: Map<string, MainReading>,
   ): Promise<{ task: BacklogTaskRecord; note: string }> {
     try {
-      const sha = await this.host.merge(run, request, head);
+      const sha = await this.host.merge(run, repository, task.title, request, head);
       mains.set(repository, { state: 'pending' });
       return await this.record(task, repository, sha);
     } catch (error) {
