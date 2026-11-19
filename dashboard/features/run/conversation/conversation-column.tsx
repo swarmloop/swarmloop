@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactElement, useEffect } from 'react';
+import { type ReactElement, useEffect, useLayoutEffect } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import Box from '@mui/material/Box';
@@ -82,8 +82,9 @@ export function ConversationColumn({
   const { open, setOpen, reveal, unseen } = useColumnState(newest, narrow, needsNow);
   const needs = needsNow ? newest : '';
   const rail = !narrow && !open;
-  useEffect(() => {
+  useLayoutEffect(() => {
     // A rail never stands in for the step window: a stored wide choice ends when the column shows as the rail.
+    // It ends in the same commit that shows the rail, before the page paints.
     if (rail && wide) {
       onWide(false);
     }
