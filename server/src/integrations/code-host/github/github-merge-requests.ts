@@ -1,10 +1,13 @@
 import type { HttpCallDraft } from '../../../core/swarmloop-error';
+import { GitRuleRefused } from '../../../core/git-rule-refused';
 import { FetchFailed, NothingToMerge, SwarmloopError } from '../../../core/swarmloop-error';
 import { AbstractCodeHost, type HostCall } from '../abstract-code-host';
 import { providerMessage } from '../provider-message';
 import { githubStates, graphqlUrl, pullMergeability, pullView, type GithubPull } from './github-pull';
 import type {
   MergeGate,
+  MergeHow,
+  MergeMethod,
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -114,12 +117,42 @@ export abstract class GithubMergeRequests extends AbstractCodeHost {
     return `${root}/repos/${repoPath(project)}/pulls/${iid}`;
   }
 
-  protected mergeCall(root: string, project: string, iid: number, head?: string): HostCall {
+  protected mergeCall(root: string, project: string, iid: number, head?: string, how?: MergeHow): HostCall {
     return {
       url: `${this.mergeRequestUrl(root, project, iid)}/merge`,
       method: 'PUT',
-      payload: JSON.stringify({ merge_method: 'squash', ...(head ? { sha: head } : {}) }),
+      payload: JSON.stringify({
+        merge_method: how?.method ?? 'squash',
+        ...(how?.title ? { commit_title: how.title } : {}),
+        ...(head ? { sha: head } : {}),
+      }),
     };
+  }
+
+  /** The repository's own switches for the three ways GitHub merges a pull request. */
+  async readMergeMethods(project: string): Promise<{ methods: MergeMethod[]; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const repository = (await this.readJson(`${root}/repos/${repoPath(project)}`, headers, calls)) as {
+        allow_squash_merge?: boolean;
+        allow_rebase_merge?: boolean;
+        allow_merge_commit?: boolean;
+      } | null;
+      const methods: MergeMethod[] = [];
+      if (repository?.allow_squash_merge === true) {
+        methods.push('squash');
+      }
+      if (repository?.allow_rebase_merge === true) {
+        methods.push('rebase');
+      }
+      if (repository?.allow_merge_commit === true) {
+        methods.push('merge');
+      }
+      return { methods, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
   }
 
   async readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }> {
@@ -216,12 +249,24 @@ export abstract class GithubMergeRequests extends AbstractCodeHost {
   }
 
   /** GitHub puts the reason of a 422 in `errors[].message`, so the text joins it to the message. */
-  protected override openRefusal(response: { status: number; body: Buffer }, calls: HttpCallDraft[]): FetchFailed {
+  protected override openRefusal(
+    response: { status: number; body: Buffer },
+    calls: HttpCallDraft[],
+    title: string,
+  ): FetchFailed | GitRuleRefused {
     const text = response.status === 422 ? validationText(response.body) : '';
     if (/no commits between/i.test(text)) {
       return new NothingToMerge(text, calls);
     }
-    return text ? new FetchFailed(text, calls) : super.openRefusal(response, calls);
+    if (text && this.titleRefused(response.status, text)) {
+      return new GitRuleRefused(text, title, 'title');
+    }
+    return text ? new FetchFailed(text, calls) : super.openRefusal(response, calls, title);
+  }
+
+  /** A 422 whose text says a rule of the repository refuses the title. */
+  protected titleRefused(status: number, message: string): boolean {
+    return status === 422 && /title/i.test(message) && /rule|pattern|match|format|convention/i.test(message);
   }
 
   protected conflict(error: unknown, calls: HttpCallDraft[]): boolean {

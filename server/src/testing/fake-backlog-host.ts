@@ -2,6 +2,8 @@ import { FetchFailed, HostUnavailable, MergeConflict, SwarmloopError } from '../
 import type {
   CodeHost,
   MergeGate,
+  MergeHow,
+  MergeMethod,
   MergeRequestQuery,
   MergeRequestRecord,
   MergeRequestState,
@@ -15,12 +17,18 @@ import type { HttpCallDraft } from '../core/swarmloop-error';
 
 const DOMAIN = 'backlog.example';
 
+/** The methods a repository allows unless a spec says otherwise. */
+const DEFAULT_METHODS: readonly MergeMethod[] = ['squash', 'rebase', 'merge'];
+
 interface FakeProject {
   branch: string;
   head: string;
   /** The pipeline per commit: a commit with none has no entry. */
   pipelines: Map<string, PipelineSnapshot>;
   merges: number;
+  methods: readonly MergeMethod[];
+  /** How each merge of the project was made. */
+  merged: MergeHow[];
 }
 
 interface FakeRequest {
@@ -61,7 +69,17 @@ export class FakeBacklogHost implements CodeHost {
   }
 
   addProject(project: string, branch = 'main', head = `${project}-head-0`): void {
-    this.projects.set(project, { branch, head, pipelines: new Map(), merges: 0 });
+    this.projects.set(project, { branch, head, pipelines: new Map(), merges: 0, methods: DEFAULT_METHODS, merged: [] });
+  }
+
+  /** The merge methods the project allows, in order; a merge by another method is refused. */
+  allowMerge(project: string, methods: MergeMethod[]): void {
+    this.project(project).methods = methods;
+  }
+
+  /** How each merge of the project was made, in order: the method and the title of the commit. */
+  mergesOf(project: string): readonly MergeHow[] {
+    return this.project(project).merged;
   }
 
   setHead(project: string, head: string): void {
@@ -139,17 +157,26 @@ export class FakeBacklogHost implements CodeHost {
     project: string,
     iid: number,
     head?: string,
+    how?: MergeHow,
   ): Promise<{ sha: string; httpCalls: HttpCallDraft[] }> {
-    await this.record('mergeMergeRequest', project, iid, head);
+    await this.record('mergeMergeRequest', project, iid, head, how);
     const request = this.request(project, iid);
     if (request.conflict !== null) throw new MergeConflict(request.conflict);
     if (request.refusal !== null) throw new FetchFailed(request.refusal);
     const found = this.project(project);
+    const method = how?.method ?? 'squash';
+    if (!found.methods.includes(method)) throw new FetchFailed(`the repository does not allow a ${method} merge`);
+    found.merged.push({ method, ...(how?.title ? { title: how.title } : {}) });
     found.merges += 1;
     const sha = `${project}-merge-${found.merges}`;
     found.head = sha;
     request.gate = { ...request.gate, state: 'merged', sha };
     return { sha, httpCalls: [] };
+  }
+
+  async readMergeMethods(project: string): Promise<{ methods: MergeMethod[]; httpCalls: HttpCallDraft[] }> {
+    await this.record('readMergeMethods', project);
+    return { methods: [...this.project(project).methods], httpCalls: [] };
   }
 
   async mergeRequestState(project: string, iid: number): Promise<MergeRequestState & { httpCalls: HttpCallDraft[] }> {
@@ -219,6 +246,7 @@ export class FakeBacklogHost implements CodeHost {
   cloneUrl = unsupported;
   cloneEnv = unsupported;
   readCurrentUser = unsupported;
+  readAuthor = unsupported;
   readJobTrace = unsupported;
   cancelPipeline = unsupported;
   rerunFailedJobs = unsupported;

@@ -3,6 +3,8 @@ import { testEnv } from '../../config/env.spec-helpers';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { FetchFailed, HostUnavailable, NothingToMerge } from '../../core/swarmloop-error';
 import { GithubCodeHost } from './github/github-code-host';
+import { githubRules } from './github/github-rules';
+import { gitlabRules } from './gitlab/gitlab-rules';
 
 interface Answer {
   status: number;
@@ -170,5 +172,16 @@ describe('github job log', () => {
     const seen = fakeFetch(() => ({ status: 404, url: LOG_HOST }));
     await expect(github().readJobTrace('acme/demo', 5)).rejects.toThrow('github pipeline failed: HTTP 404');
     expect(seen).toHaveLength(3);
+  });
+});
+
+describe('merge request template paths', () => {
+  it('lists where each host reads the template, in order', () => {
+    expect(githubRules.mergeRequestTemplates).toEqual([
+      '.github/pull_request_template.md',
+      '.github/PULL_REQUEST_TEMPLATE.md',
+      'pull_request_template.md',
+    ]);
+    expect(gitlabRules.mergeRequestTemplates).toEqual(['.gitlab/merge_request_templates/Default.md']);
   });
 });
