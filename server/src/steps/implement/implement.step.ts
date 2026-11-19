@@ -12,6 +12,7 @@ import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { RunNames } from '../shared/run-names';
 import { RunAuthor } from '../shared/run-author';
+import { GitRulesWriter } from '../shared/git-rules-writer';
 import { isChecksReturn, isPipelineReturn, withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
@@ -33,17 +34,11 @@ import { resultPromptFor } from '../../agent-result/result-prompt';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { EnvironmentService } from '../../environment/environment.service';
 import { withEnvironment } from '../../environment/environment-note';
-import { agentWorkplace, projectFor } from '../shared/agent-environment';
+import { openWorkplace } from './implement-workplace';
 import { storedPlan } from '../step';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import { settleRebase, type RebaseDeps } from './implement-rebase';
-import {
-  assertUncommitted,
-  checkoutSnapshot,
-  featureHeads,
-  worktreeSnapshot,
-  worktreeStatus,
-} from '../../git/worktree-git';
+import { assertUncommitted, worktreeStatus } from '../../git/worktree-git';
 import { unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { rerunFailed } from './failed-commands';
 import { checksStillRed, implementAsk, implementFollowUp, planAmendment, resultTextFor } from './implement.prompts';
@@ -59,7 +54,7 @@ import {
   withAssumed,
 } from './implement-question';
 import { PlanChatStore } from '../../history/plan-chat.store';
-import { renderCause, renderImplementation, withReturnNotes } from './implement-record';
+import { gitRulesNoteOutputs, renderCause, renderImplementation, withReturnNotes } from './implement-record';
 import { retryUnchangedPipeline } from './implement-pipeline-return';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { StepSnapshot } from '../step';
@@ -104,6 +99,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.subtaskQuestions,
     ARTIFACTS.questionParts,
     ARTIFACTS.needs,
+    ARTIFACTS.gitRulesNote,
   ];
 
   constructor(
@@ -115,6 +111,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     private readonly split: SplitImplementStep,
     private readonly runNames: RunNames,
     private readonly runAuthor: RunAuthor,
+    private readonly gitRules: GitRulesWriter,
     @Optional() private readonly planChat?: PlanChatStore,
   ) {
     super(kernel, sandbox, launcher);
@@ -218,16 +215,19 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       ? answerFollowUp(answer, resultTextFor(ask, received))
       : implementFollowUp(plan, notes, merged, received);
     const basePrompt = withAddedRepos(continued?.chatId ? followUp : full, added);
-    const heads = await featureHeads(mounts, branch);
-    const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
-    const reproject = projectFor(this.environments, place);
-    const { prompt, project, allowHosts, manifestHosts, executionRules } = await agentWorkplace(
-      this.environments,
+    const {
+      heads,
       place,
-      basePrompt,
-    );
-    const snapshot = ctx.opened.run.targetPath ? checkoutSnapshot : worktreeSnapshot;
-    const before = await snapshot(mounts);
+      reproject,
+      prompt,
+      project,
+      allowHosts,
+      manifestHosts,
+      executionRules,
+      snapshot,
+      before,
+      sameWorkplace,
+    } = await openWorkplace(this.environments, ctx, this.name, { mounts, runtime, branch, basePrompt });
     const mayQuestion =
       !answer && (await mayAsk(ctx.opened.run, this.planChat, { root: root(this.config), env: this.config.env }));
     const asked = (value: unknown): string[] =>
@@ -262,7 +262,6 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const unchanged = async (): Promise<boolean> =>
       (await unchangedSincePipeline(await ctx.reread(ARTIFACTS.pipelineRef), mounts)) ??
       (await snapshot(mounts)) === before;
-    const sameWorkplace = { mounts, allowHosts, manifestHosts, project, projectFor: reproject };
     const pipelineReturn = isPipelineReturn(notes);
     const { issues, unfixed } = pipelineReturn
       ? await pipelineAnswers(this.documents, ctx.opened.run.id)
@@ -313,6 +312,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const reasons = renderSummary(value.summary, value.implementation);
     const why = change ? `${reasons.trimEnd()}\n${change.handoff}` : reasons;
     const summary = withAssumed(value.cause?.length ? `${renderCause(value.cause)}${why}` : why, value.question);
+    const note = await this.gitRules.write(mounts, value.gitRules);
     const status = await worktreeStatus(mounts);
     return {
       route: { to: 'next' },
@@ -321,6 +321,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         { artifact: ARTIFACTS.implementation, value: body },
         // The checklist in force goes with the result, so a later result without a correction keeps it for `currentPlan`.
         { artifact: ARTIFACTS.implementationResult, value: { ...value, plan: corrected ?? current?.items } },
+        ...gitRulesNoteOutputs(note),
       ],
       handoff: summary,
       visit: change ? { documents: [textDocument(ARTIFACTS.requirements.kind, change.requirements)] } : undefined,

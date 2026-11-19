@@ -11,6 +11,7 @@ import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { RunNames } from '../shared/run-names';
+import { GitRulesWriter } from '../shared/git-rules-writer';
 import { withEnvironment } from '../../environment/environment-note';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
@@ -37,7 +38,7 @@ import {
   withAssumed,
 } from './implement-question';
 import { PlanChatStore } from '../../history/plan-chat.store';
-import { firstPass, renderCause, renderImplementation, withReturnNotes } from './implement-record';
+import { firstPass, gitRulesNoteOutputs, renderCause, renderImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
 
 const INPUTS = {
@@ -62,6 +63,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.implementationResult,
     ARTIFACTS.implementationImproveResult,
     ARTIFACTS.requirements,
+    ARTIFACTS.gitRulesNote,
   ];
 
   constructor(
@@ -70,6 +72,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     launcher: AgentLauncher,
     private readonly environments: EnvironmentService,
     private readonly runNames: RunNames,
+    private readonly gitRules: GitRulesWriter,
     @Optional() private readonly planChat?: PlanChatStore,
   ) {
     super(kernel, sandbox, launcher);
@@ -185,6 +188,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const reasons = renderSummary(value.summary, ['checked the first pass']);
     const why = corrected ? `${reasons.trimEnd()}\n${corrected.handoff}` : reasons;
     const handoffBody = withAssumed(value.cause?.length ? `${renderCause(value.cause)}${why}` : why, value.question);
+    const note = await this.gitRules.write(mounts, value.gitRules);
     const status = await worktreeStatus(mounts);
     const line = `${ctx.opened.startedAt} implement-improve done\n${body.trimEnd()}\n${status}`;
     return {
@@ -197,6 +201,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
           value: { implementation: items, summary: value.summary, plan: inForce },
         },
         { artifact: ARTIFACTS.implementationImproveResult, value: { ...value, plan: inForce } },
+        ...gitRulesNoteOutputs(note),
       ],
       handoff: handoffBody,
       visit: corrected ? { documents: [textDocument(ARTIFACTS.requirements.kind, corrected.requirements)] } : undefined,

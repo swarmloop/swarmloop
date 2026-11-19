@@ -212,8 +212,7 @@ export const ARTIFACTS = {
   }),
   // The git rules the agent learned and the server could not write into the repository; the merge request ends with them.
   gitRulesNote: artifact('git_rules_note', {
-    writers: [],
-    external: true,
+    writers: ['implement', 'implement-improve'],
     readers: ['merge-request'],
     summarize: firstLine,
   }),
