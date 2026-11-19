@@ -13,7 +13,12 @@ const auth = {} as AuthService;
 
 /** The run list as the kept rows give it: only the keys and the parent links matter to a publish. */
 function rowsOf(runs: Array<{ key: string; parentKey?: string }>, recomputed = 1) {
-  return { read: jest.fn().mockResolvedValue({ view: { runs }, recomputed }) };
+  return { read: jest.fn().mockResolvedValue({ view: { runs: runs.map(summaryOf) }, recomputed }) };
+}
+
+/** A run row with the fields the counts read. */
+function summaryOf(row: { key: string; parentKey?: string }) {
+  return { title: '', name: '', state: 'running', createdAt: '2026-01-01T00:00:00Z', ...row };
 }
 
 /** A server with `connected` sockets, and the rooms with a socket in them. */
@@ -47,7 +52,7 @@ describe('LiveGateway', () => {
       gateway.server = serverOf(1, []);
       gateway.onModuleInit();
       hub.changed('run-1');
-      await jest.advanceTimersByTimeAsync(60);
+      await jest.advanceTimersByTimeAsync(100);
       gateway.onModuleDestroy();
       expect(error).toHaveBeenCalledWith('boom');
     } finally {
@@ -79,7 +84,7 @@ describe('LiveGateway', () => {
         gateway.server = serverOf(1, watchedRooms, sent);
         gateway.onModuleInit();
         hub.changed('run-1-a');
-        await jest.advanceTimersByTimeAsync(60);
+        await jest.advanceTimersByTimeAsync(100);
         gateway.onModuleDestroy();
         return { sent, flows };
       } finally {
@@ -120,7 +125,7 @@ describe('LiveGateway', () => {
         const rows = rowsOf([{ key: 'run-1' }], 3);
         rows.read.mockImplementation(async () => {
           options.read?.(clock);
-          return { view: { runs: [{ key: 'run-1', parentKey: options.parentKey }] }, recomputed: 3 };
+          return { view: { runs: [summaryOf({ key: 'run-1', parentKey: options.parentKey })] }, recomputed: 3 };
         });
         const gateway = new LiveGateway(
           hub,
@@ -135,7 +140,7 @@ describe('LiveGateway', () => {
         gateway.server = server;
         gateway.onModuleInit();
         hub.changed('run-1');
-        await jest.advanceTimersByTimeAsync(60);
+        await jest.advanceTimersByTimeAsync(100);
         gateway.onModuleDestroy();
         return { rows, sent, emit: (server as unknown as { emit: jest.Mock }).emit };
       } finally {
@@ -164,7 +169,11 @@ describe('LiveGateway', () => {
 
     it('sends a flow only to a watched room', async () => {
       const unwatched = await publishOf({ connected: 1, watched: ['run:other'] });
-      expect(unwatched.emit).toHaveBeenCalledWith('runs', { runs: [{ key: 'run-1' }] });
+      expect(unwatched.emit).toHaveBeenCalledWith('run', {
+        rows: [summaryOf({ key: 'run-1' })],
+        removed: [],
+        counts: { active: 1, done: 0, all: 1 },
+      });
       expect(unwatched.sent).toEqual([]);
       const watched = await publishOf({ connected: 1, watched: ['run:run-1'] });
       expect(watched.sent).toEqual([{ room: 'run:run-1', entry: { key: 'run-1' } }]);
@@ -228,7 +237,7 @@ describe('LiveGateway', () => {
         { list: jest.fn().mockResolvedValue({ runs: [] }) } as unknown as RunQueriesService,
         auth,
         gate,
-        {} as RunListRows,
+        rowsOf([]) as unknown as RunListRows,
         new FakeClock(),
       );
       const sent: unknown[] = [];
@@ -267,6 +276,69 @@ describe('LiveGateway', () => {
     });
   });
 
+  describe('the run list', () => {
+    function gatewayWith(runsList: Array<{ key: string; parentKey?: string; state?: string }>, connected: number) {
+      const hub = new LiveHub();
+      const rows = rowsOf(runsList);
+      const gateway = new LiveGateway(
+        hub,
+        { flow: jest.fn() } as unknown as RunQueriesService,
+        auth,
+        new ContainerGate(),
+        rows as unknown as RunListRows,
+        new FakeClock(),
+      );
+      const server = serverOf(connected, []);
+      gateway.server = server;
+      gateway.onModuleInit();
+      return { hub, gateway, emit: (server as unknown as { emit: jest.Mock }).emit };
+    }
+
+    it('a connecting socket gets the active runs and the counts once', async () => {
+      const { gateway } = gatewayWith(
+        [{ key: 'run-1' }, { key: 'run-2', state: 'done' }, { key: 'run-3', parentKey: 'run-1' }],
+        1,
+      );
+      const told: Array<[string, unknown]> = [];
+      await gateway.handleConnection({ emit: (name: string, entry: unknown) => told.push([name, entry]) } as never);
+      gateway.onModuleDestroy();
+      const runs = told.filter(([name]) => name === 'runs');
+      expect(runs).toHaveLength(1);
+      expect(runs[0][1]).toEqual({
+        runs: [summaryOf({ key: 'run-1' }), summaryOf({ key: 'run-3', parentKey: 'run-1' })],
+        counts: { active: 1, done: 1, all: 2 },
+        otherMatches: 1,
+        next: null,
+      });
+    });
+
+    it('twenty changed and spend events for five runs within 100 ms give one run event with those five rows and no runs', async () => {
+      jest.useFakeTimers();
+      try {
+        const keys = ['run-1', 'run-2', 'run-3', 'run-4', 'run-5'];
+        const { hub, gateway, emit } = gatewayWith(
+          [...keys, 'run-6'].map((key) => ({ key })),
+          1,
+        );
+        await gateway.handleConnection({ emit: () => undefined } as never);
+        // The connect read is the baseline; a later read that differs only in these five rows.
+        for (let n = 0; n < 10; n += 1) {
+          hub.changed(keys[n % 5]);
+          hub.log({ key: keys[n % 5], step: 'implement', body: '', usage: { tokensIn: n + 1, tokensOut: 0, usd: 0 } });
+        }
+        await jest.advanceTimersByTimeAsync(100);
+        gateway.onModuleDestroy();
+        const runEvents = emit.mock.calls.filter(([name]) => name === 'run');
+        expect(runEvents).toHaveLength(1);
+        expect(runEvents[0][1].rows.map((row: { key: string }) => row.key)).toEqual(keys);
+        expect(runEvents[0][1].removed).toEqual([]);
+        expect(emit.mock.calls.some(([name]) => name === 'runs')).toBe(false);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
   it('drops a pending update when it is destroyed', async () => {
     jest.useFakeTimers();
     try {
@@ -284,7 +356,7 @@ describe('LiveGateway', () => {
       gateway.onModuleInit();
       hub.changed('run-1');
       gateway.onModuleDestroy();
-      await jest.advanceTimersByTimeAsync(60);
+      await jest.advanceTimersByTimeAsync(100);
       expect(rows.read).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();

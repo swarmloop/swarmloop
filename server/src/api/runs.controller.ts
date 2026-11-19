@@ -30,7 +30,6 @@ import {
   SkipTaskBody,
   RewindView,
   RunRef,
-  RunsView,
   ShellFeature,
   ShellMatch,
   ShellStatusView,
@@ -41,6 +40,7 @@ import {
   TicketKeysView,
 } from '../contract/api';
 import { Actor } from '../auth/actor.decorator';
+import { parsePart, type RunsPage } from '../contract/run-list';
 import type { CommandInput, CommandReceipt, CommandType } from '../contract/command';
 import type { StepEventPage } from '../contract/step-events';
 import { UserSettingRepository } from '../history/user-setting.repository';
@@ -67,8 +67,13 @@ export class RunsController {
   ) {}
 
   @Get('runs')
-  list(): Promise<RunsView> {
-    return this.queries.list();
+  list(@Query('part') part?: string, @Query('q') q?: string, @Query('cursor') cursor?: string): Promise<RunsPage> {
+    for (const value of [part, q, cursor]) {
+      if (value !== undefined && typeof value !== 'string') {
+        throw new BadRequestException('part, q and cursor are each given once');
+      }
+    }
+    return this.queries.list({ part: parsePart(part ?? null), q: q ?? '', cursor });
   }
 
   @Get('runs/:key/history')

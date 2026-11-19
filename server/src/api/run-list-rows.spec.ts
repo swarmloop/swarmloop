@@ -13,6 +13,7 @@ import { CommandService } from '../pipeline/command.service';
 import { ContainerGate } from '../sandbox/container-gate';
 import { visit } from '../testing/runs.spec-helpers';
 import { LiveGateway } from './live.gateway';
+import { pageOf } from './run-list-page';
 import { RunListRows } from './run-list-rows';
 import { freshView, runOf, seedRuns, SEEDED } from './run-list-rows.spec-helpers';
 import { RunQueriesService } from './run-queries.service';
@@ -163,6 +164,8 @@ describe('RunListRows', () => {
       );
       const told: Array<[string, unknown]> = [];
       await gateway.handleConnection({ emit: (name: string, entry: unknown) => told.push([name, entry]) } as never);
-      expect(told.find(([name]) => name === 'runs')?.[1]).toEqual(await freshView(app));
+      expect(told.find(([name]) => name === 'runs')?.[1]).toEqual(
+        pageOf((await freshView(app)).runs, { part: 'active', q: '' }),
+      );
     }));
 });

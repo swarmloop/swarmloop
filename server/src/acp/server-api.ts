@@ -15,6 +15,7 @@ import type {
   SnapshotsView,
   StartStepBody,
 } from '../contract/api';
+import type { RunsPage } from '../contract/run-list';
 import type { CliLoginPoll, CliLoginStarted, CurrentTokenView } from '../contract/people';
 
 export interface ServerApi {
@@ -41,8 +42,17 @@ export class HttpServerApi implements ServerApi {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  list(): Promise<RunsView> {
-    return this.send('GET', '/runs');
+  /** Every run: the pages of `part=all`, followed until there is no next one. */
+  async list(): Promise<RunsView> {
+    const runs: RunsView['runs'] = [];
+    let cursor: string | null = null;
+    do {
+      const query = new URLSearchParams({ part: 'all', ...(cursor === null ? {} : { cursor }) });
+      const page: RunsPage = await this.send('GET', `/runs?${query}`);
+      runs.push(...page.runs);
+      cursor = page.next;
+    } while (cursor !== null);
+    return { runs };
   }
 
   flow(key: string): Promise<FlowView> {
