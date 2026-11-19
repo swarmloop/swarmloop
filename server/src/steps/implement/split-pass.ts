@@ -26,7 +26,7 @@ import type { StepContext } from '../base-step';
 import type { InputReader } from '../contract/input-reader';
 import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
-import { renderImplementation } from './implement-record';
+import { handOver, settledRecord, settledView } from './split-handover';
 import type { SplitMerge } from './split-merge';
 import { REBASED_PREFIX } from './split-rebase';
 import type { SplitNeeds } from './split-needs';
@@ -63,11 +63,15 @@ export class SplitPass {
 
   async run(subtasks: Subtask[], ctx: StepContext): Promise<StepResult> {
     const { run, startedAt } = ctx.opened;
-    const own = await this.deps.subtasks.commitOwnEdits(run);
+    // Every task settled: the agent resolves a conflict of the parent's own edits, so it is parked for the agent.
+    const view = await settledView(this.deps.subtasks, run, withStatuses(subtasks));
+    const own = await this.deps.subtasks.commitOwnEdits(run, view !== null);
     if (own.conflict) {
-      const text = [`${startedAt} ${own.conflict}`, own.committed].filter(Boolean).join('; ');
+      if (view) return handOver(ctx, view, { ...own, conflict: own.conflict }, subtasks);
+      const reason = `${startedAt} ${own.conflict}; the implement agent resolves it once every task is settled; a Resume or a message then goes on`;
+      const text = [reason, own.committed].filter(Boolean).join('; ');
       return {
-        route: { to: 'block', reason: `${startedAt} ${own.conflict}`, code: ERROR_CODES.PARENT_TREE_CONFLICT },
+        route: { to: 'block', reason, code: ERROR_CODES.PARENT_TREE_CONFLICT },
         summary: text,
         outputs: [],
       };
@@ -283,16 +287,11 @@ export class SplitPass {
       next,
     );
     await this.skipImprove(ctx);
-    const lines = tasks.map((task) => `${task.title} (${task.status})`);
-    const body = renderImplementation(lines);
+    const record = settledRecord(tasks);
     return {
       route: { to: 'jump', step: next },
-      summary: `${ctx.opened.startedAt} implement done\n${body.trimEnd()}`,
-      outputs: [
-        ...outputs,
-        { artifact: ARTIFACTS.implementation, value: body },
-        { artifact: ARTIFACTS.implementationResult, value: { implementation: lines, summary: [] } },
-      ],
+      summary: `${ctx.opened.startedAt} implement done\n${record.body.trimEnd()}`,
+      outputs: [...outputs, ...record.outputs],
       handoff: `- ${statusLine(tasks)}\n`,
     };
   }

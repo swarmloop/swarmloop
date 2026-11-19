@@ -213,14 +213,15 @@ export class SubtaskPort extends SubtaskOps {
     }
   }
 
-  override async commitOwnEdits(parent: RunEntity): Promise<OwnEdits> {
+  override async commitOwnEdits(parent: RunEntity, park: boolean): Promise<OwnEdits> {
     const requirements = (await this.documents.latestBody(parent.key, ARTIFACTS.requirements.kind)) ?? '';
     const message = commitMessage(parent.key, summaryForBranch(requirements, parent.key));
     // A parent that has no repositories yet has no worktree to hold edits.
     if (!(await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind))?.trim()) {
       return { committed: null, conflict: null };
     }
-    return this.worktrees.commitOwnEdits(parent, await this.reposOf(parent), await this.branchOf(parent), message);
+    const repos = await this.reposOf(parent);
+    return this.worktrees.commitOwnEdits(parent, repos, await this.branchOf(parent), message, park);
   }
 
   override async fastForward(parent: RunEntity): Promise<string | null> {

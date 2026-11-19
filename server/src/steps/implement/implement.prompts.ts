@@ -1,6 +1,6 @@
 import type { PlanRevision } from '../../contract/plan-chat';
 import { isChecksReturn, isPipelineReturn } from '../follow-up';
-import { reviewReturn } from '../shared/handoff';
+import { handoffText, reviewReturn } from '../shared/handoff';
 import type { FailedCommand } from '../../environment/environment-types';
 import { NEAR_TESTS_RULE } from '../shared/near-tests-rule';
 import { TASK_SCOPE } from '../shared/requirements-brief';
@@ -29,6 +29,34 @@ export function rebaseConflictPrompt(input: {
     files,
     'Requirements:',
     input.requirements.trim(),
+    'Do not run git.',
+    'Do not push. Do not create a branch.',
+    resultPromptFor(rebaseResolution, null),
+  ].join('\n');
+}
+
+/** What the first line of ownConflictPrompt starts with: it tells the prompt apart from a rebase prompt. */
+export const OWN_CONFLICT_LEAD = 'The feature branch is brought into this worktree of';
+
+/** The prompt that resolves the conflict between the parent's own edits and the merged tasks on the feature branch. */
+export function ownConflictPrompt(input: {
+  repo: string;
+  files: string[];
+  conflict: string;
+  requirements: string;
+  handoff: string | null;
+}): string {
+  const files = input.files.length > 0 ? input.files.map((file) => `- ${file}`).join('\n') : '- (none listed)';
+  return [
+    `${OWN_CONFLICT_LEAD} ${input.repo} on top of the parent's own edits.`,
+    input.conflict,
+    "Bring the feature branch into this tree and keep both the parent's own edits and the merged tasks' changes. Where both changed the same lines, keep what each was for: the parent's edits answer the review notes in the handoff below, the tasks' changes are merged and green.",
+    'Edit only these files:',
+    files,
+    'Requirements:',
+    input.requirements.trim(),
+    'Handoff:',
+    handoffText(input.handoff).trim(),
     'Do not run git.',
     'Do not push. Do not create a branch.',
     resultPromptFor(rebaseResolution, null),

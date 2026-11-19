@@ -1,6 +1,7 @@
 import { git, originUrl } from '../git/git';
 import { originRef } from '../git/base-ref';
 import { porcelainPaths } from '../git/commit-paths';
+import { unmergedPaths } from '../git/rebase';
 import { mergeConflicts } from '../git/merge-tree';
 import { commitAllowed } from '../git/rebase/hidden-worktree';
 import { status, type Tree } from '../steps/commit/commit-git';
@@ -20,31 +21,50 @@ interface TreeSync {
 export class ParentTreeSync {
   constructor(private readonly publisher?: RebasedPublisher) {}
 
-  async commit(parent: RunEntity, tree: Tree, branch: string, message: string): Promise<TreeSync> {
+  /**
+   * With `park` a conflict is not undone: the commit is rebased onto the feature branch and git stops at the
+   * conflicting files, which the implement agent resolves. Without it the edits go back to the worktree.
+   */
+  async commit(parent: RunEntity, tree: Tree, branch: string, message: string, park: boolean): Promise<TreeSync> {
     const remote = originRef(branch);
     const before = await git(['-C', tree.path, 'rev-parse', 'HEAD']);
     const paths = porcelainPaths(await status(tree));
     await commitAllowed(tree.path, tree.repo, [], message);
     if ((await git(['-C', tree.path, 'rev-parse', 'HEAD'])) === before) return { paths: [], conflict: null };
     const files = await mergeConflicts(tree.path, remote);
-    if (files.length > 0) {
+    if (files.length > 0 && !park) {
       await git(['-C', tree.path, 'reset', '-q', before]);
-      const tip = await git(['-C', tree.path, 'rev-parse', remote]);
-      const conflict =
-        `the parent's own uncommitted edits in ${tree.repo} conflict with ${remote} in ${files.join(', ')}: ` +
-        `the worktree is at ${before}, ${remote} is at ${tip}; nothing was committed or pushed and the edits stay ` +
-        'in the worktree; resolve the files, then Resume or send a message';
-      return { paths: [], conflict };
+      return { paths: [], conflict: await this.conflictText(tree, remote, before, files, false) };
     }
     try {
       await git(['-C', tree.path, 'rebase', remote]);
     } catch (error) {
+      if (park && files.length > 0 && (await unmergedPaths(tree.path)).length > 0) {
+        return { paths: [], conflict: await this.conflictText(tree, remote, before, files, true) };
+      }
       await git(['-C', tree.path, 'rebase', '--abort']).catch(() => undefined);
       await git(['-C', tree.path, 'reset', '-q', before]);
       throw error;
     }
     await this.push(parent, tree, branch);
     return { paths, conflict: null };
+  }
+
+  private async conflictText(
+    tree: Tree,
+    remote: string,
+    before: string,
+    files: string[],
+    parked: boolean,
+  ): Promise<string> {
+    const tip = await git(['-C', tree.path, 'rev-parse', remote]);
+    const fate = parked
+      ? `the edits are committed on top of ${remote} in a rebase that stops at the conflicting files, which the implement agent resolves; nothing was pushed`
+      : 'nothing was committed or pushed and the edits stay in the worktree';
+    return (
+      `the parent's own uncommitted edits in ${tree.repo} conflict with ${remote} in ${files.join(', ')}: ` +
+      `the worktree is at ${before}, ${remote} is at ${tip}; ${fate}`
+    );
   }
 
   /** Publishes the rebased commit. The lease is the fetched tip, taken after the rebase, so a merged task is never dropped. */
