@@ -2,7 +2,8 @@ import { BadRequestException } from '@nestjs/common';
 import type { Subtask } from '../contract/subtask';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
-import { branchName, summaryForBranch } from '../steps/branch/branch-name';
+import { summaryForBranch } from '../git/naming/git-names';
+import { storedBranch } from '../git/naming/stored-branch';
 import { deriveState } from '../history/run-state';
 import { requirementsBrief } from '../steps/shared/requirements-brief';
 import { mergeSummaryOf } from '../pipeline/merge-summary';
@@ -61,7 +62,8 @@ export async function subtaskPromptOf(
   if (!requirements?.trim()) {
     throw new BadRequestException('requirements is missing');
   }
-  const branch = branchName(parent.key, summaryForBranch(requirements, parent.key));
+  const stored = await documents.latestBody(parent.key, ARTIFACTS.branchNames.kind);
+  const branch = storedBranch(stored, null, parent.key, summaryForBranch(requirements, parent.key));
   const runs: TaskRuns = {};
   for (const child of children) {
     if (child.taskId) runs[child.taskId] = { state: deriveState(child).state, currentStep: child.currentStep };

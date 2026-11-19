@@ -20,6 +20,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { BranchCheckout } from '../shared/branch-checkout';
+import { RunNames } from '../shared/run-names';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { BranchStep } from './branch.step';
 
@@ -53,7 +54,8 @@ describe('branch step golden traces', () => {
       app.get(AppConfig),
       app.get(StepEventLog),
     );
-    const step = new BranchStep(kernel, new BranchCheckout(kernel), app.get(RebasedPublisher));
+    const names = app.get(RunNames);
+    const step = new BranchStep(kernel, new BranchCheckout(kernel, names), names, app.get(RebasedPublisher));
     const result = await step.execute(KEY);
     const git = Object.fromEntries(
       Object.entries(trees).map(([repo, tree]) => [

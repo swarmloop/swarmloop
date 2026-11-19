@@ -8,7 +8,7 @@ import { PhaseName, StepName } from '../../contract/steps';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HttpCallDraft, NothingToMerge, SwarmloopError } from '../../core/swarmloop-error';
-import { branchName, summaryForBranch } from '../branch/branch-name';
+import { RunNames } from '../shared/run-names';
 import { baseBranch } from '../../git/base-ref';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
@@ -72,6 +72,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     private readonly runStop: RunStop,
     private readonly runReport: RunReport,
     private readonly staleReview: StaleReview,
+    private readonly runNames: RunNames,
   ) {
     super(kernel);
   }
@@ -89,11 +90,12 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
-    const title = summaryForBranch(requirements, key);
-    const branch = branchName(key, title);
+    const repos = checkedRepoNames(input.repos);
+    const title = await this.runNames.title(opened.run, repos[0]);
+    const branch = await this.runNames.branch(opened.run, repos[0]);
     const trees = await this.trees(
       key,
-      checkedRepoNames(input.repos),
+      repos,
       branch,
       baseBranch(opened.run.prompt),
       ctx.calls,

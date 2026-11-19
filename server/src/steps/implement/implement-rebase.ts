@@ -4,7 +4,6 @@ import type { FlowRepository } from '../../history/flow.repository';
 import { root } from '../../history/run-paths';
 import type { AppConfig } from '../../config/env';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { commitMessage, summaryForBranch } from '../branch/branch-name';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { StepResult } from '../contract/step-contract';
 import type { ModelStepContext } from '../agent-step';
@@ -17,6 +16,7 @@ import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { textDocument } from '../shared/handoff';
 import { runJournal } from '../shared/rebase-journal';
 import type { RebasedPublisher } from '../shared/rebased-publisher';
+import type { RunNames } from '../shared/run-names';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
 import { rebaseConflictPrompt } from './implement.prompts';
 import { firstPass, renderImplementation } from './implement-record';
@@ -27,6 +27,7 @@ export interface RebaseDeps {
   documents: DocumentRepository;
   flows: FlowRepository;
   publisher: RebasedPublisher;
+  names: RunNames;
   environments: EnvironmentService;
   step: string;
   runtime: RuntimeName;
@@ -54,7 +55,7 @@ export async function settleRebase(
     branch,
     prompt: ctx.opened.run.prompt,
     denied: [],
-    message: commitMessage(key, summaryForBranch(requirements, key)),
+    message: await deps.names.commitMessage(ctx.opened.run, names[0]),
     hosts: await deps.publisher.hostsFor(ctx.opened.run),
     journal: runJournal(deps.documents, ctx.opened.run),
     onBase: (repo: string, sha: string) => {

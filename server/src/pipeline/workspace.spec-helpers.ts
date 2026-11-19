@@ -44,7 +44,7 @@ export async function makeWorld(key: string, origin: 'path' | 'github' = 'path')
   const run = (await app.get(RunRepository).findRun(key))!;
   const requirements = `${JSON.stringify({ prompt: 'ship the field', tickets: [] })}\n`;
   await documents.putDocument(run, 'requirements', requirements);
-  const branch = app.get(BranchCheckout).branchFor(key, requirements);
+  const branch = await app.get(BranchCheckout).branchFor(run, 'demo');
   await app.get(CheckoutService).prepareCheckout(key, { name: 'demo', path: '' }, null);
   const worktree = join(swarm, 'worktrees', key, 'demo');
   git(worktree, ['switch', '-c', branch]);

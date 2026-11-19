@@ -7,6 +7,10 @@
     {
       "body": "demo\n",
       "kind": "repos"
+    },
+    {
+      "body": "demo feature/PROJ-30-ship-the-field\n",
+      "kind": "branch_names"
     }
   ],
   "events": [
@@ -24,6 +28,14 @@
     },
     {
       "kind": "input.received",
+      "step": "branch"
+    },
+    {
+      "kind": "command.started",
+      "step": "branch"
+    },
+    {
+      "kind": "command.finished",
       "step": "branch"
     },
     {

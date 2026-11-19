@@ -10,6 +10,7 @@ import { StepEventLog } from '../../history/step-event.log';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import type { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { EnvironmentService } from '../../environment/environment.service';
+import { RunNames } from '../shared/run-names';
 import { runGit } from '../../git/git-repo.spec-helpers';
 import { DocumentRepository } from '../../history/document.repository';
 import { FlowRepository } from '../../history/flow.repository';
@@ -78,8 +79,9 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
             app.get(AgentLauncher),
             app.get(EnvironmentService),
             app.get(SplitImplementStep),
+            app.get(RunNames),
           )
-        : new ImplementImproveStep(...common, app.get(AgentLauncher), app.get(EnvironmentService));
+        : new ImplementImproveStep(...common, app.get(AgentLauncher), app.get(EnvironmentService), app.get(RunNames));
     const result = await step.execute(input.key, input.options ?? {});
     const trace = await traceRun(app.get(DataSource), input.key, { [input.step]: documents.kinds });
     expectGolden(`${input.step}.${input.scenario}`, {

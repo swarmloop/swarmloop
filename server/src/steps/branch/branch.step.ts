@@ -5,6 +5,7 @@ import { checkedRepoNames } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { originUrl } from '../../git/git';
 import { BranchCheckout } from '../shared/branch-checkout';
+import { RunNames } from '../shared/run-names';
 import { RebasedPublisher, type PublishedBy } from '../shared/rebased-publisher';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
@@ -24,31 +25,36 @@ export class BranchStep extends BaseStep<typeof INPUTS> {
   constructor(
     kernel: StepKernel,
     private readonly branches: BranchCheckout,
+    private readonly names: RunNames,
     private readonly publisher: RebasedPublisher,
   ) {
     super(kernel);
   }
 
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
-    const { key } = ctx.opened.run;
-    const name = this.branches.branchFor(key, input.requirements);
+    const { run } = ctx.opened;
+    const { key } = run;
+    const repos = checkedRepoNames(input.repos ?? []);
+    const splits = await this.splits(ctx);
+    const lines = await this.names.store(run, repos);
+    const branchOf = (repo: string): string => lines.get(repo) ?? '';
+    const name = [...new Set(repos.map(branchOf))].join(', ');
     // A run that has committed owns the commits of its branch. Before that, a branch of the same name was left by
     // an earlier run of this key, such as one removed in the panel.
     const committed = input.pipelineRef !== null;
-    const repos = checkedRepoNames(input.repos ?? []);
     await ctx.activity(
       `Check out ${name}`,
       async () => {
         for (const repo of repos) {
-          await this.branches.checkout(key, repo, name, committed);
+          await this.branches.checkout(key, repo, branchOf(repo), committed);
         }
       },
       () => `on ${name}`,
     );
-    if (await this.splits(ctx)) {
+    if (splits) {
       await ctx.activity(
         `Push ${name}`,
-        () => this.push(key, repos, name, ctx.opened.run),
+        () => this.push(key, repos, branchOf, run),
         () => 'to origin',
       );
     }
@@ -66,11 +72,16 @@ export class BranchStep extends BaseStep<typeof INPUTS> {
   }
 
   /** The subtasks of a split run start from the feature branch, so it reaches origin before they do. */
-  private async push(key: string, repos: string[], branch: string, run: PublishedBy): Promise<void> {
+  private async push(
+    key: string,
+    repos: string[],
+    branchOf: (repo: string) => string,
+    run: PublishedBy,
+  ): Promise<void> {
     for (const tree of this.publisher.trees(key, repos)) {
       const origin = await originUrl(tree.path, tree.repo, 'origin failed');
       if (origin) {
-        await this.publisher.pushRef(tree, branch, null, run, origin);
+        await this.publisher.pushRef(tree, branchOf(tree.repo), null, run, origin);
       }
     }
   }

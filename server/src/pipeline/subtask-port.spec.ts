@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { RunNames } from '../steps/shared/run-names';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { AppConfig } from '../config/env';
@@ -354,7 +355,13 @@ describe('SubtaskPort merge requests', () => {
       };
       const refresh = refreshThrows
         ? ({ refresh: () => Promise.reject(new Error('host down')) } as unknown as ReportRefresh)
-        : new ReportRefresh(runs as never, docs as never, report, { hostFor: async () => host } as never);
+        : new ReportRefresh(
+            runs as never,
+            docs as never,
+            report,
+            { hostFor: async () => host } as never,
+            new RunNames({ documents: docs } as never),
+          );
       const port = new SubtaskPort(
         runs as never,
         docs as never,

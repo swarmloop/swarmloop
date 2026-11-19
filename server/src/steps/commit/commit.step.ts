@@ -3,7 +3,6 @@ import { StepKernel } from '../step-kernel';
 import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../steps/step-run';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { baseBranch, originRef } from '../../git/base-ref';
 import { authorArgs, originUrl } from '../../git/git';
 import { commitResult, deliveredResult, undeliveredResult } from './commit-result';
@@ -13,6 +12,7 @@ import { checkedRepoNames } from '../../git/repo-names';
 import { RunStop } from '../../agent/run-stop';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { hasWorkToMerge } from '../shared/branch-work';
+import { RunNames } from '../shared/run-names';
 import { RebasedPublisher, type PublishedBy } from '../shared/rebased-publisher';
 import { BaseStep, StepContext } from '../base-step';
 import {
@@ -46,6 +46,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
   constructor(
     kernel: StepKernel,
     private readonly publisher: RebasedPublisher,
+    private readonly runNames: RunNames,
     private readonly runStop: RunStop,
   ) {
     super(kernel);
@@ -58,10 +59,9 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
-    const summary = summaryForBranch(requirements, key);
-    const branch = branchName(key, summary);
     const named = baseBranch(opened.run.prompt);
     const names = checkedRepoNames(input.repos);
+    const branch = await this.runNames.branch(opened.run, names[0]);
     const trees = this.publisher.trees(key, names);
     await this.assertBranch(trees, branch);
     const phases = await this.flows.activePhases(opened.run.id);
@@ -91,7 +91,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     }
     assertNotStopped(this.runStop, key);
     const heads: string[] = [];
-    const message = commitMessage(key, summary);
+    const message = await this.runNames.commitMessage(opened.run, names[0]);
     const pushed = await ctx.activity(
       `Commit ${planned.length} files`,
       () =>

@@ -4,7 +4,8 @@ import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { repoNames } from '../git/repo-names';
 import { parseMergeRequests } from '../steps/merge-request/merge-request-record';
-import { branchName, summaryForBranch } from '../steps/branch/branch-name';
+import { summaryForBranch } from '../git/naming/git-names';
+import { storedBranch } from '../git/naming/stored-branch';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
@@ -169,7 +170,8 @@ export class SubtaskPort extends SubtaskOps {
 
   override async branchOf(run: RunEntity): Promise<string> {
     const requirements = (await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind)) ?? '';
-    return branchName(run.key, summaryForBranch(requirements, run.key));
+    const stored = await this.documents.latestBody(run.key, ARTIFACTS.branchNames.kind);
+    return storedBranch(stored, null, run.key, summaryForBranch(requirements, run.key));
   }
 
   override async recordMerged(parent: RunEntity, run: RunEntity, merged: Record<string, string>): Promise<void> {
