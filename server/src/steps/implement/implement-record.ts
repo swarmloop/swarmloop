@@ -1,4 +1,4 @@
-import type { StepResult } from '../contract/step-contract';
+import type { ArtifactValue, StepResult } from '../contract/step-contract';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { ImplementationResult } from '../../agent-result/definitions/implementation';
 import { legacyImplementation } from '../../agent-result/legacy/implementation';
@@ -53,4 +53,9 @@ export function checksLine(result: { passed: number; total: number }): string {
 /** What the server checks said, for the event that ends an implement attempt. */
 export function implementFacts(checks: string | null): AttemptFacts | undefined {
   return checks ? { details: [`checks: ${checks}`] } : undefined;
+}
+
+/** The git_rules_note document of a visit: only when the writer left lines for a person to add. */
+export function gitRulesNoteOutputs(note: string): ArtifactValue[] {
+  return note ? [{ artifact: ARTIFACTS.gitRulesNote, value: note }] : [];
 }

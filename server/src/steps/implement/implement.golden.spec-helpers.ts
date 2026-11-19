@@ -20,6 +20,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { ImplementImproveStep } from './implement-improve.step';
+import { GitRulesWriter } from '../shared/git-rules-writer';
 import { RunAuthor } from '../shared/run-author';
 import { ImplementStep } from './implement.step';
 import { SplitImplementStep } from './split-implement.step';
@@ -82,8 +83,15 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
             app.get(SplitImplementStep),
             app.get(RunNames),
             app.get(RunAuthor),
+            app.get(GitRulesWriter),
           )
-        : new ImplementImproveStep(...common, app.get(AgentLauncher), app.get(EnvironmentService), app.get(RunNames));
+        : new ImplementImproveStep(
+            ...common,
+            app.get(AgentLauncher),
+            app.get(EnvironmentService),
+            app.get(RunNames),
+            app.get(GitRulesWriter),
+          );
     const result = await step.execute(input.key, input.options ?? {});
     const trace = await traceRun(app.get(DataSource), input.key, { [input.step]: documents.kinds });
     expectGolden(`${input.step}.${input.scenario}`, {
