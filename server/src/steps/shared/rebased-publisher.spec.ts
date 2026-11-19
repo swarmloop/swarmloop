@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { featureWorktree, git } from '../../testing/runs.spec-helpers';
 import * as commitGit from '../commit/commit-git';
+import { GitRuleRefused } from '../../core/git-rule-refused';
 import { RebasedPublisher } from './rebased-publisher';
 
 const branch = 'feature/proj-80-ship-the-field';
@@ -49,7 +50,9 @@ describe('RebasedPublisher unknown push result', () => {
     const { tree, origin, publisher, remoteTip } = await setup();
     const pushes = countPushes(origin);
     loseFirstPush(true);
-    await expect(publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin)).resolves.toBe(true);
+    await expect(
+      publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin, 'commit'),
+    ).resolves.toBe(true);
     expect(pushes()).toBe(1);
     expect(remoteTip()).toBe(git(tree.path, ['rev-parse', 'HEAD']));
     expect(git(tree.path, ['rev-parse', `refs/remotes/origin/${branch}`])).toBe(remoteTip());
@@ -59,7 +62,9 @@ describe('RebasedPublisher unknown push result', () => {
     const { tree, origin, publisher, remoteTip } = await setup();
     const pushes = countPushes(origin);
     loseFirstPush(false);
-    await expect(publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin)).resolves.toBe(true);
+    await expect(
+      publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin, 'commit'),
+    ).resolves.toBe(true);
     expect(pushes()).toBe(1);
     expect(remoteTip()).toBe(git(tree.path, ['rev-parse', 'HEAD']));
   });
@@ -69,9 +74,9 @@ describe('RebasedPublisher unknown push result', () => {
     git(tree.path, ['push', origin, `main:refs/heads/${branch}`]);
     const pushes = countPushes(origin);
     loseFirstPush(false);
-    await expect(publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin)).rejects.toThrow(
-      'push result unknown',
-    );
+    await expect(
+      publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin, 'commit'),
+    ).rejects.toThrow('push result unknown');
     expect(pushes()).toBe(0);
   });
 });
@@ -87,8 +92,47 @@ describe('RebasedPublisher host outage', () => {
       `#!/bin/sh\nif [ ! -e "${marker}" ]; then touch "${marker}"; echo "The requested URL returned error: 502" >&2; exit 1; fi\n`,
     );
     chmodSync(hook, 0o755);
-    await expect(publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin)).resolves.toBe(true);
+    await expect(
+      publisher.pushRef(tree, branch, null, { codeHost: '', startedBy: null }, origin, 'commit'),
+    ).resolves.toBe(true);
     expect(existsSync(marker)).toBe(true);
     expect(remoteTip()).toBe(git(tree.path, ['rev-parse', 'HEAD']));
+  });
+});
+
+describe('RebasedPublisher host rule refusal', () => {
+  const run = { codeHost: '', startedBy: null };
+
+  function refuseWith(origin: string, message: string): void {
+    const hook = join(origin, 'hooks', 'pre-receive');
+    writeFileSync(hook, `#!/bin/sh\necho "${message}" >&2\nexit 1\n`);
+    chmodSync(hook, 0o755);
+  }
+
+  it('throws the refusal with the host words and the head commit message for a commit', async () => {
+    const { tree, origin, publisher } = await setup();
+    refuseWith(origin, 'commit message must be conventional');
+    const refused = await publisher.pushRef(tree, branch, null, run, origin, 'commit').catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(GitRuleRefused);
+    expect(refused).toMatchObject({ kind: 'commit', name: 'field' });
+    expect((refused as GitRuleRefused).hostMessage).toContain('remote rejected');
+  });
+
+  it('throws the refusal with the branch as the refused name for a branch', async () => {
+    const { tree, origin, publisher } = await setup();
+    refuseWith(origin, 'branch name refused');
+    await expect(publisher.pushRef(tree, branch, null, run, origin, 'branch')).rejects.toMatchObject({
+      kind: 'branch',
+      name: branch,
+    });
+  });
+
+  it('leaves a non-fast-forward rejection a plain push error', async () => {
+    const { tree, origin, publisher } = await setup();
+    const other = git(tree.path, ['commit-tree', '-m', 'other', 'HEAD^{tree}']);
+    git(tree.path, ['push', origin, `${other}:refs/heads/${branch}`]);
+    const refused = await publisher.pushRef(tree, branch, null, run, origin, 'commit').catch((error: unknown) => error);
+    expect(refused).not.toBeInstanceOf(GitRuleRefused);
+    expect((refused as Error).message).toContain('push failed');
   });
 });

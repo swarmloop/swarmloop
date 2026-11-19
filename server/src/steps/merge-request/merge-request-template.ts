@@ -22,11 +22,25 @@ export function noteLines(note: string | null, repo: string): string {
   const lines = (note ?? '').split('\n');
   const from = lines.findIndex((line) => line.trim() === `${repo}:`);
   if (from < 0) {
-    return '';
+    return writerBlock(note ?? '', repo);
   }
   const rest = lines.slice(from + 1);
   const next = rest.findIndex((line) => NOTE_HEADER.test(line.trim()));
   return (next < 0 ? rest : rest.slice(0, next)).join('\n').trim();
+}
+
+/**
+ * The block the rules writer wrote for a repository: `Add to the "git" section of .swarmloop.json[ of <repo>]:` and its
+ * lines. A block that names no repository is the one repository of the run.
+ */
+function writerBlock(note: string, repo: string): string {
+  const blocks = note.split(/\n\s*\n/).map((block) => block.trim());
+  return (
+    blocks.find((block) => {
+      const named = /^Add to the "git" section of \S+?(?: of ([\w./@-]+))?:\n/.exec(`${block.split('\n')[0]}\n`);
+      return named !== null && (named[1] === undefined || named[1] === repo);
+    }) ?? ''
+  );
 }
 
 /** The body with the lines to add as its last lines. A body that already ends with them stays as it is. */

@@ -12,6 +12,7 @@ import { root } from '../../history/run-paths';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { Artifact } from '../contract/artifact';
 import { StepKernel } from '../step-kernel';
+import { parseRefusal } from './git-refusal-answer';
 
 type Run = Pick<RunEntity, 'key' | 'parentRunId' | 'taskId'>;
 type StoredResult = Pick<Artifact<unknown>, 'kind' | 'parse'>;
@@ -57,6 +58,25 @@ export class RunNames {
     }
     await this.kernel.documents.putDocument(run, ARTIFACTS.branchNames.kind, formatBranchNames(lines));
     return lines;
+  }
+
+  /** Makes `name` the stored branch of the repository, and of every repository that shared its old name. */
+  async rename(run: RunEntity, repo: string, name: string): Promise<void> {
+    const lines = parseBranchNames(await this.kernel.documents.latestBody(run.key, ARTIFACTS.branchNames.kind));
+    const old = lines.get(repo);
+    for (const [other, branch] of lines) {
+      if (other === repo || branch === old) {
+        lines.set(other, name);
+      }
+    }
+    await this.kernel.documents.putDocument(run, ARTIFACTS.branchNames.kind, formatBranchNames(lines));
+  }
+
+  /** The branch the repository's current format gives for the run's latest change, which may differ from the stored one. */
+  async renderedBranch(run: Run, repo: string): Promise<string> {
+    const { change } = await this.change(run);
+    const template = this.format(run, repo).branch;
+    return branchName(run.key, await this.summary(run), { template, change });
   }
 
   /** The commit message; a commit on a branch already pushed follows a return, and is a fix unless implement named a type. */
@@ -114,8 +134,12 @@ export class RunNames {
     return branchName(run.key, summary, { template: readGitFormat(tree).branch, change });
   }
 
-  /** The meaning of the run's change: implement's own, else the plan's, else the one the parent's plan gave this task. */
+  /** The meaning of the run's change: the host refusal's answer, else implement's own, else the plan's, else the one the parent's plan gave this task. */
   private async change(run: Run): Promise<{ change: GitChange | undefined; implemented: boolean }> {
+    const refused = parseRefusal((await this.kernel.documents.latestBody(run.key, ARTIFACTS.gitRefusal.kind)) ?? '');
+    if (refused) {
+      return { change: refused.answer.change, implemented: true };
+    }
     const implemented = await this.latestResult(run.key, [
       ARTIFACTS.implementationResult,
       ARTIFACTS.implementationImproveResult,

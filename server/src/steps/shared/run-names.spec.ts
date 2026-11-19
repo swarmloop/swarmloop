@@ -6,6 +6,7 @@ import { testEnv } from '../../config/env.spec-helpers';
 import type { RunEntity } from '../../history/entities';
 import { git } from '../../testing/git-fixture';
 import { ARTIFACTS } from '../contract/artifacts';
+import { formatRefusal, refusalKey } from './git-refusal-answer';
 import { RunNames } from './run-names';
 
 const KEY = 'PROJ-7';
@@ -131,5 +132,33 @@ describe('RunNames.title', () => {
     tree('web', manifest({ title: '[{ticket} ]{subject}' }));
     expect(await names().service.title(run, 'api')).toBe('Ship the field');
     expect(await names().service.title(run, 'web')).toBe('PROJ-7 Ship the field');
+  });
+});
+
+describe('RunNames.rename', () => {
+  it('changes the stored line of one repository', async () => {
+    const { service, bodies } = names({ branch_names: 'api one\nweb two\n' });
+    await service.rename(run, 'api', 'new-name');
+    expect(bodies[ARTIFACTS.branchNames.kind]).toBe('api new-name\nweb two\n');
+  });
+
+  it('changes every line of the shared name of a split run', async () => {
+    const { service, bodies } = names({ branch_names: 'api shared\nweb shared\n' });
+    await service.rename(run, 'api', 'new-name');
+    expect(bodies[ARTIFACTS.branchNames.kind]).toBe('api new-name\nweb new-name\n');
+  });
+});
+
+describe('RunNames after a host refusal', () => {
+  it("uses the answer's change over implement's and the plan's, and renders a branch again", async () => {
+    tree('api', { ...CONVENTIONAL, ...manifest({ branch: '{type}/{slug}' }) });
+    const implemented = { implementation: ['x'], summary: ['y'], change };
+    const answer = { change: { type: 'chore' as const, subject: 'Allowed subject' } };
+    const { service } = names({
+      implementation_result: JSON.stringify(implemented),
+      git_refusal: formatRefusal(refusalKey('api', 'commit'), answer),
+    });
+    expect(await service.commitMessage(run, 'api')).toBe('chore: Allowed subject');
+    expect(await service.renderedBranch(run, 'api')).toBe('chore/ship-the-field');
   });
 });

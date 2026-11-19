@@ -117,4 +117,12 @@ describe('merge request template', () => {
     expect(noteLines('other:\nline', 'demo')).toBe('');
     expect(noteLines(null, 'demo')).toBe('');
   });
+
+  it('reads the block the rules writer wrote for the repository, or for the only repository', () => {
+    const own = 'Add to the "git" section of .swarmloop.json of demo:\n    "commit": "{type}: {subject}"';
+    const other = 'Add to the "git" section of .swarmloop.json of web:\n    "title": "{subject}"';
+    expect(noteLines(`${other}\n\n${own}`, 'demo')).toBe(own);
+    const alone = 'Add to the "git" section of .swarmloop.json:\n    "commit": "{type}: {subject}"';
+    expect(noteLines(alone, 'demo')).toBe(alone);
+  });
 });

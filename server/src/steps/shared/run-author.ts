@@ -5,7 +5,7 @@ import { RunRepository } from '../../history/run.repository';
 import { starterOf } from '../../history/run-starter';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 
-export type AuthoredRun = Parameters<typeof starterOf>[1] & { codeHost: string };
+type AuthoredRun = Parameters<typeof starterOf>[1] & { codeHost: string };
 
 /** The person every commit of a run is made as: the starter's name and the host's address for their account. */
 @Injectable()

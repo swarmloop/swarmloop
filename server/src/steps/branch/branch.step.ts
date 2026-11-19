@@ -6,7 +6,9 @@ import { BaseStep, StepContext } from '../base-step';
 import { originUrl } from '../../git/git';
 import { BranchCheckout } from '../shared/branch-checkout';
 import { RunNames } from '../shared/run-names';
-import { RebasedPublisher, type PublishedBy } from '../shared/rebased-publisher';
+import { GitRefusal } from '../shared/git-refusal';
+import { RebasedPublisher } from '../shared/rebased-publisher';
+import type { RunEntity } from '../../history/entities';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
@@ -27,6 +29,7 @@ export class BranchStep extends BaseStep<typeof INPUTS> {
     private readonly branches: BranchCheckout,
     private readonly names: RunNames,
     private readonly publisher: RebasedPublisher,
+    private readonly refusal: GitRefusal,
   ) {
     super(kernel);
   }
@@ -38,7 +41,7 @@ export class BranchStep extends BaseStep<typeof INPUTS> {
     const splits = await this.splits(ctx);
     const lines = await this.names.store(run, repos);
     const branchOf = (repo: string): string => lines.get(repo) ?? '';
-    const name = [...new Set(repos.map(branchOf))].join(', ');
+    let name = [...new Set(repos.map(branchOf))].join(', ');
     // A run that has committed owns the commits of its branch. Before that, a branch of the same name was left by
     // an earlier run of this key, such as one removed in the panel.
     const committed = input.pipelineRef !== null;
@@ -54,9 +57,11 @@ export class BranchStep extends BaseStep<typeof INPUTS> {
     if (splits) {
       await ctx.activity(
         `Push ${name}`,
-        () => this.push(key, repos, branchOf, run),
+        () => this.push(key, repos, run),
         () => 'to origin',
       );
+      const pushed = await this.names.store(run, repos);
+      name = [...new Set(repos.map((repo) => pushed.get(repo) ?? ''))].join(', ');
     }
     return {
       route: { to: 'next' },
@@ -71,17 +76,14 @@ export class BranchStep extends BaseStep<typeof INPUTS> {
     return ctx.opened.run.split && ((await ctx.reread(ARTIFACTS.subtasks))?.length ?? 0) > 0;
   }
 
-  /** The subtasks of a split run start from the feature branch, so it reaches origin before they do. */
-  private async push(
-    key: string,
-    repos: string[],
-    branchOf: (repo: string) => string,
-    run: PublishedBy,
-  ): Promise<void> {
+  /** The subtasks of a split run start from the feature branch, so it reaches origin before they do. A refused name is answered once. */
+  private async push(key: string, repos: string[], run: RunEntity): Promise<void> {
     for (const tree of this.publisher.trees(key, repos)) {
       const origin = await originUrl(tree.path, tree.repo, 'origin failed');
       if (origin) {
-        await this.publisher.pushRef(tree, branchOf(tree.repo), null, run, origin);
+        await this.refusal.guard({ run, repo: tree.repo, repos }, 'branch', async () =>
+          this.publisher.pushRef(tree, await this.names.branch(run, tree.repo), null, run, origin, 'branch'),
+        );
       }
     }
   }

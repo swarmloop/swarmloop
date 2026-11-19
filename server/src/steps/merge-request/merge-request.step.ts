@@ -6,6 +6,7 @@ import { PhaseName, StepName } from '../../contract/steps';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HttpCallDraft, NothingToMerge, SwarmloopError } from '../../core/swarmloop-error';
+import { GitRefusal } from '../shared/git-refusal';
 import { RunNames } from '../shared/run-names';
 import { baseBranch } from '../../git/base-ref';
 import { checkedRepoNames } from '../../git/repo-names';
@@ -23,6 +24,7 @@ import { StaleReview } from '../shared/stale-review';
 import { MergeRequestTemplate, type Summary } from './merge-request-template';
 import { mergeRequestTrees, type Tree } from './merge-request-trees';
 import { ref } from './merge-request-target';
+import type { RunEntity } from '../../history/entities';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
@@ -53,6 +55,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     private readonly staleReview: StaleReview,
     private readonly runNames: RunNames,
     private readonly template: MergeRequestTemplate,
+    private readonly refusal: GitRefusal,
   ) {
     super(kernel);
   }
@@ -71,7 +74,6 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
       throw new SwarmloopError('requirements is missing');
     }
     const repos = checkedRepoNames(input.repos);
-    const title = await this.runNames.title(opened.run, repos[0]);
     const branch = await this.runNames.branch(opened.run, repos[0]);
     const trees = await mergeRequestTrees(
       { config: this.config, registry: this.registry, names: this.runNames },
@@ -95,7 +97,14 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     const bodies = await this.template.bodies(opened.run, withWork, built, await ctx.reread(ARTIFACTS.gitRulesNote));
     const { opened: done, unavailable } = await ctx.activity(
       'Open merge request',
-      () => this.ensure(bodies.trees, title, ctx.calls, skip, client),
+      () =>
+        this.ensure(bodies.trees, () => this.runNames.title(opened.run, repos[0]), {
+          calls: ctx.calls,
+          skip,
+          client,
+          run: opened.run,
+          repos,
+        }),
       ({ opened: items }) =>
         items.map(({ tree, record }) => `!${record.iid} ${tree.existing ? 'reused' : 'created'}`).join(', '),
     );
@@ -171,10 +180,14 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
 
   private async ensure(
     trees: Tree[],
-    title: string,
-    calls: HttpCallDraft[],
-    skip: boolean,
-    client: CodeHost,
+    title: () => Promise<string>,
+    {
+      calls,
+      skip,
+      client,
+      run,
+      repos,
+    }: { calls: HttpCallDraft[]; skip: boolean; client: CodeHost; run: RunEntity; repos: string[] },
   ): Promise<{ opened: { tree: Tree; record: MergeRequestRecord }[]; unavailable: boolean }> {
     const results = await Promise.all(
       trees.map(async (tree) => {
@@ -191,14 +204,17 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
           };
         }
         try {
-          const created = await client.openMergeRequest({
-            project: tree.project,
-            source: tree.branch,
-            target: tree.target,
-            title,
-            summary: tree.summary,
-            draft: true,
-          });
+          // A title the host refuses is answered once: the title is rendered again from the answer for the second try.
+          const created = await this.refusal.guard({ run, repo: tree.repo, repos }, 'title', async () =>
+            client.openMergeRequest({
+              project: tree.project,
+              source: tree.branch,
+              target: tree.target,
+              title: await title(),
+              summary: tree.summary,
+              draft: true,
+            }),
+          );
           return {
             tree,
             record: { ...created.record, summary: tree.summary },

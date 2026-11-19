@@ -281,6 +281,7 @@ export default tseslint.config(
       'server/src/steps/shared/run-report.ts', // reads the stored parts of the report the merge request shows
       'server/src/steps/shared/rebase-journal.ts', // keeps the rebase journal as a document of the run
       'server/src/steps/shared/run-names.ts', // reads the stored plan and implement changes, and stores the branch names of the run
+      'server/src/steps/shared/git-refusal.ts', // the answer to a host refusal is stored and read outside any visit: it happens inside the push or the open of another step
       'server/src/steps/shared/report-refresh.ts', // a step end refreshes the merge request report of a run with no visit of its own to write through
       'server/src/steps/shared/plan-conversation.ts', // a planner visit outside the plan step reads the repos of the run it mounts
       'server/src/steps/merge-request/merge-request-draft.ts', // a Rebase or Replay turns the merge requests back into drafts with no visit to write through

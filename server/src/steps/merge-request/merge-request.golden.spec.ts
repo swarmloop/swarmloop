@@ -24,6 +24,7 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { RunReport } from '../shared/run-report';
+import { GitRefusal } from '../shared/git-refusal';
 import { RunNames } from '../shared/run-names';
 import { StaleReview } from '../shared/stale-review';
 import { MergeRequestTemplate } from './merge-request-template';
@@ -91,6 +92,7 @@ describe('merge-request step golden traces', () => {
       app.get(StaleReview),
       app.get(RunNames),
       app.get(MergeRequestTemplate),
+      app.get(GitRefusal),
     );
     const result = await step.execute(KEY);
     expectGolden(`merge-request.${name}`, {

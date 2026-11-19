@@ -23,8 +23,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { featureWorktree } from '../../testing/runs.spec-helpers';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
-import { RunAuthor } from '../shared/run-author';
-import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { CommitPublish } from './commit-publish';
 import { CommitStep } from './commit.step';
 
 const KEY = 'PROJ-100';
@@ -60,9 +59,8 @@ describe('commit step golden traces', () => {
       kernel,
       app.get(RebasedPublisher),
       app.get(RunNames),
-      app.get(RunAuthor),
-      app.get(CodeHostRegistry),
       new RunStop(),
+      app.get(CommitPublish),
     );
     const result = await step.execute(KEY);
     expectGolden(`commit.${name}`, {

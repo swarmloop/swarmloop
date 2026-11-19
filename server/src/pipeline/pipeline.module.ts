@@ -6,6 +6,8 @@ import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { BranchStep } from '../steps/branch/branch.step';
 import { CommitStep } from '../steps/commit/commit.step';
+import { CommitPublish } from '../steps/commit/commit-publish';
+import { GitRefusal } from '../steps/shared/git-refusal';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
 import { RunNames } from '../steps/shared/run-names';
 import { RunAuthor } from '../steps/shared/run-author';
@@ -82,6 +84,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     ResearchStep,
     BranchStep,
     CommitStep,
+    CommitPublish,
+    GitRefusal,
     RebasedPublisher,
     RepositoryOrigins,
     RepositoryHost,
