@@ -8,6 +8,7 @@ import ListItemButton from '@mui/material/ListItemButton';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
+import { BacklogLabel } from '../../components/ui/backlog-label';
 import { openRunMs } from '../../lib/elapsed';
 import type { epicFigures } from '@contract/epic-figures';
 import { duration, money, relative, when } from '../../lib/format';
@@ -106,6 +107,12 @@ export function RunRow({
                 )}
               </Fragment>
             ))}
+            {run.backlog ? (
+              <>
+                {' · '}
+                <BacklogLabel label={run.backlog} />
+              </>
+            ) : null}
             {extras}
           </Typography>
         </Box>
