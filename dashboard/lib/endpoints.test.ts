@@ -17,6 +17,7 @@ import {
   getRunLog,
   getStats,
   getStep,
+  getStepEvents,
   listProjects,
   listRemote,
   createRepository,
@@ -39,6 +40,18 @@ beforeEach(() => {
 });
 
 describe('endpoints', () => {
+  it('asks for a page of 500 events of one step or of the whole run', async () => {
+    vi.mocked(api).mockResolvedValue({ events: [], next: null });
+
+    await getStepEvents('r 1', 'plan', 7);
+    await getStepEvents('r 1', null, 0);
+
+    expect(vi.mocked(api).mock.calls).toEqual([
+      ['/runs/r%201/events?step=plan&after=7&limit=500'],
+      ['/runs/r%201/events?after=0&limit=500'],
+    ]);
+  });
+
   it('uploads a file as a raw body with its encoded name', async () => {
     const file = new Blob(['bytes']);
     vi.mocked(api).mockResolvedValue({ id: 'u1', name: 'a b.png', size: 5 });
