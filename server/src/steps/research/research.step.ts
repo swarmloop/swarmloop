@@ -13,14 +13,14 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { renderProjects, storedProjects } from '../../config/checkout-path';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { isSubtask, parseSubtasks, SUBTASKS_KIND } from '../../contract/subtask';
+import { CONTRACT_KIND, isSubtask, parseSubtasks, SUBTASKS_KIND } from '../../contract/subtask';
 import { assumptions, withHandoff } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { resumableChat } from '../../agent/agent-session';
 import { projectRules } from '../shared/project-rules';
 import { mountsForStep } from '../../git/repo-names';
 import { renderImpact, renderQuestions } from './research-record';
-import { needsWait } from '../shared/needs';
+import { StarterExchange } from '../shared/starter-exchange';
 import { researchContinue } from './research.prompts';
 import { researchFor, type ResearchResult } from '../../agent-result/definitions/research';
 import { requirementErrors, requirementsToWrite } from './research-requirements';
@@ -93,6 +93,9 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const chat = await resumableChat(root(this.config), ctx.opened.run.key, 'research', runtime);
     const received = chat?.chatId ? (chat.resultName ?? null) : null;
+    // A subtask hands back what it asks, decides and leaves out through the one exchange; a run that is not a subtask asks a person.
+    const exchange = new StarterExchange(undefined, this.clock);
+    const contract = subtask ? await this.parentDocument(ctx.opened.run, CONTRACT_KIND) : null;
     const agentResult = await ctx.launch({
       prompt: promptFor(runtime, received, Boolean(chat?.chatId)),
       briefFor: (other) => promptFor(other, null),
@@ -100,33 +103,19 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       continuePrompt: researchContinue(asked),
       briefing: { continued: chat !== null },
       result: asked,
-      check: (raw) => (subtask ? [] : requirementErrors(storedList, (raw as ResearchResult).requirements)),
+      check: (raw) =>
+        subtask
+          ? exchange.check(ctx.opened.run, raw as ResearchResult, contract)
+          : requirementErrors(storedList, (raw as ResearchResult).requirements),
     });
-    const result = agentResult.resultValue as ResearchResult;
+    // A subtask asks `question`: its result has no `questions`.
+    const given = agentResult.resultValue as ResearchResult;
+    const result: ResearchResult = subtask ? { ...given, questions: [] } : given;
     if (result.title?.trim()) {
       await this.runs.recordTitle(ctx.opened.run, runTitle(result.title));
     }
-    const needs = subtask ? (result.needs ?? []) : [];
-    if (needs.length > 0) {
-      await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(renderProjects(names)));
-      const wait = needsWait(ctx.opened.startedAt, needs);
-      return {
-        ...wait,
-        outputs: [
-          { artifact: ARTIFACTS.questions, value: '' },
-          ...wait.outputs,
-          { artifact: ARTIFACTS.researchResult, value: result },
-        ],
-      };
-    }
-    if (subtask) await ctx.write(ARTIFACTS.needs, '');
-    const questions = renderQuestions(result.questions);
-    const repos = renderProjects(names);
-    // A subtask waits once, and only while its parent's planner can answer. Otherwise it decides its questions
-    // itself and records them as assumptions: no subtask waits for a person.
     const { run } = ctx.opened;
-    const parent = isSubtask(run) ? await this.runs.findById(run.parentRunId as number) : null;
-    const paused = questions !== '' && (!subtask || (parent?.split === true && !answers.trim()));
+    const repos = renderProjects(names);
     const parentList = await this.parentDocument(run, ARTIFACTS.requirementList.kind);
     const list = requirementsToWrite({
       stored: storedList,
@@ -136,8 +125,34 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       taskId: run.taskId,
       subtask,
     });
-    const assumed = subtask && !paused ? assumptions(questions) : '';
     await ctx.write(ARTIFACTS.repos, ARTIFACTS.repos.parse(repos));
+    const results = [
+      { artifact: ARTIFACTS.impact, value: renderImpact(result.impact) },
+      { artifact: ARTIFACTS.researchResult, value: result },
+      ...(list && JSON.stringify(list) !== JSON.stringify(storedList)
+        ? [{ artifact: ARTIFACTS.requirementList, value: list }]
+        : []),
+    ];
+    const outcome = subtask
+      ? await exchange.act(ctx, result, {
+          step: this.name,
+          route: 'document',
+          answered: Boolean(answers.trim()),
+          mayAsk: true,
+          outputs: results,
+          needsOutputs: [
+            { artifact: ARTIFACTS.questions, value: '' },
+            { artifact: ARTIFACTS.researchResult, value: result },
+          ],
+        })
+      : null;
+    if (outcome?.wait) {
+      return outcome.wait;
+    }
+    if (subtask) await ctx.write(ARTIFACTS.needs, '');
+    const questions = subtask ? '' : renderQuestions(result.questions);
+    const paused = questions !== '';
+    const assumed = outcome?.assumed.length ? assumptions(renderQuestions(outcome.assumed)) : '';
     const detail = (paused ? questions : repos).trimEnd();
     const word = paused ? 'waiting' : 'done';
     const summary = [
@@ -151,14 +166,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     return {
       route: paused ? { to: 'wait', reason: 'questions are open' } : { to: 'next' },
       summary: `${ctx.opened.startedAt} research ${word}\n${detail}`,
-      outputs: [
-        { artifact: ARTIFACTS.questions, value: subtask && !paused ? '' : questions },
-        { artifact: ARTIFACTS.impact, value: renderImpact(result.impact) },
-        { artifact: ARTIFACTS.researchResult, value: result },
-        ...(list && JSON.stringify(list) !== JSON.stringify(storedList)
-          ? [{ artifact: ARTIFACTS.requirementList, value: list }]
-          : []),
-      ],
+      outputs: [{ artifact: ARTIFACTS.questions, value: questions }, ...results],
       handoff: summary,
     };
   }

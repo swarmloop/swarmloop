@@ -1,6 +1,6 @@
 import Joi from 'joi';
 import { defineResult, type ResultDefinition } from '../result-definition';
-import { planKeys, type PlanResult } from './plan';
+import { planKeys, STARTER_FIELDS, type PlanResult } from './plan';
 import { keysFor, storedContractKey } from './split-fields';
 
 /** What the planner hands back to a person: a short answer, and when the plan changes, the plan itself. */
@@ -72,12 +72,18 @@ const planReply = defineResult('plan_reply', schemaOf(['name', 'overview', 'ques
 
 /**
  * The plan reply a run is asked for: a run that may not split is not told about tasks, one that is not a subtask is not
- * told about `needs`, and an answer-only reply is told of nothing but the reply and the escalation. The kind is the same.
+ * told about `needs`, `question`, `decisions` and `outOfScope`, and an answer-only reply is told of nothing but the reply and the escalation. The kind is the same.
  */
 export function planReplyFor(shape: ReplyShape): ResultDefinition {
   const hidden = shape.answerOnly
     ? [...PLAN_KEYS, 'requirements']
-    : ['name', 'overview', 'questions', ...(shape.split ? [] : SPLIT_KEYS), ...(shape.subtask ? [] : ['needs'])];
+    : [
+        'name',
+        'overview',
+        'questions',
+        ...(shape.split ? [] : SPLIT_KEYS),
+        ...(shape.subtask ? [] : ['needs', ...STARTER_FIELDS]),
+      ];
   return { ...planReply, schema: schemaOf(hidden, shape) };
 }
 

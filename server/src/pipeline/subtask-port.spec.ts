@@ -4,6 +4,7 @@ import { join } from 'path';
 import { AppConfig } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
+import type { PlanChatEntry } from '../contract/plan-chat';
 import type { RunEntity } from '../history/entities';
 import { sessionFileName, sessionHome } from '../history/session-group';
 import type { VisitDraft } from '../history/visit';
@@ -14,6 +15,7 @@ import { renderMergeRequest } from '../steps/merge-request/merge-request-record'
 import { renderQuestions } from '../steps/research/research-record';
 import { ReportRefresh } from '../steps/shared/report-refresh';
 import { RunReport } from '../steps/shared/run-report';
+import { SubtaskPlannerAnswer } from './subtask-planner-answer';
 import { SubtaskPort } from './subtask-port';
 
 const answered = {
@@ -383,5 +385,77 @@ describe('SubtaskPort merge requests', () => {
       const { port, parent, child } = mergeSetup(true);
       await expect(port.recordMerged(parent, child, { demo: 'abc123' })).resolves.toBeUndefined();
     });
+  });
+});
+
+describe('the parent finds what a subtask asks at plan and implement', () => {
+  const escalation = {
+    key: 'escalate-ask-1',
+    role: 'planner',
+    kind: 'escalation',
+    from: 'implement',
+    text: 'Which pagination?',
+    at: '2026-01-01T00:00:00.000Z',
+    state: 'pending',
+  } as PlanChatEntry;
+
+  function answerer(stored: Record<string, string>, entries: PlanChatEntry[]) {
+    const appended: PlanChatEntry[] = [];
+    const taken: string[] = [];
+    const chat = {
+      read: async () => ({ entries: [...entries, ...appended], revisions: [] }),
+      answerFor: async () => null,
+      appendEntry: async (_key: string, entry: PlanChatEntry) => void appended.push(entry),
+      markTaken: async (_key: string, keys: string[]) => void taken.push(...keys),
+    };
+    const accept = jest.fn().mockResolvedValue(undefined);
+    const documents = {
+      latestBody: async (_key: string, kind: string) => stored[kind] ?? null,
+      putDocument: async () => undefined,
+    };
+    const planner = new SubtaskPlannerAnswer(
+      documents as never,
+      { accept } as never,
+      { chat, clock: new FakeClock() } as never,
+      { listStats: async () => [] } as never,
+    );
+    return { planner, appended, taken, accept };
+  }
+
+  it("finds a plan's question in the questions of the run", async () => {
+    const stored = {
+      questions: renderQuestions(['Which column?']),
+      plan_result: ARTIFACTS.planResult.format({
+        summary: [],
+        plan: [],
+        questions: [],
+        question: 'Which column?',
+        contract: [],
+        tasks: [],
+        keep: [],
+      }),
+    };
+    const run = { key: 'child', status: 'waiting', currentStep: 'plan' } as RunEntity;
+    expect(await answerer(stored, []).planner.asking(run)).toBe(true);
+    const answers = `question: Which column?\nanswer: int\n`;
+    expect(await answerer({ ...stored, answers }, []).planner.asking(run)).toBe(false);
+  });
+
+  it("finds an implement escalation, and closes it when the parent's answer is delivered", async () => {
+    const run = { key: 'child', status: 'waiting', currentStep: 'implement' } as RunEntity;
+    const { planner, appended, taken, accept } = answerer({}, [escalation]);
+    expect(await planner.asking(run)).toBe(true);
+
+    await planner.deliver(run, 'Use a cursor.');
+
+    expect(appended).toMatchObject([{ kind: 'answer', from: 'implement', text: 'Use a cursor.' }]);
+    expect(taken).toEqual(['escalate-ask-1']);
+    expect(accept).toHaveBeenCalledWith('resume', 'child', {}, expect.anything());
+  });
+
+  it('does not find a question that waits for the own planner of the subtask', async () => {
+    const run = { key: 'child', status: 'waiting', currentStep: 'implement' } as RunEntity;
+    const question = { ...escalation, key: 'ask-1', kind: 'question' } as PlanChatEntry;
+    expect(await answerer({}, [question]).planner.asking(run)).toBe(false);
   });
 });

@@ -158,7 +158,7 @@ describe('research step', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-subtask-'));
     await writeEnv(root);
     mkdirSync(join(root, 'worktrees', 'PROJ-23-t1', 'billing-api'), { recursive: true });
-    const agent = jest.fn().mockResolvedValue(answer({ questions: ['which field is optional?'] }));
+    const agent = jest.fn().mockResolvedValue(answer({ questions: [], question: 'which field is optional?' }));
     const app = await boot(root, agent);
     const runs = app.get(RunRepository);
     const documents = app.get(DocumentRepository);
@@ -171,6 +171,8 @@ describe('research step', () => {
     child.taskId = 't1';
     await runs.saveRun(child);
     await documents.putDocument(child, 'requirements', '{"prompt":"ship the field"}\n');
+    // It asked once and was answered: a further question is its own choice.
+    await documents.putDocument(child, 'answers', 'question: which field is optional?\nanswer: none\n');
     try {
       const done = await app.get(PipelineService).step('research', 'PROJ-23-t1');
       expect(done.exitCode).toBe(0);
@@ -255,7 +257,7 @@ describe('research step', () => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-split-'));
       await writeEnv(root);
       mkdirSync(join(root, 'worktrees', 'PROJ-25-t1', 'billing-api'), { recursive: true });
-      const agent = jest.fn().mockResolvedValue(answer({ questions: ['which field is optional?'] }));
+      const agent = jest.fn().mockResolvedValue(answer({ questions: [], question: 'which field is optional?' }));
       const app = await boot(root, agent);
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);

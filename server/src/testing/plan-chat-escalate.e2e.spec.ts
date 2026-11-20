@@ -219,15 +219,15 @@ describe('a subtask asks the planner of its parent', () => {
     return { documents, prompts, parent, ordered };
   }
 
-  /** The subtask `a` waits at implement with its question in its own chat. */
+  /** The subtask `a` waits at implement with what its own planner escalated, pending in its own chat. */
   async function asks(): Promise<string> {
     const run = await child(app, 'a');
     writeRunState(run, { status: 'waiting', currentStep: 'implement' });
     await app.app.get(RunRepository).saveRun(run);
     await app.app.get(PlanChatStore).appendEntry(run.key, {
-      key: 'ask-implement-1',
+      key: 'escalate-ask-implement-1',
       role: 'planner',
-      kind: 'question',
+      kind: 'escalation',
       from: 'implement',
       text: 'Which field?',
       at: '2026-01-01T00:00:00.000Z',
@@ -247,7 +247,7 @@ describe('a subtask asks the planner of its parent', () => {
     expect(prompts[0]).toContain('Subtask a asks:\n- Which field?');
     const chat = await app.app.get(PlanChatStore).read(key);
     expect(chat.entries).toMatchObject([
-      { kind: 'question', from: 'implement', text: 'Which field?', state: 'taken' },
+      { kind: 'escalation', from: 'implement', text: 'Which field?', state: 'taken' },
       { kind: 'answer', from: 'implement', text: 'Use a column.', state: 'pending' },
     ]);
     expect(await documents.latestBody(PARENT, 'contract')).toContain('- subtask a: Use a column.');
@@ -268,7 +268,7 @@ describe('a subtask asks the planner of its parent', () => {
     await pass(app);
 
     expect((await app.app.get(PlanChatStore).read(key)).entries).toMatchObject([
-      { kind: 'question', state: 'taken' },
+      { kind: 'escalation', state: 'taken' },
       { kind: 'answer', from: 'implement', text: 'Use a column.', state: 'pending' },
     ]);
     expect(await documents.latestBody(PARENT, 'contract')).toContain('- subtask a: Use a column.');

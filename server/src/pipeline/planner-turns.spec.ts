@@ -5,6 +5,7 @@ import type { PlanChatEntry } from '../contract/plan-chat';
 import type { PlanChatStore } from '../history/plan-chat.store';
 import type { RunRepository } from '../history/run.repository';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
+import { asksForStarter } from '../steps/shared/starter-asks';
 import { PlannerTurns, type PlannerTurn } from './planner-turns';
 
 const turn = (id: string, at: string): PlannerTurn => ({ id, at, text: `text of ${id}` });
@@ -196,7 +197,12 @@ const question = (key: string, at: string): PlanChatEntry => ({
 });
 
 /** A plan chat held in memory, and a planner that gives `reply` to the prompts it is asked. */
-function asked(entries: PlanChatEntry[], reply: unknown, stored: Record<string, string> = {}) {
+function asked(
+  entries: PlanChatEntry[],
+  reply: unknown,
+  stored: Record<string, string> = {},
+  run: Partial<RunEntity> = {},
+) {
   const held = [...entries];
   const prompts: string[] = [];
   const documents = {
@@ -231,7 +237,7 @@ function asked(entries: PlanChatEntry[], reply: unknown, stored: Record<string, 
     },
   } as unknown as PlanConversation;
   const runs = {
-    findRun: () => Promise.resolve({ key: 'run-1', currentStep: 'implement', status: 'waiting' }),
+    findRun: () => Promise.resolve({ key: 'run-1', currentStep: 'implement', status: 'waiting', ...run }),
     release: (_run: unknown, change: unknown) => {
       released.push(change);
       return Promise.resolve();
@@ -306,6 +312,39 @@ describe('PlannerTurns answering a step question', () => {
     expect(released).toEqual([{ status: 'waiting', facts: { needsAnswers: true } }]);
     expect(await turns.hasQuestion('run-1')).toBe(true);
     expect(await turns.next(implementing, new Set())).toBeNull();
+  });
+
+  describe("a subtask's implement question", () => {
+    const subtask = { ...implementing, parentRunId: 4 } as RunEntity;
+
+    it('is taken by its own planner, which answers it as for any run', async () => {
+      const { turns, held } = asked([question('ask-1', '2026-01-01T00:00:05.000Z')], { reply: 'Cursor.' }, {}, subtask);
+      expect(await turns.next(subtask, new Set())).toBe('question');
+
+      expect(await turns.answer('run-1', new Set())).toBe(true);
+
+      expect(held.find((entry) => entry.kind === 'answer')).toMatchObject({ from: 'implement', text: 'Cursor.' });
+    });
+
+    it('leaves what its planner escalates pending for the parent, and never asks a person', async () => {
+      const { turns, held, stored, released } = asked(
+        [question('ask-1', '2026-01-01T00:00:05.000Z')],
+        { reply: 'Not mine to decide.', escalate: 'Which pagination do you want?' },
+        {},
+        subtask,
+      );
+
+      expect(await turns.answer('run-1', new Set())).toBe(false);
+
+      expect(stored.questions).toBeUndefined();
+      expect(stored.question_parts).toBeUndefined();
+      expect(asksForStarter({ entries: held }).map((entry) => entry.text)).toEqual(['Which pagination do you want?']);
+      expect(released).toEqual([
+        { status: 'waiting', reason: { code: 'ASKS_PLANNER', message: 'implement asks the planner of the parent' } },
+      ]);
+      expect(await turns.hasQuestion('run-1')).toBe(true);
+      expect(await turns.next(subtask, new Set())).toBeNull();
+    });
   });
 
   describe('the answer of the person to an escalated question', () => {

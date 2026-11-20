@@ -1,6 +1,7 @@
 import Joi from 'joi';
 import { defineResult, type ResultDefinition } from '../result-definition';
 import type { Need } from './research';
+import { starterKeys, type OutOfScope, type StarterDecision } from './starter-fields';
 import { coversKey, keysFor, splitKeys, storedContractKey, type SplitFields } from './split-fields';
 
 /** What the plan step hands to the server: one checklist, the questions a person must answer, or a split into tasks. */
@@ -13,6 +14,9 @@ export interface PlanResult extends SplitFields {
   name?: string;
   overview?: string;
   needs?: Need[];
+  question?: string;
+  decisions?: StarterDecision[];
+  outOfScope?: OutOfScope[];
 }
 
 const filled = (value: unknown): boolean => Array.isArray(value) && value.length > 0;
@@ -45,6 +49,7 @@ const keys = {
     )
     .description('Sibling tasks this task waits for; leave out when none'),
   covers: coversKey(),
+  ...starterKeys(),
   ...splitKeys(),
 };
 
@@ -54,7 +59,10 @@ function schemaOf(hidden: string[], stored = false): Joi.ObjectSchema {
   return Joi.object(keysFor(used, hidden))
     .unknown(hidden.length > 0)
     .custom((value: PlanResult, helpers) => {
-      const error = filled(value.needs) ? null : planShapeError(value);
+      if (hidden.includes('questions') && filled(value.questions)) {
+        return helpers.message({ custom: 'questions: send `question` instead' });
+      }
+      const error = filled(value.needs) || value.question?.trim() ? null : planShapeError(value);
       return error ? helpers.message({ custom: error }) : value;
     });
 }
@@ -67,12 +75,21 @@ const SPLIT_KEYS = ['contract', 'tasks', 'keep'];
 /** Every field of the plan result: the definition its stored kind is read with. */
 export const plan = defineResult('plan', schemaOf([], true));
 
+/** The fields only a subtask is told about: what it hands back to the run that started it. */
+export const STARTER_FIELDS = Object.keys(starterKeys());
+
 /**
  * The plan result a run is asked for: a run that may not split is not told about tasks, a run that is not a subtask is
- * not told about `needs`, and none is told about the name and overview the stored result may hold. The kind is the same.
+ * not told about `needs`, `question`, `decisions` and `outOfScope`, a subtask asks `question` in place of `questions`,
+ * and none is told about the name and overview the stored result may hold. The kind is the same.
  */
 export function planFor(shape: { split: boolean; subtask: boolean }): ResultDefinition {
-  const hidden = ['name', 'overview', ...(shape.split ? [] : SPLIT_KEYS), ...(shape.subtask ? [] : ['needs'])];
+  const hidden = [
+    'name',
+    'overview',
+    ...(shape.split ? [] : SPLIT_KEYS),
+    ...(shape.subtask ? ['questions'] : ['needs', ...STARTER_FIELDS]),
+  ];
   return { ...plan, schema: schemaOf(hidden) };
 }
 

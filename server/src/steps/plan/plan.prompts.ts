@@ -5,14 +5,6 @@ import { resultPromptFor } from '../../agent-result/result-prompt';
 import { LINKED_CONTEXT, TASK_SCOPE } from '../shared/requirements-brief';
 import { skillSection } from '../shared/skill-prompt';
 
-/** A subtask has no one to ask: it decides its own questions, states them as assumptions and gives the plan. */
-export function subtaskDecides(resultText: string): string {
-  return [
-    'No one can answer these questions. Decide each one yourself from the task, the contract and the tree, then give the plan now. Do not ask again.',
-    resultText,
-  ].join('\n\n');
-}
-
 /** The prompt that finishes an interrupted plan in the same chat, which already holds the plan result prompt. */
 export function planContinue(): string {
   return [

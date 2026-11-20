@@ -32,6 +32,10 @@ import { REBASE_CONFLICT, rebaseFeatureRepos } from '../../git/rebase';
 import { memoryJournal } from '../../git/rebase/journal.spec-helpers';
 
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
+import { PlanChatStore } from '../../history/plan-chat.store';
+import { sessionFileName, sessionHome } from '../../history/session-group';
+import { deriveState } from '../../history/run-state';
+import { agentStateDir } from '../../sandbox/sandbox-launch';
 
 import {
   implAnswer,
@@ -541,6 +545,70 @@ describe('implement step', () => {
       expect(handoff).toContain('dropped "add the field"');
       expect(handoff).toContain('added "fix the failing test"');
       expect(handoff).toContain('outranks the checklist');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("asks the subtask's own planner, waits holding no container, and goes on from implement in the same chat after the answer", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-subtask-ask-'));
+    await writeEnv(root);
+    const tree = featureTree(root, 'PROJ-150-t1', 'billing-api');
+    // The plan step of the subtask left its chat, which is where its planner is asked.
+    mkdirSync(agentStateDir(root, 'PROJ-150-t1', sessionHome('plan')), { recursive: true });
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writeFileSync(
+      join(root, 'data', sessionFileName('PROJ-150-t1', 'plan')),
+      JSON.stringify({
+        runtime: 'claude',
+        chatId: 'chat-plan',
+        resumed: true,
+        completed: true,
+        killReason: null,
+        usd: 0,
+      }),
+    );
+    const agent = jest
+      .fn()
+      .mockResolvedValueOnce(result(implAnswer([], [], { question: 'Cursor or page number?' })))
+      .mockImplementationOnce(async () => {
+        writeFileSync(join(tree, 'field.ts'), 'export const field = 1;\n');
+        return result(reply);
+      })
+      .mockResolvedValue(result(reply));
+    const app = await boot(root, agent);
+    try {
+      const runs = app.get(RunRepository);
+      const parent = await runs.openWaiting('PROJ-150', '/target');
+      await seed(app, 'PROJ-150-t1', 'approve');
+      const child = await runs.findRun('PROJ-150-t1');
+      await runs.saveRun({ ...child!, parentRunId: parent.id, taskId: 't1' });
+      const head = git(tree, ['rev-parse', 'HEAD']);
+
+      await app.get(PipelineService).step('implement', 'PROJ-150-t1');
+
+      const waiting = await runs.findRun('PROJ-150-t1');
+      expect(waiting).toMatchObject({ currentStep: 'implement', status: 'waiting' });
+      expect(deriveState(waiting!).reason).toMatchObject({ code: 'ASKS_PLANNER' });
+      const chat = app.get(PlanChatStore);
+      expect((await chat.pendingQuestions('PROJ-150-t1')).map((entry) => entry.text)).toEqual([
+        'Cursor or page number?',
+      ]);
+      expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
+
+      await chat.appendEntry('PROJ-150-t1', {
+        key: 'answer-1',
+        role: 'planner',
+        kind: 'answer',
+        from: 'implement',
+        text: 'Cursor.',
+        at: '2026-01-01T00:00:00.000Z',
+        state: 'pending',
+      });
+      await app.get(PipelineService).step('implement', 'PROJ-150-t1');
+
+      expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).toContain('Cursor.');
+      expect((await runs.findRun('PROJ-150-t1'))?.currentStep).not.toBe('implement');
     } finally {
       await app.close();
     }
