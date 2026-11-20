@@ -33,7 +33,6 @@ export function expectedEnv(isolation: Pick<SwarmloopEnv, (typeof ISOLATION_KEYS
     STEP_USD_MAX: optionalLimit(raw.STEP_USD_MAX),
     STEP_TOKEN_MAX: optionalLimit(raw.STEP_TOKEN_MAX),
     SWARMLOOP_REPOS: splitList(raw.SWARMLOOP_REPOS),
-    CHECKOUTS_ROOT: raw.CHECKOUTS_ROOT || undefined,
     ...isolation,
   };
 }
