@@ -42,4 +42,25 @@ describe('RepositoryOrigins', () => {
 
     await expect(origins.of('web')).rejects.toThrow('web has no origin');
   });
+
+  it('lists the clones with their path and origin, narrowed by the repositories, without a clone that has no origin', async () => {
+    const checkouts = join(base, 'checkouts');
+    copyMainWithOrigin(checkouts, 'api');
+    copyMainWithOrigin(checkouts, 'bare');
+    copyMainWithOrigin(checkouts, 'skipped');
+    git(join(checkouts, 'web'), ['remote', 'set-url', 'origin', 'https://code.example/acme/web.git']);
+    git(join(checkouts, 'api'), ['remote', 'set-url', 'origin', 'git@code.example:acme/api.git']);
+    git(join(checkouts, 'bare'), ['remote', 'remove', 'origin']);
+    git(join(checkouts, 'skipped'), ['remote', 'set-url', 'origin', 'https://code.example/acme/skipped.git']);
+    const narrowed = new RepositoryOrigins(
+      new AppConfig(
+        testEnv({ SWARMLOOP_ROOT: base, CHECKOUTS_ROOT: checkouts, SWARMLOOP_REPOS: ['web', 'api', 'bare'] }),
+      ),
+    );
+
+    await expect(narrowed.list()).resolves.toEqual([
+      { name: 'api', path: join(checkouts, 'api'), origin: 'git@code.example:acme/api.git' },
+      { name: 'web', path: join(checkouts, 'web'), origin: 'https://code.example/acme/web.git' },
+    ]);
+  });
 });

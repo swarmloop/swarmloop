@@ -16,7 +16,11 @@ import { PHASES } from '../contract/steps';
 import { CHAT_LOCK, containerLockBody, readChatLock } from '../pipeline/chat-lock';
 import { settleShell } from '../pipeline/shell-lock';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
-import { mountsForRun } from '../sandbox/sandbox-launch';
+import { collectEnvMasks } from '../sandbox/env-masks';
+import { workRoots } from '../sandbox/allowed-path';
+import { handToSandbox } from '../sandbox/sandbox-owner';
+import { mountsForRun, sandboxUserId } from '../sandbox/sandbox-launch';
+import type { SandboxMount } from '../core/sandbox-mount';
 import { SandboxService } from '../sandbox/sandbox.service';
 import {
   parseResume,
@@ -63,6 +67,8 @@ function toMatches(runs: RunEntity[]): ShellMatch[] {
 
 @Injectable()
 export class ShellService {
+  private handOver: typeof handToSandbox = handToSandbox;
+
   constructor(
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
@@ -73,6 +79,10 @@ export class ShellService {
     private readonly clock: Clock,
     private readonly workspace: WorkspaceGuard,
   ) {}
+
+  useHandOver(handOver: typeof handToSandbox): void {
+    this.handOver = handOver;
+  }
 
   /** Which run `path` belongs to: one match, several matches, or a new run key. Nothing is written. */
   async locate(path: string): Promise<{ matches: ShellMatch[] } | { key: string; cwd: string; created: boolean }> {
@@ -129,6 +139,12 @@ export class ShellService {
       throw new ConflictException(`${key} is already running`);
     }
     await this.workspace.ensureForRequest(run);
+    const uid = sandboxUserId();
+    for (const mount of await this.resolvedMounts(run)) {
+      if (!mount.readonly && mount.volumeSubpath) {
+        await this.handOver(mount.hostPath, uid);
+      }
+    }
     if (!/^(waiting|blocked|failed|done)$/.test(run.status)) {
       throw new ConflictException(`${key} is already running`);
     }
@@ -218,7 +234,7 @@ export class ShellService {
 
   private async view(run: RunEntity, created: boolean): Promise<ShellFeature> {
     await this.workspace.ensureForRequest(run);
-    const mounts = mountsForRun(join(root(this.config), 'worktrees', run.key), run.targetPath);
+    const mounts = await this.resolvedMounts(run);
     return {
       key: run.key,
       created,
@@ -226,8 +242,20 @@ export class ShellService {
       currentStep: run.currentStep,
       runtime: run.runtime,
       resumeChatId: await this.resumeChat(run),
-      mounts: mounts.map((mount) => ({ hostPath: mount.hostPath, containerPath: mount.containerPath })),
+      mounts: mounts.map(({ hostPath, containerPath, volume, volumeSubpath }) => ({
+        hostPath,
+        containerPath,
+        volume,
+        volumeSubpath,
+      })),
+      envMasks: collectEnvMasks(mounts).map(({ hostFile, containerFile }) => ({ hostFile, containerFile })),
+      workRoots: workRoots(this.config),
     };
+  }
+
+  /** The run's mounts, each with the volume and subpath the daemon sees. */
+  private resolvedMounts(run: RunEntity): Promise<SandboxMount[]> {
+    return this.sandbox.withDaemonPaths(mountsForRun(join(root(this.config), 'worktrees', run.key), run.targetPath));
   }
 
   private async resumeChat(run: RunEntity): Promise<string | null> {
