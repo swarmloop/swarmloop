@@ -1,55 +1,47 @@
-import { isAbsolute, join, relative, resolve, sep } from 'path';
-import { realpathSync } from 'fs';
+import { relative, sep } from 'path';
+import { remoteProject } from '../integrations/code-host/remote-project';
+import type { SandboxMount } from '../core/sandbox-mount';
+import type { CloneOriginsView, ShellMount } from '../contract/shell';
 
-/** Map a host checkout into the directory the server sees in Docker. */
-export function nestCheckout(hostPath: string, repoRoot: string, checkoutsRoot: string | undefined): string {
-  const configured = checkoutsRoot?.trim() ?? '';
-  const hostRoot =
-    configured && isAbsolute(configured)
-      ? resolve(configured)
-      : resolve(repoRoot, configured.length > 0 ? configured : '..');
-  let real: string;
-  let root: string;
-  try {
-    real = realpathSync(hostPath);
-    root = realpathSync(hostRoot);
-  } catch {
-    return hostPath;
-  }
-  try {
-    const work = realpathSync(join(repoRoot, 'worktrees'));
-    if (real === work || real.startsWith(`${work}${sep}`)) {
-      const inside = relative(work, real);
-      return inside.length === 0 ? '/app/worktrees' : `/app/worktrees/${inside.split(sep).join('/')}`;
-    }
-  } catch {
-    // The worktrees directory is created with the first feature.
-  }
-  if (real !== root && !real.startsWith(`${root}${sep}`)) {
-    return real;
-  }
-  const rest = relative(root, real);
-  return rest.length === 0 ? '/checkouts' : `/checkouts/${rest.split(sep).join('/')}`;
+/** The top folder and the `origin` URL of the clone that holds a host path. */
+export interface HostClone {
+  top: string;
+  origin: string;
 }
 
-/** Map a path the server stored back to a path the host Docker daemon can bind. */
-export function hostCheckout(nestPath: string, repoRoot: string, checkoutsRoot: string | undefined): string {
-  const configured = checkoutsRoot?.trim() ?? '';
-  const hostRoot =
-    configured && isAbsolute(configured)
-      ? resolve(configured)
-      : resolve(repoRoot, configured.length > 0 ? configured : '..');
-  if (nestPath === '/checkouts') {
-    return hostRoot;
+/** Map a host path in a clone to the server's clone of the same project, matched by origin. */
+export function nestCheckout(
+  hostPath: string,
+  hostClone: HostClone | null,
+  clones: CloneOriginsView['clones'],
+): string {
+  if (hostClone === null) {
+    return hostPath;
   }
-  if (nestPath.startsWith('/checkouts/')) {
-    return join(hostRoot, ...nestPath.slice('/checkouts/'.length).split('/'));
+  const wanted = identity(hostClone.origin);
+  const clone = wanted === null ? undefined : clones.find((item) => identity(item.origin) === wanted);
+  if (!clone) {
+    return hostPath;
   }
-  if (nestPath === '/app/worktrees') {
-    return join(repoRoot, 'worktrees');
+  const inside = relative(hostClone.top, hostPath);
+  return inside.length === 0 ? clone.path : `${clone.path}/${inside.split(sep).join('/')}`;
+}
+
+/** Turn a mount of the server's view into the mount the shell container launches. */
+export function hostCheckout(mount: ShellMount): SandboxMount {
+  return {
+    hostPath: mount.hostPath,
+    containerPath: mount.containerPath,
+    volume: mount.volume,
+    volumeSubpath: mount.volumeSubpath,
+  };
+}
+
+function identity(origin: string): string | null {
+  try {
+    const { host, project } = remoteProject(origin);
+    return `${host.toLowerCase()}/${project.toLowerCase()}`;
+  } catch {
+    return null;
   }
-  if (nestPath.startsWith('/app/worktrees/')) {
-    return join(repoRoot, 'worktrees', ...nestPath.slice('/app/worktrees/'.length).split('/'));
-  }
-  return nestPath;
 }

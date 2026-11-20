@@ -1,5 +1,4 @@
 import { splitAgent } from '../config/agents';
-import { splitList } from '../config/env';
 import { readDefaultSettings, readSettings } from '../config/load-env';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
@@ -11,9 +10,6 @@ export interface ShellConfig {
   oauthToken: string;
   codexAuth: string;
   codexApiKey: string;
-  checkoutsRoot: string | undefined;
-  /** Repository folder names the server is limited to. Empty means every repository. */
-  repos: string[];
   /** `open` turns the egress proxy off, as on the server. */
   egress: string | undefined;
   /** A Docker runtime such as `runsc`, as on the server. */
@@ -34,8 +30,6 @@ export function readShellConfig(file: string, launchEnv?: Readonly<NodeJS.Proces
     oauthToken: values.CLAUDE_CODE_OAUTH_TOKEN ?? '',
     codexAuth: values.CODEX_AUTH ?? '',
     codexApiKey: values.CODEX_API_KEY ?? '',
-    checkoutsRoot: values.CHECKOUTS_ROOT,
-    repos: splitList(values.SWARMLOOP_REPOS),
     egress: values.SANDBOX_EGRESS,
     engine: values.SANDBOX_DOCKER_RUNTIME ?? '',
     reserveMemoryGb: reserveGigabytes(values.RESERVE_MEMORY_GB),

@@ -14,7 +14,7 @@ export function workRoots(config: AppConfig): string[] {
   );
 }
 
-/** The same roots for a caller that has no `AppConfig`, such as the CLI shell. */
+/** The same roots from a base folder and the checkouts settings alone. */
 export function workRootsAt(base: string, checkoutsRoot: string | undefined, repos: string[]): string[] {
   return [...repoPaths(base, checkoutsRoot, repos), join(base, 'worktrees')];
 }

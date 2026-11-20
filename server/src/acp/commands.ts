@@ -1,7 +1,7 @@
 import { existsSync } from 'fs';
 import { basename, isAbsolute, join, resolve } from 'path';
 import { CHECKOUT_NAME } from '../core/checkout-name';
-import { nestCheckout } from './paths';
+import { serverPathOf } from './host-clone';
 import type { ServerApi } from './server-api';
 import type { Session } from './sessions';
 
@@ -18,8 +18,6 @@ interface Command {
 interface CommandOptions {
   api: ServerApi;
   skills: SkillCommand[];
-  repoRoot: string;
-  checkoutsRoot?: string;
 }
 
 interface CommandEvents {
@@ -55,7 +53,7 @@ export class Commands {
     } else if (command) {
       this.events.chunk(session, `unknown command /${command.name}\n`);
     } else if (!session.runKey) {
-      const projects = this.gitProjects(session);
+      const projects = await this.gitProjects(session);
       if (projects.length === 0) {
         throw new Error('project is missing');
       }
@@ -73,7 +71,7 @@ export class Commands {
   }
 
   private async review(session: Session, rest: string): Promise<void> {
-    const path = this.reviewPath(session, rest);
+    const path = await this.reviewPath(session, rest);
     const created = await this.options.api.create({ path, prompt: reviewPrompt(rest) });
     session.runKey = created.key;
     this.events.name(session, created.key);
@@ -151,7 +149,7 @@ export class Commands {
       const result = await this.options.api.chat(session.runKey, {
         prompt: text,
         skill,
-        cwd: this.visible(session.cwd),
+        cwd: await this.visible(session.cwd),
         mcpServers: session.mcpServers,
       });
       const body = result.text.trimEnd();
@@ -164,7 +162,7 @@ export class Commands {
     }
   }
 
-  private reviewPath(session: Session, rest: string): string {
+  private async reviewPath(session: Session, rest: string): Promise<string> {
     const first = rest.split(/\s+/)[0] ?? '';
     if (!looksLikePath(first)) {
       return this.visible(session.cwd);
@@ -173,17 +171,17 @@ export class Commands {
     return this.visible(chosen);
   }
 
-  private visible(hostPath: string): string {
-    return nestCheckout(hostPath, this.options.repoRoot, this.options.checkoutsRoot);
+  private visible(hostPath: string): Promise<string> {
+    return serverPathOf(hostPath, this.options.api);
   }
 
-  private gitProjects(session: Session): string[] {
+  private async gitProjects(session: Session): Promise<string[]> {
     const names: string[] = [];
     for (const folder of session.folders) {
       if (!existsSync(join(folder, '.git'))) {
         continue;
       }
-      const name = basename(this.visible(folder));
+      const name = basename(await this.visible(folder));
       if (name === 'checkouts' || name.startsWith('.') || name.startsWith('run-') || !CHECKOUT_NAME.test(name)) {
         continue;
       }

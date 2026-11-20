@@ -18,7 +18,6 @@ interface SloopOptions {
   api: ServerApi;
   skills: SkillCommand[];
   repoRoot: string;
-  checkoutsRoot?: string;
   cwd?: string;
   sleep?: (ms: number) => Promise<void>;
   intervalMs?: number;

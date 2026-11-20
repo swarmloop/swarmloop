@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'fs';
-import { mkdtemp, mkdir } from 'fs/promises';
+import { mkdtemp, mkdir, realpath } from 'fs/promises';
 import { tmpdir } from 'os';
 import { basename, join } from 'path';
 import { Writable } from 'stream';
@@ -9,6 +9,7 @@ import type { FlowView } from '../contract/api';
 import type { ServerApi } from './server-api';
 import { HttpServerApi } from './server-api';
 import { nestCheckout } from './paths';
+import { serverPathOf } from './host-clone';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 
 describe('sloop', () => {
@@ -56,13 +57,19 @@ describe('sloop', () => {
 
   it('maps a host checkout into the nest mount', async () => {
     const root = await mkdtemp(join(tmpdir(), 'sloop-path-'));
-    const demo = join(root, 'checkouts', 'demo');
-    const tree = join(root, 'repo', 'worktrees', 'PROJ-1');
-    await mkdir(demo, { recursive: true });
-    await mkdir(tree, { recursive: true });
-    expect(nestCheckout(demo, join(root, 'repo'), join(root, 'checkouts'))).toBe('/checkouts/demo');
-    expect(nestCheckout(tree, join(root, 'repo'), join(root, 'checkouts'))).toBe('/app/worktrees/PROJ-1');
-    expect(nestCheckout(join(root, 'repo'), join(root, 'repo'), join(root, 'checkouts'))).toContain(root);
+    const demo = join(root, 'demo');
+    await mkdir(join(demo, '.git'), { recursive: true });
+    await mkdir(join(demo, 'src'), { recursive: true });
+    writeFileSync(join(demo, '.git', 'config'), '[remote "origin"]\n\turl = git@github.com:o/r.git\n');
+    const clones = [{ name: 'r', path: '/checkouts/r', origin: 'https://github.com/o/r.git' }];
+    const api = { cloneOrigins: async () => ({ clones }) } as ServerApi;
+    expect(await serverPathOf(demo, api)).toBe('/checkouts/r');
+    expect(await serverPathOf(join(demo, 'src'), api)).toBe('/checkouts/r/src');
+    const other = [{ name: 'x', path: '/checkouts/x', origin: 'https://github.com/o/x.git' }];
+    expect(await serverPathOf(demo, { cloneOrigins: async () => ({ clones: other }) } as ServerApi)).toBe(
+      await realpath(demo),
+    );
+    expect(nestCheckout('/tmp/plain', null, clones)).toBe('/tmp/plain');
   });
 
   it('answers initialize and lists features from nest', async () => {
@@ -677,6 +684,7 @@ function harness(
     shellUnlock: async () => ({ status: 'waiting' }),
     snapshots: async () => ({ snapshots: [] }),
     rewind: async () => ({ step: 'requirements' }),
+    cloneOrigins: async () => ({ clones: [] }),
     ...api,
   };
   const notes: { method?: string; params?: unknown }[] = [];
@@ -684,7 +692,6 @@ function harness(
     api: full,
     skills: [{ name: 'research', description: 'Read the ticket' }],
     repoRoot,
-    checkoutsRoot: '/tmp/outside',
     cwd: '/tmp/demo',
     sleep: sleep ?? (async () => undefined),
     intervalMs: 0,

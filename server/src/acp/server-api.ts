@@ -1,6 +1,7 @@
 import type {
   ChatBody,
   ChatView,
+  CloneOriginsView,
   CreateRunBody,
   FlowView,
   OpenShellBody,
@@ -33,6 +34,7 @@ export interface ServerApi {
   shellUnlock(key: string): Promise<ShellStatusView>;
   snapshots(key: string): Promise<SnapshotsView>;
   rewind(key: string, id: number): Promise<RewindView>;
+  cloneOrigins(): Promise<CloneOriginsView>;
 }
 
 export class HttpServerApi implements ServerApi {
@@ -105,6 +107,10 @@ export class HttpServerApi implements ServerApi {
 
   rewind(key: string, id: number): Promise<RewindView> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/rewind`, { id });
+  }
+
+  cloneOrigins(): Promise<CloneOriginsView> {
+    return this.send('GET', '/checkouts/origins');
   }
 
   startCliLogin(machine: string): Promise<CliLoginStarted> {
