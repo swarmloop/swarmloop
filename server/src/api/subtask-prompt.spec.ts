@@ -29,83 +29,16 @@ async function setup() {
 }
 
 describe('subtaskPromptOf', () => {
-  it('puts the task map after proof and before the parent brief', async () => {
-    const { db, runs, documents, parent } = await setup();
-    try {
-      const tasks = [task('a'), task('b')];
-      const child = await runs.openSubtask('p-1-b', parent.id, 'b');
-
-      const prompt = await subtaskPromptOf(documents, parent, tasks[0], tasks, [child]);
-
-      const proof = prompt.indexOf('proof: a.spec.ts');
-      const map = prompt.indexOf('- b (running): Title b - files: b.ts');
-      const brief = prompt.indexOf('Requirements of the parent run');
-      expect(proof).toBeGreaterThan(-1);
-      expect(map).toBeGreaterThan(proof);
-      expect(brief).toBeGreaterThan(map);
-    } finally {
-      await db.close();
-    }
-  });
-
-  it('holds the summary and files of a merged dependency', async () => {
-    const { db, runs, documents, parent } = await setup();
-    try {
-      const tasks = [task('a', { depends: ['b'] }), task('b', { status: 'merged', files: ['b.ts', 'b.spec.ts'] })];
-      const child = await runs.openSubtask('p-1-b', parent.id, 'b');
-      await documents.putDocument(
-        child,
-        'merge_request',
-        'project: web\niid: 7\nurl: https://host/7\ndraft: false\n\nAdds the b field.\n',
-      );
-
-      const prompt = await subtaskPromptOf(documents, parent, tasks[0], tasks, [child]);
-
-      expect(prompt).toContain('Adds the b field.');
-      expect(prompt).toContain('b.ts, b.spec.ts');
-    } finally {
-      await db.close();
-    }
-  });
-
-  it('lists the files the merge of a dependency changed, not the files the plan named', async () => {
-    const { db, runs, documents, parent } = await setup();
-    try {
-      const tasks = [task('a', { depends: ['b'] }), task('b', { status: 'merged', files: ['b.ts'] })];
-      const child = await runs.openSubtask('p-1-b', parent.id, 'b');
-      await documents.putDocument(child, 'merged_files', 'b.ts\nshared/helper.ts');
-
-      const prompt = await subtaskPromptOf(documents, parent, tasks[0], tasks, [child]);
-
-      expect(prompt).toContain('Merged dependency b, files: b.ts, shared/helper.ts');
-    } finally {
-      await db.close();
-    }
-  });
-
-  it('still builds the prompt when a merged dependency has no readable merge request', async () => {
+  it('carries no task map: that is told by the briefing of each chat', async () => {
     const { db, runs, documents, parent } = await setup();
     try {
       const tasks = [task('a', { depends: ['b'] }), task('b', { status: 'merged' })];
-      const child = await runs.openSubtask('p-1-b', parent.id, 'b');
-      await documents.putDocument(child, 'merge_request', 'not a record');
+      await runs.openSubtask('p-1-b', parent.id, 'b');
 
-      const prompt = await subtaskPromptOf(documents, parent, tasks[0], tasks, [child]);
-
-      expect(prompt).toContain('- b (merged): Title b');
-    } finally {
-      await db.close();
-    }
-  });
-
-  it('adds no map for a task with no siblings', async () => {
-    const { db, documents, parent } = await setup();
-    try {
-      const only = task('a');
-
-      const prompt = await subtaskPromptOf(documents, parent, only, [only], []);
+      const prompt = await subtaskPromptOf(documents, parent, tasks[0]);
 
       expect(prompt).not.toContain('Task map');
+      expect(prompt).not.toContain('Merged dependency');
       expect(prompt.split('\n\n').map((part) => part.split('\n')[0])).toEqual([
         'Title a',
         'Do a.',
@@ -125,7 +58,7 @@ describe('subtaskPromptOf', () => {
       const bare = await runs.openWaiting('p-2', '/target');
       const only = task('a');
 
-      await expect(subtaskPromptOf(documents, bare, only, [only], [])).rejects.toThrow('requirements is missing');
+      await expect(subtaskPromptOf(documents, bare, only)).rejects.toThrow('requirements is missing');
     } finally {
       await db.close();
     }
@@ -135,15 +68,15 @@ describe('subtaskPromptOf', () => {
     const { db, documents, parent } = await setup();
     try {
       const tasks = [task('a'), task('b')];
-      const before = await subtaskPromptOf(documents, parent, tasks[1], tasks, []);
+      const before = await subtaskPromptOf(documents, parent, tasks[1]);
       await documents.putDocument(
         parent,
         'keep',
         JSON.stringify([{ capability: 'login works', proof: 'login.spec.ts', tasks: ['a'] }]),
       );
 
-      const named = await subtaskPromptOf(documents, parent, tasks[0], tasks, []);
-      const other = await subtaskPromptOf(documents, parent, tasks[1], tasks, []);
+      const named = await subtaskPromptOf(documents, parent, tasks[0]);
+      const other = await subtaskPromptOf(documents, parent, tasks[1]);
 
       expect(named).toContain('Kept capabilities');
       expect(named).toContain('- login works (proof: login.spec.ts)');

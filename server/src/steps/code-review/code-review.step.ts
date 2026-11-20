@@ -24,6 +24,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
+import { StarterBriefing } from '../shared/starter-briefing';
 import { RunReport } from '../shared/run-report';
 import { OpenReviewRounds } from '../shared/open-review-rounds';
 import { CheckoutService } from '../shared/checkout.service';
@@ -240,6 +241,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
     const split = opened.run.split;
     const contract = split ? await ctx.reread(ARTIFACTS.contract) : null;
+    const starter = await new StarterBriefing(this.runs, this.documents).fullText(opened.run);
     const keep = split ? await ctx.reread(ARTIFACTS.keep) : null;
     const subtasks = split ? await ctx.reread(ARTIFACTS.subtasks) : null;
     const finished = await runRound(deps, {
@@ -258,6 +260,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       list,
       impact,
       contract,
+      starter,
       subtasks,
       keep,
       auto: options.auto,

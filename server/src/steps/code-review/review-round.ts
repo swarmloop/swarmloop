@@ -59,6 +59,8 @@ interface RoundInput {
   list: Requirement[] | null;
   impact: string | null;
   contract: string | null;
+  /** What the starter of a subtask holds as it is now: the task map, the contract, the requirement ids. Empty for a run that is not a subtask. */
+  starter: string;
   subtasks: Subtask[] | null;
   keep: KeepLine[] | null;
   auto: boolean | undefined;
@@ -209,12 +211,20 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
   const listSection = input.list ? [requirementsSection(input.list)] : [];
   const planSection = input.coveredPlan.trim() ? [{ heading: 'Plan', body: input.coveredPlan }] : [];
+  const starterSection = input.starter.trim() ? [{ heading: 'Parent run', body: input.starter.trim() }] : [];
   const listed = withSubtasks(
     withContract(
       withImpact(
         withHandoff(
           withReturnNotes(
-            [input.diff, ...notesSection, ...listSection, ...planSection, ...(changes ? [changes] : [])],
+            [
+              input.diff,
+              ...notesSection,
+              ...listSection,
+              ...planSection,
+              ...(changes ? [changes] : []),
+              ...starterSection,
+            ],
             input.returned,
           ),
           input.handoff,
