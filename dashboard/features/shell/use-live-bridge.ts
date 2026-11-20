@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { createContext, createElement, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import { liveSocket } from '../../lib/live';
 import type { FlowView, RunSummary } from '@contract/api';
+import type { LiveBacklog } from '@contract/backlog-chat';
 import type { LiveEvents, LiveLog } from '@contract/live';
 import type { Part, PartCounts, RunChange, RunsPage } from '@contract/run-list';
 import type { ServerState } from '@contract/server-pause';
@@ -31,6 +32,8 @@ interface LiveSnapshot {
   listing: boolean;
   /** Moves when a run's status changes or a run goes, whether or not the list holds the run. */
   statusStamp: number;
+  /** Per backlog, a number that moves when its conversation or one of its runs changes. */
+  backlogStamps: Record<string, number>;
   /** The flow of the watched run. */
   flow: FlowView | null;
   /** The latest log per step, and per command for the checks step, of the watched run; the newest entry is last. */
@@ -54,6 +57,13 @@ interface LiveStore {
   attach: () => () => void;
 }
 
+/** The stamps with one more for each named backlog. */
+function bumped(stamps: Record<string, number>, names: Iterable<string>): Record<string, number> {
+  const next = { ...stamps };
+  for (const name of new Set(names)) next[name] = (next[name] ?? 0) + 1;
+  return next;
+}
+
 function createStore(): LiveStore {
   let snapshot: LiveSnapshot = {
     runs: [],
@@ -65,6 +75,7 @@ function createStore(): LiveStore {
     otherMatches: 0,
     listing: false,
     statusStamp: 0,
+    backlogStamps: {},
     flow: null,
     logs: [],
     events: null,
@@ -145,6 +156,10 @@ function createStore(): LiveStore {
         remember(change.rows);
         update({
           statusStamp: snapshot.statusStamp + (moved ? 1 : 0),
+          backlogStamps: bumped(
+            snapshot.backlogStamps,
+            change.rows.flatMap((run) => (run.backlog ? [run.backlog.name] : [])),
+          ),
           counts: change.counts,
           runs: applyRunChange({ runs: snapshot.runs, ...snapshot.view, next: snapshot.next }, change),
         });
@@ -169,6 +184,8 @@ function createStore(): LiveStore {
           update({ events: entry });
         }
       };
+      const onBacklog = (entry: LiveBacklog): void =>
+        update({ backlogStamps: bumped(snapshot.backlogStamps, [entry.backlog]) });
       const onServer = (state: ServerState): void => update({ paused: state.paused });
       socket.on('connect', onConnect);
       socket.on('disconnect', onDisconnect);
@@ -177,6 +194,7 @@ function createStore(): LiveStore {
       socket.on('flow', onFlow);
       socket.on('log', onLog);
       socket.on('events', onEvents);
+      socket.on('backlog', onBacklog);
       socket.on('server', onServer);
       if (socket.connected) {
         update({ connected: true });
@@ -189,6 +207,7 @@ function createStore(): LiveStore {
         socket.off('flow', onFlow);
         socket.off('log', onLog);
         socket.off('events', onEvents);
+        socket.off('backlog', onBacklog);
         socket.off('server', onServer);
       };
     },
@@ -219,6 +238,11 @@ export function useLiveBridge<T>(select: (snapshot: LiveSnapshot) => T): T {
     () => select(store.getSnapshot()),
     () => select(store.getSnapshot()),
   );
+}
+
+/** The stamp of one backlog; it moves when the backlog or one of its runs changes. */
+export function useBacklogStamp(name: string): number {
+  return useLiveBridge((snapshot) => snapshot.backlogStamps[name] ?? 0);
 }
 
 export function useLiveActions(): Pick<LiveStore, 'setRuns' | 'showList' | 'setPage' | 'watchRun'> {
