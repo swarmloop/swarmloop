@@ -12,7 +12,7 @@ export function BacklogLabel({ label }: { label: RunBacklog }): ReactElement {
   return (
     <MuiLink
       component={Link}
-      href={`${backlogPath(label.name)}` as Route}
+      href={`${backlogPath(label.name)}`}
       variant="caption"
       aria-label={`Open backlog ${label.name}`}
       onClick={(event) => event.stopPropagation()}
