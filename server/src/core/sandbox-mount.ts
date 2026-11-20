@@ -5,5 +5,7 @@ export interface SandboxMount {
   daemonPath?: string;
   /** Named volume shared by the server and the sandbox. Mutually exclusive with daemonPath. */
   volume?: string;
+  /** Folder of the volume the container sees, without a leading slash. Unset mounts the whole volume. */
+  volumeSubpath?: string;
   readonly?: boolean;
 }
