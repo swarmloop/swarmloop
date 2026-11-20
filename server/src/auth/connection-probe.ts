@@ -9,7 +9,7 @@ import type { ConnectionProbe } from '../integrations/connection';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { modelApiHosts, sandboxUserId } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { worktreesMount } from '../sandbox/worktrees-mount';
+import { emptyWorkMount } from '../sandbox/empty-work-mount';
 import { NO_KEYS } from './personal-credentials.service';
 
 /** A test of a credential answers at once, so a request that hangs ends after this long. */
@@ -36,7 +36,7 @@ export class SandboxConnectionProbe implements ConnectionProbe {
       throw new SwarmloopError('this runtime lists no models');
     }
     const root = resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname);
-    const mount = worktreesMount(root);
+    const mount = emptyWorkMount(root);
     const credential = runtime.credential({ ...NO_KEYS, ...fields });
     const output = await sandboxModelLister(this.sandbox, runtime, credential, mount)();
     if (output.trim() !== '') {
@@ -62,7 +62,7 @@ export class SandboxConnectionProbe implements ConnectionProbe {
       runKey: 'connection-check',
       step: `check-${runtime}-${randomUUID()}`,
       attemptId: '',
-      mounts: [worktreesMount(root)],
+      mounts: [emptyWorkMount(root)],
       allowHosts: modelApiHosts(runtime),
       env,
       command,

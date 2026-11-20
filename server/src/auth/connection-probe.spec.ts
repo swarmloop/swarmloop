@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { AppConfig } from '../config/env';
@@ -40,6 +40,17 @@ describe('SandboxConnectionProbe.check', () => {
     expect(sandbox.removed).toEqual([sandbox.children[0].containerName]);
   });
 
+  it('mounts only an empty folder, never a path under worktrees', async () => {
+    sandbox.script = (child) => child.exit(0);
+    const pending = check();
+    await jest.advanceTimersByTimeAsync(0);
+    await pending;
+    const empty = join(root, 'data', 'empty-work');
+    expect(sandbox.launches[0].mounts).toEqual([{ hostPath: empty, containerPath: '/work' }]);
+    expect(sandbox.launches[0].mounts?.some((mount) => mount.hostPath.startsWith(join(root, 'worktrees')))).toBe(false);
+    expect(existsSync(empty)).toBe(true);
+  });
+
   it('ends with an error and removes the container when the command hangs', async () => {
     const pending = check();
     const outcome = expect(pending).rejects.toThrow('the check timed out');
@@ -65,5 +76,37 @@ describe('SandboxConnectionProbe.check', () => {
     await Promise.all(outcomes);
     const [one, two] = sandbox.children.map((child) => child.containerName);
     expect(one).not.toBe(two);
+  });
+});
+
+describe('SandboxConnectionProbe.listModels', () => {
+  let root: string;
+  let sandbox: FakeCliSandbox;
+  let probe: SandboxConnectionProbe;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    root = mkdtempSync(join(tmpdir(), 'connection-probe-'));
+    sandbox = new FakeCliSandbox();
+    probe = new SandboxConnectionProbe(
+      new AppConfig(testEnv({ SWARMLOOP_ROOT: root })),
+      sandbox as unknown as SandboxService,
+      new FakeClock(),
+    );
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('mounts only an empty folder, never a path under worktrees', async () => {
+    sandbox.script = (child) => child.exit(0);
+    const pending = probe.listModels('cursor', { cursorKey: 'k' });
+    await jest.advanceTimersByTimeAsync(0);
+    await expect(pending).resolves.toEqual([]);
+    expect(sandbox.launches[0].mounts).toEqual([
+      { hostPath: join(root, 'data', 'empty-work'), containerPath: '/work' },
+    ]);
+    expect(sandbox.launches[0].mounts?.some((mount) => mount.hostPath.startsWith(join(root, 'worktrees')))).toBe(false);
   });
 });
