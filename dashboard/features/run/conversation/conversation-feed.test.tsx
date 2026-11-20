@@ -382,13 +382,21 @@ describe('ConversationFeed', () => {
       expect(screen.getByRole('button', { name: 'New messages ↓' })).toBeInTheDocument();
     });
 
-    it('keeps a streaming reply as the last entry', async () => {
+    it('keeps a streaming reply as the last entry, after a later message and an open question', async () => {
       vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
-      const entries = [entry('m1', 'person', 'One')];
-      feed(flowView({ conversation: conversation({ replying: true, entries }), items: [] }), entries);
+      const entries = [{ ...entry('m1', 'person', 'One'), at: at('12:44') }];
+      feed(
+        flowView({
+          updatedAt: at('12:30'),
+          conversation: conversation({ replying: true, entries, questions: [asked('q1', '12:25')] }),
+          items: [{ kind: 'question', id: 'q1', label: 'Which database?', answer: '' }],
+        }),
+        entries,
+      );
       const articles = screen.getAllByRole('article');
+      expect(articles[0].textContent).toContain('Question for you');
+      expect(articles[1].textContent).toContain('One');
       expect(articles.at(-1)?.textContent).toContain('Writing');
-      expect(articles[0].textContent).toContain('One');
     });
   });
 });

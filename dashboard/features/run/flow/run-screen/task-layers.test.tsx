@@ -235,7 +235,10 @@ describe('TaskLayers', () => {
     });
     render(<TaskLayers tasks={[interrupted]} onSkip={vi.fn()} />);
 
-    expect(screen.getByText(/Not started again/)).toBeInTheDocument();
+    const sentence = screen.getByText(/Not started again/);
+    expect(sentence).toBeInTheDocument();
+    // On its own line, not in the row that holds the title.
+    expect(sentence.parentElement).not.toBe(screen.getByText('Title t3').parentElement);
   });
 
   it('says once which tasks a waiting task waits for, by id and without titles', () => {
@@ -271,9 +274,12 @@ describe('TaskLayers', () => {
 
     const chevron = screen.getByRole('button', { name: /^Plan|^Changes/ });
     expect(chevron).toHaveAttribute('aria-expanded', 'false');
+    expect(chevron).toHaveTextContent('');
+    expect(chevron.querySelector('[data-direction]')).toHaveAttribute('data-direction', 'right');
     await userEvent.setup({ delay: null }).click(chevron);
 
     expect(chevron).toHaveAttribute('aria-expanded', 'true');
+    expect(chevron.querySelector('[data-direction]')).toHaveAttribute('data-direction', 'down');
   });
 
   it('skips a blocked task', async () => {

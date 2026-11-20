@@ -307,11 +307,15 @@ describe('ConversationColumn widening', () => {
     expect(onWide).toHaveBeenCalledWith(false);
   });
 
-  it('keeps the message box inside the column', () => {
+  it('ends the column at the bottom of the window from where its top is, so the message box is in view', () => {
+    window.innerHeight = 800;
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ top: 500 } as DOMRect);
     render(column(flowWith()), { wrapper: Wrapper });
 
     const aside = screen.getByRole('complementary', { name: 'Conversation' });
+    expect(aside).toHaveStyle({ height: `${800 - 500 - 16}px` });
     expect(within(aside).getByRole('textbox', { name: 'Message to the planner' })).toBeInTheDocument();
+    rect.mockRestore();
   });
 });
 

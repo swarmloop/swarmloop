@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactElement, useEffect, useLayoutEffect } from 'react';
+import { type ReactElement, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import Box from '@mui/material/Box';
@@ -19,6 +19,7 @@ import { feedEntries } from './talk-entries';
 import { needsPerson, newestOf, type FeedEntry } from './conversation-words';
 import { MessageBox } from './message-box';
 import { useColumnState } from './use-column-state';
+import { useFitWindow } from './use-fit-window';
 
 /** The width of the column: 360 px by default, between 320 and 400. */
 const WIDTH = { width: 360, minWidth: 320, maxWidth: 400 } as const;
@@ -82,6 +83,8 @@ export function ConversationColumn({
   const { open, setOpen, reveal, unseen } = useColumnState(newest, narrow, needsNow);
   const needs = needsNow ? newest : '';
   const rail = !narrow && !open;
+  const asideRef = useRef<HTMLElement>(null);
+  useFitWindow(asideRef, !narrow && open);
   useLayoutEffect(() => {
     // A rail never stands in for the step window: a stored wide choice ends when the column shows as the rail.
     // It ends in the same commit that shows the rail, before the page paints.
@@ -159,6 +162,7 @@ export function ConversationColumn({
     <Box
       component="aside"
       aria-label="Conversation"
+      ref={asideRef}
       sx={{
         ...(wide ? { flex: 1, minWidth: 0 } : { ...WIDTH, flexShrink: 0 }),
         alignSelf: 'flex-start',

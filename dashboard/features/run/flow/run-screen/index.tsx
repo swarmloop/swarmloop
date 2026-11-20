@@ -131,7 +131,10 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         stateReason={flow.stateReason ?? null}
       />
       {summary ? null : tasks}
-      <Box data-testid="step-row" sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+      <Box
+        data-testid="step-row"
+        sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: 'flex-start' }}
+      >
         {wide && sideBySide ? null : (
           <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
             {summary ? <FinishedSummary flow={flow} tasks={tasks} /> : null}
