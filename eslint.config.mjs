@@ -24,6 +24,7 @@ const serverLayers = [
   'config',
   'live',
   'history',
+  'naming',
   'git',
   'integrations',
   'sandbox',
@@ -43,6 +44,8 @@ const layerImports = {
   live: ['core'],
   history: ['core', 'config', 'live'],
   git: ['core', 'config', 'integrations'],
+  // The naming module reads the manifest and the shape of a change, which sit above the git layer it lives in.
+  naming: ['core', 'config', 'git', 'integrations', 'environment', 'agent-result'],
   integrations: ['core', 'config', 'history'],
   sandbox: ['core', 'config', 'git', 'integrations'],
   agent: ['core', 'config', 'history', 'integrations', 'sandbox', 'live'],
@@ -52,6 +55,7 @@ const layerImports = {
     'core',
     'config',
     'git',
+    'naming',
     'history',
     'integrations',
     'sandbox',
@@ -60,7 +64,7 @@ const layerImports = {
     'environment',
     'live',
   ],
-  pipeline: ['core', 'config', 'git', 'history', 'sandbox', 'agent', 'agent-result', 'steps', 'live'],
+  pipeline: ['core', 'config', 'git', 'naming', 'history', 'sandbox', 'agent', 'agent-result', 'steps', 'live'],
   api: [
     'core',
     'contract',
@@ -68,6 +72,7 @@ const layerImports = {
     'live',
     'history',
     'git',
+    'naming',
     'integrations',
     'sandbox',
     'agent',
@@ -176,7 +181,11 @@ export default tseslint.config(
     plugins: { boundaries },
     settings: {
       'import/resolver': { node: { extensions: ['.js', '.ts', '.tsx'] } },
-      'boundaries/elements': serverLayers.map((type) => ({ type, pattern: `server/src/${type}/**`, mode: 'folder' })),
+      'boundaries/elements': serverLayers.map((type) => ({
+        type,
+        pattern: type === 'naming' ? 'server/src/git/naming/**' : `server/src/${type}/**`,
+        mode: 'folder',
+      })),
       'boundaries/ignore': [
         '**/*.spec.ts',
         '**/*.spec-helpers.ts',
@@ -279,6 +288,8 @@ export default tseslint.config(
       'server/src/steps/shared/report-facts.ts', // reads the stored documents and visits a report is rendered from
       'server/src/steps/shared/run-report.ts', // reads the stored parts of the report the merge request shows
       'server/src/steps/shared/rebase-journal.ts', // keeps the rebase journal as a document of the run
+      'server/src/steps/shared/run-names.ts', // reads the stored plan and implement changes, and stores the branch names of the run
+      'server/src/steps/shared/git-refusal.ts', // the answer to a host refusal is stored and read outside any visit: it happens inside the push or the open of another step
       'server/src/steps/shared/report-refresh.ts', // a step end refreshes the merge request report of a run with no visit of its own to write through
       'server/src/steps/shared/plan-conversation.ts', // a planner visit outside the plan step reads the repos of the run it mounts
       'server/src/steps/merge-request/merge-request-draft.ts', // a Rebase or Replay turns the merge requests back into drafts with no visit to write through

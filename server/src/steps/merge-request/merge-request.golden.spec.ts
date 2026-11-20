@@ -24,7 +24,10 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { RunReport } from '../shared/run-report';
+import { GitRefusal } from '../shared/git-refusal';
+import { RunNames } from '../shared/run-names';
 import { StaleReview } from '../shared/stale-review';
+import { MergeRequestTemplate } from './merge-request-template';
 import { MergeRequestStep } from './merge-request.step';
 
 const KEY = 'PROJ-200';
@@ -72,20 +75,24 @@ describe('merge-request step golden traces', () => {
     const tree = featureTree(root, options.ahead === true);
     await seed(app, options.implementation !== false, options.report === true);
     const documents = recordingDocuments(app.get(DocumentRepository));
+    const kernel = new StepKernel(
+      app.get(RunRepository),
+      documents,
+      app.get(VisitRepository),
+      app.get(FlowRepository),
+      app.get(Clock),
+      app.get(AppConfig),
+      app.get(StepEventLog),
+    );
     const step = new MergeRequestStep(
-      new StepKernel(
-        app.get(RunRepository),
-        documents,
-        app.get(VisitRepository),
-        app.get(FlowRepository),
-        app.get(Clock),
-        app.get(AppConfig),
-        app.get(StepEventLog),
-      ),
+      kernel,
       app.get(CodeHostRegistry),
       new RunStop(),
       app.get(RunReport),
       app.get(StaleReview),
+      app.get(RunNames),
+      app.get(MergeRequestTemplate),
+      app.get(GitRefusal),
     );
     const result = await step.execute(KEY);
     expectGolden(`merge-request.${name}`, {

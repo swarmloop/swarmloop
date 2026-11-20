@@ -429,6 +429,42 @@ describe('merge-request step', () => {
     }
   });
 
+  describe('with a git target in the manifest', () => {
+    async function targetOf(prompt: string | null): Promise<string | undefined> {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-manifest-target-'));
+      const tree = featureTree(root, 'PROJ-212');
+      writeFileSync(join(tree, '.swarmloop.json'), JSON.stringify({ version: 1, git: { target: 'release' } }));
+      const open = jest.fn(async (_draft: MergeRequestDraft) => ({
+        record: { project: 'group/demo', iid: 4, url: 'https://gitlab.example/mr/4', summary: '', draft: true },
+        httpCalls: [call('POST')],
+      }));
+      const app = await boot(
+        root,
+        { find: jest.fn(async () => ({ record: null, httpCalls: [call('GET')] })), open },
+        jest.fn(async () => result('Named.\n')),
+      );
+      try {
+        await seed(app, 'PROJ-212');
+        if (prompt) {
+          const runs = app.get(RunRepository);
+          await runs.saveRun({ ...(await runs.findRun('PROJ-212'))!, prompt });
+        }
+        await app.get(PipelineService).step('merge-request', 'PROJ-212');
+        return open.mock.calls[0]?.[0]?.target;
+      } finally {
+        await app.close();
+      }
+    }
+
+    it('aims at the manifest target instead of the default branch', async () => {
+      expect(await targetOf(null)).toBe('release');
+    });
+
+    it('aims at the branch the prompt names before the manifest target', async () => {
+      expect(await targetOf('Ship the field\nbranch: feature/PARENT-1-epic\n')).toBe('feature/PARENT-1-epic');
+    });
+  });
+
   it('stops when the remote default branch is the feature branch', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-self-'));
     const tree = featureTree(root, 'PROJ-210');

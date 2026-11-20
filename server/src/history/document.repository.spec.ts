@@ -22,6 +22,9 @@ describe('DocumentRepository', () => {
       expect(await documents.latestDocument(run.key, 'requirements')).toEqual({ id: rows[1].id, body: 'updated' });
       expect(await documents.bodyBefore(run.key, 'requirements', rows[1].id)).toBe('first');
       expect(await documents.bodyBefore(run.key, 'requirements', rows[0].id)).toBeNull();
+      await documents.putDocument(run, 'git_refusal', 'a\n1');
+      await documents.putDocument(run, 'git_refusal', 'b\n2');
+      expect(await documents.bodiesOfKind(run.id, 'git_refusal')).toEqual(['a\n1', 'b\n2']);
       expect(await documents.bodyBefore('missing', 'requirements', rows[1].id)).toBeNull();
     } finally {
       await db.close();

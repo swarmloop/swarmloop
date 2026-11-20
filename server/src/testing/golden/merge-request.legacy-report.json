@@ -192,6 +192,7 @@
       "review_report_result",
       "review_report",
       "rebase_merge_skip",
+      "git_rules_note",
       "handoff"
     ]
   },

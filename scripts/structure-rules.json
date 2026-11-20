@@ -51,6 +51,11 @@
       "pattern": "[Gg][Ii][Tt][Hh][Uu][Bb]|[Gg][Ii][Tt][Ll][Aa][Bb]|[Bb][Ii][Tt][Bb][Uu][Cc][Kk][Ee][Tt]"
     },
     {
+      "include": "server/src/",
+      "exclude": "^server/src/git/naming/|^server/src/testing/|\\.spec(-helpers)?\\.ts$",
+      "pattern": "feature/|feat\\(|renderTemplate\\("
+    },
+    {
       "include": "server/src/steps/",
       "pattern": "env\\.(RUNTIME|MODEL_\\w+)"
     },
@@ -137,7 +142,7 @@
         "server/src/steps/merge-request/merge-request-record.ts",
         "server/src/steps/plan/plan-tasks.ts",
         "server/src/steps/shared/handoff.ts",
-        "server/src/steps/contract/artifacts.ts"
+        "server/src/steps/contract/artifact-summaries.ts"
       ],
       "pattern": "/\\^[^/]*:[^/]*\\/[gimsuy]*m"
     },

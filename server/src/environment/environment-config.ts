@@ -1,12 +1,13 @@
 import { posix } from 'path';
 import Joi from 'joi';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { git, gitDetail, originUrl } from '../git/git';
+import { originUrl } from '../git/git';
+import { committedFile } from './committed-file';
 import { hostRefusal, remoteHost } from '../sandbox/sandbox-hosts';
 
-const SWARMLOOP_FILE = '.swarmloop.json';
+export const SWARMLOOP_FILE = '.swarmloop.json';
 const SWARMLOOP_DIR = '.swarmloop';
-const DEVCONTAINER_FILES = ['.devcontainer/devcontainer.json', '.devcontainer.json'];
+export const DEVCONTAINER_FILES = ['.devcontainer/devcontainer.json', '.devcontainer.json'];
 const CACHE_ROOT = '/home/sandbox/';
 
 /** A check: a command string, or the command with a short name and the git pathspecs it covers. */
@@ -31,6 +32,16 @@ export interface EnvironmentConfig {
   network?: AgentNetwork;
   /** Hosts the project needs besides the built-in registries: for its setup, and for the agent. */
   hosts?: ProjectHosts;
+  /** The repository's own formats for branches, commits and merge requests. */
+  git?: GitSection;
+}
+
+/** The `git` section of the manifest: a template for each name, and the branch merge requests aim at. */
+export interface GitSection {
+  branch?: string;
+  commit?: string;
+  title?: string;
+  target?: string;
 }
 
 export interface ProjectHosts {
@@ -80,7 +91,14 @@ const checkEntry = Joi.alternatives()
       '"checks" entries must be a command string or an object with "run", and optionally "name" and "paths"',
   });
 
-const swarmloopSchema = Joi.object({
+const gitSchema = Joi.object({
+  branch: Joi.string().min(1),
+  commit: Joi.string().min(1),
+  title: Joi.string().min(1),
+  target: Joi.string().min(1),
+}).unknown(true);
+
+const swarmloopKeys = {
   version: Joi.number().valid(1).required(),
   image: Joi.string().min(1),
   dockerfile: dockerfilePath,
@@ -89,15 +107,27 @@ const swarmloopSchema = Joi.object({
   cache: Joi.array().items(cachePath),
   network: Joi.string().valid(...NETWORKS),
   hosts: hostsSchema,
-})
-  .xor('image', 'dockerfile')
-  .unknown(true);
+  git: gitSchema,
+};
+
+const swarmloopSchema = Joi.object(swarmloopKeys).xor('image', 'dockerfile').unknown(true);
+
+/** A manifest that holds only the version and the git section names no environment: it asks for no image. */
+const gitOnlySchema = Joi.object(swarmloopKeys).unknown(true);
+
+function isGitOnly(raw: unknown): boolean {
+  const keys = typeof raw === 'object' && raw !== null ? Object.keys(raw) : [];
+  return keys.some((key) => key === 'git') && keys.every((key) => key === 'version' || key === 'git');
+}
 
 /** Reads a committed revision, so worktree edits cannot redefine the environment. */
 export async function readEnvironmentConfig(repoPath: string, ref = 'HEAD'): Promise<EnvironmentConfig | null> {
   const own = await committedFile(repoPath, SWARMLOOP_FILE, ref);
   if (own !== null) {
-    return withCeiling(repoPath, fromSwarmloop(own));
+    const config = fromSwarmloop(own);
+    if (config.image || config.dockerfile) {
+      return withCeiling(repoPath, config);
+    }
   }
   for (const file of DEVCONTAINER_FILES) {
     const text = await committedFile(repoPath, file, ref);
@@ -138,19 +168,6 @@ function checkHosts(config: EnvironmentConfig, origins: readonly string[]): void
   }
 }
 
-async function committedFile(repoPath: string, path: string, ref: string): Promise<string | null> {
-  let listed: string;
-  try {
-    listed = await git(['-C', repoPath, 'ls-tree', '--name-only', ref, '--', path]);
-  } catch (error) {
-    throw new SwarmloopError(`Cannot read project environment at ${ref}: ${gitDetail(error)}`);
-  }
-  if (listed.trim() === '') {
-    return null;
-  }
-  return git(['-C', repoPath, 'show', `${ref}:${path}`]);
-}
-
 export function fromSwarmloop(text: string): EnvironmentConfig {
   let raw: unknown;
   try {
@@ -164,7 +181,7 @@ export function fromSwarmloop(text: string): EnvironmentConfig {
   if (renamed.length > 0) {
     throw new SwarmloopError(`${SWARMLOOP_FILE}: ${renamed.join(', ')}`);
   }
-  const checked = swarmloopSchema.validate(raw, { abortEarly: false });
+  const checked = (isGitOnly(raw) ? gitOnlySchema : swarmloopSchema).validate(raw, { abortEarly: false });
   if (checked.error) {
     throw new SwarmloopError(`${SWARMLOOP_FILE}: ${checked.error.details.map((detail) => detail.message).join('; ')}`);
   }
@@ -176,6 +193,7 @@ export function fromSwarmloop(text: string): EnvironmentConfig {
     cache?: string[];
     network?: AgentNetwork;
     hosts?: ProjectHosts;
+    git?: GitSection;
   };
   const hosts = projectHosts(value.hosts, value.network, (message) => {
     throw new SwarmloopError(`${SWARMLOOP_FILE}: ${message}`);
@@ -190,6 +208,7 @@ export function fromSwarmloop(text: string): EnvironmentConfig {
     checks,
     ...(value.network ? { network: value.network } : {}),
     ...(hosts ? { hosts } : {}),
+    ...(value.git ? { git: value.git } : {}),
   };
 }
 

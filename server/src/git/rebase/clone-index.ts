@@ -2,7 +2,16 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, unlinkSyn
 import { dirname, isAbsolute, join, sep } from 'path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { RebaseHosts } from './types';
-import { authorArgs, git, gitDetail, gitMissing, gitRaw, gitStderr } from '../git';
+import {
+  commitIdentity,
+  git,
+  type CommitAuthor,
+  type CommitIdentity,
+  gitDetail,
+  gitMissing,
+  gitRaw,
+  gitStderr,
+} from '../git';
 import { rebaseStderr } from './workflow';
 
 type CopiedFile = { kind: 'file'; bytes: Buffer } | { kind: 'link'; target: string };
@@ -40,10 +49,10 @@ export async function indexDirty(tmp: string, repo: string, hosts: RebaseHosts):
   }
 }
 
-export async function cloneAuthor(cwd: string): Promise<string[]> {
-  const flags = await authorArgs(cwd);
-  if (flags.length > 0) {
-    return flags;
+export async function cloneAuthor(cwd: string, author?: CommitAuthor | null): Promise<CommitIdentity> {
+  const identity = await commitIdentity(cwd, author);
+  if (identity.args.length > 0 || identity.env) {
+    return identity;
   }
   const name = await localConfig(cwd, 'user.name');
   const email = await localConfig(cwd, 'user.email');
@@ -54,7 +63,7 @@ export async function cloneAuthor(cwd: string): Promise<string[]> {
   if (email) {
     args.push('-c', `user.email=${email}`);
   }
-  return args;
+  return { args };
 }
 
 async function localConfig(cwd: string, key: string): Promise<string> {

@@ -3,18 +3,19 @@ import { basename } from 'path';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { git, gitDetail } from './git';
+import { forRepo, type PerRepo } from './per-repo';
 import { captureTree, requireTree } from './worktree-tree';
 
 export async function featureHeads(
   mounts: SandboxMount[],
-  branch: string,
+  branch: PerRepo<string>,
   detached: ReadonlySet<string> = new Set(),
 ): Promise<Map<string, string>> {
   const heads = new Map<string, string>();
   for (const mount of mounts) {
     const repo = basename(mount.hostPath);
     const current = await gitAt(mount.hostPath, repo, ['branch', '--show-current'], 'branch failed');
-    if (current !== branch) {
+    if (current !== forRepo(branch, repo)) {
       if (current === '' && detached.has(mount.hostPath)) {
         heads.set(mount.hostPath, await gitAt(mount.hostPath, repo, ['rev-parse', 'HEAD'], 'branch failed'));
         continue;
@@ -28,14 +29,14 @@ export async function featureHeads(
 
 export async function assertUncommitted(
   mounts: SandboxMount[],
-  branch: string,
+  branch: PerRepo<string>,
   heads: Map<string, string>,
   moved: ReadonlySet<string> = new Set(),
 ): Promise<void> {
   for (const mount of mounts) {
     const repo = basename(mount.hostPath);
     const current = await gitAt(mount.hostPath, repo, ['branch', '--show-current'], 'branch failed');
-    if (current !== branch) {
+    if (current !== forRepo(branch, repo)) {
       throw new SwarmloopError(`${repo} branch changed`);
     }
     const head = await gitAt(mount.hostPath, repo, ['rev-parse', 'HEAD'], 'branch failed');

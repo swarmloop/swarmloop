@@ -394,6 +394,10 @@ class FakeHost {
     return Promise.resolve({ state: sha ? 'merged' : 'open', sha, conflicts: this.conflicts.has(iid), httpCalls: [] });
   }
 
+  readMergeMethods() {
+    return Promise.resolve({ methods: ['squash'], httpCalls: [] });
+  }
+
   mergeMergeRequest(_project: string, iid: number) {
     if (this.targets.get(iid) !== FEATURE) return Promise.reject(new Error(`!${iid} does not target ${FEATURE}`));
     if (iid === this.crashOn) return Promise.reject(new Error('crash'));

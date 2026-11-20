@@ -4,7 +4,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
-import { branchName, summaryForBranch } from '../branch/branch-name';
+import { RunNames } from './run-names';
 import { ARTIFACTS } from '../contract/artifacts';
 import {
   parseMergeRequests,
@@ -28,6 +28,7 @@ export class ReportRefresh {
     private readonly documents: DocumentRepository,
     private readonly runReport: RunReport,
     private readonly registry: CodeHostRegistry,
+    private readonly names: RunNames,
   ) {}
 
   async refresh(opened: RunEntity): Promise<void> {
@@ -51,12 +52,16 @@ export class ReportRefresh {
     if (!requirements?.trim()) {
       return;
     }
-    const branch = branchName(run.key, summaryForBranch(requirements, run.key));
+    const branches = await this.names.allBranches(run);
     const host = await this.registry.hostFor(run);
     const summaries = parseMergeRequestSummaries(stored);
     const records = [];
     for (const [index, record] of parseMergeRequests(stored).entries()) {
-      const { record: current } = await host.findMergeRequest({ project: record.project, source: branch });
+      let current: Awaited<ReturnType<typeof host.findMergeRequest>>['record'] = null;
+      for (const source of branches) {
+        current = (await host.findMergeRequest({ project: record.project, source })).record;
+        if (current) break;
+      }
       const body = current ? spliceReport(current.summary, report) : null;
       if (current && body !== null && body !== current.summary) {
         await host.updateMergeRequest(record.project, record.iid, body);

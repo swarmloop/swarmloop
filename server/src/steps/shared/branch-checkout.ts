@@ -4,23 +4,27 @@ import { root } from '../../history/run-paths';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { worktreePath } from '../../git/repo-names';
-import { branchName, summaryForBranch } from '../branch/branch-name';
+import type { RunEntity } from '../../history/run.entity';
 import { StepKernel } from '../step-kernel';
+import { RunNames } from './run-names';
 
 /** Puts a run's worktree on the branch of its requirements, leaving another run's commits under a ref. */
 @Injectable()
 export class BranchCheckout {
-  constructor(private readonly kernel: StepKernel) {}
+  constructor(
+    private readonly kernel: StepKernel,
+    private readonly names: RunNames,
+  ) {}
 
-  branchFor(key: string, requirements: string | null): string {
-    if (!requirements) {
-      throw new SwarmloopError('requirements is missing');
-    }
-    return branchName(key, summaryForBranch(requirements, key));
+  /** The branch of a repository of the run, as stored when the branch step ran. */
+  branchFor(run: Pick<RunEntity, 'key' | 'parentRunId' | 'taskId'>, repo: string): Promise<string> {
+    return this.names.branch(run, repo);
   }
 
-  async ensure(key: string, repo: string, requirements: string | null, committed: boolean): Promise<void> {
-    await this.checkout(key, repo, this.branchFor(key, requirements), committed);
+  /** Puts a repository added to the run on its branch, storing the name first when it has none. */
+  async ensure(run: RunEntity, repo: string, committed: boolean): Promise<void> {
+    const lines = await this.names.store(run, [repo], run.split);
+    await this.checkout(run.key, repo, lines.get(repo) ?? '', committed);
   }
 
   async checkout(key: string, repo: string, branch: string, committed: boolean): Promise<void> {

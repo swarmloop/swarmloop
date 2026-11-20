@@ -83,7 +83,7 @@ describe('ClaudeRuntime', () => {
       'EnterWorktree',
       'ExitWorktree',
     ];
-    const denied = (tools: 'read' | 'plan' | 'write') => {
+    const denied = (tools: 'none' | 'read' | 'plan' | 'write') => {
       const args = runtime.printArgs({ model: 'm', prompt: 'p', mounts, resumeChatId: null, mode: 'ask', tools });
       return (args[args.indexOf('--disallowedTools') + 1] ?? '').split(',');
     };
@@ -96,6 +96,12 @@ describe('ClaudeRuntime', () => {
     it('denies a plan step what a read step is denied, except Skill', () => {
       expect(denied('plan')).toEqual([...L00K, ...READ_ONLY.filter((tool) => tool !== 'Skill')]);
       expect(claudeDisallowedTools('plan').split(',')).toEqual(denied('plan'));
+    });
+
+    it('denies a step with no tools reading and running commands as well', () => {
+      const none = denied('none');
+      expect(none).toEqual(expect.arrayContaining([...denied('read'), 'Read', 'Grep', 'Glob', 'Bash']));
+      expect(claudeDisallowedTools('none').split(',')).toEqual(none);
     });
 
     it('denies only the l00k list to a write step', () => {

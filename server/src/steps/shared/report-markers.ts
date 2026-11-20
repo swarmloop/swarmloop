@@ -7,6 +7,11 @@ function marked(report: string): string {
   return `${REPORT_START}\n${report.trim()}\n${REPORT_END}`;
 }
 
+/** The report between the markers, folded into one collapsed section that goes after the text a person reads first. */
+export function foldedReport(report: string): string {
+  return `<details><summary>Run report</summary>\n\n${marked(report)}\n\n</details>`;
+}
+
 /** The positions of the markers, or null when the body has no pair of them. */
 function markerSpan(body: string): { from: number; to: number } | null {
   const from = body.indexOf(REPORT_START);

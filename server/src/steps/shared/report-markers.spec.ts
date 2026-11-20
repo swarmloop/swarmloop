@@ -1,4 +1,4 @@
-import { REPORT_END, REPORT_START, reportOf, spliceReport } from './report-markers';
+import { REPORT_END, REPORT_START, foldedReport, reportOf, spliceReport } from './report-markers';
 
 describe('report markers', () => {
   it('keeps the text before and after the markers byte-identical', () => {
@@ -24,5 +24,18 @@ describe('report markers', () => {
     expect(reportOf(`top\n${REPORT_START}\nthe report\n${REPORT_END}\nbottom`)).toBe('the report');
     expect(reportOf('no markers here')).toBeNull();
     expect(reportOf(`${REPORT_START} never closed`)).toBeNull();
+  });
+
+  it('folds the marked report into one details section', () => {
+    const folded = foldedReport('the report\n');
+    expect(folded).toBe(
+      `<details><summary>Run report</summary>\n\n${REPORT_START}\nthe report\n${REPORT_END}\n\n</details>`,
+    );
+    expect(reportOf(folded)).toBe('the report');
+  });
+
+  it('splices only the report of a folded body', () => {
+    const body = `Filled text\n\n${foldedReport('old')}\n\nlast line`;
+    expect(spliceReport(body, 'new')).toBe(`Filled text\n\n${foldedReport('new')}\n\nlast line`);
   });
 });

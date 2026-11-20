@@ -83,10 +83,9 @@ export class ProjectAppendService {
     const stats = await this.visits.listStats(run.id);
     const branchDone = [...stats].reverse().find((stat) => stat.step === 'branch')?.status === 'done';
     if (branchDone) {
-      const requirements = await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind);
       const committed = (await this.documents.latestBody(run.key, ARTIFACTS.pipelineRef.kind)) !== null;
       for (const name of added) {
-        await this.branches.ensure(run.key, name, requirements, committed);
+        await this.branches.ensure(run, name, committed);
       }
     }
     run.projects = renderProjects(projects);

@@ -10,6 +10,8 @@ Write the smallest change that does the checklist. Keep to the structure and pat
 
 A project base task follows /work/brief/skills/implement/project-base.md.
 
+In your result give `change`: the type, an optional scope and an imperative subject of what you changed. Give `gitRules` only for a branch, commit or title rule you met in the repository (its contributing guide, a lint config, a host refusal) that `.swarmloop.json` lacks, as a template for each name; otherwise leave it out.
+
 [near tests rule]
 
 Change files with the runtime's own edit and write tools, and read them with its read tool. Use the shell to run commands, not to rewrite files.

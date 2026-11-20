@@ -1,9 +1,10 @@
 import { CODE_HOST_ENV_KEYS } from '../../../config/env.schema';
+import type { HttpCallDraft } from '../../../core/swarmloop-error';
 import { SwarmloopError } from '../../../core/swarmloop-error';
-import { AbstractCodeHost, type CodeHostEnv } from '../abstract-code-host';
+import { AbstractCodeHost, type CodeHostEnv, type HostCall } from '../abstract-code-host';
 import type { CodeHostAdapter } from '../code-host-adapter';
 import { CodeHostConnection } from '../code-host-connection';
-import type { SelectedHost } from '../code-host';
+import type { MergeHow, MergeMethod, MergeRequestDraft, SelectedHost } from '../code-host';
 import { remotePushRejection, type CodeHostRules } from '../host-rules';
 import { HttpOAuthProvider } from '../http-login-provider';
 import type { Endpoints } from '../login-provider';
@@ -22,6 +23,7 @@ const rules: CodeHostRules = {
   name: NAME,
   label: LABEL,
   ciFiles: ['.forge-ci.yml'],
+  mergeRequestTemplates: ['.forge/merge_request_template.md'],
   pushRejection: remotePushRejection,
   classifyCall: (url) => (new URL(url).pathname.startsWith('/api/v1/') ? NAME : null),
 };
@@ -92,6 +94,34 @@ class FakeThirdCodeHost extends AbstractCodeHost {
     return { root: `${env[BASE_KEY]}/api/v1`, headers: { Authorization: `Bearer ${env[TOKEN_KEY]}` } };
   }
 
+  /** The forge lists the methods a repository allows in its own words. */
+  async readMergeMethods(project: string): Promise<{ methods: MergeMethod[]; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const body = (await this.readJson(`${root}/repos/${project}`, headers, calls)) as {
+        merge_methods?: MergeMethod[];
+      };
+      return { methods: body.merge_methods ?? [], httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async readAuthor(login: string): Promise<{ name: string | null; email: string | null; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const user = (await this.readJson(`${root}/users/${login}`, headers, calls)) as {
+        name?: string;
+        noreply?: string;
+      };
+      return { name: user.name ?? null, email: user.noreply ?? null, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
   diagnoseMissingPipeline(): never {
     return unsupported();
   }
@@ -137,17 +167,29 @@ class FakeThirdCodeHost extends AbstractCodeHost {
   protected findUrl(): never {
     return unsupported();
   }
-  protected openRequest(): never {
-    return unsupported();
+  protected openRequest(root: string, draft: MergeRequestDraft): { url: string; payload: string } {
+    return { url: `${root}/repos/${draft.project}/requests`, payload: JSON.stringify({ title: draft.title }) };
   }
   protected updateRequest(): never {
     return unsupported();
   }
-  protected mergeRequestUrl(): never {
-    return unsupported();
+  protected mergeRequestUrl(root: string, project: string, iid: number): string {
+    return `${root}/repos/${project}/requests/${iid}`;
   }
-  protected mergeCall(): never {
-    return unsupported();
+  protected mergeCall(root: string, project: string, iid: number, head?: string, how?: MergeHow): HostCall {
+    return {
+      url: `${root}/repos/${project}/requests/${iid}/merge`,
+      method: 'POST',
+      payload: JSON.stringify({
+        how: how?.method ?? 'squash',
+        ...(how?.title ? { title: how.title } : {}),
+        ...(head ? { head } : {}),
+      }),
+    };
+  }
+  /** A title rule of the forge says `title rule` in its words. */
+  protected titleRefused(status: number, message: string): boolean {
+    return status === 422 && /title rule/i.test(message);
   }
   protected closeCall(): never {
     return unsupported();
@@ -161,11 +203,11 @@ class FakeThirdCodeHost extends AbstractCodeHost {
   protected gate(): never {
     return unsupported();
   }
-  protected mergedSha(): never {
-    return unsupported();
+  protected mergedSha(body: unknown): string | null {
+    return (body as { sha?: string }).sha ?? null;
   }
-  protected mergeConflicts(): never {
-    return unsupported();
+  protected mergeConflicts(): boolean {
+    return false;
   }
   protected match(): never {
     return unsupported();
@@ -173,8 +215,8 @@ class FakeThirdCodeHost extends AbstractCodeHost {
   protected record(): never {
     return unsupported();
   }
-  protected conflict(): never {
-    return unsupported();
+  protected conflict(): boolean {
+    return false;
   }
 }
 

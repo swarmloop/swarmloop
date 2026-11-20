@@ -4,6 +4,8 @@ export interface CodeHostRules {
   readonly label: string;
   /** CI config paths. A last segment of `*<ending>` matches any file of that folder with the ending. */
   readonly ciFiles: readonly string[];
+  /** Paths of the repository's merge request template, in the order the host reads them. */
+  readonly mergeRequestTemplates: readonly string[];
   /** The line of a git error that explains a refused push. */
   pushRejection(lines: string[]): string | undefined;
   /** The provider label for a call of this host's API, or null for any other url. */

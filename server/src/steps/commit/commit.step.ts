@@ -3,9 +3,8 @@ import { StepKernel } from '../step-kernel';
 import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../steps/step-run';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { branchName, commitMessage, summaryForBranch } from '../branch/branch-name';
 import { baseBranch, originRef } from '../../git/base-ref';
-import { authorArgs, originUrl } from '../../git/git';
+import { originUrl } from '../../git/git';
 import { commitResult, deliveredResult, undeliveredResult } from './commit-result';
 import { unchangedOutcome } from './commit-delivered';
 import { gitAt, status, Tree } from './commit-git';
@@ -13,16 +12,11 @@ import { checkedRepoNames } from '../../git/repo-names';
 import { RunStop } from '../../agent/run-stop';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { hasWorkToMerge } from '../shared/branch-work';
-import { RebasedPublisher, type PublishedBy } from '../shared/rebased-publisher';
+import { RunNames } from '../shared/run-names';
+import { RebasedPublisher } from '../shared/rebased-publisher';
+import { CommitPublish } from './commit-publish';
 import { BaseStep, StepContext } from '../base-step';
-import {
-  allowedPaths,
-  deniedIndexPaths,
-  parsePaths,
-  PlannedPath,
-  renderPaths,
-  stageSelection,
-} from '../../git/commit-paths';
+import { allowedPaths, parsePaths, PlannedPath, renderPaths } from '../../git/commit-paths';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
 
@@ -35,6 +29,7 @@ const INPUTS = {
   commit: { artifact: ARTIFACTS.commit, need: 'optional' },
   ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional', late: true },
   ciRerun: { artifact: ARTIFACTS.ciRerun, need: 'optional', late: true },
+  pipelineRef: { artifact: ARTIFACTS.pipelineRef, need: 'optional', late: true },
 } as const satisfies InputSpec;
 
 @Injectable()
@@ -46,7 +41,9 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
   constructor(
     kernel: StepKernel,
     private readonly publisher: RebasedPublisher,
+    private readonly runNames: RunNames,
     private readonly runStop: RunStop,
+    private readonly commitPublish: CommitPublish,
   ) {
     super(kernel);
   }
@@ -58,10 +55,10 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
-    const summary = summaryForBranch(requirements, key);
-    const branch = branchName(key, summary);
     const named = baseBranch(opened.run.prompt);
     const names = checkedRepoNames(input.repos);
+    const branch = await this.runNames.branchOf(opened.run, names);
+    const label = [...new Set(names.map(branch))].join(', ');
     const trees = this.publisher.trees(key, names);
     await this.assertBranch(trees, branch);
     const phases = await this.flows.activePhases(opened.run.id);
@@ -84,20 +81,25 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
         if (await this.publishedHead(trees, branch)) {
           await this.publisher.rememberRefs(trees, branch, (body) => ctx.write(ARTIFACTS.pipelineRef, body));
           await this.publisher.stampRefs(opened.run, trees);
-          return commitResult('ok', `${opened.startedAt} commit done\n${branch}`);
+          return commitResult('ok', `${opened.startedAt} commit done\n${label}`);
         }
         return this.unchanged(opened);
       }
     }
     assertNotStopped(this.runStop, key);
     const heads: string[] = [];
-    const message = commitMessage(key, summary);
+    const message = await this.runNames.commitMessage(opened.run, names[0]);
     const pushed = await ctx.activity(
       `Commit ${planned.length} files`,
       () =>
         rerun
-          ? this.republish(trees, branch, opened.run, heads)
-          : this.publish(trees, planned, branch, message, opened.run),
+          ? this.commitPublish.republish(trees, branch, opened.run, heads, ctx)
+          : this.commitPublish.publish(
+              trees,
+              planned,
+              (repo) => this.runNames.commitMessage(opened.run, repo),
+              opened.run,
+            ),
       () => message.split('\n')[0],
     );
     const listed = planned.length > 0 ? renderPaths(planned).trimEnd() : '';
@@ -107,7 +109,12 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
       return commitResult('ok', line, listed ? `${listed}\n` : undefined);
     }
-    const recorded = await this.publisher.rememberRefs(trees, branch, (body) => ctx.write(ARTIFACTS.pipelineRef, body));
+    // An answered refusal may have renamed the branch while it was pushed.
+    const pushedBranch = await this.runNames.branchOf(opened.run, names);
+    const pushedLabel = [...new Set(names.map(pushedBranch))].join(', ');
+    const recorded = await this.publisher.rememberRefs(trees, pushedBranch, (body) =>
+      ctx.write(ARTIFACTS.pipelineRef, body),
+    );
     if (recorded) {
       await this.publisher.stampRefs(opened.run, trees);
       const skip = await ctx.reread(ARTIFACTS.ciSkip);
@@ -116,8 +123,8 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       }
     }
     const line = listed
-      ? `${opened.startedAt} commit done\n${branch}\n${listed}`
-      : `${opened.startedAt} commit done\n${branch}`;
+      ? `${opened.startedAt} commit done\n${pushedLabel}\n${listed}`
+      : `${opened.startedAt} commit done\n${pushedLabel}`;
     return commitResult('ok', line, listed ? `${listed}\n` : recordedHeads);
   }
 
@@ -137,13 +144,13 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     return last?.status === 'waiting' || last?.status === 'failed';
   }
 
-  private async assertBranch(trees: Tree[], branch: string): Promise<void> {
+  private async assertBranch(trees: Tree[], branch: (repo: string) => string): Promise<void> {
     for (const tree of trees) {
       const current = await gitAt(tree, ['branch', '--show-current'], 'branch failed');
       if (current === 'main' || current === 'master') {
         throw new SwarmloopError(`${tree.repo} branch is protected`);
       }
-      if (current !== branch) {
+      if (current !== branch(tree.repo)) {
         throw new SwarmloopError(`${tree.repo} branch is missing`);
       }
     }
@@ -158,14 +165,14 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
   }
 
   /** The paths a commit would take, or null when the tree is unchanged. */
-  private async preview(trees: Tree[], branch: string, named: string | null): Promise<string | null> {
+  private async preview(trees: Tree[], branch: (repo: string) => string, named: string | null): Promise<string | null> {
     const planned = await this.plan(trees, []);
     if (planned.length > 0) {
       return renderPaths(planned);
     }
     const pending: string[] = [];
     for (const tree of trees) {
-      if (await this.ahead(tree, branch, named)) {
+      if (await this.ahead(tree, branch(tree.repo), named)) {
         pending.push(tree.repo);
       }
     }
@@ -209,13 +216,13 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     return false;
   }
 
-  private async publishedHead(trees: Tree[], branch: string): Promise<boolean> {
+  private async publishedHead(trees: Tree[], branch: (repo: string) => string): Promise<boolean> {
     for (const tree of trees) {
       const cwd = tree.path;
       if (!(await originUrl(cwd, tree.repo, 'origin failed'))) {
         continue;
       }
-      const remote = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
+      const remote = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch(tree.repo)}`);
       if (!remote) {
         continue;
       }
@@ -227,78 +234,17 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     return false;
   }
 
-  private async somethingToPush(trees: Tree[], branch: string, named: string | null): Promise<boolean> {
+  private async somethingToPush(
+    trees: Tree[],
+    branch: (repo: string) => string,
+    named: string | null,
+  ): Promise<boolean> {
     for (const tree of trees) {
       const cwd = tree.path;
-      if ((await originUrl(cwd, tree.repo, 'origin failed')) && (await this.ahead(tree, branch, named))) {
+      if ((await originUrl(cwd, tree.repo, 'origin failed')) && (await this.ahead(tree, branch(tree.repo), named))) {
         return true;
       }
     }
     return false;
-  }
-
-  private async publish(
-    trees: Tree[],
-    planned: PlannedPath[],
-    branch: string,
-    message: string,
-    run: PublishedBy,
-  ): Promise<boolean> {
-    const pushed = await Promise.all(trees.map((tree) => this.publishTree(tree, planned, branch, message, [], run)));
-    return pushed.some(Boolean);
-  }
-
-  /** Start CI again on a clean tree: push an unpublished HEAD, else push an empty commit. Fills `heads` with `<repo> <head>` per pushed repo. */
-  private async republish(trees: Tree[], branch: string, run: PublishedBy, heads: string[]): Promise<boolean> {
-    for (const tree of trees) {
-      const cwd = tree.path;
-      const origin = await originUrl(cwd, tree.repo, 'origin failed');
-      if (!origin) {
-        continue;
-      }
-      const published = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
-      if (published === (await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'))) {
-        await gitAt(
-          tree,
-          [...(await authorArgs(cwd)), 'commit', '--allow-empty', '--no-verify', '-m', 'Re-run CI'],
-          'commit failed',
-        );
-      }
-      await this.publisher.pushRef(tree, branch, published, run, origin);
-      heads.push(`${tree.repo} ${await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed')}`);
-    }
-    return heads.length > 0;
-  }
-
-  private async publishTree(
-    tree: Tree,
-    planned: PlannedPath[],
-    branch: string,
-    message: string,
-    denied: string[],
-    run: PublishedBy,
-  ): Promise<boolean> {
-    const cwd = tree.path;
-    const wanted = new Set(planned.filter((item) => item.repo === tree.repo).map((item) => item.path));
-    const porcelain = await status(tree);
-    const held = deniedIndexPaths(porcelain, denied);
-    if (held.length > 0) {
-      await gitAt(tree, ['reset', '-q', 'HEAD', '--', ...held], 'commit failed');
-    }
-    const selection = stageSelection(porcelain, denied);
-    const add = selection.add.filter((path) => wanted.has(path));
-    const staged = selection.staged.filter((path) => wanted.has(path));
-    if (add.length > 0) {
-      await gitAt(tree, ['add', '--', ...add], 'commit failed');
-    }
-    if (add.length > 0 || staged.length > 0) {
-      await gitAt(tree, [...(await authorArgs(cwd)), 'commit', '--no-verify', '-m', message], 'commit failed');
-    }
-    const origin = await originUrl(cwd, tree.repo, 'origin failed');
-    if (!origin) {
-      return false;
-    }
-    const published = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
-    return this.publisher.pushRef(tree, branch, published, run, origin);
   }
 }

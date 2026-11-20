@@ -6,13 +6,13 @@ import {
   NEEDS_PERSON,
   needsPerson,
   REASON,
-  REASON_WORDS,
   RUN_STATES,
   STATE_WORDS,
   stateWord,
   taskStateWord,
   TIMED_RETRY_CODES,
 } from './run-state';
+import { REASON_WORDS } from './reason-words';
 
 describe('actionsFor a block that a person can fix', () => {
   it.each([
@@ -22,6 +22,7 @@ describe('actionsFor a block that a person can fix', () => {
     ERROR_CODES.BRANCH_DIVERGED,
     ERROR_CODES.SUBTASK_BLOCKED,
     ERROR_CODES.TEST_FLAKY,
+    ERROR_CODES.GIT_RULES,
   ])('offers Resume after %s', (code) => {
     expect(actionsFor('blocked', code)).toEqual(['resume', 'replay']);
   });
@@ -108,6 +109,8 @@ describe('actionsFor a skipped task', () => {
   });
 });
 
+const GIT_RULES_WORD = 'Waits for you: a git rule of the repository';
+
 describe('stateWord', () => {
   const time = (iso: string): string => `T(${iso})`;
   const word = (
@@ -132,7 +135,8 @@ describe('stateWord', () => {
       for (const state of RUN_STATES) {
         const view = word(state, { code });
         expect(view.word).not.toMatch(/^(waiting|implement|plan|research|code review)$/i);
-        expect(view.tone === 'person').toBe(view.word === 'Waiting for you');
+        // A blocked git-rule run reads its own person word: the task names it.
+        expect(view.tone === 'person').toBe(view.word === 'Waiting for you' || view.word === GIT_RULES_WORD);
       }
     },
   );
@@ -179,6 +183,19 @@ describe('stateWord', () => {
       });
     },
   );
+
+  it('reads a blocked git-rule run as waiting for a person, with the host message as the tip', () => {
+    const reason = { code: ERROR_CODES.GIT_RULES, message: 'title must start with a ticket refuses feat: add x' };
+    expect(word('blocked', reason)).toEqual({
+      word: GIT_RULES_WORD,
+      tone: 'person',
+      icon: 'person',
+      tip: reason.message,
+    });
+    expect(needsPerson('blocked', reason)).toBe(true);
+    expect(actionsFor('blocked', ERROR_CODES.GIT_RULES)).toEqual(['resume', 'replay']);
+    expect(NEEDS_PERSON[ERROR_CODES.GIT_RULES]).toBe('resume');
+  });
 
   it('reads Waiting for you in the person tone, and only that', () => {
     expect(word('waiting', { code: NEEDS_ANSWERS })).toMatchObject({ word: 'Waiting for you', tone: 'person' });

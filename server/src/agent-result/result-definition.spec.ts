@@ -1,6 +1,8 @@
 import { defineResult, isResultKind } from './result-definition';
 import { implementation, implementationAfterReview } from './definitions/implementation';
 import { implementationImprove, implementationImproveAfterReview } from './definitions/implementation-improve';
+import { gitRefusal } from './definitions/git-refusal';
+import { mergeRequestText } from './definitions/merge-request-text';
 import { readResult } from './read-result';
 import { resultPrompt } from './result-prompt';
 import { block, sample } from './result.spec-helpers';
@@ -29,5 +31,19 @@ describe('result definition', () => {
     expect(readResult(after, block(given)).ok).toBe(true);
     expect(readResult(base, block({ ...given, rejected })).ok).toBe(false);
     expect(readResult(after, block({ ...given, rejected: [{ reviewer: 'quality', finding: 'x' }] })).ok).toBe(false);
+  });
+
+  it('reads the answer to a host refusal: a change, and the rule it names', () => {
+    const change = { type: 'fix', scope: 'api', subject: 'Reject an empty title' };
+    expect(gitRefusal.kind).toBe('git_refusal_result');
+    expect(readResult(gitRefusal, block({ change })).ok).toBe(true);
+    expect(readResult(gitRefusal, block({ change, gitRules: { title: '{type}: {subject}' } })).ok).toBe(true);
+    expect(readResult(gitRefusal, block({ gitRules: { title: 'x' } })).ok).toBe(false);
+  });
+
+  it('reads the text of a merge request and refuses an answer without it', () => {
+    expect(mergeRequestText.kind).toBe('merge_request_text_result');
+    expect(readResult(mergeRequestText, block({ text: '- [x] tests' })).ok).toBe(true);
+    expect(readResult(mergeRequestText, block({})).ok).toBe(false);
   });
 });

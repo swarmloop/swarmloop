@@ -1,6 +1,8 @@
 import { SwarmloopError } from '../core/swarmloop-error';
 import { makeRepo, runGit, writeFiles } from '../git/git-repo.spec-helpers';
 import {
+  DEVCONTAINER_FILES,
+  SWARMLOOP_FILE,
   fromDevcontainer,
   fromSwarmloop,
   lifecycleCommand,
@@ -101,6 +103,35 @@ describe('fromSwarmloop', () => {
 
   it('rejects text that is not JSON', () => {
     expect(() => fromSwarmloop('{')).toThrow('.swarmloop.json: is not valid JSON');
+  });
+});
+
+describe('the git section of the manifest', () => {
+  const git = {
+    branch: '{type}/{slug}',
+    commit: '{type}: {subject}',
+    title: '[{ticket} ]{subject}',
+    target: 'develop',
+  };
+
+  it('keeps the git section in the config', () => {
+    expect(fromSwarmloop(JSON.stringify({ version: 1, image: 'a', git })).git).toEqual(git);
+    expect(fromSwarmloop(JSON.stringify({ version: 1, image: 'a' }))).not.toHaveProperty('git');
+  });
+
+  it('refuses a git entry that is not a string', () => {
+    expect(() => fromSwarmloop(JSON.stringify({ version: 1, image: 'a', git: { branch: 5 } }))).toThrow(
+      '.swarmloop.json: "git.branch" must be a string',
+    );
+  });
+
+  it('reads a manifest of only the version and git as no environment', async () => {
+    const repo = makeRepo({ [SWARMLOOP_FILE]: JSON.stringify({ version: 1, git }) });
+    expect(await readEnvironmentConfig(repo)).toBeNull();
+  });
+
+  it('still asks for an image or a Dockerfile when the manifest has other keys', () => {
+    expect(() => fromSwarmloop(JSON.stringify({ version: 1, git, checks: ['npm test'] }))).toThrow(SwarmloopError);
   });
 });
 
@@ -257,10 +288,10 @@ describe('manifest hosts', () => {
 describe('readEnvironmentConfig', () => {
   it('prefers .swarmloop.json, then devcontainer, and reads committed files only', async () => {
     const repo = makeRepo({
-      '.devcontainer/devcontainer.json': JSON.stringify({ image: 'from-devcontainer' }),
+      [DEVCONTAINER_FILES[0] ?? '']: JSON.stringify({ image: 'from-devcontainer' }),
     });
     expect((await readEnvironmentConfig(repo))?.image).toBe('from-devcontainer');
-    writeFiles(repo, { '.swarmloop.json': JSON.stringify({ version: 1, image: 'not-committed' }) });
+    writeFiles(repo, { [SWARMLOOP_FILE]: JSON.stringify({ version: 1, image: 'not-committed' }) });
     expect((await readEnvironmentConfig(repo))?.image).toBe('from-devcontainer');
   });
 

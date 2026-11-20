@@ -1,6 +1,15 @@
 import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 
+/** How a request may merge: its commits squashed into one, rebased onto the target, or joined by a merge commit. */
+export type MergeMethod = 'squash' | 'rebase' | 'merge';
+
+/** The method a merge uses and the title of the commit it makes, when the method makes one. */
+export interface MergeHow {
+  method: MergeMethod;
+  title?: string;
+}
+
 export interface MergeRequestQuery {
   project: string;
   source: string;
@@ -169,7 +178,8 @@ export interface CodeHost {
   /**
    * `draftsUnavailable` is true when the host refused a draft and the request was opened as a normal one.
    * A refusal for a branch with no commit ahead of its target is a `NothingToMerge`; any other refusal is a
-   * `FetchFailed` with the host's own message.
+   * `FetchFailed` with the host's own message. A refusal of the title by a rule of the repository is a
+   * `GitRuleRefused` with the host's message and the title.
    */
   openMergeRequest(
     draft: MergeRequestDraft,
@@ -186,11 +196,21 @@ export interface CodeHost {
   readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }>;
   /** The commit the branch `ref.ref` of `ref.project` has on the host now. */
   readBranchHead(ref: PipelineRef): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
+  /** The merge methods the repository allows, in the order squash, rebase, merge. */
+  readMergeMethods(project: string): Promise<{ methods: MergeMethod[]; httpCalls: HttpCallDraft[] }>;
+  /** The name and the no-reply address of an account. A value is null when the host gives none; the caller then uses the connection's. */
+  readAuthor(login: string): Promise<{ name: string | null; email: string | null; httpCalls: HttpCallDraft[] }>;
   /**
-   * Squash-merges the request into the target branch it already has. `head` is the merge guard: the host refuses the
+   * Merges the request into the target branch it already has: by squash when `how` is absent, else by `how.method`
+   * with `how.title` as the title of the commit made. `head` is the merge guard: the host refuses the
    * merge when the request's head is another commit. A refusal for a conflict is a `MergeConflict`; any other refusal is a `FetchFailed` with the host's message.
    */
-  mergeMergeRequest(project: string, iid: number, head?: string): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
+  mergeMergeRequest(
+    project: string,
+    iid: number,
+    head?: string,
+    how?: MergeHow,
+  ): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
   /** Closes an open request. One that is already merged or closed stays as it is. */
   closeMergeRequest(project: string, iid: number): Promise<{ httpCalls: HttpCallDraft[] }>;
   /** Deletes a branch on origin. A branch that is already gone is not an error. */

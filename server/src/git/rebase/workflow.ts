@@ -18,9 +18,10 @@ export async function gitAt(
   failure: string,
   hosts?: RebaseHosts,
   captured = '',
+  env?: NodeJS.ProcessEnv,
 ): Promise<string> {
   try {
-    return await git(['-C', cwd, ...args]);
+    return await git(['-C', cwd, ...args], env);
   } catch (error) {
     const detail =
       failure === 'rebase failed' && hosts ? rebaseStderr(gitStderr(error), hosts, captured) : gitDetail(error);

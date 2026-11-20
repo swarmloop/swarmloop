@@ -1,7 +1,8 @@
+import { GitRuleRefused } from '../core/git-rule-refused';
 import { FetchFailed, HostUnavailable } from '../core/swarmloop-error';
 import { HOST_RETRY_MS } from '../integrations/http';
 import type {
-  CodeHost,
+  MergeHow,
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -10,13 +11,18 @@ import type {
   SelectedHost,
 } from '../integrations/code-host/code-host';
 import { FakeCi } from './fake-ci';
+import {
+  DEFAULT_MERGE_METHODS,
+  FAKE_HOST as HOST,
+  WORKFLOW_FILE,
+  fakeSelected,
+  installOriginHook,
+  mergeCommit,
+  noReply,
+  type Answer,
+  type FakeHostSettings,
+} from './fake-host-rules';
 import { git } from './runs.spec-helpers';
-
-type Answer<M extends keyof CodeHost> = Required<CodeHost>[M] extends (...args: never[]) => infer R ? R : never;
-
-const HOST = 'gitlab.example';
-/** The workflow file of this host, which is gitlab. */
-const WORKFLOW_FILE = '.gitlab-ci.yml';
 
 /** A code host whose merge adds one commit to the feature branch of a real origin, with a scripted CI and an outage a spec switches on. */
 export class FakeCodeHost {
@@ -26,6 +32,8 @@ export class FakeCodeHost {
   private readonly requests = new Map<number, MergeRequestRecord & { source: string }>();
   /** The pipelines the server asked the host to start, in order. */
   readonly nudged: PipelineRef[] = [];
+  /** The runs the server asked the host to run its failed jobs of again, in order. */
+  readonly reruns: { project: string; id: number }[] = [];
   /** The reason put on the request's timeline with each nudge. */
   readonly nudgeNotes: string[] = [];
   private downUntil = 0;
@@ -37,6 +45,7 @@ export class FakeCodeHost {
   /** How many times the server asked the host to open a request, refused or not. */
   openAsks = 0;
   private mainPasses = false;
+  private settings: FakeHostSettings = {};
   /** For each merge: the head that landed, the feature tip it landed on, and whether its CI passed on top of that tip. */
   readonly landed: { iid: number; head: string; tip: string; testedOnTop: boolean }[] = [];
 
@@ -97,14 +106,26 @@ export class FakeCodeHost {
     this.conflicting = on;
   }
 
+  /** Sets what the host allows and answers; a setting a call leaves out stays as it was. */
+  configure(settings: FakeHostSettings): void {
+    this.settings = { ...this.settings, ...settings };
+    if (settings.origin) installOriginHook(`${this.clone}.git`, this.feature, settings.origin);
+  }
+
   selected(): SelectedHost {
-    return {
-      name: 'gitlab',
-      baseUrl: `https://${HOST}`,
-      token: 'token',
-      baseKey: 'GITLAB_BASE_URL',
-      tokenKey: 'GITLAB_TOKEN',
-    };
+    return fakeSelected();
+  }
+
+  readMergeMethods(): Answer<'readMergeMethods'> {
+    this.guard();
+    return Promise.resolve({ methods: [...(this.settings.mergeMethods ?? DEFAULT_MERGE_METHODS)], httpCalls: [] });
+  }
+
+  readAuthor(login: string): Answer<'readAuthor'> {
+    this.guard();
+    const { author } = this.settings;
+    const answer = author === 'none' ? { name: null, email: null } : (author ?? noReply(login));
+    return Promise.resolve({ ...answer, httpCalls: [] });
   }
 
   matchesOrigin(origin: string): boolean {
@@ -126,6 +147,10 @@ export class FakeCodeHost {
     this.openAsks += 1;
     if (this.refusal) {
       return Promise.reject(new FetchFailed(this.refusal));
+    }
+    const rule = this.settings.title;
+    if (rule && !new RegExp(rule.pattern).test(draft.title)) {
+      return Promise.reject(new GitRuleRefused(rule.message, draft.title, 'title'));
     }
     const iid = this.requests.size + 1;
     const record = {
@@ -214,15 +239,22 @@ export class FakeCodeHost {
   }
 
   /**
-   * The merge adds one commit to the feature branch. It has the tree of the request's branch merged onto the feature
-   * tip, as a squash merge has; a request whose branch is not on origin merges the tip's own tree.
+   * The merge adds a commit to the feature branch, by squash unless `how` says another method the repository allows.
+   * It has the tree of the request's branch merged onto the feature tip, as a squash merge has; a request whose
+   * branch is not on origin merges the tip's own tree.
    */
-  mergeMergeRequest(_project: string, iid: number, _head?: string): Answer<'mergeMergeRequest'> {
+  mergeMergeRequest(_project: string, iid: number, _head?: string, how?: MergeHow): Answer<'mergeMergeRequest'> {
     this.guard();
+    const method = how?.method ?? 'squash';
+    if (!(this.settings.mergeMethods ?? DEFAULT_MERGE_METHODS).includes(method)) {
+      return Promise.reject(new FetchFailed(`the repository does not allow a ${method} merge`));
+    }
     git(this.clone, ['fetch', 'origin']);
     const tip = git(this.clone, ['rev-parse', `origin/${this.feature}`]);
     const tree = this.mergeTree(iid) ?? git(this.clone, ['rev-parse', `${tip}^{tree}`]);
-    const sha = git(this.clone, ['commit-tree', tree, '-p', tip, '-m', `squash !${iid}`]);
+    const source = this.requests.get(iid)?.source;
+    const head = source && this.onOrigin(source) ? git(this.clone, ['rev-parse', `origin/${source}`]) : null;
+    const sha = mergeCommit(this.clone, method, iid, tip, head, tree, how?.title);
     git(this.clone, ['push', 'origin', `${sha}:refs/heads/${this.feature}`]);
     this.merged.set(iid, sha);
     if (this.mainPasses) this.ci.pass(sha);
@@ -313,8 +345,9 @@ export class FakeCodeHost {
     return Promise.resolve({ trace: this.ci.trace(), httpCalls: [] });
   }
 
-  rerunFailedJobs(): Answer<'rerunFailedJobs'> {
+  rerunFailedJobs(project: string, id: number): Answer<'rerunFailedJobs'> {
     this.guard();
+    this.reruns.push({ project, id });
     return Promise.resolve({ httpCalls: [] });
   }
 

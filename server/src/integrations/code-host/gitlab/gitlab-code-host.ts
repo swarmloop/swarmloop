@@ -13,6 +13,7 @@ import {
   type GitlabJob,
   type GitlabStatus,
 } from './gitlab-checks';
+import { gitlabAuthor } from './gitlab-author';
 import { gitlabRepositories } from './gitlab-repositories';
 import { GitlabMergeRequests } from './gitlab-merge-requests';
 import type { GitlabMergeRequest } from './gitlab-merge-request';
@@ -238,6 +239,24 @@ export class GitlabCodeHost extends GitlabMergeRequests {
       const url = `${base}/api/v4/projects/${encodeURIComponent(project)}/jobs/${jobId}/trace`;
       const trace = await this.readText(url, { ...headers, Accept: 'text/plain' }, calls, 'gitlab pipeline failed');
       return { trace, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
+  async readAuthor(login: string): Promise<{ name: string | null; email: string | null; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const host = new URL(root).hostname.toLowerCase();
+      const read = (url: string): Promise<unknown> => this.readJson(url, headers, calls);
+      const own = (url: string): Promise<unknown> =>
+        read(url).catch((error: unknown) => {
+          if (error instanceof FetchFailed) return null;
+          throw error;
+        });
+      const author = await gitlabAuthor(read, own, root, login, host);
+      return { ...author, httpCalls: calls };
     } catch (error) {
       this.rethrow(error, calls);
     }

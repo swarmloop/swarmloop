@@ -70,6 +70,19 @@ describe('CursorRuntime', () => {
     ]);
   });
 
+  it('asks, with no edits and no commands, when a step has no tools', () => {
+    const args = runtime.printArgs({
+      model: 'grok-4.7',
+      prompt: 'answer',
+      mounts,
+      resumeChatId: null,
+      mode: 'plan',
+      tools: 'none',
+    });
+    expect(args).toContain('ask');
+    expect(args).not.toContain('--force');
+  });
+
   describe('effort', () => {
     const args = ['--print', '--model', 'grok-4.7', '--trust', 'go'];
     const withList = new CursorRuntime();

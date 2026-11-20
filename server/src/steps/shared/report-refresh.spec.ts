@@ -4,6 +4,7 @@ import type { RunEntity } from '../../history/entities';
 import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { REPORT_END, REPORT_START, reportOf, spliceReport } from './report-markers';
 import { ReportRefresh } from './report-refresh';
+import { RunNames } from './run-names';
 
 const RUN = { id: 1, key: 'K-1', codeHost: 'gitlab', startedBy: null } as unknown as RunEntity;
 const REQUIREMENTS = JSON.stringify({ prompt: 'Ship the field\n', tickets: [] });
@@ -34,11 +35,13 @@ function setup(report: string | null, hostBody: string, mergeRequest: string | n
     httpCalls: [],
   }));
   const update = jest.fn(async () => ({ httpCalls: [] }));
+  const stored = { latestBody: async (_key: string, kind: string) => documents[kind] ?? null, putDocument: put };
   const refresh = new ReportRefresh(
     { findRun: async () => RUN } as never,
-    { latestBody: async (_key: string, kind: string) => documents[kind] ?? null, putDocument: put } as never,
+    stored as never,
     { render: async () => report } as never,
     { hostFor: async () => ({ findMergeRequest: find, updateMergeRequest: update }) } as never,
+    new RunNames({ documents: stored } as never),
   );
   return { refresh, documents, find, update, put };
 }
