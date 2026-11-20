@@ -1,4 +1,5 @@
 import type { TestingModule } from '@nestjs/testing';
+import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import type { Subtask } from '../contract/subtask';
 import { SUBTASKS_KIND } from '../contract/subtask';
@@ -8,9 +9,11 @@ import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
+import { RunWaitLog } from '../history/run-wait.log';
 import { writeRunState } from '../history/run-state';
 import { LiveHub } from '../live/live.hub';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { EtaSummary } from './eta-summary';
 import { RunListRows } from './run-list-rows';
 
 /** The run list as a freshly constructed `RunListRows` reads it: every row built from the database. */
@@ -23,6 +26,9 @@ export async function freshView(app: TestingModule) {
     app.get(BacklogRepository),
     app.get(PipelineService),
     app.get(Clock),
+    app.get(EtaSummary),
+    app.get(RunWaitLog),
+    app.get(AppConfig),
     app.get(LiveHub),
   );
   try {

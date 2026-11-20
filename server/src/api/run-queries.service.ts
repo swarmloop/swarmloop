@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
-import { RunEntity } from '../history/entities';
+import { RunEntity, type DocumentEntity } from '../history/entities';
 import { BacklogRepository } from '../history/backlog.repository';
 import { RunRepository } from '../history/run.repository';
+import { RunWaitLog } from '../history/run-wait.log';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { CommandRepository } from '../history/command.repository';
@@ -53,6 +54,8 @@ import { openItems } from '../steps/shared/open-items';
 import { viewTitle } from './run-view/run-title';
 import type { Part, RunsPage } from '../contract/run-list';
 import { RunListRows } from './run-list-rows';
+import { EtaSummary } from './eta-summary';
+import { liveRunOf, runViewEta, taskEtas } from './run-view/run-eta';
 import { pageOf } from './run-list-page';
 import { readHistory } from './run-queries-history';
 import { openSpend, spentUsd } from './run-queries-spend';
@@ -83,6 +86,8 @@ export class RunQueriesService {
     private readonly runReport: RunReport,
     private readonly backlogs: BacklogRepository,
     private readonly rows: RunListRows,
+    private readonly waitLog: RunWaitLog,
+    private readonly etaSummary: EtaSummary,
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly gate: ContainerGate = new ContainerGate(),
     @Optional() private readonly turns?: PlannerTurns,
@@ -146,20 +151,7 @@ export class RunQueriesService {
       ...(label ? { backlog: label } : {}),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
       ...(run.ownerSince ? { ownerSince: run.ownerSince } : {}),
-      ...taskView(
-        documents,
-        run.currentStep,
-        await taskRuns(
-          this.runs,
-          this.visits,
-          children,
-          documents,
-          this.pipeline,
-          { documents: this.documents, checkouts: this.checkouts, commands: this.commands },
-          this.live,
-          (key) => runPlace(this.gate.agentWait(key)),
-        ),
-      ),
+      ...(await this.tasksAndEta(run, documents, children, state)),
       ...epicTotal(shown, children, this.usdOf, this.clock.now()),
       ...state,
       conversation: conversationView({
@@ -200,6 +192,38 @@ export class RunQueriesService {
         renderProjects([...storedProjects(run.projects), ...storedProjects(latest(documents, 'pending_repos'))]),
       ),
       workspace: run.workspace === 'removed' ? 'removed' : null,
+    };
+  }
+
+  /** The tasks of the run page and the ETA of the run, from one reading of the waits, so the header and the Tasks section agree. */
+  private async tasksAndEta(
+    run: RunEntity,
+    documents: DocumentEntity[],
+    children: RunEntity[],
+    own: Pick<FlowView, 'state' | 'stateReason'>,
+  ): Promise<Pick<FlowView, 'tasks' | 'taskLine' | 'mergeQueue' | 'decisions' | 'eta'>> {
+    await this.waitLog.settled();
+    const table = await this.etaSummary.table();
+    const waits = await this.waitLog.waitsOf([run.id, ...children.map((child) => child.id)]);
+    const sources = { documents: this.documents, checkouts: this.checkouts, commands: this.commands };
+    const { runs, lives } = await taskRuns(
+      this.runs,
+      this.visits,
+      children,
+      documents,
+      this.pipeline,
+      sources,
+      waits,
+      this.live,
+      (key) => runPlace(this.gate.agentWait(key)),
+    );
+    const plan = parseSubtasks(latest(documents, SUBTASKS_KIND));
+    const now = this.clock.now();
+    const parallel = this.config.env.SUBTASKS_PARALLEL;
+    const eta = runViewEta(liveRunOf(run, own, waits.get(run.id) ?? []), plan, lives, table, parallel, now);
+    return {
+      ...taskView(documents, run.currentStep, runs, taskEtas(plan, lives, table, now)),
+      ...(eta ? { eta } : {}),
     };
   }
 

@@ -1,5 +1,6 @@
 import type { DocumentEntity } from '../../history/entities';
 import type { FlowView, TaskEntry } from '../../contract/api';
+import type { RunEta } from '../../contract/eta';
 import { readInterruption, type InterruptionNote } from '../../contract/interruption';
 import { parseSubtasks, shownTaskState, splitLine, unmetDepends } from '../../contract/subtask';
 import { STEPS, type StepName } from '../../contract/steps';
@@ -119,7 +120,11 @@ function fileRow(
 }
 
 /** The tasks plan-improve approved, in plan order. Empty for a run that does not split. */
-export function taskEntries(documents: DocumentEntity[], children: TaskRuns = new Map()): TaskEntry[] {
+export function taskEntries(
+  documents: DocumentEntity[],
+  children: TaskRuns = new Map(),
+  etas: ReadonlyMap<string, RunEta> = new Map(),
+): TaskEntry[] {
   if (readPlan(latest(documents, 'requirements'))?.decision !== 'approve') {
     return [];
   }
@@ -135,6 +140,7 @@ export function taskEntries(documents: DocumentEntity[], children: TaskRuns = ne
       proof: task.proof,
       depends: task.depends,
       status,
+      ...(etas.has(task.id) ? { eta: etas.get(task.id) } : {}),
       note: task.note,
       ...(status === 'waiting' || status === 'pending'
         ? { waitsFor: unmetDepends(task, tasks).map((id) => titles.get(id) ?? id) }
@@ -171,8 +177,9 @@ export function taskView(
   documents: DocumentEntity[],
   currentStep: string,
   children: TaskRuns = new Map(),
+  etas: ReadonlyMap<string, RunEta> = new Map(),
 ): Pick<FlowView, 'tasks' | 'taskLine' | 'mergeQueue' | 'decisions'> {
-  const tasks = taskEntries(documents, children);
+  const tasks = taskEntries(documents, children, etas);
   const line = taskLine(documents, currentStep);
   const shown = new Map(tasks.map((task) => [task.id, task.status]));
   const queue = parseSubtasks(latest(documents, 'subtasks'))

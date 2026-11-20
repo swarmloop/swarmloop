@@ -29,6 +29,7 @@ import { RunCommandsService } from '../api/run-commands.service';
 import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunListRows } from '../api/run-list-rows';
+import { EtaSummary } from '../api/eta-summary';
 import { RunReport } from '../steps/shared/run-report';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
@@ -63,6 +64,7 @@ export async function boot(
     providers: [
       RunQueriesService,
       RunListRows,
+      EtaSummary,
       RunReport,
       RunCommandsService,
       RunAnswersService,
