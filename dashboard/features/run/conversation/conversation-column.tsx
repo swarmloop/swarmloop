@@ -1,8 +1,6 @@
 'use client';
 
 import { type ReactElement, useEffect, useLayoutEffect, useRef } from 'react';
-import type { Route } from 'next';
-import Link from 'next/link';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
@@ -47,16 +45,7 @@ function Mark(): ReactElement {
 
 function Footer({ flow, onChange }: { flow: FlowView; onChange: (flow: FlowView) => void }): ReactElement | null {
   const mode = flow.conversation?.composer;
-  if (mode && mode !== 'read-only') {
-    return <MessageBox flow={flow} mode={mode} onChange={onChange} />;
-  }
-  const parent = flow.conversation?.parentKey ?? flow.parentKey;
-  return parent ? (
-    <Typography variant="body2">
-      <Link href={`/runs/${encodeURIComponent(parent)}` as Route}>{`The parent's conversation (${parent})`}</Link>
-      {' is where the planner of this subtask is asked.'}
-    </Typography>
-  ) : null;
+  return mode ? <MessageBox flow={flow} mode={mode} onChange={onChange} /> : null;
 }
 
 /**

@@ -113,10 +113,15 @@ export function withSubtasks(
   return [...sections, { heading: 'Subtasks', body: [lead, ...entries].filter(Boolean).join('\n') }];
 }
 
-/** The contract with a decision added under `decisions:`. The heading is created when the contract has none. */
-export function withDecision(contract: string, taskId: string, answer: string): string {
+/**
+ * The contract with a decision added under `decisions:`. The heading is created when the contract has none. `at` is an
+ * ISO time written after the task id; it is left out when none is given.
+ */
+export function withDecision(contract: string, taskId: string, answer: string, at?: string): string {
   const [first = '', ...rest] = answer.trim().split('\n');
-  const entry = [`- subtask ${taskId}: ${first}`, ...rest.map((line) => `  ${line}`)].join('\n');
+  const entry = [`- subtask ${taskId}${at ? ` at ${at}` : ''}: ${first}`, ...rest.map((line) => `  ${line}`)].join(
+    '\n',
+  );
   const body = contract.trimEnd();
   return `${body}${/^decisions:\s*$/m.test(body) ? '\n' : `${body ? '\n\n' : ''}decisions:\n`}${entry}\n`;
 }
@@ -185,6 +190,12 @@ export function composedReturn(documents: { kind: string; body: string }[]): str
 /** The return notes of the run: the stored ones, or the ones its latest reviews and pipeline result call for. */
 export async function returnedNotes(documents: DocumentRepository, runId: number): Promise<string | null> {
   return composedReturn(await documents.listDocuments(runId));
+}
+
+/** The id of the newest return the run holds: the code review's return notes, or the issues of a failed check or pipeline. */
+export async function newestReturn(documents: DocumentRepository, runId: number): Promise<number> {
+  const kinds = [ARTIFACTS.return.kind, ARTIFACTS.issues.kind];
+  return Math.max(0, ...(await documents.latestIds(runId, kinds)).values());
 }
 
 /** True when the notes are a return of the reviewers or the checks, not a failed pipeline. */

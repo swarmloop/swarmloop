@@ -15,6 +15,7 @@ export interface TaskEntry {
   status: SubtaskStatus;
   /** A rough estimate of the time left; absent when the task has none. */
   eta?: RunEta;
+  /** What the task waits on or was told: for a running task whose own run waits, the live text of that run's reason. */
   note?: string;
   /** For a waiting task: the titles of the dependencies that have not merged yet. `[]` means it waits only for a free slot. */
   waitsFor?: string[];

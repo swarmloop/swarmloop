@@ -27,7 +27,7 @@ export function MessageBox({
   onChange,
 }: {
   flow: FlowView;
-  mode: Exclude<ComposerMode, 'read-only'>;
+  mode: ComposerMode;
   onChange: (flow: FlowView) => void;
 }): ReactElement {
   const [text, setText] = useState('');

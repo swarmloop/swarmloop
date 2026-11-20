@@ -1,14 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { SUBTASK_WAIT_CODES } from '../../contract/error-codes';
 import { deriveState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
-import { readyTasks, settled, withStatuses } from '../../contract/subtask';
+import { readyTasks, runWaitNote, settled, withStatuses, type Subtask } from '../../contract/subtask';
 import type { StepName } from '../../contract/steps';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { taskStatusOf } from '../shared/subtask-status';
+import { PlanConversation } from '../shared/plan-conversation';
+import { MergeLook } from './merge-look';
+import { REBASED_PREFIX } from './split-rebase';
 import { SplitMerge } from './split-merge';
 import { SplitNeeds } from './split-needs';
 import { SplitPass } from './split-pass';
+import { StarterInbox } from './starter-inbox';
 import { earliestRetry } from './subtask-retry';
 import { BaseStep, StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -24,8 +28,8 @@ const INPUTS = {
 /**
  * Implement of a split run: a server step, no agent. A pass does what is due and ends with the parent waiting, so
  * it never holds the run. It starts again when a subtask changes status or on the reconciler timer. A pass is
- * idempotent and the only place that decides what happens next. It answers one question of a subtask first: the
- * answer is a decision in the `contract`. A pass with nothing new opens no step: it adds no visit and no attempt.
+ * idempotent and the only place that decides what happens next. It takes what the subtasks report and answers one
+ * question of a subtask first: the answer is a decision in the `contract`, and its actions change the task list. A pass with nothing new opens no step: it adds no visit and no attempt.
  */
 @Injectable()
 export class SplitImplementStep extends BaseStep<typeof INPUTS> {
@@ -39,23 +43,32 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.contract,
     ARTIFACTS.subtaskQuestions,
     ARTIFACTS.questionParts,
+    ARTIFACTS.starterTaken,
+    ARTIFACTS.mergeLook,
   ];
 
   private readonly needs: SplitNeeds;
+  private readonly inbox: StarterInbox;
+  private readonly look: MergeLook;
   private readonly pass: SplitPass;
 
   constructor(
     kernel: StepKernel,
     private readonly subtasks: SubtaskOps,
     merges: SplitMerge,
+    @Optional() conversation?: PlanConversation,
   ) {
     super(kernel);
     this.needs = new SplitNeeds(subtasks);
+    this.inbox = new StarterInbox({ subtasks, reader: this.reader });
+    this.look = new MergeLook({ subtasks, reader: this.reader, config: this.config, conversation });
     this.pass = new SplitPass({
       subtasks,
       merges,
       needs: this.needs,
-      reader: this.reader,
+      inbox: this.inbox,
+      documents: this.documents,
+      look: this.look,
       clock: this.clock,
       config: this.config,
       flows: this.flows,
@@ -83,17 +96,27 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     if (parent.status !== 'waiting' || !SUBTASK_WAIT_CODES.some((wait) => wait === code)) return false;
     const tasks = withStatuses((await this.reader.reread(parent.key, ARTIFACTS.subtasks)) ?? []);
     if (tasks.every(settled) || (await this.needs.pending(parent, tasks))) return false;
+    if (await this.inbox.pending(parent, tasks)) return false;
+    if (await this.look.pending(parent, tasks)) return false;
     const children: RunEntity[] = [];
     for (const task of tasks.filter((item) => !settled(item))) {
       const child = await this.subtasks.find(parent, task.id);
       if (!child) return false;
       children.push(child);
-      const { state } = deriveState(child);
-      const changed = state === 'stopped' || taskStatusOf(task, child) !== task.status;
-      if (changed || task.status === 'green' || (await this.subtasks.asking(child))) return false;
+      if (this.changed(task, child) || task.status === 'green' || (await this.subtasks.asking(child))) return false;
     }
     if (earliestRetry(children) !== (deriveState(parent).reason?.retryAt ?? null)) return false;
     return readyTasks(tasks, await this.pass.slots(parent, tasks)).length === 0;
+  }
+
+  /** A task whose run stopped, whose status moved, or whose running run waits with another text than the task carries. */
+  private changed(task: Subtask, child: RunEntity): boolean {
+    const { state, reason } = deriveState(child);
+    const status = taskStatusOf(task, child);
+    if (state === 'stopped' || status !== task.status) return true;
+    if (status !== 'running') return false;
+    const carried = task.note?.startsWith(REBASED_PREFIX) ? undefined : task.note;
+    return runWaitNote(task, { state, stateReason: reason }) !== carried;
   }
 
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {

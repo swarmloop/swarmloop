@@ -78,9 +78,28 @@ describe('plan result', () => {
     const item = 'add X - files: a.ts - proof: a.spec.ts "does: it"\n  - nested\n\n1. numbered';
     const split = readResult(plan, block({ summary: ['x: y'], contract: [item], tasks: [{ ...TASK, description }] }));
     expect(split.ok && (split.value as { tasks: { description: string }[] }).tasks[0].description).toBe(description);
-    expect(split.ok && (split.value as { contract: string[] }).contract).toEqual([item]);
+    expect(split.ok && (split.value as PlanResult).contract).toEqual([{ id: '', text: item, owner: '' }]);
     const listed = readResult(plan, block({ summary: ['x'], plan: [item] }));
     expect(listed.ok && (listed.value as { plan: string[] }).plan).toEqual([item]);
+  });
+
+  it('asks a split for contract items with an id, a text and an owner, and refuses a string entry', () => {
+    const asked = planFor({ split: true, subtask: false });
+    const entry = { id: 'api', text: 'one rule\n  kept whole', owner: 'a' };
+    const read = readResult(asked, block({ summary: [], contract: [entry], tasks: [TASK] }));
+    expect(read.ok && (read.value as PlanResult).contract).toEqual([entry]);
+    expect(readResult(asked, block({ summary: [], contract: ['rule'], tasks: [TASK] })).ok).toBe(false);
+    expect(readResult(asked, block({ summary: [], contract: [{ id: 'api', text: 'x' }], tasks: [TASK] })).ok).toBe(
+      false,
+    );
+  });
+
+  it('reads a stored plan_result with string contract entries and items side by side', () => {
+    const entry = { id: 'api', text: 'rule', owner: 'a' };
+    const read = readResult(plan, block({ summary: [], contract: ['old', entry], tasks: [TASK] }));
+    expect(read.ok && (read.value as PlanResult).contract).toEqual([{ id: '', text: 'old', owner: '' }, entry]);
+    const improved = readResult(planImprove, block({ summary: [], contract: ['old'], tasks: [TASK] }));
+    expect(improved.ok && (improved.value as PlanImproveResult).contract).toEqual([{ id: '', text: 'old', owner: '' }]);
   });
 
   it('lists every field with its type and description, only the ones a run is asked for', () => {

@@ -24,7 +24,8 @@ const covering = (count: number, extra: Record<string, unknown> = {}): string =>
     ...extra,
   });
 
-const split = (tasks: unknown[]): string => resultAnswer('Done.', { summary: ['why'], contract: ['rule'], tasks });
+const split = (tasks: unknown[]): string =>
+  resultAnswer('Done.', { summary: ['why'], contract: [{ id: 'item-1', text: 'rule', owner: 'a' }], tasks });
 
 interface Options {
   list?: boolean;

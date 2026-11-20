@@ -19,7 +19,7 @@ import { VisitRepository } from '../history/visit.repository';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import type { Need } from '../steps/shared/needs';
 import { mergeHandoff } from '../steps/shared/handoff';
-import { mergeSummaryOf } from './merge-summary';
+import { mergeSummaryOf } from '../steps/shared/merge-summary';
 import type { OpenedStep } from '../steps/step-run';
 import { DELIVERED_PREFIX } from '../steps/commit/commit-result';
 import { ReportRefresh } from '../steps/shared/report-refresh';
@@ -31,6 +31,8 @@ import { SubtaskWorktrees } from './subtask-worktrees';
 import { SubtaskAsks } from './subtask-asks';
 import { PlanConversation } from '../steps/shared/plan-conversation';
 import { PlanChatStore } from '../history/plan-chat.store';
+import type { PlanChange, StarterPlan } from '../steps/implement/starter-actions';
+import type { StarterAnswerResult } from '../agent-result/definitions/starter-answer';
 
 /** What the api layer does for the subtasks of a parent. It registers itself at init, so `pipeline` never imports `api`. */
 interface SubtaskStarter {
@@ -71,6 +73,7 @@ export class SubtaskPort extends SubtaskOps {
       conversation ??
         new PlanConversation(launcher, visits, documents, config, clock, new PlanChatStore(runs, documents)),
       visits,
+      runs,
     );
   }
 
@@ -101,8 +104,22 @@ export class SubtaskPort extends SubtaskOps {
     return this.asks.asking(run);
   }
 
-  override answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null> {
-    return this.asks.answer(opened, child, task, contract);
+  override answer(
+    opened: OpenedStep,
+    child: RunEntity,
+    task: Subtask,
+    contract: string,
+    plan?: StarterPlan,
+  ): Promise<StarterAnswerResult | null> {
+    return this.asks.answer(opened, child, task, contract, plan);
+  }
+
+  override resend(child: RunEntity): Promise<StarterAnswerResult | null> {
+    return this.asks.resend(child);
+  }
+
+  override recordRevisions(parent: RunEntity, changes: PlanChange[], at: string): Promise<void> {
+    return this.asks.recordRevisions(parent, changes, at);
   }
 
   override replyPending(child: RunEntity): boolean {

@@ -30,6 +30,7 @@ import { CODE_REVIEWERS } from '../../contract/steps';
 import { REVIEWS } from '../contract/artifacts';
 import type { RunReport } from '../shared/run-report';
 import { storedAnswerErrors } from '../shared/stored-answer-errors';
+import type { StarterBriefing } from '../shared/starter-briefing';
 
 export interface Reviewer {
   name: string;
@@ -86,6 +87,8 @@ export interface ReviewDeps {
   launcher: AgentLauncher;
   runReport: RunReport;
   chat?: PlanChatStore;
+  /** What a subtask's chats are told of their starter; one instance, so its record writes go one after another. */
+  briefing?: StarterBriefing;
   /** Called when the report's own agent is about to start. */
   onReportStart?: () => void;
 }
@@ -97,15 +100,38 @@ export function onlyReviewer(reviewer: string | undefined): string | undefined {
   return REVIEWERS.some((item) => item.name === reviewer) ? reviewer : undefined;
 }
 
+type RoundJob = Omit<ReviewLaunch, 'briefFor' | 'answering'> & {
+  promptFor: (runtime: RuntimeName) => string;
+  exchange: { heading: string; body: string } | null;
+};
+
+/** What a resumed reviewer chat is sent: the answer to its question, a continue after an interruption, or the new round. */
+function resumedPrompt(
+  job: RoundJob,
+  round: {
+    fix: { implement: string; reviewed: string };
+    plan: string;
+    returned: string | null;
+    retry: boolean;
+    received: string | null;
+  },
+): string {
+  const { fix, plan, returned, retry, received } = round;
+  const name = job.reviewer.name;
+  if (job.answer) {
+    const definition = job.exchange ? reviewAnswerDefinition(name) : reviewDefinition(name);
+    return answerFollowUp(job.answer, resultPromptFor(definition, received));
+  }
+  if (retry) return reviewContinue(name, received);
+  return reviewResume(name, fix.implement, fix.reviewed, plan, returned, received, job.exchange ?? undefined);
+}
+
 export async function runJob(
   deps: ReviewDeps,
   opened: OpenedStep,
   key: string,
   env: SwarmloopEnv,
-  job: Omit<ReviewLaunch, 'briefFor' | 'answering'> & {
-    promptFor: (runtime: RuntimeName) => string;
-    exchange: { heading: string; body: string } | null;
-  },
+  job: RoundJob,
   fix: { implement: string; reviewed: string },
   plan: string,
   returned: string | null,
@@ -117,23 +143,11 @@ export async function runJob(
   const session = await resumableChat(deps.root, key, step, job.runtime);
   const full = fresh || !session?.chatId;
   const received = session?.resultName ?? null;
-  const definition = job.exchange ? reviewAnswerDefinition(job.reviewer.name) : reviewDefinition(job.reviewer.name);
-  const chosen = full
-    ? job.prompt
-    : job.answer
-      ? answerFollowUp(job.answer, resultPromptFor(definition, received))
-      : retry
-        ? reviewContinue(job.reviewer.name, received)
-        : reviewResume(
-            job.reviewer.name,
-            fix.implement,
-            fix.reviewed,
-            plan,
-            returned,
-            received,
-            job.exchange ?? undefined,
-          );
-  return one(
+  const briefed = await deps.briefing?.prepare(opened.run, step, session?.chatId ?? null, { continued: !full });
+  const resumed = full ? job.prompt : resumedPrompt(job, { fix, plan, returned, retry, received });
+  // A resumed chat is told only what its starter changed since its last prompt; a new chat has the whole state in its prompt.
+  const chosen = full ? resumed : `${resumed}${briefed?.told ?? ''}`;
+  const finished = await one(
     deps,
     opened,
     key,
@@ -155,6 +169,9 @@ export async function runJob(
     auto,
     fresh,
   );
+  const chatId = finished.result?.chatId;
+  if (briefed && chatId && !finished.error) await deps.briefing?.remember(opened.run, chatId, briefed);
+  return finished;
 }
 
 async function one(

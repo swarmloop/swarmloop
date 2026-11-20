@@ -2,7 +2,7 @@ import Joi from 'joi';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { defineResult } from '../result-definition';
 import type { ResultDefinition } from '../result-definition';
-import { QUESTION } from './implementation';
+import { QUESTION } from './starter-fields';
 
 /** The mark of one requirement of the Requirements list. */
 export interface RequirementMark {

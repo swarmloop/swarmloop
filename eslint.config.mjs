@@ -286,6 +286,11 @@ export default tseslint.config(
       'server/src/steps/shared/amendment.ts', // reads the plan chat revisions written after the latest implement visit
       'server/src/steps/shared/stored-answer-errors.ts', // reads the validation errors attached to the agent's latest failed visit
       'server/src/steps/shared/handoff.ts', // reads and merges the handoff document
+      'server/src/steps/shared/requirements-review.ts', // reads the newest requirements review result and its document id, which names the review for a gap task
+      'server/src/steps/shared/merge-summary.ts', // reads the summary a merged task's merge request wrote, for the parent's prompts
+      'server/src/steps/shared/merged-files.ts', // reads the files a merged task changed, for the parent's prompts
+      'server/src/steps/shared/starter-briefing.ts', // reads the parent's tasks, contract and requirements, and its children's results, for a subtask's prompts
+      'server/src/steps/shared/briefing-record.ts', // keeps what each chat of a subtask was told as a document of the run, between its visits
       'server/src/steps/shared/rebased-publisher.ts', // records the refs it pushed for the implement step
       'server/src/steps/prepare/project-append.service.ts', // adds a project to a run between its visits
       'server/src/steps/commit/commit-delivered.ts', // reads the stored reviews an unchanged tree is judged from

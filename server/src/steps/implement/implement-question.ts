@@ -15,12 +15,12 @@ const ANSWER_HEADING = 'Answer from the planner';
 const DECIDE_LINE =
   'This answers the question you asked. Decide any further open choice yourself, and do not ask again: name the choice in `summary` as an assumption.';
 
-/** The steps of a subtask that ask the planner of its parent: a subtask has no planner of its own. */
+/** The steps of a subtask whose questions the planner of its parent takes when its own planner escalates them. */
 export const SUBTASK_ASKING_STEPS: readonly string[] = ['implement', 'implement-improve'];
 
 /**
- * True when the run has someone to ask: its own planner, or for a subtask at one of these steps the planner of its
- * parent. A run that never planned, such as a review of another branch, has no planner chat and asks no one.
+ * True when the run has someone to ask: its own planner, and for a subtask only at the steps that ask. A run that never planned, such as a
+ * review of another branch, has no planner chat and asks no one.
  */
 export async function mayAsk(
   run: RunEntity,
@@ -28,9 +28,10 @@ export async function mayAsk(
   place: { root: string; env: SwarmloopEnv },
 ): Promise<boolean> {
   if (!chat) return false;
-  if (isSubtask(run)) return SUBTASK_ASKING_STEPS.includes(run.currentStep);
+  if (isSubtask(run) && !SUBTASK_ASKING_STEPS.includes(run.currentStep)) return false;
   const { runtime } = agentFor(place.env, run, 'plan');
-  return Boolean((await resumableChat(place.root, run.key, 'plan', runtime))?.chatId);
+  const got = await resumableChat(place.root, run.key, 'plan', runtime);
+  return Boolean(got?.chatId);
 }
 
 /** The planner's answer to this step's question that the step did not read yet, or null. */
@@ -97,18 +98,13 @@ export async function waitForPlanner(run: RunEntity, ask: QuestionAsk): Promise<
     at: ask.clock.iso(),
     state: 'pending',
   });
-  if (isSubtask(run)) {
-    // The planner of the parent takes the question from this chat, and the run goes on when it answered.
-    const reason = `${ask.step} asks the planner of the parent`;
-    return {
-      route: { to: 'wait', reason },
-      summary: `${ask.startedAt} ${reason}\n${ask.question.trim()}`,
-      outputs: [],
-    };
-  }
   const reason = `${ask.step} ${ASKS_PLANNER_WORDS}`;
   return {
-    route: { to: 'wait', code: REASON.asksPlanner, reason },
+    route: {
+      to: 'wait',
+      code: REASON.asksPlanner,
+      reason: isSubtask(run) ? `${reason}: ${ask.question.trim()}` : reason,
+    },
     summary: `${ask.startedAt} ${reason}\n${ask.question.trim()}`,
     outputs: [],
   };

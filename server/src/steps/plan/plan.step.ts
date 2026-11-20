@@ -6,54 +6,35 @@ import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
-import { isSubtask } from '../../contract/subtask';
+import { CONTRACT_KIND, isSubtask } from '../../contract/subtask';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
-import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { projectRules } from '../shared/project-rules';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { appendImpact, assumptions, withContract, withHandoff, withImpact } from '../shared/handoff';
-import { PLAN_EXECUTION_RULE, skillPrompt } from '../shared/skill-prompt';
+import { appendImpact, assumptions, withHandoff, withImpact } from '../shared/handoff';
+import { skillPrompt } from '../shared/skill-prompt';
 import { unanswered } from '../shared/answers';
 import { storedImpact } from '../shared/research-reads';
-import { implementedWithoutTasks } from '../shared/amendment';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { planFields, readPlan, renderSummary, withPlan } from './plan-record';
 import { renderQuestions } from '../research/research-record';
-import {
-  addTasksCheck,
-  buildGraph,
-  isSplit,
-  planItemsFromTasks,
-  splitLimits,
-  splitOutputs,
-  startedTasks,
-  type TaskLimits,
-} from './plan-tasks';
+import { buildGraph, isSplit, planItemsFromTasks, splitLimits, splitOutputs } from './plan-tasks';
 import { withNamedFileLines } from './named-file-lines';
-import { completePlan, plan, planFor, type PlanResult } from '../../agent-result/definitions/plan';
+import { completePlan, planFor, type PlanResult } from '../../agent-result/definitions/plan';
 import { resultPromptFor } from '../../agent-result/result-prompt';
-import { needsWait } from '../shared/needs';
-import {
-  planChatAddsTasks,
-  planChatAmends,
-  planChatFollowUp,
-  planContinue,
-  planFollowUp,
-  subtaskDecides,
-} from './plan.prompts';
+import { planContinue, planFollowUp } from './plan.prompts';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { Requirement } from '../../contract/requirement-list';
 import { correctCoverage, gapLines, requirementsSection } from '../shared/coverage-correction';
 import { coverageOf } from '../shared/requirement-coverage';
 import { coverageUnits } from './plan-coverage';
-import { decidedErrors, planErrors } from '../shared/plan-errors';
+import { planErrors } from '../shared/plan-errors';
+import { StarterExchange } from '../shared/starter-exchange';
 import { PlanConversation } from '../shared/plan-conversation';
-import { storedGraph } from '../shared/stored-graph';
 import { PlanChatStore } from '../../history/plan-chat.store';
-import { planReplyFor, type PlanReplyResult } from '../../agent-result/definitions/plan-reply';
 import { splitFacts } from './task-depth';
+import { answerMessages, finished, type MessageDeps } from './plan-messages';
 
 const INPUTS = {
   requirements: REQUIREMENTS_INPUT,
@@ -120,7 +101,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       };
     }
     const { requirements } = input;
-    const answered = await this.answerMessages(ctx);
+    const answered = await answerMessages(this.messageDeps(), ctx);
     if (answered) return answered;
     const stored = readPlan(requirements);
     if (stored && stored.decision !== 'revise') {
@@ -136,19 +117,11 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const prior = await ctx.reread(ARTIFACTS.handoff);
     const impact = storedImpact(researched, await ctx.reread(ARTIFACTS.impact));
     const sections = withNamedFileLines(
-      withContract(
-        withImpact(withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior), impact),
-        await this.parentContract(ctx.opened.run),
-      ),
+      withImpact(withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior), impact),
       [requirements, answers, prior, impact].join('\n'),
       mounts,
     );
-    // A stored plan visit makes this a re-plan; the session records the last definition sent into the shared chat.
-    const { runtime } = this.profile(this.config.env, ctx.opened.run);
-    const chat = await resumableChat(root(this.config), key, 'plan', runtime);
-    const planVisit = await this.visits.hasAgentVisit(ctx.opened.run.id, 'plan');
-    const continued = planVisit ? chat : null;
-    const received = chat?.chatId ? (chat.resultName ?? null) : null;
+    const { runtime, chat, received, goesOn } = await this.sessionFor(ctx.opened.run);
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
     const added = await ctx.reread(ARTIFACTS.addedRepos);
     const list = await ctx.reread(ARTIFACTS.requirementList);
@@ -163,37 +136,43 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
         resultPromptFor(asked, chatReceived),
       ].join('\n\n');
     const finish = (prompt: string): string => finished(prompt, added);
-    const chosen = continued?.chatId
+    const chosen = goesOn
       ? appendImpact(planFollowUp(answers, resultPromptFor(asked, received)), impact)
       : fullFor(runtime, received, Boolean(chat?.chatId));
-    const check = (value: unknown): string[] => planErrors(completePlan(value as Partial<PlanResult>), limits, subtask);
+    const exchange = new StarterExchange(undefined, this.clock);
+    const contract = subtask ? await this.parentDocument(ctx.opened.run, CONTRACT_KIND) : null;
+    const check = (value: unknown): string[] => {
+      const read = completePlan(value as Partial<PlanResult>);
+      return [...planErrors(read, limits, subtask), ...exchange.check(ctx.opened.run, read, contract)];
+    };
     const first = await ctx.launch({
       prompt: finish(chosen),
       briefFor: (other) => finish(fullFor(other, null)),
       mounts,
       continuePrompt: planContinue(),
+      briefing: { continued: goesOn },
       result: asked,
       check,
     });
     let result = completePlan(first.resultValue as Partial<PlanResult>);
-    const needs = subtask ? (result.needs ?? []) : [];
-    if (needs.length > 0) {
-      const wait = needsWait(ctx.opened.startedAt, needs);
-      return { ...wait, outputs: [...wait.outputs, { artifact: ARTIFACTS.planResult, value: result }] };
+    // A subtask hands back what it asks, decides and leaves out through the one exchange; a run that is not a subtask asks a person.
+    const outcome = subtask
+      ? await exchange.act(ctx, result, {
+          step: this.name,
+          route: 'document',
+          answered: Boolean(answers.trim() && planned?.question?.trim()),
+          mayAsk: true,
+          outputs: [{ artifact: ARTIFACTS.planResult, value: result }],
+        })
+      : null;
+    if (outcome?.wait) {
+      return outcome.wait;
     }
     if (subtask) await ctx.write(ARTIFACTS.needs, '');
-    const questionText = renderQuestions(result.questions);
-    // A subtask asks no one: it decides the questions itself and records them as assumptions.
-    if (questionText && subtask) {
-      const decided = await ctx.launch({
-        prompt: subtaskDecides(resultPromptFor(asked, plan.name)),
-        mounts,
-        result: asked,
-        check: (value) => decidedErrors(completePlan(value as Partial<PlanResult>)),
-      });
-      result = completePlan(decided.resultValue as Partial<PlanResult>);
-    }
-    if (questionText && !subtask) {
+    // The questions the parent answered are closed once the plan goes on.
+    if (subtask && questions.trim()) await ctx.write(ARTIFACTS.questions, '');
+    const questionText = subtask ? '' : renderQuestions(result.questions);
+    if (questionText) {
       return {
         route: { to: 'wait', reason: 'questions are open' },
         summary: `${ctx.opened.startedAt} plan waiting\n${questionText.trimEnd()}`,
@@ -225,7 +204,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       ? planFields(planItemsFromTasks(graph.tasks))
       : planFields(result.plan, result.name, result.overview);
     const summary = renderSummary(result.summary, fields.items);
-    const assumed = questionText && subtask ? assumptions(questionText) : '';
+    const assumed = outcome?.assumed.length ? assumptions(renderQuestions(outcome.assumed)) : '';
     const notes = [...gaps, ...(assumed ? [assumed] : [])];
     return {
       route: { to: 'next' },
@@ -243,72 +222,34 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     };
   }
 
-  /** What a message is asked and checked with: tasks only for a split run whose tasks started, an amendment for a run that implemented without splitting. */
-  private async replyRoute(ctx: ModelStepContext, limits: TaskLimits, subtask: boolean) {
-    const { run } = ctx.opened;
-    const graph = await storedGraph(ctx);
-    const adding = limits.maySplit && !subtask && startedTasks(graph.tasks).length > 0;
-    const amending = await implementedWithoutTasks(this.documents, this.visits, run);
+  /** What the messages of a person are answered with; null when the step has no plan chat or conversation. */
+  private messageDeps(): MessageDeps | null {
+    const { planChat, conversation } = this;
+    if (!planChat || !conversation) return null;
     return {
-      asked: planReplyFor({ split: limits.maySplit, subtask, ...(adding ? { addTasksOnly: true } : {}) }),
-      followUp: adding ? planChatAddsTasks : amending ? planChatAmends : planChatFollowUp,
-      check: adding
-        ? addTasksCheck(graph, limits)
-        : (value: unknown) => planErrors(completePlan(value as Partial<PlanResult>), limits, subtask),
+      planChat,
+      conversation,
+      documents: this.documents,
+      visits: this.visits,
+      root: root(this.config),
+      runtimeOf: (run) => this.profile(this.config.env, run).runtime,
+      exchange: new StarterExchange(planChat, this.clock),
+      parentOf: async (run) => {
+        const parent = typeof run.parentRunId === 'number' ? await this.runs.findById(run.parentRunId) : null;
+        return parent ? { run: parent, contract: await this.parentDocument(run, CONTRACT_KIND) } : null;
+      },
     };
   }
 
-  /**
-   * The messages a person sent are answered in the plan's own chat, with the reply the planner gives. Null when none is
-   * waiting, or when there is no plan or no plan chat yet: the message then waits for the first plan, and plan-improve sends the run back.
-   */
-  private async answerMessages(ctx: ModelStepContext): Promise<StepResult | null> {
-    const { run } = ctx.opened;
-    if (!this.planChat || !this.conversation) return null;
-    const pending = await this.planChat.pending(run.key);
+  /** A stored plan visit makes this a re-plan; the session records the last definition sent into the shared chat. */
+  private async sessionFor(run: RunEntity) {
     const { runtime } = this.profile(this.config.env, run);
-    const chat = pending.length > 0 ? await resumableChat(root(this.config), run.key, 'plan', runtime) : null;
-    // The chat can exist before the first plan (research shares it): a message waits until there is a plan to change.
-    if (!chat?.chatId || !readPlan(await ctx.reread(ARTIFACTS.requirements))) return null;
-    const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
-    const mounts = mountsForStep(root(this.config), run.key, names, run.targetPath);
-    const limits = await this.conversation.limits(run);
-    const subtask = isSubtask(run);
-    const { asked, followUp, check } = await this.replyRoute(ctx, limits, subtask);
-    const received = chat.resultName ?? null;
-    const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
-    const reason = pending.map((message) => message.text.trim()).join('\n\n');
-    // The reply streams to the person while the planner writes it, until its stored entry takes its place.
-    const { conversation } = this;
-    const applied = await conversation.whileReplying(run.key, async () => {
-      const launched = await ctx.launch({
-        prompt: finished(
-          appendImpact(followUp(pending, resultPromptFor(asked, received)), impact),
-          await ctx.reread(ARTIFACTS.addedRepos),
-        ),
-        mounts,
-        result: asked,
-        check,
-      });
-      return conversation.applyReply(ctx, launched.resultValue as PlanReplyResult, reason);
-    });
-    await this.planChat.markTaken(
-      run.key,
-      pending.map((message) => message.key),
-    );
-    // A reply that leaves a plan plan-improve already approved as it was has nothing new to check: the run goes on past it.
-    const checked = readPlan(await ctx.reread(ARTIFACTS.requirements))?.decision === 'approve';
-    return {
-      route: applied.outputs.length === 0 && checked ? { to: 'jump', step: 'branch' } : { to: 'next' },
-      summary: `${ctx.opened.startedAt} plan answered`,
-      outputs: applied.outputs,
-      ...(applied.handoff ? { handoff: applied.handoff } : {}),
-    };
+    const chat = await resumableChat(root(this.config), run.key, 'plan', runtime);
+    const planVisit = await this.visits.hasAgentVisit(run.id, 'plan');
+    const continued = planVisit ? chat : null;
+    const received = chat?.chatId ? (chat.resultName ?? null) : null;
+    return { runtime, chat, received, goesOn: Boolean(continued?.chatId) };
   }
-}
-
-function finished(prompt: string, added: string | null): string {
-  return `${withAddedRepos(prompt, added)}\n\n${PLAN_EXECUTION_RULE}`;
 }
 
 /**

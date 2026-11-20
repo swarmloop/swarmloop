@@ -2,7 +2,7 @@ import { isSubtask, type Subtask } from '../../contract/subtask';
 import type { RunEntity } from '../../history/entities';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { ArtifactValue } from '../contract/step-contract';
-import type { SplitFields, SplitTask } from '../../agent-result/definitions/split-fields';
+import type { ContractItem, SplitFields, SplitTask } from '../../agent-result/definitions/split-fields';
 import { keepErrors, type KeepLine } from '../shared/keep-lines';
 
 interface TaskGraph {
@@ -46,7 +46,7 @@ export function taskErrors(value: SplitFields, limits: TaskLimits): string[] {
   }
   const { tasks } = value;
   const errors: string[] = [];
-  if (!value.contract.some((entry) => entry.trim())) {
+  if (!value.contract.some((entry) => entry.text.trim())) {
     errors.push('contract is missing');
   }
   if (tasks.length > limits.maxTasks) {
@@ -93,7 +93,7 @@ export function withAddedTasks(
 ): { graph: TaskGraph | null; errors: string[] } {
   const errors = taskErrors(
     {
-      contract: [stored.contract, ...added.contract],
+      contract: [{ id: '', text: stored.contract, owner: '' }, ...added.contract],
       tasks: [...stored.tasks, ...added.tasks],
       keep: [...stored.keep, ...added.keep],
     },
@@ -129,13 +129,17 @@ function completeSplit(value: Partial<SplitFields>): SplitFields {
   return { contract: value.contract ?? [], tasks: value.tasks ?? [], keep: value.keep ?? [] };
 }
 
-/** The stored contract: one bullet per entry, the lines after the first indented two spaces. */
-export function renderContract(entries: string[]): string {
-  return entries
-    .filter((entry) => entry.trim())
-    .map((entry) => {
-      const [first, ...rest] = entry.trim().split('\n');
-      return [`- ${first}`, ...rest.map((line) => (line.trim() ? `  ${line}` : ''))].join('\n');
+/**
+ * The stored contract: one bullet per item, `- <id> (owner <task>): <text>`, the lines after the first indented two
+ * spaces. An item with no id, as one read from a text contract, is `- <text>`.
+ */
+export function renderContract(items: ContractItem[]): string {
+  return items
+    .filter((item) => item.text.trim())
+    .map((item) => {
+      const [first, ...rest] = item.text.trim().split('\n');
+      const head = item.id ? `${item.id} (owner ${item.owner}): ` : '';
+      return [`- ${head}${first}`, ...rest.map((line) => (line.trim() ? `  ${line}` : ''))].join('\n');
     })
     .join('\n');
 }

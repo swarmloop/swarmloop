@@ -23,7 +23,7 @@ const splitTasks = [
 
 const splitReply = resultAnswer('Done.', {
   summary: ['two parts'],
-  contract: ['the column is called `split`'],
+  contract: [{ id: 'item-1', text: 'the column is called `split`', owner: 'a' }],
   tasks: splitTasks,
 });
 
@@ -57,7 +57,11 @@ describe('plan step with split', () => {
       proof: 'a.spec.ts',
       description: 'Does it.',
     }));
-    const answer = resultAnswer('Done.', { summary: ['why'], contract: ['one field'], tasks });
+    const answer = resultAnswer('Done.', {
+      summary: ['why'],
+      contract: [{ id: 'item-1', text: 'one field', owner: 'a' }],
+      tasks,
+    });
     const out = await runSplit('PROJ-83', answer);
     expect(out.done.exitCode).toBe(0);
     expect(out.run?.currentStep).toBe('plan-improve');
@@ -69,7 +73,7 @@ describe('plan step with split', () => {
       'PROJ-81',
       resultAnswer('Done.', {
         summary: ['two parts'],
-        contract: ['x'],
+        contract: [{ id: 'item-1', text: 'x', owner: 'a' }],
         tasks: [{ ...splitTasks[0], depends: ['api'] }, splitTasks[1]],
       }),
     );

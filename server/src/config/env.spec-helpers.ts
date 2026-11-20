@@ -58,6 +58,7 @@ export function testEnv(overrides: Partial<SwarmloopEnv> = {}): SwarmloopEnv {
     AGENTS_SUBTASK_REVIEW: '',
     AGENTS_BACKLOG_PLAN: '',
     EPIC_EFFORT: '',
+    EPIC_REPLAN_EVERY_MERGE: true,
     SPLIT: 'off',
     SPLIT_MAX_TASKS: 12,
     SUBTASKS_PARALLEL: 3,

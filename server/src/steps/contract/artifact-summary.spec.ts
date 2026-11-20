@@ -38,6 +38,7 @@ const JSON_BODIES: Record<string, string> = {
   requirement_list: '[{"id":"R1","text":"first"}]\n',
   requirement_coverage: '[{"id":"R1","text":"first","items":["item"]}]\n',
   subtask_answer_result: '{"answer":"use the shared helper"}\n',
+  starter_answer_result: '{"decision":"use the shared helper"}\n',
 };
 
 const bodies = goldenBodies();

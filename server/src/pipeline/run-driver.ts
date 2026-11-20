@@ -23,6 +23,7 @@ import {
 } from '../core/pipeline-result';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/run-state';
+import { isSubtask } from '../contract/subtask';
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
 import { root } from '../history/run-paths';
@@ -86,6 +87,13 @@ export class RunDriver {
     }
   }
 
+  /** True while a question waits. A subtask goes on past what it handed up in a message; it stops only while it waits for the planner. */
+  private async waitsOnQuestion(key: string): Promise<boolean> {
+    if (!(await this.turns?.hasQuestion(key))) return false;
+    const run = await this.runs.findRun(key);
+    return !run || !isSubtask(run) || asksPlanner(run);
+  }
+
   private async driveSteps(name: StepName, key: string, options: StepOptions): Promise<PipelineResult> {
     let step = name;
     let stepOptions = options;
@@ -106,7 +114,7 @@ export class RunDriver {
       if (amended) {
         step = amended;
         stepOptions = { auto: true };
-      } else if (await this.turns?.hasQuestion(key)) {
+      } else if (await this.waitsOnQuestion(key)) {
         // The question waits for the planner, or for the person it was escalated to: nothing runs.
         return result;
       }

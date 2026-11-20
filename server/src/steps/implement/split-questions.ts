@@ -35,13 +35,15 @@ export class SplitQuestions {
 
   /**
    * Sends every answered question to its subtask: a task that waits in research gets the Answer command, a task that
-   * waits with needs gets a line in its handoff. Each answer is a decision in the contract, and its question is closed.
+   * waits with needs gets a line in its handoff. Each answer is a decision in the contract with the time `at`, and its
+   * question is closed.
    */
   async deliver(
     parent: RunEntity,
     contract: string,
     body: string,
     answersBody: string,
+    at: string,
   ): Promise<{ contract: string; body: string }> {
     const stored = answered(answersBody);
     const open: string[] = [];
@@ -56,7 +58,7 @@ export class SplitQuestions {
       const child = await this.subtasks.find(parent, id);
       if (child && (await this.subtasks.asking(child))) await this.subtasks.deliverAnswer(child, answer);
       else if (child && (await this.subtasks.needsOf(child)).length > 0) await this.subtasks.rerun(child, [answer]);
-      current = withDecision(current, id, answer);
+      current = withDecision(current, id, answer, at);
     }
     return { contract: current, body: renderQuestions(open) };
   }

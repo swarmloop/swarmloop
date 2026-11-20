@@ -4,33 +4,36 @@ import { deriveState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
 import type { AppConfig } from '../../config/env';
 import type { Clock } from '../../core/clock';
+import type { DocumentRepository } from '../../history/document.repository';
 import type { FlowRepository } from '../../history/flow.repository';
 import type { VisitRepository } from '../../history/visit.repository';
 import {
   readyTasks,
   settled,
   statusLine,
+  runWaitNote,
   unmetDepends,
   waitNote,
   withStatuses,
   type Subtask,
 } from '../../contract/subtask';
 import { sampleSelf } from '../../history/visit';
-import { withDecision } from '../shared/handoff';
 import { openQuestions } from '../shared/answers';
-import { keepOpen, type StoredQuestion } from '../shared/question-parts';
+import { keepOpen } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
 import type { SubtaskOps } from '../shared/subtask-ops';
 import { mergedOf, taskStatusOf } from '../shared/subtask-status';
 import type { StepContext } from '../base-step';
-import type { InputReader } from '../contract/input-reader';
 import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
 import { handOver, settledRecord, settledView } from './split-handover';
+import type { MergeLook } from './merge-look';
 import type { SplitMerge } from './split-merge';
 import { REBASED_PREFIX } from './split-rebase';
 import type { SplitNeeds } from './split-needs';
-import { askedQuestion, SplitQuestions } from './split-questions';
+import { SplitQuestions } from './split-questions';
+import type { InboxPass, StarterInbox } from './starter-inbox';
+import { gapOf, gapReturn, takeGap } from './review-gaps';
 import { earliestRetry } from './subtask-retry';
 
 const BLOCKED_ACTION = 'Resume, Replay or Skip task clears it';
@@ -46,7 +49,9 @@ interface SplitPassDeps {
   subtasks: SubtaskOps;
   merges: SplitMerge;
   needs: SplitNeeds;
-  reader: InputReader;
+  inbox: StarterInbox;
+  documents: DocumentRepository;
+  look: MergeLook;
   clock: Clock;
   config: AppConfig;
   flows: FlowRepository;
@@ -80,12 +85,13 @@ export class SplitPass {
     const read = (await ctx.reread(ARTIFACTS.contract)) ?? '';
     const asked = (await ctx.reread(ARTIFACTS.subtaskQuestions)) ?? '';
     const answers = (await ctx.reread(ARTIFACTS.answers)) ?? '';
-    const delivered = await this.questions.deliver(run, read, asked, answers);
+    const delivered = await this.questions.deliver(run, read, asked, answers, startedAt);
     const held = this.questions.pending(delivered.body, answers);
-    const answered = await this.answer(ctx, withStatuses(subtasks), delivered.contract, held);
-    const needed = await this.deps.needs.run(ctx.opened, withStatuses(subtasks), answered.contract, held);
+    const answered = await this.deps.inbox.take(ctx, withStatuses(subtasks), delivered.contract, held);
+    const gapped = await this.gaps(ctx, answered);
+    const needed = await this.deps.needs.run(ctx.opened, gapped.tasks, gapped.contract, held);
     const carried = openQuestions(delivered.body, []);
-    const asks = [...answered.asks, ...needed.asks];
+    const asks = [...gapped.asks, ...needed.asks];
     const open = [...carried, ...asks.map((ask) => ask.question)];
     const questions = renderQuestions(open);
     const storedParts = (await ctx.reread(ARTIFACTS.questionParts)) ?? [];
@@ -93,18 +99,49 @@ export class SplitPass {
     const followed = await this.refresh(run, needed.tasks);
     const { tasks: merged, refusal, unfetched, unmoved: mergeNote } = await this.deps.merges.run(run, followed.tasks);
     const unmoved = [followed.unmoved, mergeNote].filter(Boolean).join('; ') || null;
-    const tasks = await this.explain(run, await this.start(run, merged));
+    const requirements = (await ctx.reread(ARTIFACTS.requirementList)) ?? [];
+    const looked = await this.deps.look.run(ctx, merged, needed.contract, requirements);
+    const tasks = await this.explain(run, await this.start(run, looked.tasks));
+    const taken =
+      gapped.taken === null ? [] : [{ artifact: ARTIFACTS.starterTaken, value: JSON.stringify(gapped.taken) }];
     const outputs: StepResult['outputs'] = [
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
-      ...(needed.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: needed.contract }]),
+      ...(looked.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: looked.contract }]),
+      ...(looked.looks === null ? [] : [{ artifact: ARTIFACTS.mergeLook, value: looked.looks }]),
       ...(questions === asked ? [] : [{ artifact: ARTIFACTS.subtaskQuestions, value: questions }]),
       ...(JSON.stringify(parts) === JSON.stringify(storedParts)
         ? []
         : [{ artifact: ARTIFACTS.questionParts, value: parts }]),
+      ...taken,
     ];
     const result = await this.route(ctx, tasks, open, outputs, { refusal, unfetched });
     const noted = unmoved ? this.withUnmoved(result, unmoved) : result;
     return own.committed ? { ...noted, summary: `${noted.summary}; ${own.committed}` } : noted;
+  }
+
+  /**
+   * Once every task is settled, a final review that marks requirements partial or missing becomes a task of the list,
+   * and the review is taken, so the parent's own implement does not get it.
+   */
+  private async gaps(ctx: StepContext, answered: InboxPass): Promise<InboxPass> {
+    const { run, startedAt } = ctx.opened;
+    const stored = answered.taken ?? (JSON.parse((await ctx.reread(ARTIFACTS.starterTaken)) || '[]') as string[]);
+    const gap = answered.tasks.every(settled) ? await gapOf(this.deps.documents, run.key, stored) : null;
+    if (!gap) return answered;
+    const requirements = (await ctx.reread(ARTIFACTS.requirementList)) ?? [];
+    const gapped = takeGap(
+      { contract: answered.contract, tasks: answered.tasks, requirements },
+      gap,
+      stored,
+      startedAt,
+    );
+    await this.deps.subtasks.recordRevisions(run, gapped.changes, startedAt);
+    return {
+      contract: gapped.contract,
+      tasks: gapped.tasks,
+      asks: [...answered.asks, ...gapped.asks],
+      taken: [...stored, gap.key, await gapReturn(this.deps.documents, run.id, gap), ...gapped.noted],
+    };
   }
 
   /** The note of a worktree that kept its commits goes into the summary, and into the reason of a wait or a block. */
@@ -124,7 +161,7 @@ export class SplitPass {
     { refusal, unfetched }: { refusal: string | null; unfetched: string | null },
   ): Promise<StepResult> {
     const { run, startedAt } = ctx.opened;
-    const line = statusLine(tasks);
+    const line = [statusLine(tasks), await this.waitLine(run, tasks)].filter(Boolean).join('; ');
     const blocked = tasks.filter((task) => task.status === 'blocked');
     const action = blocked.length > 0 ? `${blockedNames(blocked)}; ${BLOCKED_ACTION}` : null;
     if (unfetched && !tasks.some((task) => task.status === 'running')) {
@@ -140,7 +177,7 @@ export class SplitPass {
       const text = `${startedAt} ${refusal ?? blockedNames(blocked)}: ${line}${blocked.length > 0 ? `; ${BLOCKED_ACTION}` : ''}`;
       return { route: { to: 'block', reason: text, code: ERROR_CODES.SUBTASK_BLOCKED }, summary: text, outputs };
     }
-    if (tasks.every(settled)) {
+    if (tasks.every(settled) && open.length === 0) {
       return this.finish(run, tasks, ctx, outputs);
     }
     if (open.length > 0) {
@@ -163,6 +200,18 @@ export class SplitPass {
     return { route: { to: 'wait', reason: text, code }, summary: `${startedAt} ${text}`, outputs };
   }
 
+  /** What the running tasks whose own run waits wait on, for the parent's status line. */
+  private async waitLine(parent: RunEntity, tasks: Subtask[]): Promise<string> {
+    const notes: string[] = [];
+    for (const task of tasks.filter((item) => item.status === 'running')) {
+      const child = await this.deps.subtasks.find(parent, task.id);
+      const { state, reason } = child ? deriveState(child) : { state: 'running' as const, reason: null };
+      const note = runWaitNote(task, { state, stateReason: reason });
+      if (note) notes.push(note);
+    }
+    return notes.join('; ');
+  }
+
   /** True when a task runs, or a green one is still to merge: the parent waits, and is blocked only when nothing can move. */
   private canMove(tasks: Subtask[], refusal: string | null): boolean {
     return tasks.some((task) => task.status === 'running' || (task.status === 'green' && !refusal));
@@ -175,31 +224,6 @@ export class SplitPass {
       if (child) children.push(child);
     }
     return children;
-  }
-
-  /**
-   * Asks the planner the questions of the first subtask that waits in research, one subtask per pass: the next
-   * one is asked by the pass its answered run starts. The answer is a decision in the contract. When the planner gives
-   * none, the question goes to the person who started the run. A task with a question open for the person is left alone.
-   */
-  private async answer(
-    ctx: StepContext,
-    tasks: Subtask[],
-    contract: string,
-    waiting: string[],
-  ): Promise<{ contract: string; asks: StoredQuestion[] }> {
-    const { run, startedAt } = ctx.opened;
-    for (const task of tasks.filter((item) => !settled(item) && !waiting.includes(item.id))) {
-      const child = await this.deps.subtasks.find(run, task.id);
-      if (!child || !(await this.deps.subtasks.asking(child))) continue;
-      const answer = await this.deps.subtasks.answer(ctx.opened, child, task, contract);
-      if (answer !== null) return { contract: withDecision(contract, task.id, answer), asks: [] };
-      if (this.deps.subtasks.replyPending(child)) return { contract, asks: [] };
-      const asked = child.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
-      const questions = (await this.deps.reader.reread(child.key, asked)) ?? '';
-      return { contract, asks: [askedQuestion(task.id, questions, startedAt)] };
-    }
-    return { contract, asks: [] };
   }
 
   /** Every task has a run, and its status follows that run. A settled task keeps the status it has. */
@@ -217,7 +241,7 @@ export class SplitPass {
 
   private async follow(parent: RunEntity, task: Subtask): Promise<Subtask> {
     const child = await this.deps.subtasks.open(parent, task);
-    const { state } = deriveState(child);
+    const { state, reason } = deriveState(child);
     if (state === 'stopped') {
       // A Stop of the parent stopped this run. Resume goes on where it stopped.
       await this.deps.subtasks.resume(child);
@@ -226,6 +250,8 @@ export class SplitPass {
     if (delivered) return { ...task, status: 'skipped', note: delivered };
     const status = taskStatusOf(task, child);
     if (status === 'merged') return { ...task, status, merged: mergedOf(child), note: undefined };
+    const waits = status === 'running' ? runWaitNote(task, { state, stateReason: reason }) : undefined;
+    if (waits) return { ...task, status, note: waits };
     const rebased = status !== 'green' && task.note?.startsWith(REBASED_PREFIX) ? task.note : undefined;
     const note = status === 'green' && (await this.deps.subtasks.withoutCi(child)) ? NO_CI_NOTE : rebased;
     return { ...task, status, note };

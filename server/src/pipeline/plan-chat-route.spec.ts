@@ -12,8 +12,18 @@ const turn = (
   );
 
 describe('messageTurn', () => {
-  it('sends a message of a subtask to its parent, whatever else it is', () => {
-    expect(turn({ step: 'implement' }, 'running', { parentKey: 'p-1', openItems: 1 })).toBe('subtask');
+  it('routes a subtask by its own state: planning, answer, amend and reopen like any run', () => {
+    expect(turn({ step: 'plan' }, 'running', { parentKey: 'p-1' })).toBe('planning');
+    expect(turn({ step: 'implement' }, 'running', { parentKey: 'p-1', openItems: 1 })).toBe('answer');
+    expect(turn({ step: 'implement' }, 'running', { parentKey: 'p-1' })).toBe('amend');
+    expect(turn({ step: 'implement', split: true }, 'running', { parentKey: 'p-1' })).toBe('amend');
+    expect(turn({ step: 'checks' }, 'failed', { parentKey: 'p-1' })).toBe('reopen');
+  });
+
+  it('sends the message of an ended subtask to its parent', () => {
+    expect(turn({ step: 'done' }, 'merged', { parentKey: 'p-1' })).toBe('to-parent');
+    expect(turn({ step: 'done' }, 'closed', { parentKey: 'p-1' })).toBe('to-parent');
+    expect(turn({ step: 'done', workspace: 'removed' }, 'done', { parentKey: 'p-1' })).toBe('to-parent');
   });
 
   it('refuses a merged, closed or removed run with a follow-up', () => {

@@ -79,4 +79,42 @@ describe('task map', () => {
 
     expect(renderTaskMap(taskMap(tasks, tasks[0], {}, {}))).toBe('');
   });
+
+  describe('with the owners of the contract items', () => {
+    const items = [
+      { id: 'tool', owner: 'b', text: 'the tool takes a path' },
+      { id: 'cache', owner: 'c', text: 'the cache is keyed by host' },
+      { id: 'old', owner: '', text: 'a rule written before owners' },
+    ];
+
+    it('names the items each sibling owns and counts one as delivered once its owner merged', () => {
+      const tasks = [task('a'), task('b', { status: 'merged' }), task('c')];
+
+      const map = taskMap(tasks, tasks[0], {}, {}, {}, items);
+
+      expect(map.siblings.map((item) => item.items)).toEqual([
+        [{ id: 'tool', status: 'delivered' }],
+        [{ id: 'cache', status: 'pending' }],
+      ]);
+      const text = renderTaskMap(map);
+      expect(text).toContain('- b (merged): Title b - files: b.ts - owns: tool (delivered)');
+      expect(text).toContain('- c (waiting): Title c - files: c.ts - owns: cache (pending)');
+    });
+
+    it('gives a merged dependency the items it delivered', () => {
+      const tasks = [task('a', { depends: ['b'] }), task('b', { status: 'merged' })];
+
+      const text = renderTaskMap(taskMap(tasks, tasks[0], {}, { b: 'Made b.' }, {}, items));
+
+      expect(text).toContain('Made b.\nContract items it delivered:\n- tool: the tool takes a path');
+    });
+
+    it('renders a contract with no owners as before', () => {
+      const tasks = [task('a'), task('b')];
+
+      const text = renderTaskMap(taskMap(tasks, tasks[0], {}, {}, {}, [items[2]]));
+
+      expect(text).toBe('Task map, the other tasks of the parent run:\n- b (waiting): Title b - files: b.ts');
+    });
+  });
 });

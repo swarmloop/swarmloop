@@ -236,17 +236,25 @@ describe('ConversationColumn on a wide window', () => {
     expect(live.closest('[aria-live]')).toHaveStyle({ minHeight: '160px' });
   });
 
-  it('shows a subtask its conversation read only, with the failed card and a link to the parent', () => {
+  it("gives a subtask the message box, which goes to the task's planner", () => {
     const flow = flowWith(
-      { composer: 'read-only', parentKey: 'epic-1', entries: [entry('r1', 'planner', 'Use cursors')] },
+      { composer: 'subtask', parentKey: 'epic-1', entries: [entry('r1', 'planner', 'Use cursors')] },
       { parentKey: 'epic-1', status: 'failed', resume: 'ready', reason: 'the check failed' },
     );
     render(column(flow), { wrapper: Wrapper });
 
-    expect(screen.queryByRole('textbox')).toBeNull();
-    expect(screen.getByRole('link', { name: /epic-1/ })).toHaveAttribute('href', '/runs/epic-1');
+    expect(screen.getByRole('textbox', { name: 'Message to the planner' })).toBeInTheDocument();
+    expect(screen.getByText("goes to this task's planner")).toBeInTheDocument();
+    expect(screen.queryByText(/is where the planner of this subtask is asked/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
     expect(screen.getByText('Use cursors')).toBeInTheDocument();
+  });
+
+  it("says a merged subtask's message goes to the epic's planner", () => {
+    render(column(flowWith({ composer: 'epic', parentKey: 'epic-1' }, { parentKey: 'epic-1', status: 'done' })), {
+      wrapper: Wrapper,
+    });
+    expect(screen.getByText("goes to the epic's planner")).toBeInTheDocument();
   });
 
   it('starts a follow-up run from a merged run, with the message and a link to this run', async () => {

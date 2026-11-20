@@ -1,7 +1,8 @@
 import Joi from 'joi';
-import { defineResult } from '../result-definition';
+import { defineResult, type ResultDefinition } from '../result-definition';
 import { CHANGE_KEY, GIT_RULES_KEY, type GitChange, type GitRules } from './git-change';
 import type { Need } from './research';
+import { QUESTION, starterKeys, type OutOfScope, type StarterDecision } from './starter-fields';
 
 /** What the implement step hands to the server. */
 export interface ImplementationResult {
@@ -14,6 +15,8 @@ export interface ImplementationResult {
   question?: string;
   change?: GitChange;
   gitRules?: GitRules;
+  decisions?: StarterDecision[];
+  outOfScope?: OutOfScope[];
 }
 
 /** A code review finding the step leaves unfixed, and why it does not hold. */
@@ -23,12 +26,7 @@ export interface RejectedFinding {
   reason: string;
 }
 
-/** One choice the step cannot settle itself. The server takes it to the planner of the run and the step waits for the answer. */
-export const QUESTION = Joi.string().description(
-  'One choice you cannot settle from the brief, the requirements, the plan and the decisions; leave out when none',
-);
-
-const base = Joi.object({
+const keys = {
   implementation: Joi.array()
     .items(Joi.string())
     .required()
@@ -51,7 +49,9 @@ const base = Joi.object({
   question: QUESTION,
   change: CHANGE_KEY,
   gitRules: GIT_RULES_KEY,
-});
+};
+
+const base = Joi.object(keys);
 
 export const implementation = defineResult('implementation', base);
 
@@ -68,5 +68,21 @@ export const REJECTED = Joi.array()
     'Each code review finding you do not fix: the reviewer, the finding, and why it does not hold; leave out when you fix every finding',
   );
 
-/** The result of an implement pass that answers a code review return. */
-export const implementationAfterReview = defineResult('implementation', base.keys({ rejected: REJECTED }));
+/** Every field of an implement answer: the definition its stored kind is read with. */
+export const implementationAfterReview = defineResult(
+  'implementation',
+  Joi.object({ ...keys, rejected: REJECTED, ...starterKeys() }),
+);
+
+/**
+ * The implement answer a run is asked for: the pass that answers a code review return also reports the findings it
+ * leaves unfixed, and only a subtask is told about `decisions` and `outOfScope`. The kind is the same.
+ */
+export function implementationFor(shape: { subtask: boolean; review: boolean }): ResultDefinition {
+  const asked = {
+    ...keys,
+    ...(shape.review ? { rejected: REJECTED } : {}),
+    ...(shape.subtask ? starterKeys() : {}),
+  };
+  return { ...implementationAfterReview, schema: Joi.object(asked) };
+}

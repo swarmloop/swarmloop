@@ -12,7 +12,7 @@ const COMPOSER: Record<MessageTurn, ComposerMode> = {
   'add-tasks': 'add-tasks',
   reopen: 'reopen',
   'follow-up': 'follow-up',
-  subtask: 'read-only',
+  'to-parent': 'epic',
 };
 
 interface ConversationInput {
@@ -58,7 +58,7 @@ export function conversationView({
 }: ConversationInput): ConversationView {
   const turn = messageTurn(run, { state, parentKey, openItems: items.length, split });
   return {
-    composer: COMPOSER[turn],
+    composer: parentKey && turn !== 'to-parent' ? 'subtask' : COMPOSER[turn],
     replying,
     ...(parentKey ? { parentKey } : {}),
     entries: [...log.entries].sort((a, b) => a.at.localeCompare(b.at)),

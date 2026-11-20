@@ -30,7 +30,7 @@ function taskOf(id: string, title: string, depends: string, file: string): Subta
 const splitAnswer = (tasks: Subtask[]): string =>
   resultAnswer('Done.', {
     summary: ['checked'],
-    contract: ['the column is called `split`'],
+    contract: [{ id: 'item-1', text: 'the column is called `split`', owner: 'a' }],
     tasks: tasks.map(({ status: _status, ...task }) => task),
   });
 

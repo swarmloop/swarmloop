@@ -180,6 +180,27 @@ describe('artifact catalog', () => {
     expect(ARTIFACTS.subtaskAnswerResult.parse('{"answer":"use it"}')).toEqual({ answer: 'use it' });
   });
 
+  it('registers the kinds a starter and its subtask exchange next to the subtask answer', () => {
+    const kinds = [
+      ARTIFACTS.starterAnswerResult,
+      ARTIFACTS.starterReport,
+      ARTIFACTS.starterBriefing,
+      ARTIFACTS.starterTaken,
+      ARTIFACTS.mergeLook,
+    ];
+    expect(kinds.map((entry) => entry.kind)).toEqual([
+      'starter_answer_result',
+      'starter_report',
+      'starter_briefing',
+      'starter_taken',
+      'merge_look',
+    ]);
+    expect(kinds.every((entry) => entry.external)).toBe(true);
+    expect(ARTIFACTS.starterAnswerResult.parse('{"decision":"use it"}')).toEqual({ decision: 'use it' });
+    expect(() => ARTIFACTS.starterAnswerResult.parse('{}')).toThrow('starter_answer_result is not valid');
+    expect(ARTIFACTS.subtaskAnswerResult.kind).toBe('subtask_answer_result');
+  });
+
   it('summarizes a pipeline ref by the branch or commit it watches', () => {
     const summarize = (body: string): string => ARTIFACTS.pipelineRef.summarize(body);
     expect(summarize('project: a\nref: feature/PROJ-300-ship')).toBe('feature/PROJ-300-ship');

@@ -1,6 +1,8 @@
 'use client';
 
 import { type ReactElement, type ReactNode, useState } from 'react';
+import type { Route } from 'next';
+import Link from 'next/link';
 import ButtonBase from '@mui/material/ButtonBase';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -10,11 +12,14 @@ export function InfoLine({
   sentence,
   detail,
   label = 'Show details',
+  link,
 }: {
   sentence: string;
   detail?: ReactNode;
   /** What the screen reader says of the button that opens the detail. */
   label?: string;
+  /** A page the sentence is about, shown after it. */
+  link?: { href: Route; text: string };
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const line = (
@@ -23,7 +28,16 @@ export function InfoLine({
     </Typography>
   );
   if (!detail) {
-    return <Box sx={{ px: 1 }}>{line}</Box>;
+    return (
+      <Box sx={{ px: 1 }}>
+        {line}
+        {link ? (
+          <Typography variant="caption" sx={{ ml: 0.5 }}>
+            <Link href={link.href}>{link.text}</Link>
+          </Typography>
+        ) : null}
+      </Box>
+    );
   }
   return (
     <Box sx={{ px: 1 }}>
