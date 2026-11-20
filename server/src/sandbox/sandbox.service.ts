@@ -195,7 +195,7 @@ export class SandboxService implements OnModuleDestroy {
       prepareStateDir(launch.statePath, launch.userId);
     }
     const stateDaemonPath = await this.stateDaemonPath(launch.statePath, launch.stateDaemonPath);
-    const envMasks = launch.envMasks ?? collectEnvMasks(mounts);
+    const envMasks = launch.envMasks ?? (await collectEnvMasks(mounts));
     const maskFile = await this.maskFor(launch.statePath, envMasks.length > 0);
     const env = rawEnv();
     const workRoots = workRootsAt(

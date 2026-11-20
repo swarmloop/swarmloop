@@ -196,7 +196,7 @@ async function attach(
     step: 'shell',
     mounts,
     workRoots: workRootsAt(root, config.checkoutsRoot, config.repos),
-    envMasks: collectEnvMasks(mounts),
+    envMasks: await collectEnvMasks(mounts),
     allowHosts: modelApiHosts(runtime.name),
     command: [
       runtime.command,
