@@ -12,6 +12,7 @@ export interface TaskEntry {
   proof: string;
   depends: string[];
   status: SubtaskStatus;
+  /** What the task waits on or was told: for a running task whose own run waits, the live text of that run's reason. */
   note?: string;
   /** For a waiting task: the titles of the dependencies that have not merged yet. `[]` means it waits only for a free slot. */
   waitsFor?: string[];

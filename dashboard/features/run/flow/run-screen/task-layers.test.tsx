@@ -169,6 +169,17 @@ describe('TaskLayers', () => {
     expect(titles().slice(6)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 's1'].map((id) => `Title ${id}`));
   });
 
+  it('shows the wait of a running task once, in the note place', () => {
+    const waits = task('r1', {
+      status: 'running',
+      note: 'git-retry waits for http-retry: withHostRetries',
+      run: { key: 'run-1-r1', state: 'waiting', currentStep: 'implement', usd: 0, durationMs: 0 },
+    });
+    render(<TaskLayers tasks={[waits]} epic={{ usd: 1, durationMs: 1000 }} ownUsd={0} onSkip={vi.fn()} />);
+
+    expect(screen.getAllByText('git-retry waits for http-retry: withHostRetries')).toHaveLength(1);
+  });
+
   it('puts the agent time in the tooltip of the summary', async () => {
     render(<TaskLayers tasks={tasks} epic={{ usd: 9, durationMs: 1000 }} ownUsd={2.75} onSkip={vi.fn()} />);
 

@@ -80,6 +80,25 @@ describe('split implement', () => {
     expect((await parentState(app)).reason).toMatchObject({ code: ERROR_CODES.SUBTASKS_RUNNING });
   });
 
+  it('names each waiting subtask and what it waits on in the reason of the parent and in its note', async () => {
+    const built = await world();
+    app = built.app;
+    await seedParent(app, [task('a'), task('b')]);
+    await pass(app);
+    const waiting = await child(app, 'a');
+    writeRunState(waiting, {
+      status: 'waiting',
+      currentStep: 'implement',
+      reason: { code: ERROR_CODES.SUBTASK_WAITING, message: 'waiting for b: withHostRetries' },
+    });
+    await app.app.get(RunRepository).saveRun(waiting);
+
+    await pass(app);
+
+    expect((await tasksOf(app))[0]?.note).toBe('a waits for b: withHostRetries');
+    expect((await parentState(app)).reason?.message).toContain('a waits for b: withHostRetries');
+  });
+
   it('runs at most SUBTASKS_PARALLEL tasks at once', async () => {
     const built = await world();
     app = built.app;

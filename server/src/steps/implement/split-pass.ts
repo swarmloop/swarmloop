@@ -11,6 +11,7 @@ import {
   readyTasks,
   settled,
   statusLine,
+  runWaitNote,
   unmetDepends,
   waitNote,
   withStatuses,
@@ -156,7 +157,7 @@ export class SplitPass {
     { refusal, unfetched }: { refusal: string | null; unfetched: string | null },
   ): Promise<StepResult> {
     const { run, startedAt } = ctx.opened;
-    const line = statusLine(tasks);
+    const line = [statusLine(tasks), await this.waitLine(run, tasks)].filter(Boolean).join('; ');
     const blocked = tasks.filter((task) => task.status === 'blocked');
     const action = blocked.length > 0 ? `${blockedNames(blocked)}; ${BLOCKED_ACTION}` : null;
     if (unfetched && !tasks.some((task) => task.status === 'running')) {
@@ -195,6 +196,18 @@ export class SplitPass {
     return { route: { to: 'wait', reason: text, code }, summary: `${startedAt} ${text}`, outputs };
   }
 
+  /** What the running tasks whose own run waits wait on, for the parent's status line. */
+  private async waitLine(parent: RunEntity, tasks: Subtask[]): Promise<string> {
+    const notes: string[] = [];
+    for (const task of tasks.filter((item) => item.status === 'running')) {
+      const child = await this.deps.subtasks.find(parent, task.id);
+      const { state, reason } = child ? deriveState(child) : { state: 'running' as const, reason: null };
+      const note = runWaitNote(task, { state, stateReason: reason });
+      if (note) notes.push(note);
+    }
+    return notes.join('; ');
+  }
+
   /** True when a task runs, or a green one is still to merge: the parent waits, and is blocked only when nothing can move. */
   private canMove(tasks: Subtask[], refusal: string | null): boolean {
     return tasks.some((task) => task.status === 'running' || (task.status === 'green' && !refusal));
@@ -224,7 +237,7 @@ export class SplitPass {
 
   private async follow(parent: RunEntity, task: Subtask): Promise<Subtask> {
     const child = await this.deps.subtasks.open(parent, task);
-    const { state } = deriveState(child);
+    const { state, reason } = deriveState(child);
     if (state === 'stopped') {
       // A Stop of the parent stopped this run. Resume goes on where it stopped.
       await this.deps.subtasks.resume(child);
@@ -233,6 +246,8 @@ export class SplitPass {
     if (delivered) return { ...task, status: 'skipped', note: delivered };
     const status = taskStatusOf(task, child);
     if (status === 'merged') return { ...task, status, merged: mergedOf(child), note: undefined };
+    const waits = status === 'running' ? runWaitNote(task, { state, stateReason: reason }) : undefined;
+    if (waits) return { ...task, status, note: waits };
     const rebased = status !== 'green' && task.note?.startsWith(REBASED_PREFIX) ? task.note : undefined;
     const note = status === 'green' && (await this.deps.subtasks.withoutCi(child)) ? NO_CI_NOTE : rebased;
     return { ...task, status, note };

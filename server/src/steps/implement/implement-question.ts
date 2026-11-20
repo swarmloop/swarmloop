@@ -100,7 +100,11 @@ export async function waitForPlanner(run: RunEntity, ask: QuestionAsk): Promise<
   });
   const reason = `${ask.step} ${ASKS_PLANNER_WORDS}`;
   return {
-    route: { to: 'wait', code: REASON.asksPlanner, reason },
+    route: {
+      to: 'wait',
+      code: REASON.asksPlanner,
+      reason: isSubtask(run) ? `${reason}: ${ask.question.trim()}` : reason,
+    },
     summary: `${ask.startedAt} ${reason}\n${ask.question.trim()}`,
     outputs: [],
   };

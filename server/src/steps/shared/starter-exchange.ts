@@ -109,7 +109,7 @@ export class StarterExchange {
   private async askParent(ctx: ModelStepContext, visit: StarterVisit, texts: string[]): Promise<StepResult> {
     const { startedAt } = ctx.opened;
     await this.escalate(ctx, visit.step, texts);
-    const reason = asksParentReason(visit.step);
+    const reason = `${asksParentReason(visit.step)}: ${texts.join('; ')}`;
     return {
       route: { to: 'wait', code: REASON.asksPlanner, reason },
       summary: `${startedAt} ${reason}\n${texts.join('\n')}`,

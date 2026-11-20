@@ -4,6 +4,7 @@ import type { PlanChatStore } from '../../history/plan-chat.store';
 import type { ModelStepContext } from '../model-step-context';
 import { asksForStarter } from './starter-asks';
 import { StarterExchange } from './starter-exchange';
+import { runWaitNote } from '../../contract/subtask';
 
 const CLOCK = { now: () => 0, iso: () => '2026-01-01T00:00:00.000Z' };
 
@@ -54,6 +55,13 @@ describe('StarterExchange', () => {
       visit({ step: 'implement', route: 'chat' }),
     );
     expect(wait?.route).toMatchObject({ to: 'wait', code: 'ASKS_PLANNER' });
+    if (wait?.route.to !== 'wait') throw new Error('Expected a planner wait');
+    expect(
+      runWaitNote(
+        { id: 't1' },
+        { state: 'waiting', stateReason: { code: 'ASKS_PLANNER', message: wait.route.reason } },
+      ),
+    ).toBe('t1 asks its own planner: Which column?');
     expect(entries).toMatchObject([{ kind: 'question', from: 'implement', text: 'Which column?', state: 'pending' }]);
     expect(wait?.outputs).toEqual([]);
   });
@@ -89,7 +97,17 @@ describe('StarterExchange', () => {
     const implement = world();
     const wait = (await implement.exchange.act(implement.ctx, fields, visit({ step: 'implement', route: 'chat' })))
       .wait;
-    expect(wait?.route).toMatchObject({ to: 'wait', reason: 'implement asks the planner of the parent' });
+    expect(wait?.route).toMatchObject({
+      to: 'wait',
+      reason: 'implement asks the planner of the parent: hands back: the cache',
+    });
+    if (wait?.route.to !== 'wait') throw new Error('Expected a planner wait');
+    expect(
+      runWaitNote(
+        { id: 't1' },
+        { state: 'waiting', stateReason: { code: 'ASKS_PLANNER', message: wait.route.reason } },
+      ),
+    ).toBe('t1 asks the planner of the parent: hands back: the cache');
     expect(asksForStarter({ entries: implement.entries }).map((entry) => entry.text)).toEqual([
       'hands back: the cache',
     ]);

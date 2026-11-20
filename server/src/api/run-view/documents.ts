@@ -1,7 +1,14 @@
 import type { DocumentEntity } from '../../history/entities';
 import type { FlowView, TaskEntry } from '../../contract/api';
 import { readInterruption, type InterruptionNote } from '../../contract/interruption';
-import { parseSubtasks, shownTaskState, splitLine, unmetDepends } from '../../contract/subtask';
+import {
+  parseSubtasks,
+  runWaitNote,
+  type Subtask,
+  shownTaskState,
+  splitLine,
+  unmetDepends,
+} from '../../contract/subtask';
 import { STEPS, type StepName } from '../../contract/steps';
 import { readPlan } from '../../steps/plan/plan-record';
 import { composedReturn, handoffText } from '../../steps/shared/handoff';
@@ -118,6 +125,15 @@ function fileRow(
   return { name, path, body: encoding === 'base64' ? null : (body ?? null) };
 }
 
+/** Live waits replace stored waits; ordinary pass notes remain after a child resumes. */
+function taskNote(task: Subtask, children: TaskRuns): string | undefined {
+  const run = children.get(task.id);
+  if (!run) return task.note;
+  const live = runWaitNote(task, run);
+  const storedWait = task.note?.startsWith(`${task.id} waits for `) || task.note?.startsWith(`${task.id} asks `);
+  return live ?? (storedWait ? undefined : task.note);
+}
+
 /** The tasks plan-improve approved, in plan order. Empty for a run that does not split. */
 export function taskEntries(documents: DocumentEntity[], children: TaskRuns = new Map()): TaskEntry[] {
   if (readPlan(latest(documents, 'requirements'))?.decision !== 'approve') {
@@ -135,7 +151,7 @@ export function taskEntries(documents: DocumentEntity[], children: TaskRuns = ne
       proof: task.proof,
       depends: task.depends,
       status,
-      note: task.note,
+      note: taskNote(task, children),
       ...(status === 'waiting' || status === 'pending'
         ? { waitsFor: unmetDepends(task, tasks).map((id) => titles.get(id) ?? id) }
         : {}),

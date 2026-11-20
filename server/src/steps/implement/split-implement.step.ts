@@ -2,12 +2,13 @@ import { Injectable, Optional } from '@nestjs/common';
 import { SUBTASK_WAIT_CODES } from '../../contract/error-codes';
 import { deriveState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
-import { readyTasks, settled, withStatuses } from '../../contract/subtask';
+import { readyTasks, runWaitNote, settled, withStatuses, type Subtask } from '../../contract/subtask';
 import type { StepName } from '../../contract/steps';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { taskStatusOf } from '../shared/subtask-status';
 import { PlanConversation } from '../shared/plan-conversation';
 import { MergeLook } from './merge-look';
+import { REBASED_PREFIX } from './split-rebase';
 import { SplitMerge } from './split-merge';
 import { SplitNeeds } from './split-needs';
 import { SplitPass } from './split-pass';
@@ -101,12 +102,20 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       const child = await this.subtasks.find(parent, task.id);
       if (!child) return false;
       children.push(child);
-      const { state } = deriveState(child);
-      const changed = state === 'stopped' || taskStatusOf(task, child) !== task.status;
-      if (changed || task.status === 'green' || (await this.subtasks.asking(child))) return false;
+      if (this.changed(task, child) || task.status === 'green' || (await this.subtasks.asking(child))) return false;
     }
     if (earliestRetry(children) !== (deriveState(parent).reason?.retryAt ?? null)) return false;
     return readyTasks(tasks, await this.pass.slots(parent, tasks)).length === 0;
+  }
+
+  /** A task whose run stopped, whose status moved, or whose running run waits with another text than the task carries. */
+  private changed(task: Subtask, child: RunEntity): boolean {
+    const { state, reason } = deriveState(child);
+    const status = taskStatusOf(task, child);
+    if (state === 'stopped' || status !== task.status) return true;
+    if (status !== 'running') return false;
+    const carried = task.note?.startsWith(REBASED_PREFIX) ? undefined : task.note;
+    return runWaitNote(task, { state, stateReason: reason }) !== carried;
   }
 
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
