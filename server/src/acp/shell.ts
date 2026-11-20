@@ -6,7 +6,6 @@ import { isAbsolute, join, resolve } from 'path';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SystemClock } from '../core/clock';
 import { CodexAuthStore, codexAuthDeps } from '../integrations/agent-runtime/codex/codex-auth';
-import type { SandboxMount } from '../core/sandbox-mount';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import {
   agentStateDir,
@@ -20,15 +19,14 @@ import {
 } from '../sandbox/sandbox-launch';
 import { hostName, isLocalHost, sandboxNetworkName } from '../sandbox/sandbox-hosts';
 import { containerMemoryCap } from '../sandbox/memory-cap';
-import { workRootsAt } from '../sandbox/allowed-path';
-import { collectEnvMasks } from '../sandbox/env-masks';
 import type { ShellFeature, ShellMatch } from '../contract/api';
 import type { ServerApi } from './server-api';
 import { HttpServerApi } from './server-api';
 import { authDeps, runAuthCommand } from './cli-login';
 import { NOT_SIGNED_IN, tokenSource } from './cli-token';
 import { envFilePath } from '../config/load-env';
-import { hostCheckout, nestCheckout } from './paths';
+import { hostCheckout } from './paths';
+import { serverPathOf } from './host-clone';
 import type { ShellCommand } from './shell-command';
 import { parseShell, pickSnapshot } from './shell-command';
 import type { ShellConfig } from './shell-env';
@@ -62,10 +60,10 @@ async function dispatch(argv: string[], cwd: string, root: string, api: ServerAp
   );
   const config = readShellConfig(envFilePath(root));
   if (command.type === 'review') {
-    await review(api, command, cwd, root, config.checkoutsRoot);
+    await review(api, command, cwd);
     return;
   }
-  const feature = await resolveFeature(api, command.key, cwd, root, config.checkoutsRoot);
+  const feature = await resolveFeature(api, command.key, cwd);
   if (command.type === 'step') {
     if (!command.step) {
       throw new Error('step is missing');
@@ -92,17 +90,11 @@ async function dispatch(argv: string[], cwd: string, root: string, api: ServerAp
   await attach(api, feature, command.vendor, config, root);
 }
 
-async function resolveFeature(
-  api: ServerApi,
-  key: string | null,
-  cwd: string,
-  root: string,
-  checkoutsRoot: string | undefined,
-): Promise<ShellFeature> {
+async function resolveFeature(api: ServerApi, key: string | null, cwd: string): Promise<ShellFeature> {
   if (key) {
     return api.shellFeature(key);
   }
-  const opened = await api.shellOpen({ path: nestCheckout(cwd, root, checkoutsRoot) });
+  const opened = await api.shellOpen({ path: await serverPathOf(cwd, api) });
   if ('matches' in opened) {
     throw new Error(opened.matches.map((match) => matchLine(match)).join('\n') || 'several features match');
   }
@@ -113,16 +105,10 @@ function matchLine(match: ShellMatch): string {
   return `${match.key} ${match.status} ${match.currentStep}`;
 }
 
-async function review(
-  api: ServerApi,
-  command: Extract<ShellCommand, { type: 'review' }>,
-  cwd: string,
-  root: string,
-  checkoutsRoot: string | undefined,
-): Promise<void> {
+async function review(api: ServerApi, command: Extract<ShellCommand, { type: 'review' }>, cwd: string): Promise<void> {
   const chosen = command.path ? (isAbsolute(command.path) ? command.path : resolve(cwd, command.path)) : cwd;
   const created = await api.create({
-    path: nestCheckout(chosen, root, checkoutsRoot),
+    path: await serverPathOf(chosen, api),
     prompt: command.prompt.trim() || 'Review this checkout.',
   });
   process.stderr.write(`${created.key} code review started\n`);
@@ -176,7 +162,7 @@ async function attach(
   if (!config.model) {
     throw new Error('AGENTS_IMPLEMENT is missing');
   }
-  const mounts = hostMounts(feature, root, config.checkoutsRoot);
+  const mounts = feature.mounts.map(hostCheckout);
   const workspace = mounts[0]?.containerPath ?? '/work';
   const interactive = vendor.length === 0 && process.stdout.isTTY === true;
   const userId = sandboxUserId();
@@ -195,8 +181,8 @@ async function attach(
     attemptId: '',
     step: 'shell',
     mounts,
-    workRoots: workRootsAt(root, config.checkoutsRoot, config.repos),
-    envMasks: await collectEnvMasks(mounts),
+    workRoots: feature.workRoots,
+    envMasks: feature.envMasks,
     allowHosts: modelApiHosts(runtime.name),
     command: [
       runtime.command,
@@ -241,7 +227,7 @@ async function attach(
   const args = sandboxArgs(launch, undefined, config.engine);
   await docker(['image', 'inspect', agentImage(runtime.name)]);
   const name = containerName(feature.key, 'shell');
-  await api.shellLock(feature.key, name);
+  await api.shellLock(feature.key, name, userId);
   let code = 1;
   try {
     if (!launch.egress) {
@@ -255,13 +241,6 @@ async function attach(
     }
   }
   process.exitCode = code;
-}
-
-function hostMounts(feature: ShellFeature, root: string, checkoutsRoot: string | undefined): SandboxMount[] {
-  return feature.mounts.map((mount) => ({
-    hostPath: hostCheckout(mount.hostPath, root, checkoutsRoot),
-    containerPath: mount.containerPath,
-  }));
 }
 
 async function ensureNetwork(allowHosts: string[]): Promise<void> {

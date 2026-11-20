@@ -78,7 +78,7 @@ jobs:
       - run: npx eslint .
       - run: bash scripts/lint-changed.sh origin/${{ github.event.repository.default_branch }}
       - run: npx eslint --config eslint.strict.config.mjs .
-      - run: node --test scripts/ci-tools.test.mjs scripts/check-installed.test.mjs scripts/lint-run-state.test.mjs scripts/lint-git-process.test.mjs scripts/lint-sync-directory.test.mjs scripts/lint-test-imports.test.mjs scripts/lint-spec-rules.test.mjs scripts/check-worktree.test.mjs scripts/check-paths.test.mjs scripts/complexity-baseline.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs scripts/measure-step-open.test.mjs scripts/slowest-files.test.mjs docker/egress/proxy.test.mjs
+      - run: node --test scripts/ci-tools.test.mjs scripts/check-installed.test.mjs scripts/lint-run-state.test.mjs scripts/lint-git-process.test.mjs scripts/lint-sync-directory.test.mjs scripts/lint-test-imports.test.mjs scripts/lint-spec-rules.test.mjs scripts/check-worktree.test.mjs scripts/check-paths.test.mjs scripts/complexity-baseline.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs scripts/measure-step-open.test.mjs scripts/slowest-files.test.mjs scripts/move-to-volumes.test.mjs docker/egress/proxy.test.mjs
 
   knip:
     runs-on: ubuntu-latest
@@ -289,6 +289,13 @@ jobs:
           };
           const sentinels = Object.fromEntries(configurable.map((key) => [key, 'sentinel-' + key.toLowerCase()]));
           const bind = (config, target) => config.services.server.volumes.find((volume) => volume.target === target);
+          const checkVolumes = (config, label) => {
+            for (const [target, source, name] of [['/checkouts', 'checkouts', 'swarmloop-checkouts'], ['/app/worktrees', 'worktrees', 'swarmloop-worktrees']]) {
+              const mount = bind(config, target);
+              check(mount?.type === 'volume' && mount.source === source, target + ' is not the volume ' + source + ' in ' + label);
+              check(config.volumes?.[source]?.name === name, 'the volume ' + source + ' is not named ' + name + ' in ' + label);
+            }
+          };
           const serverEnv = (config) => config.services.server.environment;
           const fixedValues = { SWARMLOOP_ROOT: '/app', CHECKOUTS_ROOT: '/checkouts', SWARMLOOP_API_HOST: '0.0.0.0', SWARMLOOP_API_PORT: '3920', SWARMLOOP_ENV_FILE: '/app/stack/.env' };
 
@@ -298,7 +305,7 @@ jobs:
             check(plain.services[service]?.build?.context === path.join(root, folder).replace(/\/$/, ''), service + ' does not build from its folder');
           }
           check(Boolean(plain.services.sloop), 'the sloop service is missing');
-          check(bind(plain, '/checkouts')?.source === path.dirname(root), 'the checkouts mount is not the parent folder');
+          checkVolumes(plain, 'the plain resolve');
           const stack = bind(plain, '/app/stack');
           check(stack?.source === root && stack.read_only === true, 'the stack folder is not mounted read-only');
           for (const [key, value] of Object.entries(fixedValues)) {
@@ -306,8 +313,8 @@ jobs:
           }
           for (const key of configurable) check((serverEnv(plain)[key] ?? null) === null, 'unset ' + key + ' reached the server');
 
-          const custom = resolve({ CHECKOUTS_ROOT: '/srv/checkouts', ...sentinels });
-          check(bind(custom, '/checkouts')?.source === '/srv/checkouts', 'CHECKOUTS_ROOT does not set the checkouts mount');
+          const custom = resolve({ CHECKOUTS_ROOT: '/srv/checkouts', SWARMLOOP_HOME: '/srv/home', ...sentinels });
+          checkVolumes(custom, 'the resolve with CHECKOUTS_ROOT and SWARMLOOP_HOME set');
           for (const key of configurable) check(serverEnv(custom)[key] === sentinels[key], key + ' does not reach the server');
           for (const [key, value] of Object.entries(fixedValues)) check(serverEnv(custom)[key] === value, 'fixed setting ' + key + ' changed');
 

@@ -416,6 +416,47 @@ describe('sandbox launch', () => {
     ).toThrow('sandbox mount is not allowed');
   });
 
+  describe('volume subpath mounts', () => {
+    const subpathLaunch = (patch: Record<string, unknown>) =>
+      launch({
+        mounts: [
+          {
+            hostPath: '/tmp/worktrees/r1/demo',
+            volume: 'swarmloop-worktrees',
+            volumeSubpath: 'r1/demo',
+            containerPath: '/work/demo',
+            ...patch,
+          },
+        ],
+        envMasks: [],
+      });
+
+    it('mounts the folder of a volume by its subpath, read-write or read-only', () => {
+      const write = sandboxArgs(subpathLaunch({}), home).filter((arg) => arg.includes('dst=/work/demo'));
+      expect(write).toEqual([
+        'type=volume,src=swarmloop-worktrees,volume-subpath=r1/demo,dst=/work/demo,readonly=false',
+      ]);
+      const read = sandboxArgs(subpathLaunch({ readonly: true }), home).filter((arg) => arg.includes('dst=/work/demo'));
+      expect(read).toEqual(['type=volume,src=swarmloop-worktrees,volume-subpath=r1/demo,dst=/work/demo,readonly=true']);
+    });
+
+    it('mounts the whole volume without a subpath argument', () => {
+      const whole = subpathLaunch({ hostPath: '/tmp/worktrees', volumeSubpath: '', containerPath: '/work' });
+      const mounts = sandboxArgs(whole, home).filter((arg) => arg.includes('dst=/work,'));
+      expect(mounts).toEqual(['type=volume,src=swarmloop-worktrees,dst=/work,readonly=false']);
+    });
+
+    it.each(['../x', 'r1/../x', '/r1', 'r1,x', 'r1 x'])('refuses the subpath %s', (volumeSubpath) => {
+      expect(() => sandboxArgs(subpathLaunch({ volumeSubpath }), home)).toThrow('sandbox mount is not allowed');
+    });
+
+    it('refuses a subpath mount of a folder outside the work roots', () => {
+      expect(() => sandboxArgs(subpathLaunch({ hostPath: '/srv/other' }), home)).toThrow(
+        'sandbox mount is not allowed',
+      );
+    });
+  });
+
   describe('work mounts', () => {
     it('refuses a /work mount from outside the allowed roots, and lets the brief and worktrees through', () => {
       const outside = launch({ mounts: [{ hostPath: '/srv/other-repo', containerPath: '/work' }], envMasks: [] });

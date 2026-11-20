@@ -42,11 +42,19 @@ describe('parseShell', () => {
 
 describe('host checkout', () => {
   it('maps nest paths back to the host', () => {
-    expect(hostCheckout('/checkouts/demo', '/tmp/swarmloop', '/tmp/outside')).toBe('/tmp/outside/demo');
-    expect(hostCheckout('/app/worktrees/PROJ-1', '/tmp/swarmloop', '/tmp/outside')).toBe(
-      '/tmp/swarmloop/worktrees/PROJ-1',
-    );
-    expect(hostCheckout('/tmp/already', '/tmp/swarmloop', '/tmp/outside')).toBe('/tmp/already');
+    expect(
+      hostCheckout({
+        hostPath: '/app/worktrees/PROJ-1/demo',
+        containerPath: '/app/worktrees/PROJ-1/demo',
+        volume: 'swarmloop-worktrees',
+        volumeSubpath: 'PROJ-1/demo',
+      }),
+    ).toEqual({
+      hostPath: '/app/worktrees/PROJ-1/demo',
+      containerPath: '/app/worktrees/PROJ-1/demo',
+      volume: 'swarmloop-worktrees',
+      volumeSubpath: 'PROJ-1/demo',
+    });
   });
 });
 

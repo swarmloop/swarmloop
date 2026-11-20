@@ -6,7 +6,7 @@ import { NOT_SIGNED_IN, tokenSource } from './cli-token';
 import { HttpServerApi } from './server-api';
 import { runShell } from './shell';
 import { readApiUrl } from './shell-env';
-import { loadSkills, readCheckoutsRoot } from './skills';
+import { loadSkills } from './skills';
 
 async function main(): Promise<void> {
   try {
@@ -28,7 +28,6 @@ async function main(): Promise<void> {
       api: new HttpServerApi(readApiUrl(envFilePath(root)), token),
       skills: loadSkills(join(root, 'skills')),
       repoRoot: root,
-      checkoutsRoot: readCheckoutsRoot(envFilePath(root)),
       clock: new SystemClock(),
     });
     await serve(process.stdin, process.stdout, agent);

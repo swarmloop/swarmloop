@@ -386,7 +386,10 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
 
   it('does not let a stranger in after Disconnect when nobody is listed, except on this machine', async () => {
     await app.close();
-    app = await createTestApp({ env: { GITHUB_BASE_URL: fake.url, SWARMLOOP_TOKEN: TOKEN } });
+    const checkouts = mkdtempSync(join(tmpdir(), 'swarmloop-connections-checkouts-'));
+    app = await createTestApp({
+      env: { GITHUB_BASE_URL: fake.url, SWARMLOOP_TOKEN: TOKEN, CHECKOUTS_ROOT: checkouts },
+    });
     await makeApp();
     const alice = await signIn('alice');
     await fetch(`${app.url}/connections/github`, { method: 'DELETE', headers: { cookie: alice } });
@@ -397,6 +400,7 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
       headers: { cookie: `swarmloop_state=${state}`, 'x-forwarded-host': 'panel.example' },
     });
     expect(redirectOf(remote).query).toMatchObject({ error: 'refused', account: 'mallory' });
+    rmSync(checkouts, { recursive: true, force: true });
   });
 
   it('keeps a broken connection on one host from stopping a run on the other', async () => {

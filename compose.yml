@@ -5,7 +5,8 @@ name: swarmloop
 # A clone of the repository builds from source: Compose reads compose.override.yml next to this file by itself.
 # To change a setting, copy its line from defaults.env into .env next to this file, or set it in the shell. The shell wins.
 # Compose control variables keep their Compose meaning:
-#   SWARMLOOP_HOME is where data/ and worktrees/ live (default: next to this file).
+#   SWARMLOOP_HOME is where data/ lives (default: next to this file).
+# Worktrees and checkouts live in the Docker volumes swarmloop-worktrees and swarmloop-checkouts.
 #   SWARMLOOP_VERSION pins a release (default: latest) and SWARMLOOP_REGISTRY names the registry of the images.
 #   UID is the sandbox user. COMPOSE_FILE, if set, selects the files Compose reads.
 # An old `COMPOSE_FILE=compose.yml:compose.build.yml` line in .env names a file that is gone: delete it.
@@ -126,9 +127,9 @@ services:
       - SWARMLOOP_SECRET
     volumes:
       - ${SWARMLOOP_HOME:-.}/data:/app/data
-      - ${SWARMLOOP_HOME:-.}/worktrees:/app/worktrees
+      - worktrees:/app/worktrees
       - .:/app/stack:ro
-      - ${CHECKOUTS_ROOT:-..}:/checkouts
+      - checkouts:/checkouts
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       agent-cursor:
@@ -176,3 +177,9 @@ services:
     depends_on:
       server:
         condition: service_healthy
+
+volumes:
+  checkouts:
+    name: swarmloop-checkouts
+  worktrees:
+    name: swarmloop-worktrees

@@ -58,6 +58,7 @@ export interface OpenShellBody extends CommandInput {
 
 export interface LockShellBody extends CommandInput {
   container?: string;
+  userId?: number;
 }
 
 export interface RewindBody extends CommandInput {

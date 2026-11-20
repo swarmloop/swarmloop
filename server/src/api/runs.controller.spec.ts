@@ -36,6 +36,20 @@ describe('httpStatus', () => {
 });
 
 describe('RunsController', () => {
+  it('keeps the shell uid in the command submitted by the lock route', async () => {
+    const submitted: unknown[] = [];
+    const commands = {
+      submit: async (_kind: string, _key: string, payload: unknown) => {
+        submitted.push(payload);
+        return { value: { status: 'running' }, receipt: { commandId: 'c-1', revision: 4, state: 'running' } };
+      },
+    };
+    expect(
+      await controllerWith({}, commands).lockShell('proj-1', { container: 'proj-1-shell', userId: 501 }),
+    ).toMatchObject({ status: 'running' });
+    expect(submitted).toEqual([{ op: 'lock', container: 'proj-1-shell', userId: 501 }]);
+  });
+
   it('answers 400 when part, q or cursor is given twice', () => {
     const controller = controllerWith();
     for (const repeated of [

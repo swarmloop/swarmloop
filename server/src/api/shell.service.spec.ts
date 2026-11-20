@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync } from 'fs';
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { BadRequestException, ConflictException } from '@nestjs/common';
@@ -9,7 +9,8 @@ import type { DocumentRepository } from '../history/document.repository';
 import type { FlowRepository } from '../history/flow.repository';
 import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
-import type { SandboxService } from '../sandbox/sandbox.service';
+import type { SandboxMount } from '../core/sandbox-mount';
+import { SandboxService } from '../sandbox/sandbox.service';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { ShellService } from './shell.service';
@@ -52,7 +53,7 @@ describe('shell open', () => {
       },
     };
     const documentRepository = { latestBody: async () => null };
-    const sandbox = { containerExists: async () => false };
+    const sandbox = { containerExists: async () => false, withDaemonPaths: async (mounts: unknown[]) => mounts };
     const service = new ShellService(
       runRepository as unknown as RunRepository,
       documentRepository as unknown as DocumentRepository,
@@ -106,8 +107,13 @@ describe('shell open', () => {
 });
 
 describe('shell lock', () => {
-  function lockService(calls: string[], claim?: () => Promise<RunEntity>): ShellService {
-    const run = { id: 1, key: 'proj-1', status: 'waiting', currentStep: 'plan', targetPath: null } as RunEntity;
+  function lockService(
+    calls: string[],
+    claim?: () => Promise<RunEntity>,
+    resolve: (mounts: SandboxMount[]) => SandboxMount[] = (mounts) => mounts,
+    sandbox = new SandboxService(),
+  ): ShellService {
+    const run = { id: 1, key: 'proj-1', status: 'waiting', currentStep: 'plan', targetPath: demo } as RunEntity;
     const runRepository = {
       findRun: async () => run,
       claim: async (key: string, step: string) => {
@@ -128,7 +134,10 @@ describe('shell lock', () => {
       {} as VisitRepository,
       {} as FlowRepository,
       config,
-      { containerExists: async () => false } as unknown as SandboxService,
+      Object.assign(sandbox, {
+        containerExists: async () => false,
+        withDaemonPaths: async (mounts: SandboxMount[]) => resolve(mounts),
+      }),
       new FakeClock(),
       { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
     );
@@ -141,6 +150,34 @@ describe('shell lock', () => {
 
     expect(locked).toEqual({ status: 'running' });
     expect(calls).toEqual(['document chat_lock', 'claim proj-1 plan']);
+  });
+
+  it('hands the read-write volume mounts to the sandbox user and nothing else', async () => {
+    const handed: string[] = [];
+    const sandbox = new SandboxService();
+    sandbox.useHandOver(async (path, uid) => {
+      handed.push(`${path}:${uid}`);
+      return [path];
+    });
+    const service = lockService(
+      [],
+      undefined,
+      (mounts) => [
+        { ...mounts[0], volume: 'wt', volumeSubpath: 'proj-1/demo' },
+        { hostPath: '/server/ro', containerPath: '/ro', volume: 'wt', volumeSubpath: 'ro', readonly: true },
+        { hostPath: '/server/bind', containerPath: '/bind', daemonPath: '/host/bind' },
+        { hostPath: '/server/whole', containerPath: '/whole', volume: 'wt', volumeSubpath: '' },
+      ],
+      sandbox,
+    );
+
+    await service.lock('proj-1', 'proj-1-shell', 501);
+
+    expect(handed).toEqual([`${demo}:501`]);
+  });
+
+  it.each([0, -1, 1.5, NaN, 0xffffffff])('refuses invalid shell uid %s', async (uid) => {
+    await expect(lockService([]).lock('proj-1', 'proj-1-shell', uid)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('answers 409 when another writer took the run first', async () => {
@@ -192,5 +229,37 @@ describe('shell lock', () => {
       await expect(service.open(path)).rejects.toBeInstanceOf(BadRequestException);
     }
     expect(notes).toEqual([]);
+  });
+});
+
+describe('shell view', () => {
+  function describeService(resolve: (mounts: SandboxMount[]) => SandboxMount[]): ShellService {
+    const run = { id: 1, key: 'proj-1', status: 'waiting', currentStep: 'plan', targetPath: demo } as RunEntity;
+    return new ShellService(
+      { findRun: async () => run } as unknown as RunRepository,
+      { latestBody: async () => null } as unknown as DocumentRepository,
+      {} as VisitRepository,
+      {} as FlowRepository,
+      config,
+      {
+        containerExists: async () => false,
+        withDaemonPaths: async (mounts: SandboxMount[]) => resolve(mounts),
+      } as unknown as SandboxService,
+      new FakeClock(),
+      { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
+    );
+  }
+
+  it('carries the volume the sandbox resolved, the .env masks of the server path and the work roots', async () => {
+    writeFileSync(join(demo, '.env'), 'SECRET=1\n');
+    const service = describeService((mounts) => [
+      { ...mounts[0], volume: 'wt', volumeSubpath: 'r1/demo', daemonPath: '/x' },
+    ]);
+
+    const view = await service.describe('proj-1');
+
+    expect(view.mounts).toEqual([{ hostPath: demo, containerPath: '/work', volume: 'wt', volumeSubpath: 'r1/demo' }]);
+    expect(view.envMasks).toEqual([{ hostFile: join(demo, '.env'), containerFile: '/work/.env' }]);
+    expect(view.workRoots).toEqual(expect.arrayContaining([demo, other]));
   });
 });

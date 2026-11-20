@@ -3,15 +3,19 @@
 # The caller exports SWARMLOOP_REGISTRY and SWARMLOOP_VERSION of images that are already on this host.
 set -eu
 
+# The closing `docker compose down -v` drops the fixed-name volumes, so an existing installation must not be here.
+if docker volume inspect swarmloop-worktrees > /dev/null 2>&1; then
+  echo "The volume swarmloop-worktrees already exists on this Docker host; the closing docker compose down -v would drop swarmloop-checkouts and swarmloop-worktrees. Not starting." >&2
+  exit 1
+fi
+
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
-mkdir -p "$work/home" "$work/checkouts/fixture" "$work/stack"
-git -C "$work/checkouts/fixture" init -q
-git -C "$work/checkouts/fixture" -c user.name=ci -c user.email=ci@example.com commit -q --allow-empty -m fixture
+mkdir -p "$work/home" "$work/stack"
 cp "$repo/compose.yml" "$work/stack/compose.yml"
 # No person exists in this stack: only what needs none is checked. Every other route answers 401 without a token.
 cd "$work/stack"
-export SWARMLOOP_HOME="$work/home" CHECKOUTS_ROOT="$work/checkouts"
+export SWARMLOOP_HOME="$work/home"
 trap 'docker compose logs; docker compose down -v' EXIT
 # Under QEMU a service can be up before it answers: retry the first request to each.
 retry=(--retry 20 --retry-all-errors --retry-delay 3)

@@ -145,9 +145,15 @@ export class RunsController {
     @Body() body: LockShellBody,
     @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<ShellStatusView & CommandReceipt> {
-    return this.dispatch('shell', key, { op: 'lock', container: body.container ?? '' }, idempotencyKey, {
-      expectedRevision: body.expectedRevision,
-    });
+    return this.dispatch(
+      'shell',
+      key,
+      { op: 'lock', container: body.container ?? '', userId: body.userId },
+      idempotencyKey,
+      {
+        expectedRevision: body.expectedRevision,
+      },
+    );
   }
 
   @Post('runs/:key/shell/unlock')
