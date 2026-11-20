@@ -17,11 +17,14 @@ import { ReadinessStalls } from './readiness-stalls';
 import { missingModelCredential, ok, worst, type Outcome } from './readiness-outcome';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { OwnUseMeter } from '../pipeline/own-use-meter';
+import { readDockerEngine } from '../sandbox/docker-machine';
 import { imageName } from '../sandbox/image-resolver';
 import { agentImage, sandboxUserId } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 
 const GB = 1024 ** 3;
+/** The first Docker Engine that mounts a volume subpath. */
+const MIN_ENGINE_MAJOR = 26;
 const DASHBOARD_PORT = 3921;
 const PROBE_TIMEOUT_MS = 1500;
 /** How long the report waits for a host whose calls are being retried. */
@@ -134,10 +137,19 @@ export class ReadinessService {
   }
 
   private async docker(): Promise<Outcome> {
+    const engine = readDockerEngine((args) => this.sandbox.run(args));
     try {
       await this.sandbox.run(['info']);
     } catch {
       return { status: 'fail', line: 'docker is not running', action: 'start Docker or mount the Docker socket' };
+    }
+    const version = await engine;
+    if (version !== undefined && Number.parseInt(version, 10) < MIN_ENGINE_MAJOR) {
+      return {
+        status: 'fail',
+        line: `Docker Engine ${version} cannot mount a volume subpath; swarmloop needs Engine ${MIN_ENGINE_MAJOR} or newer`,
+        action: `update Docker to Engine ${MIN_ENGINE_MAJOR} or newer`,
+      };
     }
     const machine = this.sandbox.knownMachine();
     if (!machine) {
@@ -235,15 +247,19 @@ export class ReadinessService {
   }
 
   private async daemonVisible(dir: string): Promise<Outcome> {
-    const daemon = await this.sandbox.stateDaemonPath(dir);
-    if (!daemon) {
+    const place = await this.sandbox.daemonPlace(dir);
+    if ('volume' in place) {
+      const subpath = place.subpath ? `, subpath ${place.subpath}` : '';
+      return ok(`${dir} is volume ${place.volume} for the daemon${subpath}`);
+    }
+    if (!place.path) {
       return {
         status: 'fail',
         line: `${dir} has no path the Docker daemon can see`,
         action: 'mount the directory from the host and mount the Docker socket',
       };
     }
-    return ok(`${dir} is ${daemon} for the daemon`);
+    return ok(`${dir} is ${place.path} for the daemon`);
   }
 
   private async ports(): Promise<Outcome> {

@@ -22,3 +22,13 @@ export async function readDockerMachine(docker: DockerRunner): Promise<DockerMac
     return undefined;
   }
 }
+
+/** The Docker Engine version, such as `26.1.4`; `undefined` when docker fails or the answer is no version. */
+export async function readDockerEngine(docker: DockerRunner): Promise<string | undefined> {
+  try {
+    const version = (await docker(['version', '--format', '{{.Server.Version}}'])).trim();
+    return /^\d+(\.\d+)*([-+.]\S*)?$/.test(version) ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}

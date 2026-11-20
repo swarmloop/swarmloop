@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
 import { tmpdir } from 'os';
@@ -176,6 +176,35 @@ describe('ReadinessService', () => {
       { startedAt: '2025-12-31T22:00:00.000Z', durationMs: 20_000, kind: 'host-paused' },
     ]);
     expect((await service.fresh()).items.map((item) => item.id)).not.toContain('stalls');
+  });
+
+  it('fails when the Docker Engine is older than 26 and passes with 26', async () => {
+    const service = setup();
+    docker.mockImplementation(async (args: string[]) => (args[0] === 'version' ? '25.0.3\n' : ''));
+    const old = await itemOf(service, 'docker');
+    expect(old.status).toBe('fail');
+    expect(old.line).toContain('25.0.3');
+    expect(old.line).toContain('Engine 26');
+    expect(old.action).toBe('update Docker to Engine 26 or newer');
+    docker.mockImplementation(async (args: string[]) => (args[0] === 'version' ? '26.1.4\n' : ''));
+    expect((await itemOf(service, 'docker')).status).toBe('ok');
+    docker.mockImplementation(async (args: string[]) => (args[0] === 'version' ? 'n/a' : ''));
+    expect(await itemOf(service, 'docker')).toMatchObject({ status: 'ok', line: 'docker answers' });
+  });
+
+  it('names the volumes the server keeps its worktrees and checkouts in', async () => {
+    const checkouts = join(realpathSync(tmpdir()), 'readiness-checkouts');
+    const service = setup({ CHECKOUTS_ROOT: checkouts });
+    const worktrees = join(realpathSync(dirs[0]), 'worktrees');
+    const mounts = [
+      { Type: 'volume', Name: 'swarmloop-worktrees', Destination: worktrees },
+      { Type: 'volume', Name: 'swarmloop-checkouts', Destination: checkouts },
+    ];
+    docker.mockImplementation(async (args: string[]) => (args[0] === 'inspect' ? JSON.stringify(mounts) : ''));
+    const item = await itemOf(service, 'paths');
+    expect(item.status).toBe('ok');
+    expect(item.line).toContain(`${worktrees} is volume swarmloop-worktrees for the daemon`);
+    expect(item.line).toContain(`${checkouts} is volume swarmloop-checkouts for the daemon`);
   });
 
   it('fails when docker is down', async () => {
