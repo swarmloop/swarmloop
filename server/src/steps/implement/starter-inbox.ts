@@ -20,7 +20,7 @@ interface Report {
 }
 
 /** What the inbox leaves of a pass: the contract and tasks as they are now, the asks for the person, and the reports taken. */
-interface InboxPass {
+export interface InboxPass {
   contract: string;
   tasks: Subtask[];
   asks: StoredQuestion[];

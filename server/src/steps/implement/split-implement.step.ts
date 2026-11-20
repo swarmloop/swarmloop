@@ -59,6 +59,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       merges,
       needs: this.needs,
       inbox: this.inbox,
+      documents: this.documents,
       clock: this.clock,
       config: this.config,
       flows: this.flows,

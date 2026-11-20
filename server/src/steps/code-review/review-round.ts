@@ -34,6 +34,7 @@ import type { Exchange } from './review-exchange';
 import { fixNotes, withKeep } from './review-input';
 import { planChangesOf, type PlanChangesSection } from '../shared/plan-changes';
 import { requirementsCheck } from './requirements-check';
+import { readContract } from '../shared/contract-items';
 import { closeReview, recordAngle } from './review-report';
 import type { Finished, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { projectRules } from '../shared/project-rules';
@@ -250,7 +251,12 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
       resultPromptFor(answered ? reviewAnswerDefinition(reviewer.name) : reviewDefinition(reviewer.name), null),
     ].join('\n\n');
   const agent = agentFor(input.env, input.opened.run, 'code-review');
-  const marked = input.list && reviewer.name === 'requirements' ? requirementsCheck(input.list) : undefined;
+  const itemIds = input.contract
+    ? readContract(input.contract)
+        .items.map((item) => item.id)
+        .filter(Boolean)
+    : [];
+  const marked = input.list && reviewer.name === 'requirements' ? requirementsCheck(input.list, itemIds) : undefined;
   // A reviewer that asks the planner gives no marks yet: its decision is not taken.
   const check = marked
     ? (value: unknown) => (planner.mayAsk && (value as ReviewResult).question?.trim() ? [] : marked(value))
