@@ -3,8 +3,16 @@ import type { BacklogMessageRecord, BacklogTurnRecord } from '../../../history/b
 
 /** A stored message as the conversation shows it. */
 export function messageView(record: BacklogMessageRecord): BacklogMessageView {
-  const { id, author, kind, text, proposes, createdAt } = record;
-  return { id: id as number, author, kind, text, proposes, createdAt };
+  const { id, author, kind, text, proposes, createdAt, attachments } = record;
+  return {
+    id: id as number,
+    author,
+    kind,
+    text,
+    proposes,
+    createdAt,
+    ...(attachments.length > 0 ? { attachments } : {}),
+  };
 }
 
 /** A stored turn as the conversation shows it. */

@@ -14,7 +14,7 @@ export class BacklogChatController {
     @Body() body: PostBacklogMessageBody,
     @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<BacklogChatView> {
-    return this.chat.post(actor, name, body?.text, idempotencyKey);
+    return this.chat.post(actor, name, body?.text, idempotencyKey, body?.attachments);
   }
 
   @Get(':name/messages')

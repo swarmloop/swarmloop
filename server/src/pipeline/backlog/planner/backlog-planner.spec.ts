@@ -182,7 +182,7 @@ describe('BacklogPlanner', () => {
   it('does not touch the turns a stop left until the API server starts the planner', () =>
     withTurns(async (h) => {
       const id = await backlogOf(h);
-      await h.chat.addPersonMessage(id, 'plan it', 'm1');
+      await h.chat.addPersonMessage(id, 'plan it', 'm1', []);
       await h.openTurn(id, 'turn-a');
       await h.planner.onModuleDestroy();
       h.restartWithoutStart();
