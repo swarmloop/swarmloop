@@ -12,11 +12,9 @@ import { useDocumentTitle } from '../../../../lib/document-title';
 import { useRunFlow } from '../../use-run-flow';
 import { NewRunDialog } from '../../../new-run';
 import { expandReviewPhases, replaySelection } from '../../phases';
-import { PHASES, pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
+import { PHASES, pipelineStepOf } from '@contract/steps';
 import { FlowBoard } from '../flow-board';
-import { resumeLabel, resumeTip } from '../../../../lib/ci-infra';
 import { skipTask } from '../../../../lib/endpoints';
-import { StepDetail } from '../step-detail';
 import { GitAuthBanner } from '../git-auth-banner';
 import { LimitBanner } from '../limit-banner';
 import type { PlanRevision } from '@contract/plan-chat';
@@ -26,6 +24,7 @@ import { latestRevision } from '../../conversation/revision-marks';
 import { FinishedSummary } from './finished-summary';
 import { RunDialogs } from './run-dialogs';
 import { RunHeader } from './run-header';
+import { StepWindow } from './step-window';
 import { TaskLayers } from './task-layers';
 
 export function RunScreen({ runKey }: { runKey: string }): ReactElement {
@@ -139,34 +138,16 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
           <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
             {summary ? <FinishedSummary flow={flow} tasks={tasks} /> : null}
             {selected ? (
-              <StepDetail
-                key={selected}
-                runKey={flow.key}
+              <StepWindow
+                flow={flow}
                 step={selected}
-                live={flow.status === 'running' && pipelineStepOf(selected) === flow.currentStep}
-                revision={flow.updatedAt}
-                planRevision={planWindow ? revision : undefined}
                 attempts={chip?.attempts ?? 0}
                 restartedAt={chip?.restartedAt}
                 now={now}
-                liveCommands={flow.checkCommands}
-                onReplay={
-                  selected === 'code-review' || flow.status === 'running' || !flow.actions.includes('replay')
-                    ? undefined
-                    : REVIEW_STEPS.includes(selected)
-                      ? () => setReviewer(selected)
-                      : () => setReplay(pipelineStepOf(selected))
-                }
-                runStatus={pipelineStepOf(selected) === flow.currentStep ? flow.status : undefined}
-                onResume={
-                  pipelineStepOf(selected) === flow.currentStep &&
-                  (flow.status === 'failed' || flow.status === 'blocked') &&
-                  flow.actions.includes('resume')
-                    ? resumeRun
-                    : undefined
-                }
-                resumeLabel={resumeLabel(flow.stateReason?.code)}
-                resumeTip={resumeTip(flow.stateReason?.code)}
+                planRevision={planWindow ? revision : undefined}
+                onReviewer={setReviewer}
+                onReplay={setReplay}
+                onResume={resumeRun}
               />
             ) : null}
           </Box>
