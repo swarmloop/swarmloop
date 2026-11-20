@@ -723,8 +723,8 @@ describe('sandbox launch', () => {
     });
     const sandbox = new SandboxService();
     sandbox.useDocker(async (args) => {
-      expect(args.slice(0, 4)).toEqual(['stats', '--no-stream', '--format', '{{.CPUPerc}} {{.MemUsage}}']);
-      return '3.25% 2KiB / 64MiB\n';
+      expect(args).toEqual(['stats', '--no-stream', '--format', '{{.Name}} {{.CPUPerc}} {{.MemUsage}}']);
+      return 'swarmloop-plan 3.25% 2KiB / 64MiB\n';
     });
     await expect(sandbox.stats('swarmloop-plan')).resolves.toEqual({ cpuPercent: 3.25, rssBytes: 2 * 1024 });
   });
