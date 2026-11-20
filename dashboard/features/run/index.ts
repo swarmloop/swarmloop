@@ -3,3 +3,7 @@ export { RunScreen } from './flow/run-screen';
 export { RunStateIcon, toneColor } from './run-state-word';
 export { runWord } from './run-word';
 export { isLong } from './conversation/conversation-words';
+export { FeedLog } from './conversation/feed-log';
+export { InfoLine } from './conversation/info-line';
+export { MessageBubble } from './conversation/message-bubble';
+export { ProblemCard } from './conversation/problem-card';
