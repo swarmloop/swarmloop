@@ -87,6 +87,12 @@ describe('applyStarterAnswer', () => {
       ]);
     });
 
+    it('gives the reason of an added task the source a caller names', () => {
+      const applied = applyStarterAnswer(state(), answer({ addTask: [added('c', ['R2'])] }), AT, 'Task a merged');
+
+      expect(applied.changes[0].reason).toBe('Task a merged: Use ids.');
+    });
+
     it('refuses an invalid task: no proof, an unknown dependency, an id in use', () => {
       const bad = { ...added('b'), proof: '', depends: ['zz'] };
       const applied = applyStarterAnswer(state(), answer({ addTask: [bad] }), AT);

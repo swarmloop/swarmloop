@@ -56,7 +56,7 @@ export function planChatAddsTasks(messages: readonly { text: string }[], resultT
 }
 
 /** What the planner may do besides deciding, when it is asked with the tasks of the run. */
-const STARTER_ACTIONS = [
+export const STARTER_ACTIONS = [
   'Answer each question as a decision the subtask follows, in `decision`. You may also act on the task list, and every change needs its reason:',
   '- `waitFor`: the tasks the asking task must wait for, when it needs their code before it can go on.',
   '- `addTask`: a new task, added at the end of the list.',
@@ -66,7 +66,7 @@ const STARTER_ACTIONS = [
 ].join('\n');
 
 /** The tasks of the run with their state, as the planner is shown them when it may act on them. */
-function taskLines(tasks: Subtask[]): string {
+export function taskLines(tasks: Subtask[]): string {
   return tasks
     .map((task) => `- ${task.id} (${task.status}): ${task.title}; depends: ${task.depends.join(', ') || 'none'}`)
     .join('\n');

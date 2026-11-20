@@ -85,9 +85,14 @@ function changedTasks(tasks: Subtask[], answer: StarterAnswerResult): { tasks: S
 /**
  * What an answer of the planner does to the parent: its decision goes into the contract with its time, tasks are
  * added at the end, tasks that have not started are changed or dropped, and `waitFor` names the tasks the asker waits
- * for. Every change is checked as the planner's own plan is. With any refusal nothing but the decision is applied.
+ * for. `source` says who asked for the tasks that are added. Every change is checked as the planner's own plan is. With any refusal nothing but the decision is applied.
  */
-export function applyStarterAnswer(state: StarterState, answer: StarterAnswerResult, at: string): AppliedAnswer {
+export function applyStarterAnswer(
+  state: StarterState,
+  answer: StarterAnswerResult,
+  at: string,
+  source = `Subtask ${state.asker} asked for it`,
+): AppliedAnswer {
   const decided = withDecision(state.contract, state.asker, answer.decision, at);
   const refused = (errors: string[]): AppliedAnswer => ({
     errors,
@@ -113,7 +118,7 @@ export function applyStarterAnswer(state: StarterState, answer: StarterAnswerRes
     return reason ? [`waitFor: ${need.id}: ${reason}`] : [];
   });
   if (uncovered.length + waits.length > 0) return refused([...uncovered, ...waits]);
-  const reason = `Subtask ${state.asker} asked for it: ${answer.decision.trim().split('\n')[0]}`;
+  const reason = `${source}: ${answer.decision.trim().split('\n')[0]}`;
   const appended = graph.tasks.slice(stored.tasks.length);
   return {
     errors: [],
