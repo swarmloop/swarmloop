@@ -111,7 +111,7 @@ export interface BindMount {
 
 /** Path the Docker daemon can bind. The server may see the same directory through a different mount. */
 export function resolveDaemonPath(containerPath: string, binds: BindMount[]): string {
-  const real = existsSync(containerPath) ? realpathSync(containerPath) : resolve(containerPath);
+  const real = realPathOf(containerPath);
   const hit = binds
     .filter((bind) => covers(bind.destination, real))
     .sort((left, right) => right.destination.length - left.destination.length)[0];
@@ -121,7 +121,11 @@ export function resolveDaemonPath(containerPath: string, binds: BindMount[]): st
   return `${hit.source}${real.slice(hit.destination.length)}`;
 }
 
-function covers(destination: string, real: string): boolean {
+export function realPathOf(path: string): string {
+  return existsSync(path) ? realpathSync(path) : resolve(path);
+}
+
+export function covers(destination: string, real: string): boolean {
   return destination !== '/' && (real === destination || real.startsWith(`${destination}/`));
 }
 

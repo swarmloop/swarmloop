@@ -10,6 +10,7 @@ const WORK_MOUNT = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/;
 const BRIEF_MOUNT = '/work/brief';
 const ATTACHMENTS_MOUNT = '/work/brief/attachments';
 const GIT_METADATA = /^\/swarmloop-git\/git-[A-Za-z0-9]+$/;
+const SUBPATH = /^[A-Za-z0-9._/-]+$/;
 const AGENT_COMMANDS = new Set(['agent', 'claude', 'codex']);
 
 export function assertProject(project: ProjectLaunch, command: string[], home: string): void {
@@ -43,7 +44,7 @@ export function assertMount(mount: SandboxMount, home: string, workRoots: string
   }
   assertDaemonPath(mount.hostPath, home);
   if (
-    !mount.volume &&
+    !(mount.volume && mount.volumeSubpath === undefined) &&
     WORK_MOUNT.test(mount.containerPath) &&
     mount.containerPath !== BRIEF_MOUNT &&
     mount.containerPath !== RUN_LOGS_PATH
@@ -66,7 +67,12 @@ export function sandboxMount(mount: SandboxMount): string {
     if (mount.daemonPath !== undefined || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(mount.volume)) {
       throw new SwarmloopError('sandbox mount is not allowed');
     }
-    return `type=volume,src=${mount.volume},dst=${mount.containerPath},readonly=${access}`;
+    const subpath = mount.volumeSubpath ?? '';
+    if (subpath !== '' && (!SUBPATH.test(subpath) || isAbsolute(subpath) || subpath.split('/').includes('..'))) {
+      throw new SwarmloopError('sandbox mount is not allowed');
+    }
+    const sub = subpath === '' ? '' : `,volume-subpath=${subpath}`;
+    return `type=volume,src=${mount.volume}${sub},dst=${mount.containerPath},readonly=${access}`;
   }
   return `type=bind,src=${mount.daemonPath ?? mount.hostPath},dst=${mount.containerPath},readonly=${access}`;
 }
