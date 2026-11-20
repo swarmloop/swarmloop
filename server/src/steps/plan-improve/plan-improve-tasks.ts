@@ -4,6 +4,8 @@ import { renderContract, startedTasks } from '../plan/plan-tasks';
 
 const squash = (text: string): string => text.replace(/\s+/g, ' ').trim();
 
+const OWNED = /^\S+ \(owner \S+\): /;
+
 /** The entries of a stored contract: one per bullet, with the lines that follow it. Headings are not entries. */
 function contractEntries(contract: string): string[] {
   const entries: string[] = [];
@@ -51,7 +53,10 @@ export function addedTasksErrors(stored: Subtask[], contract: string, answer: Sp
     return changed.length > 0 ? [`task ${task.id} already started and cannot be changed (${changed.join(', ')})`] : [];
   });
   const rendered = squash(renderContract(answer.contract));
-  const gone = contractEntries(contract).filter((entry) => !rendered.includes(squash(entry)));
+  // A kept decision is found by its text: the answer may name its id or owner differently.
+  const gone = contractEntries(contract)
+    .map((entry) => entry.replace(OWNED, ''))
+    .filter((entry) => !rendered.includes(squash(entry)));
   return [
     ...errors,
     ...gone.map((entry) => `the contract decision "${squash(entry)}" is already followed and cannot be removed`),

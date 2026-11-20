@@ -233,7 +233,7 @@ describe('a task that needs a sibling waits for it', () => {
     expect(relaunched('a')).toHaveLength(2);
     expect(await handoff()).toContain('Build it in a.');
     expect(await handoff()).not.toContain(NOBODY);
-    expect(await documents().latestBody(KEY, 'contract')).toContain('- subtask a: Build it in a.');
+    expect(await documents().latestBody(KEY, 'contract')).toMatch(/- subtask a at \S+: Build it in a\./);
     const after = await view();
     expect(after.items).toEqual([]);
     expect(after.stateReason?.code).not.toBe('NEEDS_ANSWERS');
@@ -283,7 +283,7 @@ describe('a task that needs a sibling waits for it', () => {
 
   it('sends the planner answer to the question of a subtask waiting in code review', async () => {
     await seedEpic([task('a'), task('b')]);
-    jest.spyOn(SubtaskPlannerAnswer.prototype, 'askAbout').mockResolvedValue('Keep the catch-up.');
+    jest.spyOn(SubtaskPlannerAnswer.prototype, 'askAbout').mockResolvedValue({ decision: 'Keep the catch-up.' });
     await askedByReview('a', REVIEW_QUESTION);
 
     await pass(false);
@@ -291,7 +291,7 @@ describe('a task that needs a sibling waits for it', () => {
     expect(await documents().latestBody(`${KEY}-a`, 'answers')).toBe(
       `question: ${REVIEW_QUESTION}\nanswer: Keep the catch-up.\n`,
     );
-    expect(await documents().latestBody(KEY, 'contract')).toContain('- subtask a: Keep the catch-up.');
+    expect(await documents().latestBody(KEY, 'contract')).toMatch(/- subtask a at \S+: Keep the catch-up\./);
   });
 
   it('puts the question of a subtask waiting in code review to the person when the planner gives none', async () => {

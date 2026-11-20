@@ -42,7 +42,7 @@ export function expectedEnv(isolation: Pick<SwarmloopEnv, (typeof ISOLATION_KEYS
 export function tasksAnswer(tasks: { id: string; depends?: string[] }[]): string {
   return resultAnswer('Done.', {
     summary: ['checked'],
-    contract: ['the field is called `split_on`'],
+    contract: [{ id: 'item-1', text: 'the field is called `split_on`', owner: 'a' }],
     tasks: tasks.map(({ id, depends = [] }) => ({
       id,
       title: `Task ${id}`,

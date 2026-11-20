@@ -99,6 +99,16 @@ export class BacklogEvents {
       const runKey = record.runKey as string;
       let said: string[] = [];
       for (const entry of (await this.chats.read(runKey)).entries) {
+        if (entry.kind === 'info') {
+          // What was said to a subtask's planner and its reply: one event for the parent run.
+          await this.backlogs.recordEvent(backlogId, `run-chat:${runKey}:${entry.key}`, 'run-chat', {
+            slug: record.slug,
+            runKey,
+            message: entry.text,
+            reply: entry.reply ?? '',
+          });
+          continue;
+        }
         if (entry.kind !== undefined) continue;
         if (entry.role === 'person') {
           said.push(entry.text);

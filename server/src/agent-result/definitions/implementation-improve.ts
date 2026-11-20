@@ -1,7 +1,8 @@
 import Joi from 'joi';
-import { defineResult } from '../result-definition';
+import { defineResult, type ResultDefinition } from '../result-definition';
 import { CHANGE_KEY, GIT_RULES_KEY, type GitChange, type GitRules } from './git-change';
-import { QUESTION, REJECTED, type RejectedFinding } from './implementation';
+import { REJECTED, type RejectedFinding } from './implementation';
+import { QUESTION, starterKeys, type OutOfScope, type StarterDecision } from './starter-fields';
 
 /** What the implement-improve step hands to the server. An empty `implementation` keeps the first pass. */
 export interface ImplementationImproveResult {
@@ -13,9 +14,11 @@ export interface ImplementationImproveResult {
   question?: string;
   change?: GitChange;
   gitRules?: GitRules;
+  decisions?: StarterDecision[];
+  outOfScope?: OutOfScope[];
 }
 
-const base = Joi.object({
+const keys = {
   implementation: Joi.array()
     .items(Joi.string())
     .description('What this pass changed, one entry per change; leave out or [] when nothing changed'),
@@ -29,12 +32,27 @@ const base = Joi.object({
   question: QUESTION,
   change: CHANGE_KEY,
   gitRules: GIT_RULES_KEY,
-});
+};
+
+const base = Joi.object(keys);
 
 export const implementationImprove = defineResult('implementation_improve', base);
 
-/** The result of an improve pass that answers a code review return. */
+/** Every field of an improve answer: the definition its stored kind is read with. */
 export const implementationImproveAfterReview = defineResult(
   'implementation_improve',
-  base.keys({ rejected: REJECTED }),
+  Joi.object({ ...keys, rejected: REJECTED, ...starterKeys() }),
 );
+
+/**
+ * The improve answer a run is asked for: the pass that answers a code review return also reports the findings it
+ * leaves unfixed, and only a subtask is told about `decisions` and `outOfScope`. The kind is the same.
+ */
+export function implementationImproveFor(shape: { subtask: boolean; review: boolean }): ResultDefinition {
+  const asked = {
+    ...keys,
+    ...(shape.review ? { rejected: REJECTED } : {}),
+    ...(shape.subtask ? starterKeys() : {}),
+  };
+  return { ...implementationImproveAfterReview, schema: Joi.object(asked) };
+}

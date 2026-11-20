@@ -54,6 +54,33 @@ describe('taskEntries', () => {
     expect(entries[0]).not.toHaveProperty('layer');
   });
 
+  it('shows the wait of a running task from its own run, and not a stored wait once the run goes on', () => {
+    const tasks = doc('subtasks', JSON.stringify([{ ...task('c', []), status: 'running', note: 'c waits for a: x' }]));
+    const run = { key: 'p-1-c', state: 'waiting' as const, currentStep: 'implement', usd: 0, durationMs: 0 };
+    const waits = { ...run, stateReason: { code: 'SUBTASK_WAITING', message: 'waiting for a: x' } };
+    expect(taskEntries([approved, tasks], new Map([['c', waits]]))[0]?.note).toBe('c waits for a: x');
+    expect(
+      taskEntries([approved, tasks], new Map([['c', { ...run, state: 'running' as const }]]))[0]?.note,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    'c asks its own planner: which format?',
+    'c asks the planner of the parent: hands back: cache',
+    'c waits for the agent limit; next try at noon',
+  ])('hides a stored wait after resumption: %s', (note) => {
+    const tasks = doc('subtasks', JSON.stringify([{ ...task('c', []), status: 'running', note }]));
+    const run = { key: 'p-1-c', state: 'running' as const, currentStep: 'implement', usd: 0, durationMs: 0 };
+    expect(taskEntries([approved, tasks], new Map([['c', run]]))[0]?.note).toBeUndefined();
+  });
+
+  it('keeps an ordinary stored delivery note when the child resumes', () => {
+    const note = 'rebased onto the epic';
+    const tasks = doc('subtasks', JSON.stringify([{ ...task('c', []), status: 'running', note }]));
+    const run = { key: 'p-1-c', state: 'running' as const, currentStep: 'implement', usd: 0, durationMs: 0 };
+    expect(taskEntries([approved, tasks], new Map([['c', run]]))[0]?.note).toBe(note);
+  });
+
   it('gives a running task no waitsFor, and a task whose dependencies merged an empty one', () => {
     const tasks = doc(
       'subtasks',

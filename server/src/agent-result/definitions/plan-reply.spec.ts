@@ -35,6 +35,13 @@ describe('plan reply result', () => {
     expect(both.ok === false && both.errors).toEqual(['result: plan and tasks cannot both be filled in']);
   });
 
+  it('asks a reply for contract items, and refuses a string entry', () => {
+    const asked = planReplyFor({ split: true, subtask: false, addTasksOnly: true });
+    expect(readResult(asked, block({ reply: 'x', contract: ['old'], tasks: [TASK] })).ok).toBe(false);
+    const item = { id: 'api', text: 'rule', owner: 'a' };
+    expect(readResult(asked, block({ reply: 'x', contract: [item], tasks: [TASK] })).ok).toBe(true);
+  });
+
   it('says in the prompt that reply is a short answer in plain words with markdown where it helps', () => {
     const text = resultPrompt(planReplyFor({ split: false, subtask: false }));
     expect(text).toContain(

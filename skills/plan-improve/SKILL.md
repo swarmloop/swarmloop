@@ -22,6 +22,7 @@ This section applies only because this run may split into subtasks. The prompt t
 
 Check the tasks:
 - every item the input asks for is covered by a task, and each task added for a missing one is listed in `summary` as `added: <item> - <why>`;
+- every `Contract` item names an owner task from the list, and a task that uses an item without depending on its owner is a correction: the owner is added to its `depends`, and an item with no owner gets one;
 - no dependency cycle, and every dependency names a task in the list;
 - two tasks that can run at the same time do not change the same file unless one depends on the other;
 - `files` lists every file the task will change, including its tests and the shared test helpers and fixtures they need, and a task that changes a file another task lists depends on that task (the server adds the dependency when the planner forgets);

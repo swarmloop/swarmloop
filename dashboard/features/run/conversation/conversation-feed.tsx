@@ -1,6 +1,7 @@
 'use client';
 
 import { type ReactElement, useEffect, useState } from 'react';
+import type { Route } from 'next';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
@@ -111,6 +112,18 @@ function Talk({ talk }: { talk: AgentTalk }): ReactElement {
   );
 }
 
+/** What a person said to a subtask's planner, as one line of the parent's conversation with a link to the subtask. */
+function Exchange({ entry }: { entry: PlanChatEntry }): ReactElement {
+  const reply = entry.reply ? ` Reply: ${plainText(entry.reply)}` : '';
+  const target = entry.link ?? '';
+  return (
+    <InfoLine
+      sentence={`${entry.text}${reply}`}
+      link={{ href: `/runs/${encodeURIComponent(target)}` as Route, text: `Open ${target}` }}
+    />
+  );
+}
+
 interface FeedProps {
   flow: FlowView;
   entries: FeedEntry[];
@@ -150,7 +163,11 @@ export function ConversationFeed({ flow, entries, onResume }: FeedProps): ReactE
           {rows.map((row) => {
             switch (row.type) {
               case 'message':
-                return <Message key={row.key} entry={row.entry} />;
+                return row.entry.kind === 'info' ? (
+                  <Exchange key={row.key} entry={row.entry} />
+                ) : (
+                  <Message key={row.key} entry={row.entry} />
+                );
               case 'talk':
                 return <Talk key={row.key} talk={row.talk} />;
               case 'revision':

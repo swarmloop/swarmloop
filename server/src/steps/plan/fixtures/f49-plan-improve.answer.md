@@ -3,7 +3,13 @@ I restored repo-rules.
 ```json
 {
   "summary": ["restored repo-rules"],
-  "contract": ["rule files are named by the runtime adapter; no task names a project"],
+  "contract": [
+    {
+      "id": "rule-files",
+      "text": "rule files are named by the runtime adapter; no task names a project",
+      "owner": "runtime-rule-files"
+    }
+  ],
   "tasks": [
     {
       "id": "runtime-rule-files",

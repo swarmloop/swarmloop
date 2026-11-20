@@ -11,7 +11,8 @@ import { resultAnswer } from '../../testing/result-answer';
 import { boot, planBlock, result, seed, writeEnv } from './plan.step.spec-helpers';
 
 const TASK = { id: 'a', title: 'Add it', depends: [], files: ['a.ts'], proof: 'a.spec.ts', description: 'Adds it.' };
-const split = (tasks: unknown[]): string => resultAnswer('Done.', { summary: ['why'], contract: ['rule'], tasks });
+const split = (tasks: unknown[]): string =>
+  resultAnswer('Done.', { summary: ['why'], contract: [{ id: 'item-1', text: 'rule', owner: 'a' }], tasks });
 
 /** Runs the plan step of a run that may split with these answers, one per launch. */
 async function planWith(key: string, answers: string[]) {

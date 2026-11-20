@@ -1,5 +1,14 @@
 import type { RunState } from './run-state';
-import { parseSubtasks, readyTasks, shownTaskState, splitLine, statusLine, waitNote, type Subtask } from './subtask';
+import {
+  parseSubtasks,
+  readyTasks,
+  shownTaskState,
+  splitLine,
+  runWaitNote,
+  statusLine,
+  waitNote,
+  type Subtask,
+} from './subtask';
 
 describe('parseSubtasks', () => {
   it('parseSubtasks reads depends and status', () => {
@@ -118,5 +127,51 @@ describe('shownTaskState', () => {
     expect(shownTaskState(task('a', 'merged'), run('running'))).toBe('merged');
     expect(shownTaskState(task('a', 'skipped'), run('failed'))).toBe('skipped');
     expect(shownTaskState(task('a', 'running'))).toBe('waiting');
+  });
+});
+
+describe('runWaitNote', () => {
+  const task = { id: 'git-retry' };
+  const waiting = (code: string, message: string, extra = {}) => ({
+    state: 'waiting' as const,
+    stateReason: { code, message, ...extra },
+  });
+
+  it('names what a task waits for in its needs', () => {
+    expect(runWaitNote(task, waiting('SUBTASK_WAITING', 'waiting for http-retry: withHostRetries'))).toBe(
+      'git-retry waits for http-retry: withHostRetries',
+    );
+  });
+
+  it('says a question or a hand-back is with the planner of the parent', () => {
+    expect(runWaitNote(task, waiting('ASKS_PLANNER', 'plan asks the planner of the parent: which format?'))).toBe(
+      'git-retry asks the planner of the parent: which format?',
+    );
+    expect(
+      runWaitNote(task, waiting('ASKS_PLANNER', 'implement asks the planner of the parent: hands back: the cache')),
+    ).toBe('git-retry asks the planner of the parent: hands back: the cache');
+    expect(runWaitNote(task, waiting('ASKS_PLANNER', 'implement is waiting for the planner: which format?'))).toBe(
+      'git-retry asks its own planner: which format?',
+    );
+    expect(runWaitNote(task, waiting('ASKS_PLANNER', 'implement is waiting for the planner'))).toBe(
+      'git-retry asks its own planner',
+    );
+  });
+
+  it('gives an agent limit and a host outage their next try', () => {
+    const limit = { runtime: 'x', resumesAt: '2026-11-20T10:00:00Z' };
+    expect(runWaitNote(task, waiting('RUNTIME_LIMIT', 'limit', { limit }))).toBe(
+      'git-retry waits for the agent limit; next try at 2026-11-20T10:00:00Z',
+    );
+    expect(runWaitNote(task, waiting('HOST_UNAVAILABLE', 'down', { retryAt: '2026-11-20T11:00:00Z' }))).toBe(
+      'git-retry waits for the code host; next try at 2026-11-20T11:00:00Z',
+    );
+  });
+
+  it('says nothing for a run that does not wait', () => {
+    expect(
+      runWaitNote(task, { state: 'running', stateReason: { code: 'ASKS_PLANNER', message: 'x' } }),
+    ).toBeUndefined();
+    expect(runWaitNote(task, waiting('SUBTASKS_RUNNING', '1 running'))).toBeUndefined();
   });
 });

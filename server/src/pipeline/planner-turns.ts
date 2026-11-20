@@ -8,6 +8,8 @@ import { Clock } from '../core/clock';
 import type { PlanChatEntry } from '../contract/plan-chat';
 import { PlanConversation } from '../steps/shared/plan-conversation';
 import { isSubtask } from '../contract/subtask';
+import { REASON } from '../contract/run-state';
+import { asksParentReason } from '../steps/shared/starter-exchange';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { readPlan } from '../steps/plan/plan-record';
 import { messageTurn } from './plan-chat-route';
@@ -50,10 +52,10 @@ export class PlannerTurns implements OnModuleDestroy {
     if (conversation) conversation.gate = this;
   }
 
-  /** True when the planner takes a message to this run between steps: it is no subtask and reached implement, so its plan is amended or gains tasks. */
+  /** True when the planner takes a message to this run between steps: it reached implement, so its plan is amended or gains tasks. */
   takesMessages(run: RunEntity): boolean {
     const turn = messageTurn(run, { state: 'running', openItems: 0 });
-    return !isSubtask(run) && (turn === 'amend' || turn === 'add-tasks');
+    return turn === 'amend' || turn === 'add-tasks';
   }
 
   /**
@@ -89,8 +91,8 @@ export class PlannerTurns implements OnModuleDestroy {
    */
   async next(run: RunEntity, declined: ReadonlySet<string>): Promise<'message' | 'question' | 'answer' | null> {
     const messages = this.takesMessages(run) ? ((await this.chat?.pending(run.key)) ?? []) : [];
-    // A subtask has no planner of its own: its questions go to the planner of its parent.
-    const questions = isSubtask(run) ? [] : ((await this.chat?.pendingQuestions(run.key)) ?? []);
+    // A subtask's implement and implement-improve ask its own planner first, like any run.
+    const questions = (await this.chat?.pendingQuestions(run.key)) ?? [];
     const first = [
       ...messages.map((entry) => ({ kind: 'message' as const, entry })),
       ...questions.map((entry) => ({ kind: 'question' as const, entry })),
@@ -125,8 +127,18 @@ export class PlannerTurns implements OnModuleDestroy {
     }
   }
 
-  /** The question goes to the person: it waits in the run's questions, and the run waits for the answer without the step. */
+  /**
+   * The question goes to the person: it waits in the run's questions, and the run waits for the answer without the step.
+   * A subtask never asks a person: the entry stays pending for the planner of its parent, which asks whoever started the run.
+   */
   private async escalate(documents: DocumentRepository, run: RunEntity, escalation: PlanChatEntry): Promise<void> {
+    if (isSubtask(run)) {
+      const message = asksParentReason(escalation.from ?? 'a step');
+      const waiting = await this.runs?.findRun(run.key);
+      if (waiting?.status === 'waiting')
+        await this.runs?.release(waiting, { status: 'waiting', reason: { code: REASON.asksPlanner, message } });
+      return;
+    }
     await escalateToPerson(documents, run, escalation);
     const fresh = await this.runs?.findRun(run.key);
     if (fresh?.status === 'waiting')

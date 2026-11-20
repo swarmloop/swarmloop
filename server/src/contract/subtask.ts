@@ -1,4 +1,5 @@
-import type { RunState, SubtaskStatus } from './run-state';
+import { ERROR_CODES } from './error-codes';
+import { ASKS_PLANNER_WORDS, REASON, type RunState, type StateReason, type SubtaskStatus } from './run-state';
 
 /** One task in the `subtasks` document of a parent run. */
 export interface Subtask {
@@ -138,6 +139,38 @@ export function runTaskStatus(run: TaskRunState): SubtaskStatus {
 export function shownTaskState<T extends Subtask>(task: T, run?: TaskRunState): SubtaskStatus {
   if (settled(task)) return task.status;
   return run ? runTaskStatus(run) : 'waiting';
+}
+
+/** The wait of a running task, from its own run's reason: needs, a question to the planner, an agent limit or a host outage with its next try. Undefined when the run does not wait. */
+export function runWaitNote(
+  task: Pick<Subtask, 'id'>,
+  run: { state: RunState; stateReason?: StateReason | null },
+): string | undefined {
+  const reason = run.stateReason;
+  if (run.state !== 'waiting' || !reason) return undefined;
+  const next = (at?: string): string => (at ? `; next try at ${at}` : '');
+  switch (reason.code) {
+    case ERROR_CODES.SUBTASK_WAITING:
+      return `${task.id} ${reason.message.replace(/(^|; )waiting for /g, '$1waits for ')}`;
+    case REASON.asksPlanner:
+      return plannerWaitNote(task.id, reason.message);
+    case ERROR_CODES.RUNTIME_LIMIT:
+      return `${task.id} waits for the agent limit${next(reason.limit?.resumesAt)}`;
+    case ERROR_CODES.HOST_UNAVAILABLE:
+      return `${task.id} waits for the code host${next(reason.retryAt)}`;
+    default:
+      return undefined;
+  }
+}
+
+function plannerWaitNote(id: string, message: string): string {
+  const status = message.split(':', 1)[0];
+  const own = status.endsWith(ASKS_PLANNER_WORDS);
+  const destination = own ? 'its own planner' : 'the planner of the parent';
+  const marker = own ? ASKS_PLANNER_WORDS : 'asks the planner of the parent';
+  const start = status.endsWith(marker) ? message.indexOf(marker) : -1;
+  const text = (start < 0 ? message : message.slice(start + marker.length)).replace(/^:\s*/, '').trim();
+  return `${id} asks ${destination}${text ? `: ${text}` : ''}`;
 }
 
 /** `4/7 merged · 2 running · 1 waiting`. A count of zero is left out. */

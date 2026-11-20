@@ -21,7 +21,7 @@ const stored = [{ ...task, id: 'column', status: 'pending' }];
 const tasksAnswer = (title: string, depends: string[] = []): string =>
   resultAnswer('Done.', {
     summary: ['checked'],
-    contract: ['the column is called `split_on`'],
+    contract: [{ id: 'item-1', text: 'the column is called `split_on`', owner: 'a' }],
     tasks: [{ ...task, id: 'column', title, depends }],
   });
 const planAnswer = resultAnswer('Done.', { summary: ['one run'], plan: ['add the field'] });

@@ -7,7 +7,7 @@ const SPLIT = {
   summary: [],
   plan: [],
   questions: [],
-  contract: ['rule'],
+  contract: [{ id: 'item-1', text: 'rule', owner: 'a' }],
   keep: [],
   tasks: [{ id: 'a', title: 'Add it', depends: [], files: ['a.ts', 'b.ts'], proof: 'a.spec.ts', description: 'Adds.' }],
 };

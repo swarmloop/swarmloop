@@ -6,6 +6,7 @@ import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
+import { CONTRACT_KIND, isSubtask } from '../../contract/subtask';
 import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -28,15 +29,9 @@ import { EnvironmentService } from '../../environment/environment.service';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { assertUncommitted, featureHeads, worktreeStatus } from '../../git/worktree-git';
 import { implementImproveAsk, implementImproveFollowUp, resultTextFor } from './implement.prompts';
-import {
-  answerFollowUp,
-  answerSection,
-  mayAsk,
-  readAnswer,
-  takeAnswer,
-  waitForPlanner,
-  withAssumed,
-} from './implement-question';
+import { answerFollowUp, answerSection, mayAsk, readAnswer, takeAnswer } from './implement-question';
+import { withAssumptions } from './implement-asks';
+import { StarterExchange } from '../shared/starter-exchange';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { firstPass, gitRulesNoteOutputs, renderCause, renderImplementation, withReturnNotes } from './implement-record';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -132,7 +127,8 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const { runtime } = this.profile(this.config.env, ctx.opened.run);
     const continued = await resumableChat(root(this.config), key, 'implement-improve', runtime);
     const received = continued?.chatId ? (continued.resultName ?? null) : null;
-    const ask = implementImproveAsk(returned);
+    const subtask = isSubtask(ctx.opened.run);
+    const ask = implementImproveAsk(returned, subtask);
     const fullFor = (target: string): string =>
       [
         skillPrompt('implement-improve', input.requirements, names, sections, mounts, {
@@ -145,7 +141,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const full = fullFor(runtime);
     const followUp = answer
       ? answerFollowUp(answer, resultTextFor(ask, received))
-      : implementImproveFollowUp(returned, received);
+      : implementImproveFollowUp(returned, received, subtask);
     const chosen = continued?.chatId ? followUp : full;
     const added = await ctx.reread(ARTIFACTS.addedRepos);
     const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
@@ -155,6 +151,8 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       place,
       withAddedRepos(chosen, added),
     );
+    const exchange = new StarterExchange(this.planChat, this.clock);
+    const contract = subtask ? await this.parentDocument(ctx.opened.run, CONTRACT_KIND) : null;
     const agentResult = await ctx.launch({
       prompt,
       mounts,
@@ -164,20 +162,23 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       projectFor: reproject,
       briefFor: (other) => withEnvironment(withAddedRepos(fullFor(other), added), executionRules),
       result: ask.definition,
+      briefing: { continued: continued !== null },
+      check: (value) => exchange.check(ctx.opened.run, value as ImplementationImproveResult, contract),
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });
     await assertUncommitted(mounts, branch, heads);
     await takeAnswer(this.planChat, key, answer);
     const value = agentResult.resultValue as ImplementationImproveResult;
-    if (
-      !answer &&
-      value.question?.trim() &&
-      this.planChat &&
-      (await mayAsk(ctx.opened.run, this.planChat, { root: root(this.config), env: this.config.env }))
-    ) {
-      const { startedAt, attemptId } = ctx.opened;
-      const ask = { chat: this.planChat, clock: this.clock, step: this.name, attemptId, startedAt };
-      return waitForPlanner(ctx.opened.run, { ...ask, question: value.question });
+    const asks = await exchange.act(ctx, value, {
+      step: this.name,
+      route: 'chat',
+      outputs: [],
+      answered: Boolean(answer),
+      mayAsk:
+        !answer && (await mayAsk(ctx.opened.run, this.planChat, { root: root(this.config), env: this.config.env })),
+    });
+    if (asks.wait) {
+      return asks.wait;
     }
     // An empty implementation means this pass left the first pass as it was.
     const items = value.implementation?.length ? value.implementation : pass.implementation;
@@ -187,7 +188,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const corrected = correctedPlan(input.requirements, value.plan, current?.items ?? []);
     const reasons = renderSummary(value.summary, ['checked the first pass']);
     const why = corrected ? `${reasons.trimEnd()}\n${corrected.handoff}` : reasons;
-    const handoffBody = withAssumed(value.cause?.length ? `${renderCause(value.cause)}${why}` : why, value.question);
+    const handoffBody = withAssumptions(value.cause?.length ? `${renderCause(value.cause)}${why}` : why, asks.assumed);
     const note = await this.gitRules.write(mounts, value.gitRules);
     const status = await worktreeStatus(mounts);
     const line = `${ctx.opened.startedAt} implement-improve done\n${body.trimEnd()}\n${status}`;

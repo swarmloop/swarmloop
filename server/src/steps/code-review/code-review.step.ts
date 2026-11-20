@@ -24,6 +24,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
+import { StarterBriefing } from '../shared/starter-briefing';
 import { RunReport } from '../shared/run-report';
 import { OpenReviewRounds } from '../shared/open-review-rounds';
 import { CheckoutService } from '../shared/checkout.service';
@@ -78,6 +79,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   override readonly capabilities: StepCapabilities = { path: true };
 
   private readonly settling: ReviewSettle;
+  private readonly briefing: StarterBriefing;
 
   constructor(
     kernel: StepKernel,
@@ -91,6 +93,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   ) {
     super(kernel);
     this.settling = new ReviewSettle(this.documents, events, planChat);
+    this.briefing = new StarterBriefing(this.runs, this.documents);
   }
 
   private prepareDeps(): PrepareDeps {
@@ -193,6 +196,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       launcher: this.launcher,
       runReport: this.runReport,
       chat: this.planChat,
+      briefing: this.briefing,
       onReportStart: () => this.openRounds?.reportStarted(key),
     };
     const {
@@ -240,6 +244,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
     const split = opened.run.split;
     const contract = split ? await ctx.reread(ARTIFACTS.contract) : null;
+    const starter = await this.briefing.fullText(opened.run);
     const keep = split ? await ctx.reread(ARTIFACTS.keep) : null;
     const subtasks = split ? await ctx.reread(ARTIFACTS.subtasks) : null;
     const finished = await runRound(deps, {
@@ -258,6 +263,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       list,
       impact,
       contract,
+      starter,
       subtasks,
       keep,
       auto: options.auto,
