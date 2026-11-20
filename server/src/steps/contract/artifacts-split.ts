@@ -39,7 +39,12 @@ export const SPLIT_ARTIFACTS = {
     summarize: firstLine,
   }),
   /** The starter's look at a merged task. */
-  mergeLook: artifact('merge_look', { writers: [], readers: [], external: true, summarize: firstLine }),
+  mergeLook: artifact('merge_look', {
+    writers: ['implement'],
+    readers: [],
+    external: true,
+    summarize: firstLine,
+  }),
   subtasks: artifact(SUBTASKS_KIND, {
     writers: ['plan', 'plan-improve', 'implement'],
     readers: ['plan-improve', 'branch', 'implement', 'implement-improve'],

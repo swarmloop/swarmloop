@@ -99,6 +99,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.questionParts,
     ARTIFACTS.needs,
     ARTIFACTS.starterTaken,
+    ARTIFACTS.mergeLook,
   ];
 
   constructor(

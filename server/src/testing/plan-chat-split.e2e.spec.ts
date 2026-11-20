@@ -172,6 +172,9 @@ describe('a person writes to the planner of a split run after its tasks started'
     const documents = app().app.get(DocumentRepository);
     const merged = (await tasks()).map((task) => ({ ...task, status: 'merged' as const }));
     await documents.putDocument(run, 'subtasks', `${JSON.stringify(merged)}\n`);
+    // The parent already looked at each merged task.
+    const looked = merged.map((task) => ({ task: task.id, marks: [], at: '2026-01-01T00:00:00.000Z' }));
+    await documents.putDocument(run, 'merge_look', JSON.stringify(looked));
     const { record } = await flow.host.openMergeRequest({
       project: 'group/demo',
       source: `feature/${KEY}-ship-the-field`,

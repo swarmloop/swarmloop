@@ -171,6 +171,16 @@ describe('env schema', () => {
     expect(bad.error?.message).toContain('LIMIT_COOLDOWN_MIN');
   });
 
+  it('defaults EPIC_REPLAN_EVERY_MERGE to true, accepts false and rejects other words', () => {
+    expect(validateSettings(complete, { convert: true }).value.EPIC_REPLAN_EVERY_MERGE).toBe(true);
+    expect(
+      validateSettings({ ...complete, EPIC_REPLAN_EVERY_MERGE: 'false' }, { convert: true }).value
+        .EPIC_REPLAN_EVERY_MERGE,
+    ).toBe(false);
+    const bad = validateSettings({ ...complete, EPIC_REPLAN_EVERY_MERGE: 'sometimes' }, { convert: true });
+    expect(bad.error?.message).toContain('EPIC_REPLAN_EVERY_MERGE');
+  });
+
   it('defaults EPIC_EFFORT to xhigh, allows it empty and rejects any other word', () => {
     expect(validateSettings(complete, { convert: true }).value.EPIC_EFFORT).toBe('xhigh');
     expect(validateSettings({ ...complete, EPIC_EFFORT: '' }, { convert: true }).value.EPIC_EFFORT).toBe('');

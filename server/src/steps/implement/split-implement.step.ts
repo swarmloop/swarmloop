@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { SUBTASK_WAIT_CODES } from '../../contract/error-codes';
 import { deriveState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
@@ -6,6 +6,8 @@ import { readyTasks, settled, withStatuses } from '../../contract/subtask';
 import type { StepName } from '../../contract/steps';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { taskStatusOf } from '../shared/subtask-status';
+import { PlanConversation } from '../shared/plan-conversation';
+import { MergeLook } from './merge-look';
 import { SplitMerge } from './split-merge';
 import { SplitNeeds } from './split-needs';
 import { SplitPass } from './split-pass';
@@ -40,26 +42,31 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.subtaskQuestions,
     ARTIFACTS.questionParts,
     ARTIFACTS.starterTaken,
+    ARTIFACTS.mergeLook,
   ];
 
   private readonly needs: SplitNeeds;
   private readonly inbox: StarterInbox;
+  private readonly look: MergeLook;
   private readonly pass: SplitPass;
 
   constructor(
     kernel: StepKernel,
     private readonly subtasks: SubtaskOps,
     merges: SplitMerge,
+    @Optional() conversation?: PlanConversation,
   ) {
     super(kernel);
     this.needs = new SplitNeeds(subtasks);
     this.inbox = new StarterInbox({ subtasks, reader: this.reader });
+    this.look = new MergeLook({ subtasks, reader: this.reader, config: this.config, conversation });
     this.pass = new SplitPass({
       subtasks,
       merges,
       needs: this.needs,
       inbox: this.inbox,
       documents: this.documents,
+      look: this.look,
       clock: this.clock,
       config: this.config,
       flows: this.flows,
@@ -88,6 +95,7 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     const tasks = withStatuses((await this.reader.reread(parent.key, ARTIFACTS.subtasks)) ?? []);
     if (tasks.every(settled) || (await this.needs.pending(parent, tasks))) return false;
     if (await this.inbox.pending(parent, tasks)) return false;
+    if (await this.look.pending(parent, tasks)) return false;
     const children: RunEntity[] = [];
     for (const task of tasks.filter((item) => !settled(item))) {
       const child = await this.subtasks.find(parent, task.id);

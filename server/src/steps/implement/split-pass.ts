@@ -26,6 +26,7 @@ import type { StepContext } from '../base-step';
 import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
 import { renderImplementation } from './implement-record';
+import type { MergeLook } from './merge-look';
 import type { SplitMerge } from './split-merge';
 import { REBASED_PREFIX } from './split-rebase';
 import type { SplitNeeds } from './split-needs';
@@ -49,6 +50,7 @@ interface SplitPassDeps {
   needs: SplitNeeds;
   inbox: StarterInbox;
   documents: DocumentRepository;
+  look: MergeLook;
   clock: Clock;
   config: AppConfig;
   flows: FlowRepository;
@@ -92,12 +94,15 @@ export class SplitPass {
     const followed = await this.refresh(run, needed.tasks);
     const { tasks: merged, refusal, unfetched, unmoved: mergeNote } = await this.deps.merges.run(run, followed.tasks);
     const unmoved = [followed.unmoved, mergeNote].filter(Boolean).join('; ') || null;
-    const tasks = await this.explain(run, await this.start(run, merged));
+    const requirements = (await ctx.reread(ARTIFACTS.requirementList)) ?? [];
+    const looked = await this.deps.look.run(ctx, merged, needed.contract, requirements);
+    const tasks = await this.explain(run, await this.start(run, looked.tasks));
     const taken =
       gapped.taken === null ? [] : [{ artifact: ARTIFACTS.starterTaken, value: JSON.stringify(gapped.taken) }];
     const outputs: StepResult['outputs'] = [
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
-      ...(needed.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: needed.contract }]),
+      ...(looked.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: looked.contract }]),
+      ...(looked.looks === null ? [] : [{ artifact: ARTIFACTS.mergeLook, value: looked.looks }]),
       ...(questions === asked ? [] : [{ artifact: ARTIFACTS.subtaskQuestions, value: questions }]),
       ...(JSON.stringify(parts) === JSON.stringify(storedParts)
         ? []

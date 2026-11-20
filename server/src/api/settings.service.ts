@@ -42,6 +42,7 @@ const SERVER_NAMES = [
   'CHECKS_PARALLEL',
   'AGENTS_PARALLEL',
   'SUBTASKS_PARALLEL',
+  'EPIC_REPLAN_EVERY_MERGE',
   'SPLIT_MAX_TASKS',
   'REQUIREMENTS_TIMEOUT_MS',
   'RESEARCH_TIMEOUT_MS',
@@ -66,6 +67,8 @@ const SERVER_NAMES = [
 const SERVER_DESCRIPTIONS: Record<string, string> = {
   CHECKS_PARALLEL: 'Check commands that run at once on the whole server',
   AGENTS_PARALLEL: 'Agent containers that run at once on the whole server',
+  EPIC_REPLAN_EVERY_MERGE:
+    'The parent planner looks at every merged task before its dependents start; false: only when the task differs from its plan',
 };
 
 /** Server settings the sandbox reads straight from the process env; `SwarmloopEnv` does not carry them. */
