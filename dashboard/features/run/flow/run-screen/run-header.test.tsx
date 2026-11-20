@@ -12,6 +12,7 @@ function headerProps(status = 'done', overrides: Partial<ComponentProps<typeof R
   return {
     flow: flowView({ status }),
     openMs: 0,
+    now: 0,
     onRebase: vi.fn().mockResolvedValue(undefined),
     onStop: vi.fn(),
     onOpenRequirements: vi.fn(),
@@ -237,5 +238,17 @@ describe('RunHeader', () => {
     expect(title.parentElement?.parentElement).toHaveStyle({ minWidth: '0' });
     await user.hover(title);
     expect(await screen.findByRole('tooltip')).toHaveTextContent(name);
+  });
+
+  it('shows the time left next to time and cost, with a rough-estimate tooltip', async () => {
+    const user = userEvent.setup({ delay: null });
+    const now = Date.parse('2026-11-12T12:00:00.000Z');
+    const doneAt = new Date(now + 25 * 60_000).toISOString();
+    header('running', { now, flow: flowView({ status: 'running', eta: { leftMs: 25 * 60_000, doneAt } }) });
+
+    const text = screen.getByText('~25m left');
+    expect(text.parentElement).toContainElement(screen.getByText(/tok$/));
+    await user.hover(text);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('rough estimate');
   });
 });

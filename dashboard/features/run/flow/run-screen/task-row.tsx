@@ -14,6 +14,7 @@ import type { RevisionMark } from '../../conversation/revision-marks';
 import { ConfirmDialog } from '../../../shell';
 import { duration, localTime, money } from '../../../../lib/format';
 import { RunStateIcon, toneColor } from '../../run-state-word';
+import { TaskEta } from './task-eta';
 import { TaskDetails } from './task-details';
 
 /** The row's button: the plan before the task has a result, the changes after. */
@@ -25,11 +26,13 @@ function detailsLabel(task: TaskEntry): string {
 /** One task on one line: its status, title, what it waits for, time and cost, with its plan and result on demand. `dependents` are the titles of the tasks that depend on it. */
 export function TaskRow({
   task,
+  now,
   dependents,
   onSkip,
   mark,
 }: {
   task: TaskEntry;
+  now: number;
   dependents: string[];
   onSkip: (taskId: string) => Promise<unknown>;
   /** Set when the latest plan change added or changed this task. */
@@ -80,6 +83,7 @@ export function TaskRow({
           {interruptionSentence(task.run.interruption, localTime)}
         </Typography>
       ) : null}
+      <TaskEta task={task} now={now} />
       {task.run ? (
         <Typography
           component="span"

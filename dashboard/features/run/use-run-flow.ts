@@ -125,12 +125,13 @@ export function useRunFlow(runKey: string): {
   }, [liveFlow, logs, runKey]);
 
   useEffect(() => {
-    if (flow?.status !== 'running') {
+    // An epic waiting for subtasks is not running, but its estimate still counts down.
+    if (flow?.status !== 'running' && !flow?.eta?.doneAt) {
       return;
     }
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [flow?.status]);
+  }, [flow?.status, flow?.eta?.doneAt]);
 
   useEffect(() => {
     if (flow && followStep.current) {

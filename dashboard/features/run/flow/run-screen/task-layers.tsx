@@ -22,6 +22,7 @@ function dependentsOf(task: TaskEntry, tasks: TaskEntry[]): string[] {
 /** The tasks of a split plan: the open ones in the shared task order, the merged and skipped ones folded into one line, then the merge queue and the decisions. `epic` is set once a task has started, with the parent's own cost in `ownUsd`. */
 export function TaskLayers({
   tasks: planned,
+  now,
   epic,
   ownUsd = 0,
   mergeQueue,
@@ -30,6 +31,7 @@ export function TaskLayers({
   revision = null,
 }: {
   tasks: TaskEntry[];
+  now: number;
   epic?: { usd: number; durationMs: number };
   ownUsd?: number;
   mergeQueue?: { id: string; title: string }[];
@@ -62,6 +64,7 @@ export function TaskLayers({
     <TaskRow
       key={`${task.title} ${task.proof}`}
       task={task}
+      now={now}
       dependents={dependentsOf(task, tasks)}
       onSkip={onSkip}
       mark={markOf(revision, task.title)}

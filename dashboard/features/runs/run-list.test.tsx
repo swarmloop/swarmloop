@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RunSummary } from '@contract/api';
 import { epicFigures } from '@contract/epic-figures';
 import { ERROR_CODES } from '@contract/error-codes';
-import { duration, money } from '../../lib/format';
+import { duration, localTime, money } from '../../lib/format';
 import { runSummary } from '../../test/fixtures';
 import { fakeIntersectionObserver } from '../../test/intersection-observer';
 import { RunList } from './run-list';
@@ -606,6 +606,47 @@ describe('RunList', () => {
       expect(toggle).toHaveAttribute('aria-expanded', 'true');
       expect(toggle.querySelector('[data-direction="down"]')).not.toBeNull();
       expect(getComputedStyle(toggle.querySelector('svg')!).transform).toBe('rotate(90deg)');
+    });
+  });
+
+  describe('the estimate', () => {
+    const MIN = 60_000;
+    const line = (word: string) => screen.getByText(word, { selector: 'span' }).parentElement;
+    const doneIn = (ms: number) => ({ leftMs: ms, doneAt: new Date(NOW + ms).toISOString() });
+
+    it('adds the time left after the step and counts it down as the clock moves', () => {
+      const run = listRun({ key: 'eta-1', state: 'running', currentStep: 'code-review', eta: doneIn(25 * MIN) });
+      renderList([run], { now: NOW });
+      expect(line('Working')).toHaveTextContent(/^Working · code review · ~25m left · /);
+
+      cleanup();
+      renderList([run], { now: NOW + 10 * MIN });
+      expect(line('Working')).toHaveTextContent(/^Working · code review · ~15m left · /);
+    });
+
+    it('says in the tooltip when it should be done and that it is a rough estimate', async () => {
+      const user = userEvent.setup({ delay: null });
+      renderList([listRun({ key: 'eta-2', state: 'running', eta: doneIn(25 * MIN) })], { now: NOW });
+
+      await user.hover(screen.getByText('~25m left'));
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        `done around ${localTime(new Date(NOW + 25 * MIN).toISOString())} · rough estimate`,
+      );
+    });
+
+    it('reads waits for you for a run that waits for a person', () => {
+      const answer = STATE_RUNS.find(({ word }) => word === 'Waiting for you')!.run;
+      renderList([answer], { now: NOW });
+
+      expect(line('Waiting for you')).toHaveTextContent(/^Waiting for you · waits for you · /);
+    });
+
+    it('shows an epic parent its time left next to its totals', () => {
+      const { parent } = epicOfThree();
+      renderList([{ ...parent, eta: doneIn(135 * MIN) }], { now: NOW });
+
+      expect(screen.getByText('~2h 15m left')).toBeInTheDocument();
     });
   });
 });
