@@ -26,11 +26,14 @@ describe('subtask questions', () => {
   });
 
   /** A parent with a plan chat and subtasks that have run once; the planner's replies are scripted. */
-  async function questionWorld(replies: (prompt: string) => { text: string; exitCode?: number }) {
+  async function questionWorld(
+    replies: (prompt: string) => { text: string; value?: Record<string, unknown>; exitCode?: number },
+    seeded = [task('a'), task('b')],
+  ) {
     const built = await world();
     app = built.app;
     const documents = app.app.get(DocumentRepository);
-    const parent = await seedParent(app, [task('a'), task('b')]);
+    const parent = await seedParent(app, seeded);
     await documents.putDocument(parent, 'contract', '- names are camelCase\n');
     await documents.putDocument(parent, 'repos', 'demo\n');
     const runtime = agentFor(app.app.get(AppConfig).env, parent, 'plan').runtime;
@@ -43,9 +46,9 @@ describe('subtask questions', () => {
       .spyOn(app.app.get<{ run: (input: AgentRunInput) => Promise<AgentRunResult> }>(AGENT_RUNNER), 'run')
       .mockImplementation((input) => {
         prompts.push(input.prompt);
-        const { text, exitCode = 0 } = replies(input.prompt);
+        const { text, value, exitCode = 0 } = replies(input.prompt);
         return Promise.resolve({
-          responseText: text ? resultAnswer('Done.', { answer: text }) : text,
+          responseText: text || value ? resultAnswer('Done.', value ?? { decision: text }) : text,
           chatId: 'chat-1',
           tokensIn: 10,
           tokensOut: 5,
@@ -84,12 +87,61 @@ describe('subtask questions', () => {
     expect(prompts[0]).toContain('names are camelCase');
     expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe('question: which field?\nanswer: Use a column.\n');
     expect(await documents.latestBody(KEY, 'contract')).toBe(
-      '- names are camelCase\n\ndecisions:\n- subtask a: Use a column.\n',
+      '- names are camelCase\n\ndecisions:\n- subtask a at 2026-01-01T00:00:00.000Z: Use a column.\n',
     );
     expect(await tasksOf(app)).toEqual(before);
     const visits = await app.app.get(VisitRepository).listStats(parent.id);
     expect(visits.filter((visit) => visit.step === 'plan').map((visit) => visit.status)).toEqual(['done']);
     expect((await app.app.get(RunRepository).findRun(KEY))?.spentUsd).toBe(0.5);
+  });
+
+  it('applies the actions of the answer: a task that has not started is changed with its reason, and the asking task goes on', async () => {
+    const { prompts, documents } = await questionWorld(
+      () => ({
+        text: '',
+        value: {
+          decision: 'b takes the docs.',
+          changeTask: [{ id: 'b', reason: 'a hands the docs over', description: 'Does b and the docs' }],
+        },
+      }),
+      [task('a'), task('b', ['a'])],
+    );
+    await ask('a', '- who writes the docs?\n');
+
+    await pass(app);
+
+    expect(prompts[0]).toContain('- b (waiting): ');
+    expect((await tasksOf(app)).find((item) => item.id === 'b')?.description).toBe('Does b and the docs');
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe(
+      'question: who writes the docs?\nanswer: b takes the docs.\n',
+    );
+    expect(await documents.latestBody(KEY, 'contract')).toContain('b takes the docs.');
+    for (const key of [KEY, `${KEY}-b`]) {
+      expect(await documents.latestBody(key, 'plan_chat')).toContain('a hands the docs over');
+    }
+    const chat = JSON.parse((await documents.latestBody(KEY, 'plan_chat')) ?? '{}') as {
+      entries: { kind: string; text: string }[];
+    };
+    expect(chat.entries.map((entry) => [entry.kind, entry.text])).toEqual([
+      ['question', 'Subtask a asks: - who writes the docs?'],
+      ['answer', 'b takes the docs.'],
+    ]);
+  });
+
+  it('does not apply the change of a task that has started, and asks whoever started the run when the planner keeps it', async () => {
+    let calls = 0;
+    const { documents } = await questionWorld(() => {
+      calls += 1;
+      return { text: '', value: { decision: 'Use ids.', changeTask: [{ id: 'b', reason: 'x', title: 'New' }] } };
+    });
+    await ask('a', '- which?\n');
+
+    await pass(app);
+
+    expect(calls).toBeGreaterThan(1);
+    expect(await documents.latestBody(KEY, 'subtask_questions')).toContain('Subtask a asks: - which?');
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBeNull();
+    expect((await tasksOf(app)).find((item) => item.id === 'b')?.title).not.toBe('New');
   });
 
   it('tells the subtask to decide itself, and leaves the contract alone, when the planner fails', async () => {
@@ -119,7 +171,9 @@ describe('subtask questions', () => {
     await pass(app);
 
     expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe('question: which field?\nanswer: Use a column.\n');
-    expect(await documents.latestBody(KEY, 'contract')).toContain('- subtask a: Use a column.');
+    expect(await documents.latestBody(KEY, 'contract')).toContain(
+      '- subtask a at 2026-01-01T00:00:00.000Z: Use a column.',
+    );
     expect((await app.app.get(RunRepository).findRun(KEY))?.agentCalls).toBe(1);
     expect((await documents.latestBody(KEY, 'subtask_questions'))?.trim()).toBe('');
   });
@@ -150,7 +204,9 @@ describe('subtask questions', () => {
     await pass(app);
     expect((await app.app.get(RunRepository).findRun(KEY))?.agentCalls).toBe(2);
     expect(prompts[1]).toContain('Subtask b asks:');
-    expect(await documents.latestBody(KEY, 'contract')).toContain('- subtask a: A.\n- subtask b: B.');
+    expect(await documents.latestBody(KEY, 'contract')).toContain(
+      '- subtask a at 2026-01-01T00:00:00.000Z: A.\n- subtask b at 2026-01-01T00:00:00.000Z: B.',
+    );
   });
 
   it('sends the planner reply again, and does not ask the planner again, when the delivery was refused', async () => {
@@ -167,7 +223,9 @@ describe('subtask questions', () => {
     await pass(app);
     expect((await app.app.get(RunRepository).findRun(KEY))?.agentCalls).toBe(1);
     expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe('question: which field?\nanswer: Use a column.\n');
-    expect(await documents.latestBody(KEY, 'contract')).toContain('- subtask a: Use a column.');
+    expect(await documents.latestBody(KEY, 'contract')).toContain(
+      '- subtask a at 2026-01-01T00:00:00.000Z: Use a column.',
+    );
     const visits = await app.app.get(VisitRepository).listStats(parent.id);
     expect(visits.filter((visit) => visit.step === 'plan')).toHaveLength(1);
   });

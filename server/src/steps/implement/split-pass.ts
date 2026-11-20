@@ -16,21 +16,20 @@ import {
   type Subtask,
 } from '../../contract/subtask';
 import { sampleSelf } from '../../history/visit';
-import { withDecision } from '../shared/handoff';
 import { openQuestions } from '../shared/answers';
-import { keepOpen, type StoredQuestion } from '../shared/question-parts';
+import { keepOpen } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
 import type { SubtaskOps } from '../shared/subtask-ops';
 import { mergedOf, taskStatusOf } from '../shared/subtask-status';
 import type { StepContext } from '../base-step';
-import type { InputReader } from '../contract/input-reader';
 import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
 import { renderImplementation } from './implement-record';
 import type { SplitMerge } from './split-merge';
 import { REBASED_PREFIX } from './split-rebase';
 import type { SplitNeeds } from './split-needs';
-import { askedQuestion, SplitQuestions } from './split-questions';
+import { SplitQuestions } from './split-questions';
+import type { StarterInbox } from './starter-inbox';
 import { earliestRetry } from './subtask-retry';
 
 const BLOCKED_ACTION = 'Resume, Replay or Skip task clears it';
@@ -46,7 +45,7 @@ interface SplitPassDeps {
   subtasks: SubtaskOps;
   merges: SplitMerge;
   needs: SplitNeeds;
-  reader: InputReader;
+  inbox: StarterInbox;
   clock: Clock;
   config: AppConfig;
   flows: FlowRepository;
@@ -76,10 +75,10 @@ export class SplitPass {
     const read = (await ctx.reread(ARTIFACTS.contract)) ?? '';
     const asked = (await ctx.reread(ARTIFACTS.subtaskQuestions)) ?? '';
     const answers = (await ctx.reread(ARTIFACTS.answers)) ?? '';
-    const delivered = await this.questions.deliver(run, read, asked, answers);
+    const delivered = await this.questions.deliver(run, read, asked, answers, startedAt);
     const held = this.questions.pending(delivered.body, answers);
-    const answered = await this.answer(ctx, withStatuses(subtasks), delivered.contract, held);
-    const needed = await this.deps.needs.run(ctx.opened, withStatuses(subtasks), answered.contract, held);
+    const answered = await this.deps.inbox.take(ctx, withStatuses(subtasks), delivered.contract, held);
+    const needed = await this.deps.needs.run(ctx.opened, answered.tasks, answered.contract, held);
     const carried = openQuestions(delivered.body, []);
     const asks = [...answered.asks, ...needed.asks];
     const open = [...carried, ...asks.map((ask) => ask.question)];
@@ -90,6 +89,8 @@ export class SplitPass {
     const { tasks: merged, refusal, unfetched, unmoved: mergeNote } = await this.deps.merges.run(run, followed.tasks);
     const unmoved = [followed.unmoved, mergeNote].filter(Boolean).join('; ') || null;
     const tasks = await this.explain(run, await this.start(run, merged));
+    const taken =
+      answered.taken === null ? [] : [{ artifact: ARTIFACTS.starterTaken, value: JSON.stringify(answered.taken) }];
     const outputs: StepResult['outputs'] = [
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
       ...(needed.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: needed.contract }]),
@@ -97,6 +98,7 @@ export class SplitPass {
       ...(JSON.stringify(parts) === JSON.stringify(storedParts)
         ? []
         : [{ artifact: ARTIFACTS.questionParts, value: parts }]),
+      ...taken,
     ];
     const result = await this.route(ctx, tasks, open, outputs, { refusal, unfetched });
     const noted = unmoved ? this.withUnmoved(result, unmoved) : result;
@@ -171,31 +173,6 @@ export class SplitPass {
       if (child) children.push(child);
     }
     return children;
-  }
-
-  /**
-   * Asks the planner the questions of the first subtask that waits in research, one subtask per pass: the next
-   * one is asked by the pass its answered run starts. The answer is a decision in the contract. When the planner gives
-   * none, the question goes to the person who started the run. A task with a question open for the person is left alone.
-   */
-  private async answer(
-    ctx: StepContext,
-    tasks: Subtask[],
-    contract: string,
-    waiting: string[],
-  ): Promise<{ contract: string; asks: StoredQuestion[] }> {
-    const { run, startedAt } = ctx.opened;
-    for (const task of tasks.filter((item) => !settled(item) && !waiting.includes(item.id))) {
-      const child = await this.deps.subtasks.find(run, task.id);
-      if (!child || !(await this.deps.subtasks.asking(child))) continue;
-      const answer = await this.deps.subtasks.answer(ctx.opened, child, task, contract);
-      if (answer !== null) return { contract: withDecision(contract, task.id, answer), asks: [] };
-      if (this.deps.subtasks.replyPending(child)) return { contract, asks: [] };
-      const asked = child.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
-      const questions = (await this.deps.reader.reread(child.key, asked)) ?? '';
-      return { contract, asks: [askedQuestion(task.id, questions, startedAt)] };
-    }
-    return { contract, asks: [] };
   }
 
   /** Every task has a run, and its status follows that run. A settled task keeps the status it has. */

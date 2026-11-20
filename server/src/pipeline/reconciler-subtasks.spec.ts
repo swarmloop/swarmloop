@@ -165,7 +165,7 @@ describe('the agents of an epic parent and of its subtasks', () => {
     const parent = { key: KEY, targetPath: dir, agentCalls: 0, spentUsd: 0, epicAt: '2026-11-13T10:00:00.000Z' };
     const launch = jest.fn().mockResolvedValue({
       responseText: 'use the shared helper',
-      resultValue: { answer: 'use the shared helper' },
+      resultValue: { decision: 'use the shared helper' },
       chatId: 'chat-1',
       tokensIn: 0,
       tokensOut: 0,
@@ -186,7 +186,7 @@ describe('the agents of an epic parent and of its subtasks', () => {
       AGENTS_SUBTASK_PLAN: 'claude:claude-sonnet-5-5:medium',
     });
     const port = new SubtaskPort(
-      {} as never,
+      { findRun: async (key: string) => ({ key }) } as never,
       {
         latestBody: async (_key: string, kind: string) =>
           ['research_result', 'plan_result', 'implementation_result'].includes(kind) ? null : 'app\n',

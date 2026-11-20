@@ -200,7 +200,7 @@ describe('a subtask asks the planner of its parent', () => {
         prompts.push(input.prompt);
         ordered.push(app.app.get(PlannerTurns).replying(PARENT));
         return Promise.resolve({
-          responseText: reply ? resultAnswer('Done.', { answer: reply }) : '',
+          responseText: reply ? resultAnswer('Done.', { decision: reply }) : '',
           chatId: 'c-1',
           tokensIn: 10,
           tokensOut: 5,
@@ -250,7 +250,7 @@ describe('a subtask asks the planner of its parent', () => {
       { kind: 'escalation', from: 'implement', text: 'Which field?', state: 'taken' },
       { kind: 'answer', from: 'implement', text: 'Use a column.', state: 'pending' },
     ]);
-    expect(await documents.latestBody(PARENT, 'contract')).toContain('- subtask a: Use a column.');
+    expect(await documents.latestBody(PARENT, 'contract')).toMatch(/- subtask a at \S+: Use a column\./);
     expect(await documents.latestBody(PARENT, 'subtask_questions')).toBeNull();
   });
 
@@ -271,6 +271,6 @@ describe('a subtask asks the planner of its parent', () => {
       { kind: 'escalation', state: 'taken' },
       { kind: 'answer', from: 'implement', text: 'Use a column.', state: 'pending' },
     ]);
-    expect(await documents.latestBody(PARENT, 'contract')).toContain('- subtask a: Use a column.');
+    expect(await documents.latestBody(PARENT, 'contract')).toMatch(/- subtask a at \S+: Use a column\./);
   });
 });
