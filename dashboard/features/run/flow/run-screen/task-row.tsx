@@ -9,7 +9,6 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import type { TaskEntry } from '@contract/api';
-import { interruptionSentence } from '@contract/interruption';
 import { taskStateWord } from '@contract/run-state';
 import type { RevisionMark } from '../../conversation/revision-marks';
 import { DisclosureIcon } from '../../../../components/ui/disclosure-icon';
@@ -17,6 +16,7 @@ import { ConfirmDialog } from '../../../shell';
 import { duration, localTime, money } from '../../../../lib/format';
 import { RunStateIcon, toneColor } from '../../run-state-word';
 import { TaskDetails } from './task-details';
+import { taskNotes } from './task-notes';
 
 /** The row's button: the plan before the task has a result, the changes after. */
 function detailsLabel(task: TaskEntry): string {
@@ -46,22 +46,7 @@ export function TaskRow({
   const color = toneColor(word.tone);
   const step = task.status === 'running' && task.run ? ` · ${task.run.currentStep.replaceAll('-', ' ')}` : '';
   const hasDetails = task.files.length > 0 || task.proof !== '' || task.run?.result !== undefined;
-  const interruption = task.run?.interruption ? interruptionSentence(task.run.interruption, localTime) : '';
-  const needsReason = task.status === 'blocked' || word.tone === 'error';
-  const reason = needsReason ? (task.run?.stateReason?.message ?? task.note ?? '') : '';
-  const relaunched = task.run?.interruption?.relaunched === true;
-  const tip = [word.tip, relaunched ? interruption : '', task.note && !task.waitsFor && reason === '' ? task.note : '']
-    .filter((part) => part !== '')
-    .join(' ');
-  const caption = task.waitsFor
-    ? task.waitsFor.length > 0
-      ? `after ${unmet.join(', ')}`
-      : 'waiting for a free slot'
-    : needsReason
-      ? reason
-      : interruption !== '' && !relaunched
-        ? interruption
-        : '';
+  const { tip, caption } = taskNotes(task, word, unmet);
   const summary = (
     <>
       <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color, flexShrink: 0 }}>
