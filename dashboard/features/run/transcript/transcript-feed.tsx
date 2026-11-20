@@ -93,7 +93,6 @@ function Card({
     case 'attempt.finished':
     case 'attempt.interrupted':
     case 'http.call':
-    case 'host.suspended':
     case 'agent.limited':
     case 'agent.effort_capped':
     case 'agent.loop_hint':
@@ -105,6 +104,7 @@ function Card({
     case 'agent.tool':
     case 'agent.message':
     case 'activity.finished':
+    case 'host.suspended':
       return null;
   }
 }

@@ -314,10 +314,27 @@ describe('the step window for a fixture run', () => {
     expect(screen.getByText('tool details not available from other')).toBeInTheDocument();
   });
 
-  it('shows a host suspension as one line that says it is not counted', () => {
-    feed([stepEvent(1, { kind: 'host.suspended', durationMs: 40 * 60_000 })]);
+  it('shows no card for a stored host suspension', () => {
+    const tool = (seq: number, target: string) =>
+      stepEvent(seq, {
+        kind: 'agent.tool',
+        tool: 'shell',
+        target,
+        status: 'ok',
+        durationMs: 1200,
+        resultLine: 'exit 0',
+      });
+    feed([
+      stepEvent(1, { kind: 'agent.launched', ...launch }),
+      tool(2, 'npm run first'),
+      stepEvent(3, { kind: 'host.suspended', durationMs: 40 * 60_000 }),
+      tool(4, 'npm run second'),
+    ]);
 
-    expect(screen.getByText('40m 0s, not counted')).toBeInTheDocument();
+    expect(screen.getByText(/npm run first/)).toBeInTheDocument();
+    expect(screen.getByText(/npm run second/)).toBeInTheDocument();
+    expect(screen.queryByText(/Host suspended/)).toBeNull();
+    expect(screen.queryByText(/not counted/)).toBeNull();
   });
 
   it('turns the kill reason of an agent into a problem card', () => {

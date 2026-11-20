@@ -17,7 +17,6 @@ export class AwakeTime {
   constructor(
     private readonly clock: Clock,
     private readonly intervalMs: number,
-    private readonly onSuspended?: (gapMs: number) => void,
   ) {
     this.started = this.lastActivity = this.lastSeen = clock.now();
   }
@@ -32,7 +31,6 @@ export class AwakeTime {
     }
     this.started += gap;
     this.lastActivity += gap;
-    this.onSuspended?.(gap);
     return gap;
   }
 

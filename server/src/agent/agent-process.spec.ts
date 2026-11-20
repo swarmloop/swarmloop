@@ -74,13 +74,12 @@ describe('AgentProcess', () => {
     }
   });
 
-  it('does not kill a step for time the host slept and reports the suspension once', async () => {
+  it('does not kill a step for time the host slept', async () => {
     jest.useFakeTimers();
     try {
       const child = fakeChild();
       const clock = new FakeClock();
-      const suspensions: number[] = [];
-      const time = new AwakeTime(clock, 5_000, (ms) => suspensions.push(ms));
+      const time = new AwakeTime(clock, 5_000);
       const process = new AgentProcess(child as unknown as SandboxChild, sandbox());
       const timeouts: string[] = [];
       const timeout = (reason: 'idle' | 'time') => {
@@ -103,7 +102,6 @@ describe('AgentProcess', () => {
       clock.advance(40 * 60_000);
       jest.advanceTimersByTime(5_000);
       expect(timeouts).toEqual([]);
-      expect(suspensions).toEqual([40 * 60_000]);
       awake(19);
       expect(timeouts).toEqual([]);
       awake(1);

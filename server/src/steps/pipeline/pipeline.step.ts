@@ -11,7 +11,6 @@ import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
 import { delay } from '../../core/delay';
 import { AwakeTime } from '../../core/awake-time';
-import { recordStepEvent } from '../../core/step-event-scope';
 import type { StepName } from '../../contract/steps';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -189,7 +188,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
 
   /** Awake time of one wait: the host sleeping between two polls does not count. */
   private awakeTime(env: SwarmloopEnv): AwakeTime {
-    return new AwakeTime(this.clock, env.TICK_MS, (ms) => recordStepEvent({ kind: 'host.suspended', durationMs: ms }));
+    return new AwakeTime(this.clock, env.TICK_MS);
   }
 
   private async route(

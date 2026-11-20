@@ -128,7 +128,6 @@ export class AgentLauncher {
     const result = await this.agent.run({
       loop,
       onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(work)),
-      onSuspended: bindToStepScope((durationMs) => recordStepEvent({ kind: 'host.suspended', durationMs })),
       // A launch killed mid-tool leaves a block open that would hold back every later launch's events.
       onLaunchEnd: bindToStepScope(() => feed.finish().forEach(work)),
       prompt: withRules(withAttachments(request.prompt, names)),
