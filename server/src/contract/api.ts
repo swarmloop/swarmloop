@@ -1,4 +1,5 @@
 import type { Effort } from './effort';
+import type { RunEta } from './eta';
 import type { MergeOutcome, RunAction, RunState, StateReason } from './run-state';
 import type { InterruptionNote } from './interruption';
 import type { TaskEntry } from './task-entry';
@@ -44,6 +45,8 @@ export interface RunSummary {
   name: string;
   /** A short title for a person: at most 70 characters, no markdown. */
   title: string;
+  /** A rough estimate of the time left; absent when the run has none. */
+  eta?: RunEta;
   status: string;
   currentStep: string;
   createdAt: string;
@@ -117,6 +120,8 @@ export interface FlowView {
   name: string;
   /** A short title for a person: at most 70 characters, no markdown. */
   title: string;
+  /** A rough estimate of the time left; absent when the run has none. */
+  eta?: RunEta;
   /** One merge request per repository, from the run's stored merge requests. */
   mergeRequests: MergeRequestView[];
   status: string;

@@ -1,3 +1,4 @@
+import type { RunEta } from './eta';
 import type { InterruptionNote } from './interruption';
 import type { RunState, StateReason } from './run-state';
 import type { SubtaskStatus } from './subtask';
@@ -12,6 +13,8 @@ export interface TaskEntry {
   proof: string;
   depends: string[];
   status: SubtaskStatus;
+  /** A rough estimate of the time left; absent when the task has none. */
+  eta?: RunEta;
   note?: string;
   /** For a waiting task: the titles of the dependencies that have not merged yet. `[]` means it waits only for a free slot. */
   waitsFor?: string[];
