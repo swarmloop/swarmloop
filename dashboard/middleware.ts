@@ -31,7 +31,13 @@ function apiUrl(path: string, search: string): URL {
   return target;
 }
 
-/** The API call goes on with its method, headers and body. A wait for headers longer than `PROXY_WAIT_MS`, or a refused connection, means the server is busy. */
+/** The system error code `fetch` puts in `error.cause.code` (`ECONNREFUSED`, `ENOTFOUND`...), or `unknown` when there is none. */
+function failureCode(error: unknown): string {
+  const code = (error as { cause?: { code?: unknown } } | null)?.cause?.code;
+  return typeof code === 'string' ? code : 'unknown';
+}
+
+/** The API call goes on with its method, headers and body. A wait for headers longer than `PROXY_WAIT_MS` means the server is busy; any other fetch failure means it is unreachable, with the system error code. */
 async function forward(request: NextRequest, path: string, search: string): Promise<NextResponse> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROXY_WAIT_MS);
@@ -54,8 +60,11 @@ async function forward(request: NextRequest, path: string, search: string): Prom
     responseHeaders.delete('content-encoding');
     responseHeaders.delete('content-length');
     return new NextResponse(upstream.body, { status: upstream.status, headers: responseHeaders });
-  } catch {
-    return NextResponse.json({ message: 'the server is busy' }, { status: 503 });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      return NextResponse.json({ message: 'the server is busy' }, { status: 503 });
+    }
+    return NextResponse.json({ message: 'the server is unreachable', code: failureCode(error) }, { status: 503 });
   } finally {
     clearTimeout(timer);
   }

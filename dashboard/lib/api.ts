@@ -10,12 +10,14 @@ function apiUrl(path: string): string {
 
 /** What the dashboard's proxy answers with 503 when the API does not answer in time. */
 const PROXY_BUSY_MESSAGE = 'the server is busy';
+/** What the dashboard's proxy answers with 503 when the connection to the API fails. */
+const PROXY_UNREACHABLE_MESSAGE = 'the server is unreachable';
 
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    /** The dashboard's proxy found the API too busy to answer: worth retrying. */
+    /** The dashboard's proxy got no answer from the API (too slow, or unreachable): worth retrying. */
     readonly busy = false,
   ) {
     super(message);
@@ -43,9 +45,16 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   signedOut(response);
   if (!response.ok) {
-    const message = await errorMessage(response);
+    const { message, code } = await errorBody(response);
     if (response.status === 503 && message === PROXY_BUSY_MESSAGE) {
       throw new ApiError(503, 'The server is busy, retrying', true);
+    }
+    if (response.status === 503 && message === PROXY_UNREACHABLE_MESSAGE) {
+      throw new ApiError(
+        503,
+        `The dashboard cannot reach the server (${code ?? 'unknown'}), retrying. If it lasts, run docker compose up -d --force-recreate server dashboard in the swarmloop folder.`,
+        true,
+      );
     }
     throw new ApiError(response.status, message);
   }
@@ -89,17 +98,16 @@ export async function runLog(
   return response.text();
 }
 
-async function errorMessage(response: Response): Promise<string> {
+async function errorBody(response: Response): Promise<{ message: string; code?: string }> {
+  const fallback = `HTTP ${response.status}`;
   try {
-    const body = (await response.json()) as { message?: string | string[] };
+    const body = (await response.json()) as { message?: string | string[]; code?: unknown };
+    const code = typeof body.code === 'string' ? body.code : undefined;
     if (Array.isArray(body.message)) {
-      return body.message.join(', ');
+      return { message: body.message.join(', '), code };
     }
-    if (body.message) {
-      return body.message;
-    }
+    return { message: body.message || fallback, code };
   } catch {
-    return `HTTP ${response.status}`;
+    return { message: fallback };
   }
-  return `HTTP ${response.status}`;
 }
