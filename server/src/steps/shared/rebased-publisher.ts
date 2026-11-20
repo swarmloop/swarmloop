@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { pushRejectionOfAnyHost } from '../../integrations/code-host/code-host-rules';
 import { root } from '../../history/run-paths';
 import { barrier } from '../../core/barrier';
-import { SwarmloopError } from '../../core/swarmloop-error';
+import { GitRuleRefused } from '../../core/git-rule-refused';
+import { GitRulesError, SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing, originUrl } from '../../git/git';
 import { withGitHostRetries } from '../../git/host-retry';
 import { worktreePath } from '../../git/repo-names';
@@ -14,9 +16,10 @@ import { StepKernel } from '../step-kernel';
 import { stampGate, worktreesFingerprint } from './gate';
 import type { RunEntity } from '../../history/entities';
 import type { RebaseHosts } from '../../git/rebase/types';
+import { forRepo, type PerRepo } from '../../git/per-repo';
 
 /** The fields of a run a push needs: the host, and whose token it uses. */
-export type PublishedBy = Pick<RunEntity, 'codeHost' | 'startedBy'>;
+type PublishedBy = Pick<RunEntity, 'codeHost' | 'startedBy'>;
 
 /** Pushes a branch to its origin and records the refs pushed. Commit and implement both publish through it. */
 @Injectable()
@@ -54,7 +57,11 @@ export class RebasedPublisher {
   }
 
   /** Push a rewritten branch with the tip captured before the base fetch. Does not stage or commit. */
-  async publishRebased(key: string, branch: string, leases: { repo: string; tip: string | null }[]): Promise<void> {
+  async publishRebased(
+    key: string,
+    branch: PerRepo<string>,
+    leases: { repo: string; tip: string | null }[],
+  ): Promise<void> {
     const run = await this.kernel.runs.findRun(key);
     if (!run) {
       throw new SwarmloopError(`${key} is missing`);
@@ -70,7 +77,7 @@ export class RebasedPublisher {
         continue;
       }
       const captured = leases.find((lease) => lease.repo === tree.repo)?.tip ?? null;
-      await this.pushRef(tree, branch, captured, run, origin);
+      await this.refusedAsRule(() => this.pushRef(tree, forRepo(branch, tree.repo), captured, run, origin, 'commit'));
     }
     await this.rememberRefs(trees, branch, (body) =>
       this.kernel.documents.putDocument(run, ARTIFACTS.pipelineRef.kind, ARTIFACTS.pipelineRef.format(body)),
@@ -90,11 +97,26 @@ export class RebasedPublisher {
     published: string | null,
     run: PublishedBy,
     origin: string,
+    kind: 'branch' | 'commit',
   ): Promise<boolean> {
     const registry = await this.registry.forRun(run.startedBy, run.codeHost);
-    const pushed = await this.pushChecked(tree, branch, published, run.codeHost, origin, registry);
+    const pushed = await this.pushChecked(tree, branch, published, run.codeHost, origin, registry).catch(
+      async (error: unknown) => {
+        await this.assertNotRuleRefusal(error, tree, branch, kind);
+        throw error;
+      },
+    );
     await barrier('after-push');
     return pushed;
+  }
+
+  /** A rebased push has no one to ask: a host rule that refuses it is a rule of the repository for a person to add. */
+  private async refusedAsRule(push: () => Promise<boolean>): Promise<void> {
+    try {
+      await push();
+    } catch (error) {
+      throw error instanceof GitRuleRefused ? new GitRulesError(error.hostMessage, error.name) : error;
+    }
   }
 
   /**
@@ -128,6 +150,25 @@ export class RebasedPublisher {
       }
       return this.push(tree, branch, published, codeHost, origin, registry);
     }
+  }
+
+  /**
+   * A push the host refuses by a rule of the repository (not a lease or a non-fast-forward) is a `GitRuleRefused`: the
+   * refused name is the branch, or the head commit's message for a commit.
+   */
+  private async assertNotRuleRefusal(
+    error: unknown,
+    tree: Tree,
+    branch: string,
+    kind: 'branch' | 'commit',
+  ): Promise<void> {
+    const prefix = `${tree.repo} push failed: `;
+    const message = error instanceof SwarmloopError ? error.message : '';
+    if (!message.startsWith(prefix) || !pushRejectionOfAnyHost([message.slice(prefix.length)])) {
+      return;
+    }
+    const name = kind === 'branch' ? branch : (await gitAt(tree, ['log', '-1', '--format=%B'], 'push failed')).trim();
+    throw new GitRuleRefused(message.slice(prefix.length), name, kind);
   }
 
   /** The tip of the branch on the remote, read from the remote itself. Null when the branch is not there. */
@@ -207,7 +248,7 @@ export class RebasedPublisher {
   }
 
   /** True when this push recorded a host project. A filesystem origin does not. */
-  async rememberRefs(trees: Tree[], branch: string, write: (body: string) => Promise<void>): Promise<boolean> {
+  async rememberRefs(trees: Tree[], branch: PerRepo<string>, write: (body: string) => Promise<void>): Promise<boolean> {
     const blocks: string[] = [];
     for (const tree of trees) {
       const cwd = tree.path;
@@ -222,7 +263,7 @@ export class RebasedPublisher {
         continue;
       }
       const sha = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
-      blocks.push(`project: ${project}\nref: ${branch}\nsha: ${sha}`);
+      blocks.push(`project: ${project}\nref: ${forRepo(branch, tree.repo)}\nsha: ${sha}`);
     }
     if (blocks.length === 0) {
       return false;

@@ -4,15 +4,16 @@ import type { CodeHostRegistry } from '../../integrations/code-host/code-host.re
 import { FakeBacklogHost, pipelineOf } from '../../testing/fake-backlog-host';
 import { RepositoryHost } from './repository-host';
 import type { RepositoryOrigins } from './repository-origins';
+import type { RunNames } from './run-names';
 
 function check(name: string, status: PipelineCheck['status'], durationMs = 1000): PipelineCheck {
   return { id: 1, name, app: '', status, durationMs, url: '', summary: '', annotations: [], workflow: true };
 }
 
-const run = { codeHost: 'backlog-fake', startedBy: 'ada' };
+const run = { codeHost: 'backlog-fake', startedBy: 'ada', key: 'PROJ-1', parentRunId: null, taskId: null };
 const request = { project: 'acme/web', iid: 7 };
 
-function setup() {
+function setup(title: string | null = null) {
   const fake = new FakeBacklogHost();
   fake.addProject('acme/web', 'main', 'web-head');
   const origins = new Map([['web', { origin: FakeBacklogHost.originOf('acme/web'), project: 'acme/web' }]]);
@@ -22,8 +23,9 @@ function setup() {
     byName: () => fake,
     hostFor: async () => fake,
   } as unknown as CodeHostRegistry;
+  const names = { taskTitle: async () => title } as unknown as RunNames;
   const originsOf = { of: async (repo: string) => origins.get(repo) } as unknown as RepositoryOrigins;
-  return { fake, host: new RepositoryHost(originsOf, registry) };
+  return { fake, host: new RepositoryHost(originsOf, registry, names) };
 }
 
 describe('RepositoryHost', () => {
@@ -98,15 +100,27 @@ describe('RepositoryHost', () => {
     const { fake, host } = setup();
     fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success')]));
 
-    const sha = await host.merge(run, request, 'acme/web-pr-7');
+    const sha = await host.merge(run, 'web', 'Add it', request, 'acme/web-pr-7');
 
     expect(sha).toBe('acme/web-merge-1');
     expect(fake.calls.find((call) => call.name === 'mergeMergeRequest')?.args).toEqual([
       'acme/web',
       7,
       'acme/web-pr-7',
+      { method: 'squash' },
     ]);
     expect((await host.main('web', 'ada')).state).toBe('pending');
+  });
+
+  it('merges with the title of the format when the repository has one', async () => {
+    const { fake, host } = setup('Ship: Add it');
+
+    await host.merge(run, 'web', 'Add it', request, 'acme/web-pr-7');
+
+    expect(fake.calls.find((call) => call.name === 'mergeMergeRequest')?.args[3]).toEqual({
+      method: 'squash',
+      title: 'Ship: Add it',
+    });
   });
 
   it('passes an outage through', async () => {
@@ -114,6 +128,6 @@ describe('RepositoryHost', () => {
     fake.hostDown('2026-11-16T10:00:00.000Z');
 
     await expect(host.main('web', 'ada')).rejects.toBeInstanceOf(HostUnavailable);
-    await expect(host.merge(run, request, 'x')).rejects.toBeInstanceOf(HostUnavailable);
+    await expect(host.merge(run, 'web', 'Add it', request, 'x')).rejects.toBeInstanceOf(HostUnavailable);
   });
 });

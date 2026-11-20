@@ -84,8 +84,10 @@ export class CursorRuntime extends AbstractAgentRuntime {
   }
 
   protected override appendPrintFlags(args: string[], input: AgentPrintInput): void {
-    if (input.mode === 'plan' || input.mode === 'ask') {
-      args.push('--mode', input.mode);
+    // Cursor has no tool list: a step with no tools asks, which leaves it no edits and no commands.
+    const mode = input.tools === 'none' ? 'ask' : input.mode;
+    if (mode === 'plan' || mode === 'ask') {
+      args.push('--mode', mode);
     } else {
       args.push('--force', '--sandbox', 'disabled');
     }

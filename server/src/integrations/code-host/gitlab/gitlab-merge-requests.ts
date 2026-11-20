@@ -4,6 +4,8 @@ import { AbstractCodeHost, type HostCall } from '../abstract-code-host';
 import { gitlabStates, mergeRequestMergeability, type GitlabMergeRequest } from './gitlab-merge-request';
 import type {
   MergeGate,
+  MergeHow,
+  MergeMethod,
   MergeRequestDraft,
   MergeRequestQuery,
   MergeRequestRecord,
@@ -103,12 +105,50 @@ export abstract class GitlabMergeRequests extends AbstractCodeHost {
     return `${root}/api/v4/projects/${encodeURIComponent(project)}/merge_requests/${iid}`;
   }
 
-  protected mergeCall(root: string, project: string, iid: number, head?: string): HostCall {
+  protected mergeCall(root: string, project: string, iid: number, head?: string, how?: MergeHow): HostCall {
+    const message = how?.title;
+    const way =
+      how === undefined || how.method === 'squash'
+        ? { squash: true, ...(message ? { squash_commit_message: message } : {}) }
+        : message
+          ? { merge_commit_message: message }
+          : {};
     return {
       url: `${this.mergeRequestUrl(root, project, iid)}/merge`,
       method: 'PUT',
-      payload: JSON.stringify({ squash: true, ...(head ? { sha: head } : {}) }),
+      payload: JSON.stringify({ ...way, ...(head ? { sha: head } : {}) }),
     };
+  }
+
+  /**
+   * The project's `merge_method` (merge commit, merge commit over a rebase, or fast-forward only) and `squash_option`,
+   * as the methods a merge request may use.
+   */
+  async readMergeMethods(project: string): Promise<{ methods: MergeMethod[]; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root, headers } = this.credentials();
+      const settings = (await this.readJson(
+        `${root}/api/v4/projects/${encodeURIComponent(project)}`,
+        headers,
+        calls,
+      )) as { merge_method?: string; squash_option?: string } | null;
+      const way = settings?.merge_method;
+      const squash = settings?.squash_option;
+      const methods: MergeMethod[] = [];
+      if (squash !== 'never') {
+        methods.push('squash');
+      }
+      if (squash !== 'always' && (way === 'rebase_merge' || way === 'ff')) {
+        methods.push('rebase');
+      }
+      if (squash !== 'always' && (way === 'merge' || way === 'rebase_merge')) {
+        methods.push('merge');
+      }
+      return { methods, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
   }
 
   async readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }> {
@@ -218,6 +258,15 @@ export abstract class GitlabMergeRequests extends AbstractCodeHost {
       throw new SwarmloopError('gitlab merge request failed');
     }
     return { project, iid: merge.iid, url: merge.web_url, summary: text, draft: isDraft(merge) };
+  }
+
+  /** A 400 or 422 whose text says a rule of the project refuses the title. */
+  protected titleRefused(status: number, message: string): boolean {
+    return (
+      (status === 400 || status === 422) &&
+      /title/i.test(message) &&
+      /rule|pattern|match|format|convention/i.test(message)
+    );
   }
 
   protected conflict(error: unknown, calls: HttpCallDraft[]): boolean {

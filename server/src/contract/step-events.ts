@@ -41,7 +41,7 @@ interface AgentProfileSummary {
   runtime: string;
   model: string;
   mode: string;
-  tools: 'read' | 'plan' | 'write';
+  tools: 'none' | 'read' | 'plan' | 'write';
   timeLimitMs: number;
   session: 'resume' | 'fresh';
 }
@@ -49,7 +49,7 @@ interface AgentProfileSummary {
 interface AgentLaunch {
   runtime: string;
   model: string;
-  tools: 'read' | 'plan' | 'write';
+  tools: 'none' | 'read' | 'plan' | 'write';
   chatId: string | null;
   resumed: boolean;
 }

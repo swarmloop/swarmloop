@@ -9,7 +9,7 @@ import { RunRepository } from '../history/run.repository';
 import { StepEventLog } from '../history/step-event.log';
 import { VisitRepository } from '../history/visit.repository';
 import { deriveState, writeRunState } from '../history/run-state';
-import { branchName, summaryForBranch } from '../steps/branch/branch-name';
+import { branchName, summaryForBranch } from '../git/naming/git-names';
 import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { RunQueriesService } from '../api/run-queries.service';

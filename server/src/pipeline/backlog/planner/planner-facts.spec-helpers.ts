@@ -4,6 +4,7 @@ import { PlanChatStore } from '../../../history/plan-chat.store';
 import { RunRepository } from '../../../history/run.repository';
 import type { CodeHostRegistry } from '../../../integrations/code-host/code-host.registry';
 import { RepositoryHost } from '../../../steps/shared/repository-host';
+import type { RunNames } from '../../../steps/shared/run-names';
 import type { RepositoryOrigins } from '../../../steps/shared/repository-origins';
 import { FakeBacklogHost, pipelineOf } from '../../../testing/fake-backlog-host';
 import { plannerDatabase } from './planner.spec-helpers';
@@ -23,6 +24,7 @@ export async function plannerFacts() {
   const host = new RepositoryHost(
     { of: async (repo: string) => origins.get(repo) } as unknown as RepositoryOrigins,
     registry,
+    { taskTitle: async () => null } as unknown as RunNames,
   );
   return {
     ...db,

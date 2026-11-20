@@ -4,6 +4,8 @@ import type { RunEntity } from '../../history/entities';
 import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
 import type { CodeHost } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { mergeHow } from '../shared/merge-method';
+import { RunNames } from '../shared/run-names';
 import { SubtaskOps, type SubtaskMergeRequest } from '../shared/subtask-ops';
 import { SplitRebase } from './split-rebase';
 
@@ -29,6 +31,7 @@ export class SplitMerge {
     private readonly subtasks: SubtaskOps,
     private readonly hosts: CodeHostRegistry,
     private readonly rebases: SplitRebase,
+    private readonly names: RunNames,
   ) {}
 
   /** The host the person who started the run talks to. */
@@ -88,7 +91,7 @@ export class SplitMerge {
     try {
       for (const request of requests.filter((item) => !(item.repo in merged))) {
         const seen = await (await this.hostOf(parent)).readMergeRequest(request.project, request.iid);
-        merged[request.repo] = seen.state === 'merged' ? (seen.sha ?? '') : await this.mergeOne(parent, request);
+        merged[request.repo] = seen.state === 'merged' ? (seen.sha ?? '') : await this.mergeOne(parent, request, task);
       }
     } catch (error) {
       if (error instanceof MergeConflict) {
@@ -113,7 +116,11 @@ export class SplitMerge {
     return { done: { ...task, status: 'merged', merged, note: undefined }, refusal: null, unmoved };
   }
 
-  private async mergeOne(parent: RunEntity, request: SubtaskMergeRequest): Promise<string> {
-    return (await (await this.hostOf(parent)).mergeMergeRequest(request.project, request.iid)).sha;
+  /** Merges with the first method the repository allows and the title its format gives the task. */
+  private async mergeOne(parent: RunEntity, request: SubtaskMergeRequest, task: Subtask): Promise<string> {
+    const host = await this.hostOf(parent);
+    const title = await this.names.taskTitle(parent, request.repo, task.title);
+    const how = await mergeHow(host, request.project, title);
+    return (await host.mergeMergeRequest(request.project, request.iid, undefined, how)).sha;
   }
 }

@@ -6,6 +6,7 @@ import type { CodeHostRegistry } from '../integrations/code-host/code-host.regis
 import { SwarmloopError } from '../core/swarmloop-error';
 import { RepositoryHost } from '../steps/shared/repository-host';
 import type { RepositoryOrigins } from '../steps/shared/repository-origins';
+import type { RunNames } from '../steps/shared/run-names';
 import { FakeBacklogHost, pipelineOf } from '../testing/fake-backlog-host';
 import { RepositoriesController } from './repositories.controller';
 
@@ -30,7 +31,10 @@ function setup(allowed: string[] = []) {
     },
   } as unknown as RepositoryOrigins;
   const config = { env: { SWARMLOOP_REPOS: allowed } } as unknown as AppConfig;
-  return { fake, controller: new RepositoriesController(new RepositoryHost(origins, registry), config) };
+  return {
+    fake,
+    controller: new RepositoriesController(new RepositoryHost(origins, registry, {} as RunNames), config),
+  };
 }
 
 describe('RepositoriesController', () => {

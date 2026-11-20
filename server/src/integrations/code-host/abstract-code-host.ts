@@ -1,21 +1,15 @@
 import type { RemoteRepository, RepositoryOwner } from '../../contract/api';
 import type { Clock } from '../../core/clock';
-import { FetchFailed, MergeConflict, NothingToMerge, type HttpCallDraft } from '../../core/swarmloop-error';
-import { HostCalls, type CodeHostEnv, type HostCall } from './host-calls';
+import { FetchFailed, type HttpCallDraft } from '../../core/swarmloop-error';
+import { AbstractMergeRequests } from './abstract-merge-requests';
+import type { CodeHostEnv, HostCall } from './host-calls';
 import { providerMessage } from './provider-message';
-import { requestState } from './request-state';
 import type {
   CodeHost,
   CreateRepositoryDraft,
-  MergeGate,
-  MergeRequestDraft,
-  MergeRequestQuery,
-  MergeRequestRecord,
-  MergeRequestState,
-  MergeRequestView,
+  MergeMethod,
   PipelineRef,
   RepositoryApi,
-  RequestStateApi,
   PipelineSnapshot,
   PipelineDiagnosis,
   SelectedHost,
@@ -26,87 +20,11 @@ export type { CodeHostEnv, HostCall };
 /** Rows per page of a repository list. A shorter page is the last one. */
 const PAGE_SIZE = 100;
 
-export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
+export abstract class AbstractCodeHost extends AbstractMergeRequests implements CodeHost {
   abstract readonly name: SelectedHost['name'];
   abstract readonly label: string;
   abstract readonly ciFiles: readonly string[];
   abstract pushRejection(lines: string[]): string | undefined;
-
-  async findMergeRequest(
-    query: MergeRequestQuery,
-  ): Promise<{ record: MergeRequestRecord | null; httpCalls: HttpCallDraft[] }> {
-    const calls: HttpCallDraft[] = [];
-    try {
-      const { root, headers } = this.credentials();
-      const url = this.findUrl(root, query);
-      const body = await this.readJson(url, headers, calls);
-      const row = this.match(body, query.source);
-      return { record: row ? this.record(query.project, row) : null, httpCalls: calls };
-    } catch (error) {
-      this.rethrow(error, calls);
-    }
-  }
-
-  async openMergeRequest(
-    draft: MergeRequestDraft,
-  ): Promise<{ record: MergeRequestRecord; draftsUnavailable: boolean; httpCalls: HttpCallDraft[] }> {
-    const calls: HttpCallDraft[] = [];
-    try {
-      const { root, headers } = this.credentials();
-      const create = async (asked: MergeRequestDraft): Promise<unknown> => {
-        const { url, payload } = this.openRequest(root, asked);
-        const response = await this.hostRequest(url, { ...headers, 'Content-Type': 'application/json' }, calls, {
-          method: 'POST',
-          body: payload,
-        });
-        if (response.status === 401 || response.status === 403) {
-          this.assertStatus(response, calls, this.failure);
-        }
-        if (response.status < 200 || response.status >= 300) {
-          throw this.openRefusal(response, calls);
-        }
-        return this.parse(response.body, calls);
-      };
-      let body: unknown;
-      let refused = false;
-      try {
-        body = await create(draft);
-      } catch (error) {
-        if (error instanceof NothingToMerge) {
-          throw error;
-        }
-        const reused = await this.reuse(draft, error, calls);
-        if (reused) {
-          return { ...reused, draftsUnavailable: false };
-        }
-        if (!draft.draft || !(error instanceof FetchFailed)) {
-          throw error;
-        }
-        refused = true;
-        body = await create({ ...draft, draft: false });
-      }
-      const record = this.record(draft.project, body, draft.summary);
-      return { record, draftsUnavailable: draft.draft && (refused || !record.draft), httpCalls: calls };
-    } catch (error) {
-      this.rethrow(error, calls);
-    }
-  }
-
-  async updateMergeRequest(project: string, iid: number, summary: string): Promise<{ httpCalls: HttpCallDraft[] }> {
-    const calls: HttpCallDraft[] = [];
-    try {
-      const { root, headers } = this.credentials();
-      const { url, method, payload } = this.updateRequest(root, project, iid, summary);
-      const response = await this.hostRequest(url, { ...headers, 'Content-Type': 'application/json' }, calls, {
-        method,
-        body: payload,
-      });
-      this.assertStatus(response, calls, this.failure);
-      return { httpCalls: calls };
-    } catch (error) {
-      this.rethrow(error, calls);
-    }
-  }
 
   abstract diagnoseMissingPipeline(ref: PipelineRef): Promise<PipelineDiagnosis>;
 
@@ -114,79 +32,15 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
 
   abstract setDraft(project: string, iid: number, draft: boolean): Promise<{ httpCalls: HttpCallDraft[] }>;
 
-  async readMergeRequest(project: string, iid: number): Promise<MergeRequestView & { httpCalls: HttpCallDraft[] }> {
-    const calls: HttpCallDraft[] = [];
-    try {
-      const { root, headers } = this.credentials();
-      const body = await this.readJson(this.mergeRequestUrl(root, project, iid), headers, calls);
-      return { ...this.view(body), httpCalls: calls };
-    } catch (error) {
-      this.rethrow(error, calls);
-    }
-  }
-
-  async readMergeGate(project: string, iid: number): Promise<MergeGate & { httpCalls: HttpCallDraft[] }> {
-    const calls: HttpCallDraft[] = [];
-    try {
-      const { root, headers } = this.credentials();
-      const body = await this.readJson(this.mergeRequestUrl(root, project, iid), headers, calls);
-      return { ...this.gate(body), httpCalls: calls };
-    } catch (error) {
-      this.rethrow(error, calls);
-    }
-  }
-
   abstract readDefaultHead(project: string): Promise<{ branch: string; sha: string; httpCalls: HttpCallDraft[] }>;
 
   abstract readBranchHead(ref: PipelineRef): Promise<{ sha: string; httpCalls: HttpCallDraft[] }>;
 
-  async mergeRequestState(project: string, iid: number): Promise<MergeRequestState & { httpCalls: HttpCallDraft[] }> {
-    const calls: HttpCallDraft[] = [];
-    try {
-      const { root, headers } = this.credentials();
-      const url = this.mergeRequestUrl(root, project, iid);
-      const state = await requestState(this.states, url, this.clock.iso(), (at) => this.readJson(at, headers, calls));
-      return { ...state, httpCalls: calls };
-    } catch (error) {
-      this.rethrow(error, calls);
-    }
-  }
+  abstract readMergeMethods(project: string): Promise<{ methods: MergeMethod[]; httpCalls: HttpCallDraft[] }>;
 
-  async mergeMergeRequest(
-    project: string,
-    iid: number,
-    head?: string,
-  ): Promise<{ sha: string; httpCalls: HttpCallDraft[] }> {
-    const calls: HttpCallDraft[] = [];
-    try {
-      const { root, headers } = this.credentials();
-      const response = await this.send(this.mergeCall(root, project, iid, head), headers, calls);
-      if (response.status < 200 || response.status >= 300) {
-        throw this.refusal(response, calls);
-      }
-      const sha = this.mergedSha(this.parse(response.body, calls));
-      if (!sha) {
-        throw new FetchFailed(this.failure, calls);
-      }
-      return { sha, httpCalls: calls };
-    } catch (error) {
-      this.rethrow(error, calls);
-    }
-  }
-
-  async closeMergeRequest(project: string, iid: number): Promise<{ httpCalls: HttpCallDraft[] }> {
-    const calls: HttpCallDraft[] = [];
-    try {
-      const { root, headers } = this.credentials();
-      const current = this.view(await this.readJson(this.mergeRequestUrl(root, project, iid), headers, calls));
-      if (current.state === 'open') {
-        this.assertStatus(await this.send(this.closeCall(root, project, iid), headers, calls), calls, this.failure);
-      }
-      return { httpCalls: calls };
-    } catch (error) {
-      this.rethrow(error, calls);
-    }
-  }
+  abstract readAuthor(
+    login: string,
+  ): Promise<{ name: string | null; email: string | null; httpCalls: HttpCallDraft[] }>;
 
   async deleteBranch(project: string, branch: string): Promise<{ httpCalls: HttpCallDraft[] }> {
     const calls: HttpCallDraft[] = [];
@@ -304,37 +158,7 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
 
   protected abstract readonly repositories: RepositoryApi;
 
-  protected abstract findUrl(root: string, query: MergeRequestQuery): string;
-
-  protected abstract openRequest(root: string, draft: MergeRequestDraft): { url: string; payload: string };
-
-  protected abstract updateRequest(root: string, project: string, iid: number, summary: string): Required<HostCall>;
-
-  protected abstract mergeRequestUrl(root: string, project: string, iid: number): string;
-
-  /** The squash merge of a request, into the target branch the request already has. A given `head` is sent as `sha`, the merge guard. */
-  protected abstract mergeCall(root: string, project: string, iid: number, head?: string): HostCall;
-
-  protected abstract closeCall(root: string, project: string, iid: number): HostCall;
-
   protected abstract deleteCall(root: string, project: string, branch: string): HostCall;
-
-  protected abstract view(body: unknown): MergeRequestView;
-
-  protected abstract gate(body: unknown): MergeGate;
-
-  protected abstract readonly states: RequestStateApi;
-
-  protected abstract mergedSha(body: unknown): string | null;
-
-  /** True when a refused merge says the branch conflicts with its target. */
-  protected abstract mergeConflicts(status: number, message: string): boolean;
-
-  protected abstract match(body: unknown, source: string): unknown;
-
-  protected abstract record(project: string, row: unknown, summary?: string): MergeRequestRecord;
-
-  protected abstract conflict(error: unknown, calls: HttpCallDraft[]): boolean;
 
   /** A JSON read or POST whose refusal carries the host's message, and the permission needed when the token is rejected. */
   private async hostJson(
@@ -350,45 +174,5 @@ export abstract class AbstractCodeHost extends HostCalls implements CodeHost {
       throw new FetchFailed(rejected ? `${message} (needs ${this.repositories.needs})` : message, calls);
     }
     return this.parse(response.body, calls);
-  }
-
-  /** The refusal of a merge, with the host's own message. */
-  protected refusal(response: { status: number; body: Buffer }, calls: HttpCallDraft[]): FetchFailed {
-    const message = providerMessage(response.body) || `${this.failure}: HTTP ${response.status}`;
-    return this.mergeConflicts(response.status, message)
-      ? new MergeConflict(message, calls)
-      : new FetchFailed(message, calls);
-  }
-
-  /** The refusal of an open request: a 422 with a message from the host says it in the host's words. */
-  protected openRefusal(response: { status: number; body: Buffer }, calls: HttpCallDraft[]): FetchFailed {
-    const message = response.status === 422 ? providerMessage(response.body) : '';
-    return new FetchFailed(message || `${this.failure}: HTTP ${response.status}`, calls);
-  }
-
-  private async reuse(
-    draft: MergeRequestDraft,
-    error: unknown,
-    calls: HttpCallDraft[],
-  ): Promise<{ record: MergeRequestRecord; httpCalls: HttpCallDraft[] } | null> {
-    if (!this.conflict(error, calls)) {
-      return null;
-    }
-    try {
-      const found = await this.findMergeRequest({ project: draft.project, source: draft.source });
-      if (!found.record) {
-        return null;
-      }
-      const updated = await this.updateMergeRequest(draft.project, found.record.iid, draft.summary);
-      return {
-        record: { ...found.record, summary: draft.summary },
-        httpCalls: [...calls, ...found.httpCalls, ...updated.httpCalls],
-      };
-    } catch (foundError) {
-      if (foundError instanceof FetchFailed) {
-        throw new FetchFailed(foundError.message, [...calls, ...foundError.httpCalls]);
-      }
-      throw foundError;
-    }
   }
 }

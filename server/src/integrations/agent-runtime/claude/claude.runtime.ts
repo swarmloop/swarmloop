@@ -34,9 +34,22 @@ const CLAUDE_READ_ONLY_DENIED = [
   'ExitWorktree',
 ];
 
+/** What a `none` step cannot use besides the above: it answers from its prompt alone. */
+const CLAUDE_NO_TOOLS_DENIED = [
+  ...CLAUDE_READ_ONLY_DENIED,
+  'Read',
+  'Grep',
+  'Glob',
+  'Bash',
+  'BashOutput',
+  'KillShell',
+  'TodoWrite',
+];
+
 /** The `--disallowedTools` value of a step with these tools. */
 export function claudeDisallowedTools(tools: AgentTools): string {
   const denied = {
+    none: CLAUDE_NO_TOOLS_DENIED,
     read: CLAUDE_READ_ONLY_DENIED,
     plan: CLAUDE_READ_ONLY_DENIED.filter((tool) => tool !== 'Skill'),
     write: [],

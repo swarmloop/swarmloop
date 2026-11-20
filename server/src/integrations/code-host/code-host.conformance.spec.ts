@@ -8,7 +8,9 @@ import type { AppFlow, AppSource } from './login-provider';
 import type { CodeHostAdapter } from './code-host-adapter';
 import { codeHostAdapters } from './code-host-adapters';
 import { fakeResponse, fakeThirdAdapter, fakeThirdScript, type HostScript } from './fake-third/fake-third.spec-helpers';
-import type { CodeHost, MergeRequestDraft } from './code-host';
+import { GitRuleRefused } from '../../core/git-rule-refused';
+import { FetchFailed } from '../../core/swarmloop-error';
+import type { CodeHost, MergeMethod, MergeRequestDraft } from './code-host';
 import { GithubCodeHost } from './github/github-code-host';
 import { GitlabCodeHost } from './gitlab/gitlab-code-host';
 import { instantBackoff } from '../instant-backoff.spec-helpers';
@@ -258,6 +260,220 @@ describe.each([
     const { host } = make(false);
     expect(host.pushRejection(['fatal: unable to access', ...rejection])).toBe(rejection[0]);
     expect(host.pushRejection(['fatal: unable to access'])).toBeUndefined();
+  });
+});
+
+/** How one adapter words what the shared merge, author and title cases ask of it. */
+interface Dialect {
+  name: string;
+  host: () => CodeHost;
+  /** The repository answers that allow only `rebase` and `merge`, and only `squash`. */
+  rebaseAndMerge: unknown;
+  squashOnly: unknown;
+  /** The body of a merge with no `how` and of a merge by `merge` with a title, for head `abc`. */
+  plainMerge: unknown;
+  titledMerge: unknown;
+  /** An account with an id, an account with none, and the address and name the first gives. */
+  account: unknown;
+  accountWithoutId: unknown;
+  noReply: string;
+  /**
+   * What the person's own connection says when the host gives no address: the paths that answer, the account the
+   * token belongs to with an email, without one, and its email rows. Absent when the adapter has no such call.
+   */
+  connection?: {
+    accountPath: string;
+    self: unknown;
+    selfWithoutEmail: unknown;
+    otherSelf: unknown;
+    emailsPath: string;
+    emails: unknown;
+    email: string;
+    listed: string;
+  };
+  /** A refusal of the title by a rule, and a refusal that is not about the title. */
+  titleRule: { status: number; body: unknown };
+  otherRefusal: { status: number; body: unknown };
+}
+
+const DIALECTS: Dialect[] = [
+  {
+    name: 'github',
+    host: () => githubService(),
+    rebaseAndMerge: { allow_squash_merge: false, allow_rebase_merge: true, allow_merge_commit: true },
+    squashOnly: { allow_squash_merge: true, allow_rebase_merge: false, allow_merge_commit: false },
+    plainMerge: { merge_method: 'squash', sha: 'abc' },
+    titledMerge: { merge_method: 'merge', commit_title: 'feat: ship', sha: 'abc' },
+    account: { id: 7, login: 'robin', name: 'Robin Hood' },
+    accountWithoutId: { login: 'robin', name: 'Robin Hood' },
+    noReply: '7+robin@users.noreply.github.com',
+    connection: {
+      accountPath: '/user',
+      self: { login: 'robin', email: 'robin@home.example' },
+      selfWithoutEmail: { login: 'robin', email: null },
+      otherSelf: { login: 'machine', email: 'machine@home.example' },
+      emailsPath: '/user/emails',
+      emails: [
+        { email: 'old@home.example', primary: false, verified: true },
+        { email: 'robin@work.example', primary: true, verified: true },
+      ],
+      email: 'robin@home.example',
+      listed: 'robin@work.example',
+    },
+    titleRule: { status: 422, body: { message: 'Validation Failed', errors: [{ message: 'Title rule: must match' }] } },
+    otherRefusal: { status: 422, body: { message: 'Validation Failed', errors: [{ message: 'base is gone' }] } },
+  },
+  {
+    name: 'gitlab',
+    host: () => gitlabService(),
+    rebaseAndMerge: { merge_method: 'rebase_merge', squash_option: 'never' },
+    squashOnly: { merge_method: 'merge', squash_option: 'always' },
+    plainMerge: { squash: true, sha: 'abc' },
+    titledMerge: { merge_commit_message: 'feat: ship', sha: 'abc' },
+    account: [{ id: 7, username: 'robin', name: 'Robin Hood' }],
+    accountWithoutId: [{ username: 'robin', name: 'Robin Hood' }],
+    noReply: '7-robin@users.noreply.gitlab.example',
+    connection: {
+      accountPath: '/api/v4/user',
+      self: { username: 'robin', commit_email: 'robin@home.example', email: 'other@home.example' },
+      selfWithoutEmail: { username: 'robin', commit_email: null, email: null },
+      otherSelf: { username: 'machine', commit_email: 'machine@home.example' },
+      emailsPath: '/api/v4/user/emails',
+      emails: [
+        { email: 'new@home.example', confirmed_at: null },
+        { email: 'robin@work.example', confirmed_at: '2026-01-01T00:00:00Z' },
+      ],
+      email: 'robin@home.example',
+      listed: 'robin@work.example',
+    },
+    titleRule: { status: 422, body: { message: 'Title must match the pattern of the project' } },
+    otherRefusal: { status: 422, body: { message: 'Target branch is gone' } },
+  },
+  {
+    name: fakeThirdAdapter.name,
+    host: () =>
+      fakeThirdAdapter.create(
+        testEnv({ [fakeThirdAdapter.baseKey]: FAKE_BASE, [fakeThirdAdapter.tokenKey]: 'frg_x' }),
+        new FakeClock(),
+      ),
+    rebaseAndMerge: { merge_methods: ['rebase', 'merge'] },
+    squashOnly: { merge_methods: ['squash'] },
+    plainMerge: { how: 'squash', head: 'abc' },
+    titledMerge: { how: 'merge', title: 'feat: ship', head: 'abc' },
+    account: { name: 'Robin Hood', noreply: 'robin@noreply.forge.example' },
+    accountWithoutId: { name: 'Robin Hood' },
+    noReply: 'robin@noreply.forge.example',
+    titleRule: { status: 422, body: { message: 'Title rule: must match' } },
+    otherRefusal: { status: 422, body: { message: 'Target is gone' } },
+  },
+];
+
+const FAKE_BASE = fakeThirdScript.base;
+
+describe.each(DIALECTS)('merge methods, author and title rule: $name', (dialect) => {
+  const original = global.fetch;
+  afterEach(() => {
+    global.fetch = original;
+  });
+
+  /** Every call answers `status` and `body`; the requests are kept. */
+  function answerWith(status: number, body: unknown): { method: string; url: string; body: unknown }[] {
+    const seen: { method: string; url: string; body: unknown }[] = [];
+    serve((method, url, sent) => {
+      seen.push({ method, url, body: sent });
+      return answer(status, body);
+    });
+    return seen;
+  }
+
+  it('maps the repository settings to methods in the order squash, rebase, merge', async () => {
+    answerWith(200, dialect.rebaseAndMerge);
+    expect((await dialect.host().readMergeMethods(PROJECT)).methods).toEqual(['rebase', 'merge']);
+    answerWith(200, dialect.squashOnly);
+    expect((await dialect.host().readMergeMethods(PROJECT)).methods).toEqual<MergeMethod[]>(['squash']);
+  });
+
+  it('squashes with the sha guard when no method is given', async () => {
+    const seen = answerWith(200, { sha: 'merged-1', merge_commit_sha: 'merged-1' });
+    await dialect.host().mergeMergeRequest(PROJECT, 1, 'abc');
+    expect(seen.map((call) => call.body)).toEqual([dialect.plainMerge]);
+  });
+
+  it('merges by the method and the title it is given', async () => {
+    const seen = answerWith(200, { sha: 'merged-1', merge_commit_sha: 'merged-1' });
+    await dialect.host().mergeMergeRequest(PROJECT, 1, 'abc', { method: 'merge', title: 'feat: ship' });
+    expect(seen.map((call) => call.body)).toEqual([dialect.titledMerge]);
+  });
+
+  it('gives the no-reply address and the name of an account', async () => {
+    answerWith(200, dialect.account);
+    const author = await dialect.host().readAuthor('robin');
+    expect(author).toMatchObject({ name: 'Robin Hood', email: dialect.noReply });
+  });
+
+  it('gives no address when the host has none and the connection has no call for it', async () => {
+    if (dialect.connection) return;
+    answerWith(200, dialect.accountWithoutId);
+    expect(await dialect.host().readAuthor('robin')).toMatchObject({ name: 'Robin Hood', email: null });
+  });
+
+  describe("the email of the person's own connection", () => {
+    const { connection } = dialect;
+
+    /** The account answers with no id; the paths of the connection answer as given, any other path is refused. */
+    function connectionAnswers(answers: Record<string, unknown>): void {
+      serve((_method, url) => {
+        const path = new URL(url).pathname;
+        const body = answers[path];
+        return body === undefined
+          ? answer(200, dialect.accountWithoutId)
+          : answer(body === null ? 404 : 200, body ?? {});
+      });
+    }
+
+    it('is the email the connection shows when the host has no no-reply address', async () => {
+      if (!connection) return;
+      connectionAnswers({ [connection.accountPath]: connection.self });
+      expect(await dialect.host().readAuthor('robin')).toMatchObject({ name: 'Robin Hood', email: connection.email });
+    });
+
+    it('is the primary confirmed email when the account shows none', async () => {
+      if (!connection) return;
+      connectionAnswers({
+        [connection.accountPath]: connection.selfWithoutEmail,
+        [connection.emailsPath]: connection.emails,
+      });
+      expect(await dialect.host().readAuthor('robin')).toMatchObject({ email: connection.listed });
+    });
+
+    it('is none when the token belongs to another account or the host refuses the call', async () => {
+      if (!connection) return;
+      connectionAnswers({ [connection.accountPath]: connection.otherSelf });
+      expect(await dialect.host().readAuthor('robin')).toMatchObject({ email: null });
+      connectionAnswers({ [connection.accountPath]: null });
+      expect(await dialect.host().readAuthor('robin')).toMatchObject({ email: null });
+    });
+  });
+
+  it('refuses a title the repository rules refuse with the host message', async () => {
+    answerWith(dialect.titleRule.status, dialect.titleRule.body);
+    const refused = await dialect
+      .host()
+      .openMergeRequest(request(false))
+      .catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(GitRuleRefused);
+    expect(refused).toMatchObject({ name: 'Ship the field', kind: 'title' });
+    expect((refused as GitRuleRefused).hostMessage).toMatch(/title/i);
+  });
+
+  it('keeps another refusal of an open a FetchFailed', async () => {
+    answerWith(dialect.otherRefusal.status, dialect.otherRefusal.body);
+    const refused = await dialect
+      .host()
+      .openMergeRequest(request(false))
+      .catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(FetchFailed);
+    expect(refused).not.toBeInstanceOf(GitRuleRefused);
   });
 });
 

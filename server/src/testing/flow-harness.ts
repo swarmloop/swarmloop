@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import type { StepName } from '../contract/steps';
 import { readDefaultSettings } from '../config/load-env';
 import { DiskGuard } from '../pipeline/disk-guard';
@@ -22,6 +22,7 @@ import type { RunEntity } from '../history/entities';
 import { putStamped } from '../steps/shared/gate.spec-helpers';
 import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { FakeCodeHost } from './fake-code-host';
+import type { FakeHostSettings } from './fake-host-rules';
 import { FakeSandbox, holdDetachedStarts } from './fake-runtime';
 import { featureWorktree, git, remember } from './runs.spec-helpers';
 import type { BlockAgentRunner } from './result-answer';
@@ -80,6 +81,13 @@ export async function createFlowHarness(
     /** These steps are the real ones. */
     realSteps?: StepName[];
     taskWorktrees?: boolean;
+    /**
+     * Files of the repository, by path (`.swarmloop.json`, a commitlint config, a merge request template, a
+     * devcontainer): written, committed and pushed on the feature branch before the run begins.
+     */
+    repoFiles?: Record<string, string>;
+    /** What the fake code host allows and answers; a default boot sets nothing. */
+    fakeHost?: FakeHostSettings;
     env?: Record<string, string>;
     blocks?: BlockAgentRunner;
     /** The agent process of every real step's launch. */
@@ -102,6 +110,8 @@ export async function createFlowHarness(
   const { tree, clone } = featureWorktree(first.root, key, REPO);
   git(tree, ['push', 'origin', feature]);
   const host = new FakeCodeHost(clone, feature, () => harness.app.clock.now());
+  if (options.repoFiles) commitFiles(tree, options.repoFiles, feature);
+  if (options.fakeHost) host.configure(options.fakeHost);
 
   let diskBytes: number | null = null;
   let backlogWired = false;
@@ -192,6 +202,17 @@ export async function createFlowHarness(
   };
   wire(harness, key, options.taskWorktrees);
   return harness;
+}
+
+/** The files appear in the worktree, in one commit on the feature branch, pushed. */
+function commitFiles(tree: string, files: Record<string, string>, feature: string): void {
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(tree, path)), { recursive: true });
+    writeFileSync(join(tree, path), content);
+    git(tree, ['add', path]);
+  }
+  git(tree, ['commit', '-m', 'chore: add the repository files']);
+  git(tree, ['push', 'origin', feature]);
 }
 
 function useDisk(harness: FlowHarness, bytes: number): void {

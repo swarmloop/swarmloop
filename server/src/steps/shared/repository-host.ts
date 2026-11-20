@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import type { RepositoryMainView } from '../../contract/repository-main';
+import type { RunEntity } from '../../history/run.entity';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { MergeGate, MergeRequestRecord, PipelineSnapshot } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { mergeHow } from './merge-method';
 import { RepositoryOrigins } from './repository-origins';
+import { RunNames } from './run-names';
 
 type MergeRequestRef = Pick<MergeRequestRecord, 'project' | 'iid'>;
 type HostRun = { codeHost: string; startedBy: string | null };
+type MergeRun = HostRun & Pick<RunEntity, 'key' | 'parentRunId' | 'taskId'>;
 
 /** A failed job of a main: its name, its log and where the whole run is on the host. */
 interface FailedJob {
@@ -33,6 +37,7 @@ export class RepositoryHost {
   constructor(
     private readonly origins: RepositoryOrigins,
     private readonly hosts: CodeHostRegistry,
+    private readonly names: RunNames,
   ) {}
 
   private async hostOf(repo: string, person: string | null) {
@@ -85,9 +90,10 @@ export class RepositoryHost {
     };
   }
 
-  /** Merges a request, guarded by its head commit; the commit it made. */
-  async merge(run: HostRun, request: MergeRequestRef, head: string): Promise<string> {
+  /** Merges a request of a task, guarded by its head commit, with the method the repository allows; the commit it made. */
+  async merge(run: MergeRun, repo: string, taskTitle: string, request: MergeRequestRef, head: string): Promise<string> {
     const host = await this.hosts.hostFor(run);
-    return (await host.mergeMergeRequest(request.project, request.iid, head)).sha;
+    const how = await mergeHow(host, request.project, await this.names.taskTitle(run, repo, taskTitle));
+    return (await host.mergeMergeRequest(request.project, request.iid, head, how)).sha;
   }
 }

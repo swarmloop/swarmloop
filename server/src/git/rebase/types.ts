@@ -1,6 +1,8 @@
+import type { CommitAuthor } from '../git';
 import type { Clock } from '../../core/clock';
 import type { CodeHostEnv } from '../../integrations/code-host/abstract-code-host';
 import type { RebaseJournal } from './journal';
+import type { PerRepo } from '../per-repo';
 
 export interface RebaseHosts extends CodeHostEnv {
   clock: Clock;
@@ -10,10 +12,11 @@ export interface RebaseRepoInput {
   root: string;
   key: string;
   repos: string[];
-  branch: string;
+  branch: PerRepo<string>;
   prompt: string | null;
   denied: string[];
-  message: string;
+  message: PerRepo<string>;
+  author?: CommitAuthor | null;
   hosts: RebaseHosts;
   journal: RebaseJournal;
   onBase?: (repo: string, sha: string) => void;

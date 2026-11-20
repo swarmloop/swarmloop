@@ -4,7 +4,8 @@ import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { repoNames } from '../git/repo-names';
 import { parseMergeRequests } from '../steps/merge-request/merge-request-record';
-import { branchName, commitMessage, summaryForBranch } from '../steps/branch/branch-name';
+import { commitMessage, summaryForBranch } from '../git/naming/git-names';
+import { storedBranch } from '../git/naming/stored-branch';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
@@ -22,6 +23,8 @@ import { mergeSummaryOf } from './merge-summary';
 import type { OpenedStep } from '../steps/step-run';
 import { DELIVERED_PREFIX } from '../steps/commit/commit-result';
 import { ReportRefresh } from '../steps/shared/report-refresh';
+import type { RunAuthor } from '../steps/shared/run-author';
+import type { RunNames } from '../steps/shared/run-names';
 import { RunRebase } from '../steps/run-rebase';
 import { CommandService } from './command.service';
 import { SubtaskWorktrees } from './subtask-worktrees';
@@ -57,6 +60,8 @@ export class SubtaskPort extends SubtaskOps {
     @Optional() private readonly rebaser?: RunRebase,
     @Optional() private readonly reportRefresh?: ReportRefresh,
     @Optional() conversation?: PlanConversation,
+    @Optional() private readonly runNames?: RunNames,
+    @Optional() private readonly runAuthor?: RunAuthor,
   ) {
     super();
     this.worktrees = new SubtaskWorktrees(config, clock, publisher);
@@ -169,7 +174,8 @@ export class SubtaskPort extends SubtaskOps {
 
   override async branchOf(run: RunEntity): Promise<string> {
     const requirements = (await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind)) ?? '';
-    return branchName(run.key, summaryForBranch(requirements, run.key));
+    const stored = await this.documents.latestBody(run.key, ARTIFACTS.branchNames.kind);
+    return storedBranch(stored, null, run.key, summaryForBranch(requirements, run.key));
   }
 
   override async recordMerged(parent: RunEntity, run: RunEntity, merged: Record<string, string>): Promise<void> {
@@ -214,14 +220,23 @@ export class SubtaskPort extends SubtaskOps {
   }
 
   override async commitOwnEdits(parent: RunEntity, park: boolean): Promise<OwnEdits> {
-    const requirements = (await this.documents.latestBody(parent.key, ARTIFACTS.requirements.kind)) ?? '';
-    const message = commitMessage(parent.key, summaryForBranch(requirements, parent.key));
     // A parent that has no repositories yet has no worktree to hold edits.
     if (!(await this.documents.latestBody(parent.key, ARTIFACTS.repos.kind))?.trim()) {
       return { committed: null, conflict: null };
     }
     const repos = await this.reposOf(parent);
-    return this.worktrees.commitOwnEdits(parent, repos, await this.branchOf(parent), message, park);
+    const commitAs = async () => ({
+      message: this.runNames ? await this.runNames.commitMessageOf(parent, repos) : await this.builtInMessage(parent),
+      author: (await this.runAuthor?.of(parent)) ?? null,
+    });
+    return this.worktrees.commitOwnEdits(parent, repos, await this.branchOf(parent), commitAs, park);
+  }
+
+  /** The built-in message, for a port built without the naming service. */
+  private async builtInMessage(parent: RunEntity): Promise<() => string> {
+    const requirements = (await this.documents.latestBody(parent.key, ARTIFACTS.requirements.kind)) ?? '';
+    const message = commitMessage(parent.key, summaryForBranch(requirements, parent.key));
+    return () => message;
   }
 
   override async fastForward(parent: RunEntity): Promise<string | null> {

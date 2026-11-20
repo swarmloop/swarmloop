@@ -379,7 +379,7 @@ test('agent answer rules let the registry read the labels of its own pipeline_lo
   const text =
     "const result = /^result:\\s*(\\S+)/m.exec(body)?.[1] ?? '';\nconst job = /^job:\\s*(.+)$/m.exec(body)?.[1];\n";
 
-  assert.deepEqual(check({ 'server/src/steps/contract/artifacts.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/steps/contract/artifact-summaries.ts': text }), []);
   assert.equal(check({ 'server/src/steps/contract/artifact-summary.ts': text }).length, 2);
 });
 
@@ -451,4 +451,14 @@ test('forbidOutside reports a second state-to-icon table in the dashboard and le
 
   assert.equal(violations.length, 1);
   assert.match(violations[0], /^dashboard\/features\/run\/flow\/run-screen\/task-look\.ts:1:/);
+});
+
+test('only the naming module builds branch names, commit messages and titles', () => {
+  const text =
+    'const branch = `feature/${key}`;\nconst message = `feat(${key}): ${summary}`;\nrenderTemplate(format, values);\n';
+
+  assert.equal(check({ 'server/src/steps/commit/commit.step.ts': text }).length, 3);
+  assert.deepEqual(check({ 'server/src/git/naming/git-names.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/steps/commit/commit.step.spec.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/testing/flow-harness.ts': text }), []);
 });

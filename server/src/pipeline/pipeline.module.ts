@@ -6,12 +6,19 @@ import { ProvidersModule } from '../integrations/providers.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { BranchStep } from '../steps/branch/branch.step';
 import { CommitStep } from '../steps/commit/commit.step';
+import { CommitPublish } from '../steps/commit/commit-publish';
+import { GitRefusal } from '../steps/shared/git-refusal';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
+import { RunNames } from '../steps/shared/run-names';
+import { RunAuthor } from '../steps/shared/run-author';
+import { GitRulesWriter } from '../steps/shared/git-rules-writer';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { RepositoryHost } from '../steps/shared/repository-host';
 import { RepositoryOrigins } from '../steps/shared/repository-origins';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
+import { MergeRequestTemplate } from '../steps/merge-request/merge-request-template';
+import { ImplementChat } from '../steps/shared/implement-chat';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { ChecksStep } from '../steps/checks/checks.step';
@@ -87,17 +94,24 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     ResearchStep,
     BranchStep,
     CommitStep,
+    CommitPublish,
+    GitRefusal,
     RebasedPublisher,
     RepositoryOrigins,
     RepositoryHost,
     CheckoutService,
     BranchCheckout,
+    RunNames,
+    RunAuthor,
+    GitRulesWriter,
     WorkspaceGuard,
     RunRetention,
     DiskGuard,
     OwnUseMeter,
     Housekeeping,
     MergeRequestStep,
+    MergeRequestTemplate,
+    ImplementChat,
     MergeRequestLookup,
     PipelineStep,
     PlanStep,

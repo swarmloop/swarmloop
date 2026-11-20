@@ -123,6 +123,12 @@ export class DocumentRepository {
     return found !== null;
   }
 
+  /** The bodies of every document of `kind` the run has, oldest first. */
+  async bodiesOfKind(runId: number, kind: string): Promise<string[]> {
+    const found = await this.documents.find({ select: { body: true }, where: { runId, kind }, order: { id: 'ASC' } });
+    return found.map((item) => item.body);
+  }
+
   async listDocuments(runId: number): Promise<DocumentEntity[]> {
     return this.documents.find({ where: { runId }, order: { id: 'ASC' } });
   }

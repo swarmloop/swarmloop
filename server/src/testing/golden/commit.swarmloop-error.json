@@ -83,30 +83,6 @@
       "step": "commit"
     },
     {
-      "kind": "command.started",
-      "step": "commit"
-    },
-    {
-      "kind": "command.finished",
-      "step": "commit"
-    },
-    {
-      "kind": "command.started",
-      "step": "commit"
-    },
-    {
-      "kind": "command.finished",
-      "step": "commit"
-    },
-    {
-      "kind": "command.started",
-      "step": "commit"
-    },
-    {
-      "kind": "command.finished",
-      "step": "commit"
-    },
-    {
       "kind": "activity.finished",
       "step": "commit"
     },
@@ -123,24 +99,24 @@
   "git": {
     "demo": {
       "branch": "feature/PROJ-100-ship-the-field",
-      "log": ["Re-run CI", "init"],
+      "log": ["init"],
       "refs": [
         "refs/heads/feature/PROJ-100-ship-the-field <sha:1>",
-        "refs/heads/holder <sha:2>",
-        "refs/heads/main <sha:2>",
-        "refs/remotes/origin/feature/PROJ-100-ship-the-field <sha:2>",
-        "refs/remotes/origin/main <sha:2>"
+        "refs/heads/holder <sha:1>",
+        "refs/heads/main <sha:1>",
+        "refs/remotes/origin/feature/PROJ-100-ship-the-field <sha:1>",
+        "refs/remotes/origin/main <sha:1>"
       ],
       "status": []
     }
   },
   "loopEvents": [],
   "reads": {
-    "commit": ["requirements", "repos", "commit", "ci_rerun"]
+    "commit": ["requirements", "repos", "commit", "ci_rerun", "pipeline_ref"]
   },
   "result": {
     "exitCode": 1,
-    "message": "<t> demo push failed: fatal: '<root>/gone.git' does not appear to be a git repository"
+    "message": "<t> code host is missing"
   },
   "run": {
     "agentCalls": 0,
@@ -155,7 +131,7 @@
     {
       "documents": [
         {
-          "body": "demo push failed: fatal: '<root>/gone.git' does not appear to be a git repository\n",
+          "body": "code host is missing\n",
           "kind": "error"
         }
       ],

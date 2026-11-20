@@ -1,11 +1,11 @@
 import { root } from '../../history/run-paths';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { commitMessage, summaryForBranch } from '../branch/branch-name';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { StepResult } from '../contract/step-contract';
 import type { ModelStepContext } from '../agent-step';
 import { git, gitDetail } from '../../git/git';
 import { type RebaseStop, completeRebase, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
+import { forRepo, type PerRepo } from '../../git/per-repo';
 import { mountsForStep, worktreePath } from '../../git/repo-names';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { runJournal } from '../shared/rebase-journal';
@@ -22,7 +22,7 @@ export async function settleRebase(
   ctx: ModelStepContext,
   marker: string,
   names: string[],
-  branch: string,
+  branch: PerRepo<string>,
   storedStderr: string,
 ): Promise<StepResult | null> {
   const { key } = ctx.opened.run;
@@ -31,7 +31,7 @@ export async function settleRebase(
   }
   const own = ownConflictOf(storedStderr);
   if (marker === 'pending' && own !== null) {
-    return settleOwnConflict(deps, requirements, ctx, names, branch, own);
+    return settleOwnConflict(deps, requirements, ctx, names, forRepo(branch, names[0] ?? ''), own);
   }
   const bases = new Map<string, string>();
   const input = {
@@ -41,7 +41,8 @@ export async function settleRebase(
     branch,
     prompt: ctx.opened.run.prompt,
     denied: [],
-    message: commitMessage(key, summaryForBranch(requirements, key)),
+    message: await deps.names.commitMessageOf(ctx.opened.run, names),
+    author: await deps.author.of(ctx.opened.run),
     hosts: await deps.publisher.hostsFor(ctx.opened.run),
     journal: runJournal(deps.documents, ctx.opened.run),
     onBase: (repo: string, sha: string) => {

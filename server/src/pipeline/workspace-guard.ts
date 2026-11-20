@@ -123,7 +123,7 @@ export class WorkspaceGuard {
     }
     await this.checkouts.assertGit(checkout);
     await this.assertNoOpenRebase(run, name);
-    const branch = this.branches.branchFor(run.key, await this.documents.latestBody(run.key, 'requirements'));
+    const branch = await this.branches.branchFor(run, name);
     const refs = parsePipelineRefs((await this.documents.latestBody(run.key, ARTIFACTS.pipelineRef.kind)) ?? '');
     const project = await originProject(checkout.path);
     const sha = refs.find((ref) => ref.project === project)?.sha || null;

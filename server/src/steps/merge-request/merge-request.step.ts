@@ -2,19 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
 import { RunStop } from '../../agent/run-stop';
 import { assertNotStopped } from '../../agent/step-stopped';
-import { existsSync, statSync } from 'fs';
-import { root } from '../../history/run-paths';
 import { PhaseName, StepName } from '../../contract/steps';
 import { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { HttpCallDraft, NothingToMerge, SwarmloopError } from '../../core/swarmloop-error';
-import { branchName, summaryForBranch } from '../branch/branch-name';
+import { GitRefusal } from '../shared/git-refusal';
+import { RunNames } from '../shared/run-names';
 import { baseBranch } from '../../git/base-ref';
-import { git, gitDetail, gitMissing } from '../../git/git';
-import { checkedRepoNames, worktreePath } from '../../git/repo-names';
+import { checkedRepoNames } from '../../git/repo-names';
 import { BaseStep, StepContext } from '../base-step';
 import { nothingToMergeResult } from './nothing-to-merge';
-import { mergeRequestDetails, remoteProject, renderMergeRequest } from './merge-request-record';
+import { mergeRequestDetails, renderMergeRequest } from './merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import { lateInput } from '../agent-step';
 import { renderImplementation } from '../implement/implement-record';
@@ -23,25 +21,12 @@ import { worktreesFingerprint } from '../shared/gate';
 import { jumpBackToReview } from '../shared/back-to-review';
 import { RunReport } from '../shared/run-report';
 import { StaleReview } from '../shared/stale-review';
-import { spliceReport } from '../shared/report-markers';
+import { MergeRequestTemplate, type Summary } from './merge-request-template';
+import { mergeRequestTrees, type Tree } from './merge-request-trees';
+import { ref } from './merge-request-target';
+import type { RunEntity } from '../../history/entities';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
-
-/** The text of the body, and whether it is the rendered report, which goes between the markers. */
-interface Summary {
-  text: string;
-  report: boolean;
-}
-
-interface Tree {
-  repo: string;
-  path: string;
-  project: string;
-  branch: string;
-  target: string;
-  existing: MergeRequestRecord | null;
-  summary: string;
-}
 
 /** The late inputs are read where the path needs them: the goldens stop at a git error before they are read. */
 const INPUTS = {
@@ -53,12 +38,8 @@ const INPUTS = {
   reviewReportResult: lateInput(ARTIFACTS.reviewReportResult),
   reviewReport: lateInput(ARTIFACTS.reviewReport),
   rebaseMergeSkip: { artifact: ARTIFACTS.rebaseMergeSkip, need: 'optional', late: true },
+  gitRulesNote: lateInput(ARTIFACTS.gitRulesNote),
 } as const satisfies InputSpec;
-
-/** A rendered report goes between the markers of the host's body, so text outside them stays; any other text is the body. */
-function bodyOf(tree: Tree, built: Summary): string {
-  return built.report ? spliceReport(tree.existing?.summary ?? '', built.text) : built.text;
-}
 
 @Injectable()
 export class MergeRequestStep extends BaseStep<typeof INPUTS> {
@@ -72,6 +53,9 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     private readonly runStop: RunStop,
     private readonly runReport: RunReport,
     private readonly staleReview: StaleReview,
+    private readonly runNames: RunNames,
+    private readonly template: MergeRequestTemplate,
+    private readonly refusal: GitRefusal,
   ) {
     super(kernel);
   }
@@ -89,15 +73,15 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
-    const title = summaryForBranch(requirements, key);
-    const branch = branchName(key, title);
-    const trees = await this.trees(
-      key,
-      checkedRepoNames(input.repos),
+    const repos = checkedRepoNames(input.repos);
+    const branch = await this.runNames.branchOf(opened.run, repos);
+    const trees = await mergeRequestTrees(
+      { config: this.config, registry: this.registry, names: this.runNames },
+      opened.run,
+      repos,
       branch,
       baseBranch(opened.run.prompt),
       ctx.calls,
-      opened.run.codeHost,
       client,
     );
     const built = await this.summary(ctx, phases, trees);
@@ -110,16 +94,16 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
       return nothingToMergeResult(opened.startedAt, await this.implementation(ctx));
     }
     assertNotStopped(this.runStop, key);
+    const bodies = await this.template.bodies(opened.run, withWork, built, await ctx.reread(ARTIFACTS.gitRulesNote));
     const { opened: done, unavailable } = await ctx.activity(
       'Open merge request',
       () =>
-        this.ensure(
-          withWork.map((tree) => ({ ...tree, summary: bodyOf(tree, built) })),
-          title,
-          ctx.calls,
+        this.ensure(bodies.trees, (repo) => this.runNames.title(opened.run, repo), {
+          calls: ctx.calls,
           skip,
           client,
-        ),
+          run: opened.run,
+        }),
       ({ opened: items }) =>
         items.map(({ tree, record }) => `!${record.iid} ${tree.existing ? 'reused' : 'created'}`).join(', '),
     );
@@ -131,7 +115,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     }
     const records = done.map((item) => item.record);
     const urls = records.map((record) => record.url).join('\n');
-    const note = unavailable ? '\ndrafts not available here' : '';
+    const note = `${unavailable ? '\ndrafts not available here' : ''}${bodies.errors.map((error) => `\n${error}`).join('')}`;
     return this.finish(
       `${opened.startedAt} merge-request done\n${urls}${note}`,
       renderMergeRequest(records),
@@ -140,50 +124,6 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
         details: mergeRequestDetails(records),
       },
     );
-  }
-
-  private async trees(
-    key: string,
-    names: string[],
-    branch: string,
-    base: string | null,
-    calls: HttpCallDraft[],
-    codeHost: string,
-    client: CodeHost,
-  ): Promise<Tree[]> {
-    const selected = this.registry.credentials(codeHost);
-    const host = new URL(selected.baseUrl).hostname.toLowerCase();
-    const trees: Tree[] = [];
-    for (const repo of names) {
-      const path = worktreePath(root(this.config), key, repo);
-      if (!existsSync(path) || !statSync(path).isDirectory()) {
-        throw new SwarmloopError(`${repo} is not a worktree`);
-      }
-      const current = await this.gitAt(repo, path, ['branch', '--show-current'], 'branch failed');
-      if (current === 'main' || current === 'master') {
-        throw new SwarmloopError(`${repo} branch is protected`);
-      }
-      if (current !== branch) {
-        throw new SwarmloopError(`${repo} branch is missing`);
-      }
-      const remote = await this.ref(repo, path, `refs/remotes/origin/${branch}`);
-      const head = await this.gitAt(repo, path, ['rev-parse', 'HEAD'], 'branch failed');
-      if (!remote || remote !== head) {
-        throw new SwarmloopError(`${repo} branch is not pushed`);
-      }
-      const origin = remoteProject(await this.gitAt(repo, path, ['remote', 'get-url', 'origin'], 'origin failed'));
-      if (origin.host.toLowerCase() !== host) {
-        throw new SwarmloopError(`${repo} origin is not ${selected.baseKey}`);
-      }
-      const target = base ?? (await this.target(repo, path));
-      if (target === branch) {
-        throw new SwarmloopError(`${repo} target branch is the feature branch`);
-      }
-      const found = await client.findMergeRequest({ project: origin.project, source: branch });
-      calls.push(...found.httpCalls);
-      trees.push({ repo, path, project: origin.project, branch, target, existing: found.record, summary: '' });
-    }
-    return trees;
   }
 
   /** The body of the request, or the jump back to review when the report is for other files. */
@@ -229,7 +169,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
   private async withWork(trees: Tree[]): Promise<Tree[]> {
     const kept: Tree[] = [];
     for (const tree of trees) {
-      const target = tree.existing ? null : await this.ref(tree.repo, tree.path, `refs/remotes/origin/${tree.target}`);
+      const target = tree.existing ? null : await ref(tree.repo, tree.path, `refs/remotes/origin/${tree.target}`);
       if (tree.existing || (await hasWorkToMerge(tree, target))) {
         kept.push(tree);
       }
@@ -239,10 +179,8 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
 
   private async ensure(
     trees: Tree[],
-    title: string,
-    calls: HttpCallDraft[],
-    skip: boolean,
-    client: CodeHost,
+    title: (repo: string) => Promise<string>,
+    { calls, skip, client, run }: { calls: HttpCallDraft[]; skip: boolean; client: CodeHost; run: RunEntity },
   ): Promise<{ opened: { tree: Tree; record: MergeRequestRecord }[]; unavailable: boolean }> {
     const results = await Promise.all(
       trees.map(async (tree) => {
@@ -259,14 +197,17 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
           };
         }
         try {
-          const created = await client.openMergeRequest({
-            project: tree.project,
-            source: tree.branch,
-            target: tree.target,
-            title,
-            summary: tree.summary,
-            draft: true,
-          });
+          // A title the host refuses is answered once: the title is rendered again from the answer for the second try.
+          const created = await this.refusal.guard({ run, repo: tree.repo, repos: [tree.repo] }, 'title', async () =>
+            client.openMergeRequest({
+              project: tree.project,
+              source: tree.branch,
+              target: tree.target,
+              title: await title(tree.repo),
+              summary: tree.summary,
+              draft: true,
+            }),
+          );
           return {
             tree,
             record: { ...created.record, summary: tree.summary },
@@ -286,50 +227,6 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     }
     const opened = results.flatMap(({ tree, record }) => (record ? [{ tree, record }] : []));
     return { opened, unavailable: results.some((item) => item.unavailable) };
-  }
-
-  private async target(repo: string, path: string): Promise<string> {
-    const branch = await this.defaultBranch(path);
-    if (branch) {
-      return branch;
-    }
-    for (const name of ['main', 'master']) {
-      if (await this.ref(repo, path, `refs/remotes/origin/${name}`)) {
-        return name;
-      }
-    }
-    throw new SwarmloopError('target branch is missing');
-  }
-
-  private async defaultBranch(path: string): Promise<string | null> {
-    try {
-      const name = await git(['-C', path, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], undefined, {
-        answers: [128],
-      });
-      const branch = name.replace(/^origin\//, '');
-      return branch && branch !== 'HEAD' ? branch : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private async ref(repo: string, path: string, name: string): Promise<string | null> {
-    try {
-      return await git(['-C', path, 'rev-parse', '--verify', '--quiet', name], undefined, { answers: [1] });
-    } catch (error) {
-      if (gitMissing(error)) {
-        return null;
-      }
-      throw new SwarmloopError(`${repo} branch failed: ${gitDetail(error)}`);
-    }
-  }
-
-  private async gitAt(repo: string, path: string, args: string[], failure: string): Promise<string> {
-    try {
-      return await git(['-C', path, ...args]);
-    } catch (error) {
-      throw new SwarmloopError(`${repo} ${failure}: ${gitDetail(error)}`);
-    }
   }
 
   private finish(

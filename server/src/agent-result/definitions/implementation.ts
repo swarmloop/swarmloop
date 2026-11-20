@@ -1,5 +1,6 @@
 import Joi from 'joi';
 import { defineResult } from '../result-definition';
+import { CHANGE_KEY, GIT_RULES_KEY, type GitChange, type GitRules } from './git-change';
 import type { Need } from './research';
 
 /** What the implement step hands to the server. */
@@ -11,6 +12,8 @@ export interface ImplementationResult {
   needs?: Need[];
   rejected?: RejectedFinding[];
   question?: string;
+  change?: GitChange;
+  gitRules?: GitRules;
 }
 
 /** A code review finding the step leaves unfixed, and why it does not hold. */
@@ -46,6 +49,8 @@ const base = Joi.object({
     )
     .description('Sibling tasks this task waits for; leave out when none'),
   question: QUESTION,
+  change: CHANGE_KEY,
+  gitRules: GIT_RULES_KEY,
 });
 
 export const implementation = defineResult('implementation', base);

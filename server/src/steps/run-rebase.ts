@@ -7,7 +7,8 @@ import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { root } from '../history/run-paths';
-import { branchName, commitMessage, summaryForBranch } from './branch/branch-name';
+import { RunNames } from './shared/run-names';
+import { RunAuthor } from './shared/run-author';
 import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
 import { sameOwnDiff } from '../git/rebase/own-diff';
 import { git } from '../git/git';
@@ -45,6 +46,8 @@ export class RunRebase {
     private readonly environments: RunRebaseEnvironment,
     private readonly drafts: MergeRequestDrafts,
     private readonly registry: CodeHostRegistry,
+    private readonly names: RunNames,
+    private readonly author: RunAuthor,
   ) {}
 
   /**
@@ -182,16 +185,16 @@ export class RunRebase {
     if (!requirements?.trim()) {
       throw new SwarmloopError('requirements is missing');
     }
-    const summary = summaryForBranch(requirements, run.key);
     const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
     return rebaseFeatureRepos({
       root: root(this.config),
       key: run.key,
       repos: names,
-      branch: branchName(run.key, summary),
+      branch: await this.names.branchOf(run, names),
       prompt: run.prompt,
       denied: [],
-      message: commitMessage(run.key, summary),
+      message: await this.names.commitMessageOf(run, names),
+      author: await this.author.of(run),
       hosts: { ...this.config.env, ...(await this.registry.tokensFor(run.startedBy, run.codeHost)), clock: this.clock },
       journal,
       onBase: (repo, sha) => {

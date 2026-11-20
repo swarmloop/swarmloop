@@ -1,7 +1,7 @@
 import type { SwarmloopEnv } from '../config/env';
 import type { Clock } from '../core/clock';
 import { ERROR_CODES, IMAGE_ERROR_CODES } from '../contract/error-codes';
-import { GitAuthError, HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
+import { GitAuthError, GitRulesError, HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { ChecksStopped } from '../environment/check-pool';
 import { ContainerDropped } from '../sandbox/container-gate';
 import { StepStopped } from '../agent/step-stopped';
@@ -39,7 +39,7 @@ export function waitingEnd(
   return null;
 }
 
-/** The ending of a step whose error is not a failure: a stop, a git auth wait, a passing outage or a missing image. Null otherwise. */
+/** The ending of a step whose error is not a failure: a stop, a git auth wait, a passing outage, a missing image or a rule for a person to add. Null otherwise. */
 export function errorEnd(
   error: unknown,
   startedAt: string,
@@ -61,6 +61,10 @@ export function errorEnd(
       code: waiting.code,
       retryAt: waiting.retryAt,
     };
+  }
+  if (error instanceof GitRulesError) {
+    // The reason a person reads says what to do as well as what was refused.
+    return { outcome: 'blocked', exitCode: 1, line: `${startedAt} ${error.message}. ${error.hint}`, code: error.code };
   }
   if (error instanceof SwarmloopError && IMAGE_ERROR_CODES.includes(error.code)) {
     return { outcome: 'blocked', exitCode: 1, line: `${startedAt} ${error.message}`, code: error.code };

@@ -1,6 +1,7 @@
 import Joi from 'joi';
 import { defineResult, type ResultDefinition } from '../result-definition';
 import type { Need } from './research';
+import { CHANGE_KEY, type GitChange } from './git-change';
 import { coversKey, keysFor, splitKeys, type SplitFields } from './split-fields';
 
 /** What the plan step hands to the server: one checklist, the questions a person must answer, or a split into tasks. */
@@ -9,6 +10,8 @@ export interface PlanResult extends SplitFields {
   plan: string[];
   /** One list of requirement ids per plan item, in the order of the plan. */
   covers?: string[][];
+  /** What the change means, for its commit and merge request title; a stored plan may have none. */
+  change?: GitChange;
   questions: string[];
   name?: string;
   overview?: string;
@@ -45,6 +48,7 @@ const keys = {
     )
     .description('Sibling tasks this task waits for; leave out when none'),
   covers: coversKey(),
+  change: CHANGE_KEY,
   ...splitKeys(),
 };
 

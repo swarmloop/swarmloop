@@ -1,4 +1,4 @@
-import { git, originUrl } from '../git/git';
+import { commitIdentity, git, originUrl, type CommitAuthor } from '../git/git';
 import { originRef } from '../git/base-ref';
 import { porcelainPaths } from '../git/commit-paths';
 import { unmergedPaths } from '../git/rebase';
@@ -6,6 +6,8 @@ import { mergeConflicts } from '../git/merge-tree';
 import { commitAllowed } from '../git/rebase/hidden-worktree';
 import { status, type Tree } from '../steps/commit/commit-git';
 import type { RunEntity } from '../history/entities';
+import { GitRuleRefused } from '../core/git-rule-refused';
+import { GitRulesError } from '../core/swarmloop-error';
 import type { RebasedPublisher } from '../steps/shared/rebased-publisher';
 
 /** What committing the own edits of a parent left: the paths it committed, and the words of a conflict when the branch cannot take them. */
@@ -25,11 +27,18 @@ export class ParentTreeSync {
    * With `park` a conflict is not undone: the commit is rebased onto the feature branch and git stops at the
    * conflicting files, which the implement agent resolves. Without it the edits go back to the worktree.
    */
-  async commit(parent: RunEntity, tree: Tree, branch: string, message: string, park: boolean): Promise<TreeSync> {
+  async commit(
+    parent: RunEntity,
+    tree: Tree,
+    branch: string,
+    message: string,
+    park: boolean,
+    author: CommitAuthor | null,
+  ): Promise<TreeSync> {
     const remote = originRef(branch);
     const before = await git(['-C', tree.path, 'rev-parse', 'HEAD']);
     const paths = porcelainPaths(await status(tree));
-    await commitAllowed(tree.path, tree.repo, [], message);
+    await commitAllowed(tree.path, tree.repo, [], message, author);
     if ((await git(['-C', tree.path, 'rev-parse', 'HEAD'])) === before) return { paths: [], conflict: null };
     const files = await mergeConflicts(tree.path, remote);
     if (files.length > 0 && !park) {
@@ -37,7 +46,7 @@ export class ParentTreeSync {
       return { paths: [], conflict: await this.conflictText(tree, remote, before, files, false) };
     }
     try {
-      await git(['-C', tree.path, 'rebase', remote]);
+      await git(['-C', tree.path, 'rebase', remote], (await commitIdentity(tree.path, author)).env);
     } catch (error) {
       if (park && files.length > 0 && (await unmergedPaths(tree.path)).length > 0) {
         return { paths: [], conflict: await this.conflictText(tree, remote, before, files, true) };
@@ -72,6 +81,10 @@ export class ParentTreeSync {
     const origin = await originUrl(tree.path, tree.repo, 'origin failed');
     if (!origin || !this.publisher) return;
     const leased = await this.publisher.optionalRev(tree, `refs/remotes/${originRef(branch)}`);
-    await this.publisher.pushRef(tree, branch, leased, parent, origin);
+    try {
+      await this.publisher.pushRef(tree, branch, leased, parent, origin, 'commit');
+    } catch (error) {
+      throw error instanceof GitRuleRefused ? new GitRulesError(error.hostMessage, error.name) : error;
+    }
   }
 }

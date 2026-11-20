@@ -12,7 +12,7 @@ import { RunRepository } from '../history/run.repository';
 import { deriveState, writeRunState } from '../history/run-state';
 import { CommandService } from '../pipeline/command.service';
 import { SubtaskPort } from '../pipeline/subtask-port';
-import { branchName, summaryForBranch } from '../steps/branch/branch-name';
+import { branchName, summaryForBranch } from '../git/naming/git-names';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { putStamped } from '../steps/shared/gate.spec-helpers';
 import * as fetchModule from '../git/rebase/fetch';

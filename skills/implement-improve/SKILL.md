@@ -12,6 +12,8 @@ On a return from the checks step, or a pipeline return whose failed job names a 
 
 A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix. When an item changes, send the full corrected checklist in `plan`. Without a contradiction, leave `plan` out.
 
+In your result give `change`: the type, an optional scope and an imperative subject of what you changed. Give `gitRules` only for a branch, commit or title rule you met in the repository (its contributing guide, a lint config, a host refusal) that `.swarmloop.json` lacks, as a template for each name; otherwise leave it out.
+
 The task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out.
 
 Tests: a test must fail when the change is reverted. It checks behavior through the public interface the tree already tests, not private calls or mock call counts. It does not restate the implementation. It does not snapshot a large output where one value is what matters.

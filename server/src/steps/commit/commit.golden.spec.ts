@@ -17,11 +17,13 @@ import { DocumentRepository } from '../../history/document.repository';
 import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
+import { RunNames } from '../shared/run-names';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { featureWorktree } from '../../testing/runs.spec-helpers';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
+import { CommitPublish } from './commit-publish';
 import { CommitStep } from './commit.step';
 
 const KEY = 'PROJ-100';
@@ -44,18 +46,21 @@ describe('commit step golden traces', () => {
     await seed(app);
     await stub?.();
     const documents = recordingDocuments(app.get(DocumentRepository));
+    const kernel = new StepKernel(
+      app.get(RunRepository),
+      documents,
+      app.get(VisitRepository),
+      app.get(FlowRepository),
+      app.get(Clock),
+      app.get(AppConfig),
+      app.get(StepEventLog),
+    );
     const step = new CommitStep(
-      new StepKernel(
-        app.get(RunRepository),
-        documents,
-        app.get(VisitRepository),
-        app.get(FlowRepository),
-        app.get(Clock),
-        app.get(AppConfig),
-        app.get(StepEventLog),
-      ),
+      kernel,
       app.get(RebasedPublisher),
+      app.get(RunNames),
       new RunStop(),
+      app.get(CommitPublish),
     );
     const result = await step.execute(KEY);
     expectGolden(`commit.${name}`, {

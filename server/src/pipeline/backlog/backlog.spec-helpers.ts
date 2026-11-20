@@ -18,6 +18,7 @@ import { writeRunState, type RunStateChange } from '../../history/run-state';
 import type { MergeOutcome } from '../../contract/run-state';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import type { RepositoryOrigins } from '../../steps/shared/repository-origins';
+import type { RunNames } from '../../steps/shared/run-names';
 import { FakeBacklogHost, pipelineOf } from '../../testing/fake-backlog-host';
 import type { CommandService } from '../command.service';
 import { BacklogActionSupport } from './backlog-action-support';
@@ -81,7 +82,7 @@ export async function backlogHarness(parallel = 3) {
     byName: () => fake,
   } as unknown as CodeHostRegistry;
   const repositoryOrigins = { of: async (repo: string) => origins.get(repo) } as unknown as RepositoryOrigins;
-  const host = new RepositoryHost(repositoryOrigins, registry);
+  const host = new RepositoryHost(repositoryOrigins, registry, { taskTitle: async () => null } as unknown as RunNames);
   const documents = db.app.get(DocumentRepository);
   const accepts: { type: string; key: string; idempotencyKey?: string }[] = [];
   const rebase = { refusal: null as string | null };
