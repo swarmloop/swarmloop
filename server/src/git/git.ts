@@ -41,13 +41,11 @@ export function gitUnrecorded(args: string[], input?: string): Promise<string> {
       {
         encoding: 'utf8',
         maxBuffer: GIT_OUTPUT_CAP,
-        ...(input === undefined ? {} : { stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] }),
       },
       (error, stdout) => {
         if (error) {
-          const failure = new Error(error.message);
-          Object.assign(failure, error);
-          fail(failure);
+          // Keep the exit code and the other fields of the error: callers read `code`.
+          fail(Object.assign(new Error(error.message), error));
           return;
         }
         done(stdout);

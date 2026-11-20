@@ -44,9 +44,14 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/** True when the line has text besides markdown marks and blanks: the line a title is taken from. */
+export function hasTitleText(line: string): boolean {
+  return line.replace(/[#>*`\-_\s]/g, '') !== '';
+}
+
 /** The first line of a markdown text, without its marks. */
 function plainFirstLine(markdown: string): string {
-  const line = markdown.split('\n').find((item) => item.replace(/[#>*`\-_\s]/g, '') !== '') ?? '';
+  const line = markdown.split('\n').find(hasTitleText) ?? '';
   const plain = line
     .replace(/^[\s#>*\-+]+/, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')

@@ -97,4 +97,27 @@ describe('StatsRepository', () => {
       await db.close();
     }
   });
+
+  it('gives a run the prompt a name and a title need: a prefix when it holds the first text line, else the whole text', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const long = 'x'.repeat(5000);
+      const marks = `${'-'.repeat(4500)}\nreal title\nmore`;
+      const prompts = [`first line\n${long}`, long, marks, 'short'];
+      await db.app
+        .get(DataSource)
+        .getRepository(RunEntity)
+        .save(prompts.map((prompt, index) => ({ ...run(`prompt-${index}`, '2026-11-05T00:00:00.000Z'), prompt })));
+
+      const rows = await db.app.get(StatsRepository).rows(null);
+
+      const [prefixed, oneLine, markOnly, small] = rows.runs.map((row) => row.prompt ?? '');
+      expect(prefixed.split('\n')[0]).toBe('first line');
+      expect(oneLine).toBe(long);
+      expect(markOnly).toBe(marks);
+      expect(small).toBe('short');
+    } finally {
+      await db.close();
+    }
+  });
 });
