@@ -30,6 +30,8 @@ import { ServerStallRepository, SlowRequestRepository } from './server-stall.rep
 import { PlanChatStore } from './plan-chat.store';
 import { AttachmentStore } from './attachment-store';
 import { WalCheckpoint } from './wal-checkpoint';
+import { RunWaitLog } from './run-wait.log';
+import { EtaHistoryRepository } from './eta-history.repository';
 
 /**
  * In WAL mode with synchronous NORMAL a commit only appends to the WAL, without an fsync, and a committed
@@ -95,6 +97,8 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     WalCheckpoint,
     ServerStallRepository,
     SlowRequestRepository,
+    RunWaitLog,
+    EtaHistoryRepository,
   ],
   exports: [
     RunRepository,
@@ -118,6 +122,8 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     WalCheckpoint,
     ServerStallRepository,
     SlowRequestRepository,
+    RunWaitLog,
+    EtaHistoryRepository,
     TypeOrmModule,
   ],
 })

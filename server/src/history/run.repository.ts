@@ -16,6 +16,7 @@ import { activeDurationMs, toDurationParts } from './active-duration';
 import { DocumentRepository } from './document.repository';
 import { VisitRepository } from './visit.repository';
 import { root } from './run-paths';
+import { RunWaitEntity } from './run-wait.entity';
 import { removeStoredFiles } from './stored-files';
 import {
   RunEntity,
@@ -47,6 +48,7 @@ export class RunRepository {
     @InjectRepository(PasteEntity) private readonly pastes: Repository<PasteEntity>,
     @InjectRepository(CommandEntity) private readonly commands: Repository<CommandEntity>,
     @InjectRepository(CheckCommandEntity) private readonly checkCommands: Repository<CheckCommandEntity>,
+    @InjectRepository(RunWaitEntity) private readonly waits: Repository<RunWaitEntity>,
     private readonly documentRepository: DocumentRepository,
     private readonly visitRepository: VisitRepository,
     @Optional() private readonly live?: LiveHub,
@@ -308,6 +310,7 @@ export class RunRepository {
     await this.pastes.delete({ runKey: run.key });
     await this.commands.delete({ runId: run.id });
     await this.checkCommands.delete({ runId: run.id });
+    await this.waits.delete({ runId: run.id });
     await this.runs.delete({ id: run.id });
     this.live?.clearSpend(run.key);
     this.live?.changed(run.key);
