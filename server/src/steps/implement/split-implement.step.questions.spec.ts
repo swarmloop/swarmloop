@@ -174,7 +174,7 @@ describe('subtask questions', () => {
 
   it('does not touch a subtask that is already past plan', async () => {
     const { documents } = await questionWorld(() => ({ text: 'late' }));
-    await ask('a', '- which field?\n', 'plan');
+    await ask('a', '- which field?\n', 'plan-improve');
 
     await pass(app);
 

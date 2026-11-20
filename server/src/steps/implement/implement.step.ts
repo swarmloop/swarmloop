@@ -6,7 +6,7 @@ import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
-import { isSubtask, settled, withStatuses } from '../../contract/subtask';
+import { CONTRACT_KIND, isSubtask, settled, withStatuses } from '../../contract/subtask';
 import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -47,16 +47,9 @@ import { unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { rerunFailed } from './failed-commands';
 import { checksStillRed, implementAsk, implementFollowUp, planAmendment, resultTextFor } from './implement.prompts';
 import { amendmentOf } from '../shared/amendment';
-import { implementNeedsWait } from './implement-needs';
-import {
-  answerFollowUp,
-  answerSection,
-  mayAsk,
-  readAnswer,
-  takeAnswer,
-  waitForPlanner,
-  withAssumed,
-} from './implement-question';
+import { implementErrors, implementExchange, withAssumptions } from './implement-asks';
+import { StarterExchange } from '../shared/starter-exchange';
+import { answerFollowUp, answerSection, mayAsk, readAnswer, takeAnswer } from './implement-question';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { renderCause, renderImplementation, withReturnNotes } from './implement-record';
 import { retryUnchangedPipeline } from './implement-pipeline-return';
@@ -185,7 +178,8 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const { runtime } = this.profile(env, ctx.opened.run);
-    const ask = implementAsk(notes);
+    const subtask = isSubtask(ctx.opened.run);
+    const ask = implementAsk(notes, subtask);
     const fullFor = (target: string): string =>
       [
         skillPrompt('implement', input.requirements, names, sections, mounts, {
@@ -213,7 +207,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const received = continued?.chatId ? (continued.resultName ?? null) : null;
     const followUp = answer
       ? answerFollowUp(answer, resultTextFor(ask, received))
-      : implementFollowUp(plan, notes, merged, received);
+      : implementFollowUp(plan, notes, merged, received, subtask);
     const basePrompt = withAddedRepos(continued?.chatId ? followUp : full, added);
     const heads = await featureHeads(mounts, branch);
     const place = { run: ctx.opened.run, key, step: this.name, mounts, runtime, samples: ctx.samples };
@@ -227,8 +221,10 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const before = await snapshot(mounts);
     const mayQuestion =
       !answer && (await mayAsk(ctx.opened.run, this.planChat, { root: root(this.config), env: this.config.env }));
+    const exchange = new StarterExchange(this.planChat, this.clock);
+    const contract = subtask ? await this.parentDocument(ctx.opened.run, CONTRACT_KIND) : null;
     const asked = (value: unknown): string[] =>
-      implementErrors(ctx.opened.run, value as ImplementationResult, mayQuestion);
+      implementErrors(ctx.opened.run, value as ImplementationResult, mayQuestion, exchange, contract);
     const first = await ctx.launch({
       prompt,
       mounts,
@@ -245,14 +241,9 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     await assertUncommitted(mounts, branch, heads);
     await takeAnswer(this.planChat, key, answer);
     let value = first.resultValue as ImplementationResult;
-    const waiting = implementNeedsWait(ctx.opened.run, ctx.opened.startedAt, value);
-    if (waiting) {
-      return { ...waiting, outputs: [...waiting.outputs, { artifact: ARTIFACTS.implementationResult, value }] };
-    }
-    if (mayQuestion && value.question?.trim() && this.planChat) {
-      const { startedAt, attemptId } = ctx.opened;
-      const ask = { chat: this.planChat, clock: this.clock, step: this.name, attemptId, startedAt };
-      return waitForPlanner(ctx.opened.run, { ...ask, question: value.question });
+    const asks = await implementExchange(exchange, ctx, { answered: Boolean(answer), mayAsk: mayQuestion }, value);
+    if (asks.wait) {
+      return asks.wait;
     }
     if (isSubtask(ctx.opened.run)) await ctx.write(ARTIFACTS.needs, '');
     // The newest checklist an answer of this visit corrected.
@@ -310,7 +301,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     const change = correctedPlan(input.requirements, corrected, current?.items ?? []);
     const reasons = renderSummary(value.summary, value.implementation);
     const why = change ? `${reasons.trimEnd()}\n${change.handoff}` : reasons;
-    const summary = withAssumed(value.cause?.length ? `${renderCause(value.cause)}${why}` : why, value.question);
+    const summary = withAssumptions(value.cause?.length ? `${renderCause(value.cause)}${why}` : why, asks.assumed);
     const status = await worktreeStatus(mounts);
     return {
       route: { to: 'next' },
@@ -336,14 +327,4 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       runtime,
     };
   }
-}
-
-/** What the server checks on an implement answer after its schema: it changed something, or a subtask waits for a sibling, or the step asks the planner. */
-function implementErrors(run: RunEntity, value: ImplementationResult, mayQuestion: boolean): string[] {
-  const errors: string[] = [];
-  const asking = mayQuestion && Boolean(value.question?.trim());
-  if (value.implementation.length === 0 && !asking && !(isSubtask(run) && value.needs?.length)) {
-    errors.push('implementation: must list what you changed');
-  }
-  return errors;
 }

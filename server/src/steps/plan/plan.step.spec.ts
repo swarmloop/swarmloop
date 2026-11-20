@@ -1,3 +1,4 @@
+import { resultAnswer } from '../../testing/result-answer';
 import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 import { Test } from '@nestjs/testing';
@@ -105,8 +106,8 @@ describe('plan step', () => {
     mkdirSync(join(root, 'worktrees', 'PROJ-48', 'billing-api'), { recursive: true });
     const agent = jest
       .fn()
-      .mockResolvedValueOnce(result(questionsBlock(['which column type?'])))
-      .mockResolvedValueOnce(result(planBlock(['add the field'])))
+      .mockResolvedValueOnce(result(resultAnswer('Done.', { summary: ['stopped'], question: 'which column type?' })))
+      .mockResolvedValueOnce(result(planBlock(['add the field'], { question: 'which column type?' })))
       .mockResolvedValueOnce(result(questionsBlock(['which column type?'])));
     const app = await boot(root, agent);
     try {
@@ -116,6 +117,14 @@ describe('plan step', () => {
       await runs.saveRun({ ...(await runs.findRun('PROJ-47-t1'))!, parentRunId: parent.id, taskId: 't1' });
       await seed(app, 'PROJ-48', '');
 
+      await app.get(PipelineService).step('plan', 'PROJ-47-t1');
+      const asking = await runs.findRun('PROJ-47-t1');
+      expect(asking?.currentStep).toBe('plan');
+      expect(asking?.status).toBe('waiting');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-47-t1', 'questions')).toContain('which column type?');
+
+      // Answered, it asked once: a further question is its own choice.
+      await app.get(DocumentRepository).putDocument(asking!, 'answers', 'question: which column type?\nanswer: int\n');
       await app.get(PipelineService).step('plan', 'PROJ-47-t1');
       const child = await runs.findRun('PROJ-47-t1');
       expect(child?.currentStep).toBe('plan-improve');

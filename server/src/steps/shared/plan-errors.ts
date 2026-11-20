@@ -9,10 +9,3 @@ export function planErrors(value: PlanResult, limits: TaskLimits, subtask: boole
   const shape = value.needs?.length ? planShapeError(value) : null;
   return [...(shape ? [shape] : []), ...(isSplit(value) ? taskErrors(value, unbounded(limits)) : [])];
 }
-
-/** A subtask that decided its own questions gives the plan, and no questions or tasks. */
-export function decidedErrors(value: PlanResult): string[] {
-  return value.plan.length > 0 && value.questions.length === 0
-    ? []
-    : ['plan: give the checklist now, with no questions'];
-}

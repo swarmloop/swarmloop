@@ -121,10 +121,12 @@ describe('a step that asks the planner', () => {
     });
 
     it('lets a subtask ask its parent only at the steps that ask', async () => {
-      const place = { root: await root(), env };
+      // A subtask asks its own planner, like any run: it needs the plan chat its own plan step left.
+      const place = { root: await planned(), env };
       expect(await mayAsk(run(4), chat, place)).toBe(true);
       expect(await mayAsk(run(4, 'implement-improve'), chat, place)).toBe(true);
       expect(await mayAsk(run(4, 'code-review'), chat, place)).toBe(false);
+      expect(await mayAsk(run(4), chat, { root: await root(), env })).toBe(false);
     });
   });
 });

@@ -11,17 +11,19 @@ import type { VisitRepository } from '../history/visit.repository';
 import { openQuestions, unanswered } from '../steps/shared/answers';
 import { renderQuestions } from '../steps/research/research-record';
 import { SUBTASK_ASKING_STEPS } from '../steps/implement/implement-question';
+import { asksForStarter } from '../steps/shared/starter-asks';
 import { storedAsks } from './stored-research';
 import { subtaskAsks } from '../steps/plan/plan.prompts';
 import { subtaskAnswer, type SubtaskAnswerResult } from '../agent-result/definitions/subtask-answer';
 import type { OpenedStep } from '../steps/step-run';
 import type { CommandService } from './command.service';
 
-const ASKING_STEPS: string[] = ['research', 'code-review', ...SUBTASK_ASKING_STEPS];
+const ASKING_STEPS: string[] = ['research', 'plan', 'code-review', ...SUBTASK_ASKING_STEPS];
 
 /**
- * The parent planner's answer to the questions of a subtask: those of its research and code review, which the person's
- * Answer command closes, and the question of its implement or implement-improve, which waits in the subtask's own chat.
+ * The parent planner's answer to the questions of a subtask: those of its research, plan and code review, which the
+ * person's Answer command closes, and what the planner of its implement or implement-improve escalated, which waits
+ * in the subtask's own chat for its starter.
  */
 export class SubtaskPlannerAnswer {
   private readonly logger = new Logger(SubtaskPlannerAnswer.name);
@@ -87,10 +89,10 @@ export class SubtaskPlannerAnswer {
     }
   }
 
-  /** The question of a subtask's implement that waits in its chat, or its answer that waits to be read; null for neither. */
+  /** What a subtask's own planner escalated that waits in its chat for the starter, or the answer that waits to be read; null for neither. */
   private async chatQuestionOf(run: RunEntity): Promise<PlanChatEntry | null> {
-    const [question] = await this.chat.pendingQuestions(run.key);
-    return question ?? (await this.chat.answerFor(run.key, run.currentStep));
+    const [ask] = asksForStarter(await this.chat.read(run.key));
+    return ask ?? (await this.chat.answerFor(run.key, run.currentStep));
   }
 
   /** Delivers the answer to a subtask run the way its step reads it. */
@@ -100,22 +102,26 @@ export class SubtaskPlannerAnswer {
   }
 
   /**
-   * Records the answer in the subtask's own chat, where its step reads it, closes the question and starts the step
+   * Records the answer in the subtask's own chat, where its step reads it, closes what the step asked and starts the step
    * again. A start that was refused leaves the answer recorded, so the next pass sends the start again.
    */
   private async reply(child: RunEntity, text: string): Promise<void> {
-    const [question] = await this.chat.pendingQuestions(child.key);
-    if (question) {
+    const asks = asksForStarter(await this.chat.read(child.key));
+    const [ask] = asks;
+    if (ask) {
       await this.chat.appendEntry(child.key, {
-        key: `answer-${question.key}`,
+        key: `answer-${ask.key}`,
         role: 'planner',
         kind: 'answer',
-        from: question.from,
+        from: ask.from,
         text,
         at: this.clock.iso(),
         state: 'pending',
       });
-      await this.chat.markTaken(child.key, [question.key]);
+      await this.chat.markTaken(
+        child.key,
+        asks.filter((item) => item.from === ask.from).map((item) => item.key),
+      );
     }
     const answer = await this.chat.answerFor(child.key, child.currentStep);
     if ((await this.documents.latestBody(child.key, ARTIFACTS.questions.kind))?.trim()) {
@@ -131,10 +137,10 @@ export class SubtaskPlannerAnswer {
     await this.commands.submit('answer', child.key, { answers }, { idempotencyKey });
   }
 
-  /** The questions a child waits on: those of its research, the one of its code review, or the one of its implement. */
+  /** The questions a child waits on: those of its research or plan, the one of its code review, or what its implement escalated. */
   private async askedBody(run: RunEntity): Promise<string> {
     if (SUBTASK_ASKING_STEPS.includes(run.currentStep)) {
-      return renderQuestions((await this.chat.pendingQuestions(run.key)).map((question) => question.text));
+      return renderQuestions(asksForStarter(await this.chat.read(run.key)).map((ask) => ask.text));
     }
     const asked = run.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
     return (await this.documents.latestBody(run.key, asked.kind)) ?? '';

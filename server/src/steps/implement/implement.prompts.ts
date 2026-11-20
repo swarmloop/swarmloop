@@ -4,11 +4,8 @@ import { reviewReturn } from '../shared/handoff';
 import type { FailedCommand } from '../../environment/environment-types';
 import { NEAR_TESTS_RULE } from '../shared/near-tests-rule';
 import { TASK_SCOPE } from '../shared/requirements-brief';
-import { implementation, implementationAfterReview } from '../../agent-result/definitions/implementation';
-import {
-  implementationImprove,
-  implementationImproveAfterReview,
-} from '../../agent-result/definitions/implementation-improve';
+import { implementation, implementationFor } from '../../agent-result/definitions/implementation';
+import { implementationImproveFor } from '../../agent-result/definitions/implementation-improve';
 import type { ResultDefinition } from '../../agent-result/result-definition';
 import { rebaseResolution } from '../../agent-result/definitions/rebase-resolution';
 import { resultPromptFor } from '../../agent-result/result-prompt';
@@ -49,17 +46,18 @@ function answersReview(notes: string | null): boolean {
 }
 
 /** The result an implement pass sends, and the lines that ask for it. Only a code review return asks for `rejected`. */
-export function implementAsk(notes: string | null): { definition: ResultDefinition; lines: string[] } {
-  return answersReview(notes)
-    ? { definition: implementationAfterReview, lines: [REJECTED_LINE] }
-    : { definition: implementation, lines: [] };
+export function implementAsk(notes: string | null, subtask = false): { definition: ResultDefinition; lines: string[] } {
+  const review = answersReview(notes);
+  return { definition: implementationFor({ subtask, review }), lines: review ? [REJECTED_LINE] : [] };
 }
 
 /** The same for an implement-improve pass. */
-export function implementImproveAsk(notes: string | null): { definition: ResultDefinition; lines: string[] } {
-  return answersReview(notes)
-    ? { definition: implementationImproveAfterReview, lines: [REJECTED_LINE] }
-    : { definition: implementationImprove, lines: [] };
+export function implementImproveAsk(
+  notes: string | null,
+  subtask = false,
+): { definition: ResultDefinition; lines: string[] } {
+  const review = answersReview(notes);
+  return { definition: implementationImproveFor({ subtask, review }), lines: review ? [REJECTED_LINE] : [] };
 }
 
 /** The result text of a chat: full when the pass asks for `rejected`, which the chat's earlier result text lacks. */
@@ -111,6 +109,7 @@ export function implementFollowUp(
   notes: string | null,
   context: { heading: string; body: string }[],
   received: string | null,
+  subtask = false,
 ): string {
   const lines = [
     'Implement this approved checklist in the mounted worktree. Read a file before editing it.',
@@ -137,14 +136,14 @@ export function implementFollowUp(
   for (const { heading, body } of context) {
     lines.push('', `${heading}:`, body.trim());
   }
-  const ask = implementAsk(notes);
+  const ask = implementAsk(notes, subtask);
   lines.push(...(ask.lines.length > 0 ? ['', ...ask.lines] : []), '', resultTextFor(ask, received));
   return lines.join('\n');
 }
 
 const CHECK_FAILED_LINE = 'The server check below failed on your files. Run it, fix the cause, run it again.';
 
-export function implementImproveFollowUp(notes: string | null, received: string | null): string {
+export function implementImproveFollowUp(notes: string | null, received: string | null, subtask = false): string {
   const lines = [
     'Check the change for logical and technical gaps and fix only those. Start from the files this change touched. Open another file only to follow a call from the change or a test the return names. Do not sweep the tree with grep. When there is no gap and no command came back red, leave the files. A pipeline return changes the code or the failed test. Do not leave them. Do not widen the change. Do not implement a linked ticket.',
     TASK_SCOPE,
@@ -164,7 +163,7 @@ export function implementImproveFollowUp(notes: string | null, received: string 
     }
     lines.push(returned, '');
   }
-  const ask = implementImproveAsk(returned ?? null);
+  const ask = implementImproveAsk(returned ?? null, subtask);
   lines.push(...ask.lines, resultTextFor(ask, received));
   return lines.join('\n');
 }

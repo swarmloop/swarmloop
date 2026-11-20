@@ -1,5 +1,9 @@
 import Joi from 'joi';
-import { QUESTION } from './implementation';
+
+/** One choice the step cannot settle itself. The server takes it to the planner of the run and the step waits for the answer. */
+export const QUESTION = Joi.string().description(
+  'One choice you cannot settle from the brief, the requirements, the plan and the decisions; leave out when none',
+);
 
 /** A decision a task made that another task may depend on: an item of the contract it owns, and what it settled. */
 export interface StarterDecision {
