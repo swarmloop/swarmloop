@@ -298,4 +298,10 @@ describe('planChatFollowUp', () => {
     expect(text).toContain('Change the plan only when the message asks for a change');
     expect(text.trimEnd().endsWith('RESULT PROMPT')).toBe(true);
   });
+
+  it("tells a subtask's planner to change only what its task owns, and no other planner", () => {
+    const subtask = planChatFollowUp([{ text: 'one' }], 'RESULT PROMPT', true);
+    expect(subtask).toContain('Change only what this task owns');
+    expect(planChatFollowUp([{ text: 'one' }], 'RESULT PROMPT')).not.toContain('Change only what this task owns');
+  });
 });

@@ -79,7 +79,7 @@ export class StarterExchange {
     }
     await this.report(ctx, visit.step, fields);
     const question = fields.question?.trim() ?? '';
-    const handBacks = (fields.outOfScope ?? []).map((part) => `hands back: ${part.what.trim()}`);
+    const handBacks = this.handBacks(fields);
     const asked = [...(question ? [question] : []), ...handBacks];
     if (asked.length === 0) return { wait: null, assumed: [] };
     if (visit.answered || (visit.route === 'chat' && !this.chat)) return { wait: null, assumed: asked };
@@ -107,24 +107,46 @@ export class StarterExchange {
    * in the run's own chat, which the planner of the parent finds. The run waits and no container is held.
    */
   private async askParent(ctx: ModelStepContext, visit: StarterVisit, texts: string[]): Promise<StepResult> {
-    const { run, startedAt, attemptId } = ctx.opened;
-    for (const [index, text] of texts.entries()) {
-      await this.chat?.appendEntry(run.key, {
-        key: `handback-${visit.step}-${attemptId}-${index}`,
-        role: 'planner',
-        kind: 'escalation',
-        from: visit.step,
-        text,
-        at: this.clock.iso(),
-        state: 'pending',
-      });
-    }
+    const { startedAt } = ctx.opened;
+    await this.escalate(ctx, visit.step, texts);
     const reason = asksParentReason(visit.step);
     return {
       route: { to: 'wait', code: REASON.asksPlanner, reason },
       summary: `${startedAt} ${reason}\n${texts.join('\n')}`,
       outputs: visit.outputs,
     };
+  }
+
+  /** The parts the result leaves out, as the lines a planner is asked. */
+  private handBacks(fields: StarterFields): string[] {
+    return (fields.outOfScope ?? []).map((part) => `hands back: ${part.what.trim()}`);
+  }
+
+  /**
+   * Hands what a reply leaves to the starter without making the run wait: the decisions and parts left out are
+   * reported, and the question, the parts and the `more` texts are pending escalations in the run's own chat that the
+   * planner of the parent finds.
+   */
+  async handUp(ctx: ModelStepContext, fields: StarterFields, step: string, more: string[] = []): Promise<void> {
+    await this.report(ctx, step, fields);
+    const question = fields.question?.trim() ?? '';
+    await this.escalate(ctx, step, [...(question ? [question] : []), ...more, ...this.handBacks(fields)]);
+  }
+
+  /** One pending escalation per text in the run's chat, named by the step and the attempt, so a replay writes each once. */
+  private async escalate(ctx: ModelStepContext, step: string, texts: string[]): Promise<void> {
+    const { run, attemptId } = ctx.opened;
+    for (const [index, text] of texts.entries()) {
+      await this.chat?.appendEntry(run.key, {
+        key: `handback-${step}-${attemptId}-${index}`,
+        role: 'planner',
+        kind: 'escalation',
+        from: step,
+        text,
+        at: this.clock.iso(),
+        state: 'pending',
+      });
+    }
   }
 
   /** The decisions and the parts left out of the visit, under the key of the attempt, so a replay of the attempt writes them once. */

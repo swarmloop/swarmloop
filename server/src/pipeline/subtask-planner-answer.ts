@@ -51,11 +51,21 @@ export class SubtaskPlannerAnswer {
   private readonly clock: Clock;
 
   async asking(run: RunEntity): Promise<boolean> {
+    if (await this.handedUp(run)) return true;
     if (run.status !== 'waiting' || !ASKING_STEPS.includes(run.currentStep)) return false;
     if (SUBTASK_ASKING_STEPS.includes(run.currentStep)) return (await this.chatQuestionOf(run)) !== null;
     const questions = await this.askedBody(run);
     const answers = (await this.documents.latestBody(run.key, ARTIFACTS.answers.kind)) ?? '';
     return unanswered(questions, await storedAsks(this.documents, run.key), answers).length > 0;
+  }
+
+  /**
+   * True when the run has asks nobody answered that it does not wait on: its planner handed them up from a person's
+   * message and the task went on. The decision reaches the contract; nothing is resumed.
+   */
+  private async handedUp(run: RunEntity): Promise<boolean> {
+    const waitingOnThem = run.status === 'waiting' && SUBTASK_ASKING_STEPS.includes(run.currentStep);
+    return !waitingOnThem && asksForStarter(await this.chat.read(run.key)).length > 0;
   }
 
   /** True when the planner answered this run and its delivery was refused, so the next pass sends it again. */
@@ -78,7 +88,7 @@ export class SubtaskPlannerAnswer {
     const given = await this.askAbout(opened, task, questions, contract, plan);
     if (given === null) {
       // The person who started the run is asked next, from the questions the subtask holds.
-      if (SUBTASK_ASKING_STEPS.includes(child.currentStep)) {
+      if (SUBTASK_ASKING_STEPS.includes(child.currentStep) || (await this.handedUp(child))) {
         await this.documents.putDocument(child, ARTIFACTS.questions.kind, questions);
       }
       return null;
@@ -137,7 +147,8 @@ export class SubtaskPlannerAnswer {
 
   /** Delivers the answer to a subtask run the way its step reads it. */
   private async give(child: RunEntity, text: string, idempotencyKey: string): Promise<void> {
-    if (SUBTASK_ASKING_STEPS.includes(child.currentStep)) await this.resume(child, text);
+    if (await this.handedUp(child)) await this.close(child, text);
+    else if (SUBTASK_ASKING_STEPS.includes(child.currentStep)) await this.resume(child, text);
     else await this.send(child, text, idempotencyKey);
   }
 
@@ -184,7 +195,7 @@ export class SubtaskPlannerAnswer {
 
   /** The questions a child waits on: those of its research or plan, the one of its code review, or what its implement escalated. */
   private async askedBody(run: RunEntity): Promise<string> {
-    if (SUBTASK_ASKING_STEPS.includes(run.currentStep)) {
+    if (SUBTASK_ASKING_STEPS.includes(run.currentStep) || (await this.handedUp(run))) {
       return renderQuestions(asksForStarter(await this.chat.read(run.key)).map((ask) => ask.text));
     }
     const asked = run.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;

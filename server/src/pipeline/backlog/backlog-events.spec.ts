@@ -218,4 +218,28 @@ describe('BacklogEvents', () => {
         { slug: 'a', runKey: 'a-1', message: 'use the small one', reply: 'done, small one' },
       ]);
     }));
+
+  it('writes a message to a subtask of a started epic and its reply as one run-chat event of the parent run, once', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      const id = (await h.seedBacklog('one')).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1' });
+      await h.seedDoneRun('a-1', []);
+      await h.db.app.get(PlanChatStore).appendEntry('a-1', {
+        key: 'exchange-a-1-b-t1',
+        role: 'planner',
+        kind: 'info',
+        text: 'Maksym → b: use a cursor',
+        reply: 'Done, a cursor.',
+        link: 'a-1-b',
+        at: '2026-01-01T00:00:00.000Z',
+        state: 'taken',
+      });
+      await h.tick();
+      await h.tick();
+
+      expect((await events(h, id, 'run-chat')).map((event) => event.facts)).toEqual([
+        { slug: 'a', runKey: 'a-1', message: 'Maksym → b: use a cursor', reply: 'Done, a cursor.' },
+      ]);
+    }));
 });

@@ -95,6 +95,24 @@ describe('StarterExchange', () => {
     ]);
   });
 
+  it('hands up decisions and texts without a wait, once for an attempt', async () => {
+    const { ctx, exchange, written, entries } = world();
+    const fields = {
+      decisions: [{ item: 'own', text: 'three tries' }],
+      question: 'Which column?',
+      outOfScope: [{ what: 'the cache', needed: false }],
+    };
+    await exchange.handUp(ctx, fields, 'implement', ['Who owns the log?']);
+    await exchange.handUp(ctx, fields, 'implement', ['Who owns the log?']);
+    const { question: _question, ...reported } = fields;
+    expect(JSON.parse(written.starter_report)).toEqual([{ key: 'implement-a1', step: 'implement', ...reported }]);
+    expect(asksForStarter({ entries }).map((entry) => entry.text)).toEqual([
+      'Which column?',
+      'Who owns the log?',
+      'hands back: the cache',
+    ]);
+  });
+
   describe('check', () => {
     const contract = '- retry (owner t0): three tries\n- own (owner t1): ours\n';
 

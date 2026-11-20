@@ -44,10 +44,11 @@ describe('conversationView', () => {
     expect(shown.questions).toEqual([{ kind: 'question', id: 'q1', text: 'Which limit?', answer: '' }]);
   });
 
-  it('is read only on a subtask and names the parent', () => {
+  it("goes to the task's planner on a subtask and to the epic's planner once it merged", () => {
     const shown = view({ step: 'implement' }, 'running', { parentKey: 'epic-1' });
-    expect(shown.composer).toBe('read-only');
+    expect(shown.composer).toBe('subtask');
     expect(shown.parentKey).toBe('epic-1');
+    expect(view({ step: 'done' }, 'merged', { parentKey: 'epic-1' }).composer).toBe('epic');
     expect(view({ step: 'implement' }, 'running')).not.toHaveProperty('parentKey');
   });
 

@@ -31,19 +31,23 @@ export function planFollowUp(answers: string, resultText: string, heading = 'Ans
 export const PERSON_WORDS = "The person's words:";
 
 /** What the planner is told in its own chat when a person wrote to it. */
-export function planChatFollowUp(messages: readonly { text: string }[], resultText: string): string {
+export function planChatFollowUp(messages: readonly { text: string }[], resultText: string, subtask = false): string {
   const guidance = skillSection('plan', 'Answer a person');
   const words = messages.map((message) => message.text.trim()).join('\n\n');
-  return planFollowUp(words, [guidance, resultText].join('\n\n'), PERSON_WORDS);
+  return planFollowUp(words, [guidance, ...(subtask ? [SUBTASK_SCOPE] : []), resultText].join('\n\n'), PERSON_WORDS);
 }
+
+/** What a subtask's planner may change when a person writes to it: its own task only. */
+const SUBTASK_SCOPE =
+  'You plan one task of an epic. Change only what this task owns. Send anything about another task or the contract as `decisions`, `question`, `outOfScope` or `escalate`, and do not change it yourself.';
 
 /** The rules of an amendment: the run already implemented, so the plan is changed and not made again. */
 const AMEND_RULES =
   'The run already implemented part of this plan. Items already done stay done. In `plan`, give the whole checklist: keep every done item as it is, and add or change items only for what the message asks. Do not split the run into tasks.';
 
 /** What the planner is told in its own chat when a person wrote to a run that already implemented. */
-export function planChatAmends(messages: readonly { text: string }[], resultText: string): string {
-  return planChatFollowUp(messages, [AMEND_RULES, resultText].join('\n\n'));
+export function planChatAmends(messages: readonly { text: string }[], resultText: string, subtask = false): string {
+  return planChatFollowUp(messages, [AMEND_RULES, resultText].join('\n\n'), subtask);
 }
 
 /** The rules of a split run that already started its tasks: the planner adds tasks and changes none. */

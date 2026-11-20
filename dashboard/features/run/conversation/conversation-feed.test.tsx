@@ -151,6 +151,25 @@ describe('ConversationFeed', () => {
     expect(screen.getByText('Answer: Cursor, as in the brief.')).toBeInTheDocument();
   });
 
+  it("shows a person's message to a subtask and its reply as one info line with a link to the subtask", () => {
+    const info: PlanChatEntry = {
+      ...entry('info-1', 'planner', 'Maksym → git-retry: use a cursor'),
+      kind: 'info',
+      reply: 'Done, the page uses a cursor.',
+      link: 'epic-1-git-retry',
+    };
+    feed(flowView({ conversation: conversation({ entries: [info] }) }), [info]);
+
+    expect(
+      screen.getByText('Maksym → git-retry: use a cursor Reply: Done, the page uses a cursor.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open epic-1-git-retry' })).toHaveAttribute(
+      'href',
+      '/runs/epic-1-git-retry',
+    );
+    expect(screen.queryByText('Message')).toBeNull();
+  });
+
   it('shows a usage-limit wait as an info line with the local time it goes on', () => {
     const limit = { runtime: 'claude', resumesAt: '2026-11-08T21:51:00.000Z' };
     feed(

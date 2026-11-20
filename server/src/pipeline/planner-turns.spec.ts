@@ -104,10 +104,15 @@ describe('PlannerTurns.takesMessages', () => {
     expect(turns.takesMessages(run(false, 'checks'))).toBe(true);
   });
 
-  it('does not take it before implement or for a subtask', () => {
+  it('does not take it before implement', () => {
     const { turns } = amending([], null);
     expect(turns.takesMessages(run(true, 'plan'))).toBe(false);
-    expect(turns.takesMessages(run(true, 'implement', true))).toBe(false);
+    expect(turns.takesMessages(run(true, 'plan', true))).toBe(false);
+  });
+
+  it("takes a running subtask's amend turn once its implement started", () => {
+    const { turns } = amending([], null);
+    expect(turns.takesMessages(run(true, 'implement', true))).toBe(true);
   });
 });
 

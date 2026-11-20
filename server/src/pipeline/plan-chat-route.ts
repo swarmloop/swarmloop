@@ -2,8 +2,8 @@ import type { RunEntity } from '../history/entities';
 import { STEPS, type StepName } from '../contract/steps';
 import type { RunState } from '../contract/run-state';
 
-/** Where a person's message goes. */
-export type MessageTurn = 'answer' | 'planning' | 'amend' | 'add-tasks' | 'reopen' | 'follow-up' | 'subtask';
+/** Where a person's message goes. `to-parent` is a message to a subtask that ended: its planner is the parent's. */
+export type MessageTurn = 'answer' | 'planning' | 'amend' | 'add-tasks' | 'reopen' | 'follow-up' | 'to-parent';
 
 /** What the route of a message depends on besides the run's row. */
 interface TurnContext {
@@ -30,12 +30,12 @@ function implementStarted(step: string): boolean {
 
 /** The one rule per place of a run that says what a message does. */
 export function messageTurn(run: Pick<RunEntity, 'currentStep' | 'workspace'>, context: TurnContext): MessageTurn {
-  if (context.parentKey) return 'subtask';
-  if (ENDED.includes(context.state) || run.workspace === 'removed') return 'follow-up';
+  if (ENDED.includes(context.state) || run.workspace === 'removed')
+    return context.parentKey ? 'to-parent' : 'follow-up';
   if (context.openItems > 0) return 'answer';
   if (!implementStarted(run.currentStep)) return 'planning';
   if (REOPENED.includes(context.state)) return 'reopen';
-  return context.split ? 'add-tasks' : 'amend';
+  return context.split && !context.parentKey ? 'add-tasks' : 'amend';
 }
 
 /** True when the message starts the run again: a reopened run, or a stopped, failed or blocked run in planning. */
