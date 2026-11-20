@@ -659,6 +659,8 @@ function harness(
       runtime: 'cursor',
       resumeChatId: null,
       mounts: [],
+      envMasks: [],
+      workRoots: [],
     }),
     shellFeature: async (key) => ({
       key,
@@ -668,6 +670,8 @@ function harness(
       runtime: 'cursor',
       resumeChatId: null,
       mounts: [],
+      envMasks: [],
+      workRoots: [],
     }),
     shellLock: async () => ({ status: 'running' }),
     shellUnlock: async () => ({ status: 'waiting' }),
