@@ -174,6 +174,8 @@ function boardPlace(step: string): number {
 }
 
 export function runName(key: string, prompt: string | null): string {
-  const line = (prompt ?? '').trim().split('\n')[0]?.slice(0, 120) ?? '';
+  const text = (prompt ?? '').trim();
+  const newline = text.indexOf('\n');
+  const line = (newline < 0 ? text : text.slice(0, newline)).slice(0, 120);
   return line || key;
 }

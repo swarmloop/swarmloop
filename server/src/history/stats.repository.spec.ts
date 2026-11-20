@@ -1,4 +1,5 @@
 import { DataSource } from 'typeorm';
+import { runTitle } from '../contract/requirements-view';
 import { LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 import { ServerStallEntity } from './server-stall.entities';
 import { repositoryDatabase } from './repository.spec-helpers';
@@ -93,6 +94,38 @@ describe('StatsRepository', () => {
         { startedAt: '2026-11-05T00:00:00.000Z', durationMs: 20_000, kind: 'host-paused' },
       ]);
       expect((await stats.rows(null)).stalls).toHaveLength(2);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('reads a prefix of a long prompt when it settles the name and title, else the whole prompt', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const filler = 'word '.repeat(2_000);
+      const prompts = {
+        enough: `\n  # Add a field\nmore text\n${filler}`,
+        oneLine: `Add a field ${filler}`,
+        marksFirst: `${'#\n'.repeat(3_000)}Add a field\nmore\n${filler}`,
+        short: 'Add a field\nmore',
+      };
+      await db.app
+        .get(DataSource)
+        .getRepository(RunEntity)
+        .save(Object.entries(prompts).map(([key, prompt]) => ({ ...run(key, '2026-11-05T00:00:00.000Z'), prompt })));
+
+      const rows = await db.app.get(StatsRepository).rows(null);
+      const byKey = new Map(rows.runs.map((row) => [row.key, row.prompt ?? '']));
+
+      expect(byKey.get('short')).toBe(prompts.short);
+      expect(byKey.get('oneLine')).toBe(prompts.oneLine);
+      expect(byKey.get('marksFirst')).toBe(prompts.marksFirst);
+      const enough = byKey.get('enough') ?? '';
+      expect(enough.length).toBeLessThan(prompts.enough.length);
+      expect(prompts.enough.startsWith(enough)).toBe(true);
+      expect(runTitle(enough)).toBe(runTitle(prompts.enough));
+      expect(enough.trim().split('\n')[0]).toBe(prompts.enough.trim().split('\n')[0]);
+      expect(rows.runs.every((row) => !('promptLength' in row))).toBe(true);
     } finally {
       await db.close();
     }

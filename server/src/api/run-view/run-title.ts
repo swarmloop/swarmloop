@@ -2,6 +2,11 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import { requirementsView, runTitle } from '../../contract/requirements-view';
 
+/** The ids of the runs without a stored title: the only ones whose title is read from the requirements. */
+export function untitledRunIds(runs: (Pick<RunEntity, 'id'> & Partial<Pick<RunEntity, 'title'>>)[]): number[] {
+  return runs.filter((run) => !run.title?.trim()).map((run) => run.id);
+}
+
 /**
  * The latest requirements body, by run id, in one batched read. Only the runs without a stored title are read:
  * the others never use the body, and the list is built on every live update.
@@ -10,7 +15,7 @@ export async function requirementBodies(
   documents: Pick<DocumentRepository, 'latestDocuments'>,
   runs: (Pick<RunEntity, 'id'> & Partial<Pick<RunEntity, 'title'>>)[],
 ): Promise<Map<number, string>> {
-  const untitled = runs.filter((run) => !run.title?.trim()).map((run) => run.id);
+  const untitled = untitledRunIds(runs);
   const found = untitled.length > 0 ? await documents.latestDocuments(untitled, ['requirements']) : [];
   return new Map(found.map((document) => [document.runId, document.body]));
 }

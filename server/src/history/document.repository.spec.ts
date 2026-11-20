@@ -59,6 +59,25 @@ describe('DocumentRepository', () => {
       await db.close();
     }
   });
+  it('reads the latest body of a kind of each run in one query', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      const documents = db.app.get(DocumentRepository);
+      const first = await runs.openWaiting('run-1', '/target');
+      const second = await runs.openWaiting('run-2', '/target');
+      await documents.putDocument(first, 'requirements', 'old');
+      await documents.putDocument(first, 'requirements', 'new');
+      await documents.putDocument(first, 'error', 'not asked for');
+      await documents.putDocument(second, 'error', 'other kind');
+
+      expect([...(await documents.latestBodies([first.id, second.id], 'requirements'))]).toEqual([[first.id, 'new']]);
+      expect((await documents.latestBodies([], 'requirements')).size).toBe(0);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('plans the latest documents of runs on the run, kind and id index without scanning documents', async () => {
     const db = await repositoryDatabase();
     try {

@@ -320,23 +320,14 @@ export class RunRepository {
     );
   }
 
-  /** The active time of every run, or only of the runs with these ids. */
-  async durationByRun(runIds?: number[]): Promise<Map<number, number>> {
-    const stats = await this.stepStats.find({
-      ...(runIds ? { where: { runId: In(runIds) } } : {}),
-      select: {
-        id: true,
-        runId: true,
-        step: true,
-        durationMs: true,
-        stepStartedAt: true,
-        startedAt: true,
-        finishedAt: true,
-      },
-      order: { id: 'ASC' },
-    });
+  /** The active time of every run, or only of the runs with these ids. `steps` are those runs' step rows when the caller has read them. */
+  async durationByRun(runIds?: number[], steps?: DurationRow[]): Promise<Map<number, number>> {
+    if (runIds?.length === 0) {
+      return new Map();
+    }
+    const stats = steps ?? (await this.durationRows(runIds));
     const reports = await this.visitRepository.codeReviewReportMs(...(runIds ?? []));
-    const byRun = new Map<number, StepStatEntity[]>();
+    const byRun = new Map<number, DurationRow[]>();
     for (const stat of stats) {
       const rows = byRun.get(stat.runId) ?? [];
       rows.push(stat);
@@ -348,7 +339,25 @@ export class RunRepository {
     }
     return totals;
   }
+
+  private async durationRows(runIds?: number[]): Promise<DurationRow[]> {
+    const query = this.stepStats
+      .createQueryBuilder('stat')
+      .select(['stat.id AS id', 'stat.run_id AS runId', 'stat.step AS step', 'stat.duration_ms AS durationMs'])
+      .addSelect([
+        'stat.step_started_at AS stepStartedAt',
+        'stat.started_at AS startedAt',
+        'stat.finished_at AS finishedAt',
+      ])
+      .orderBy('stat.id', 'ASC');
+    return (runIds ? query.where('stat.run_id IN (:...runIds)', { runIds }) : query).getRawMany<DurationRow>();
+  }
 }
+
+type DurationRow = Pick<
+  StepStatEntity,
+  'id' | 'runId' | 'step' | 'durationMs' | 'stepStartedAt' | 'startedAt' | 'finishedAt'
+>;
 
 function pidAlive(pid: number | null): boolean {
   if (pid === null || pid <= 0) {
