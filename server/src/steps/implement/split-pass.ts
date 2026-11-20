@@ -119,13 +119,18 @@ export class SplitPass {
     const gap = answered.tasks.every(settled) ? await gapOf(this.deps.documents, run.key, stored) : null;
     if (!gap) return answered;
     const requirements = (await ctx.reread(ARTIFACTS.requirementList)) ?? [];
-    const taken = takeGap({ contract: answered.contract, tasks: answered.tasks, requirements }, gap, startedAt);
-    await this.deps.subtasks.recordRevisions(run, taken.changes, startedAt);
+    const gapped = takeGap(
+      { contract: answered.contract, tasks: answered.tasks, requirements },
+      gap,
+      stored,
+      startedAt,
+    );
+    await this.deps.subtasks.recordRevisions(run, gapped.changes, startedAt);
     return {
-      contract: taken.contract,
-      tasks: taken.tasks,
-      asks: [...answered.asks, ...taken.asks],
-      taken: [...stored, gap.key],
+      contract: gapped.contract,
+      tasks: gapped.tasks,
+      asks: [...answered.asks, ...gapped.asks],
+      taken: [...stored, gap.key, ...gapped.noted],
     };
   }
 

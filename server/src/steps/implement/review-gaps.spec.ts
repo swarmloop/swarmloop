@@ -91,6 +91,7 @@ describe('final review gaps', () => {
       covers: ['R2'],
     };
     const { parent, documents } = await merged([task('a'), task('b'), gap]);
+    await documents.putDocument(parent, 'starter_taken', JSON.stringify(['gap-1/R2']));
     await reviewed(documents, parent, review({ R1: 'met', R2: 'missing' }, 'return'));
 
     await pass(app);

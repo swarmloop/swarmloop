@@ -10,7 +10,6 @@ import { askedQuestion } from './split-questions';
 import { applyStarterAnswer, type PlanChange } from './starter-actions';
 
 const GAP_PREFIX = 'gap-';
-const GAP_LINE = /^Gap for: (.*)$/m;
 
 /** The requirements or contract items the final review of a split parent marked partial or missing, and the review that did it. */
 interface Gap {
@@ -32,6 +31,8 @@ interface TakenGap {
   tasks: Subtask[];
   changes: PlanChange[];
   asks: StoredQuestion[];
+  /** What the parent notes in its taken list for the gap task it added: `<task id>/<id>` for each id. */
+  noted: string[];
 }
 
 /**
@@ -48,12 +49,9 @@ export async function gapOf(documents: DocumentRepository, runKey: string, taken
 
 const idsOf = (marks: RequirementMark[]): string[] => marks.map((mark) => mark.id);
 
-/** The ids a gap task was added for, from the `Gap for:` line of its description. */
-const gapIdsOf = (task: Subtask): string[] =>
-  (GAP_LINE.exec(task.description)?.[1] ?? '')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
+/** The ids a gap task was added for: the parent notes each one as `<task id>/<id>` in its taken list. */
+const gapIdsOf = (task: Subtask, taken: string[]): string[] =>
+  taken.filter((entry) => entry.startsWith(`${task.id}/`)).map((entry) => entry.slice(task.id.length + 1));
 
 /** The files of the tasks that were to deliver the ids, or of every task when none is known. */
 function filesFor(ids: string[], state: GapState): string[] {
@@ -88,16 +86,17 @@ function gapTask(gap: Gap, state: GapState): SplitTask {
  * Turns a gap into one task added at the end of the list, through the checks of an added task. An id that a merged gap
  * task was already added for adds no second task: the person who started the run is asked, naming the gap task.
  */
-export function takeGap(state: GapState, gap: Gap, at: string): TakenGap {
+export function takeGap(state: GapState, gap: Gap, taken: string[], at: string): TakenGap {
   const closing = state.tasks.filter((task) => task.status === 'merged' && task.id.startsWith(GAP_PREFIX));
   const repeated = gap.marks.flatMap((mark) => {
-    const earlier = closing.find((task) => gapIdsOf(task).includes(mark.id));
+    const earlier = closing.find((task) => gapIdsOf(task, taken).includes(mark.id));
     return earlier ? [{ mark, earlier }] : [];
   });
   const ask = (taskId: string, text: string): TakenGap => ({
     ...state,
     changes: [],
     asks: [askedQuestion(taskId, text, at)],
+    noted: [],
   });
   if (repeated.length > 0) {
     const text = repeated
@@ -120,5 +119,6 @@ export function takeGap(state: GapState, gap: Gap, at: string): TakenGap {
     tasks: applied.tasks,
     changes: applied.changes.map((change) => ({ ...change, reason })),
     asks: [],
+    noted: idsOf(gap.marks).map((id) => `${task.id}/${id}`),
   };
 }
