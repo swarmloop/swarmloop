@@ -1,16 +1,17 @@
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, statSync } from 'fs';
+import { closeSync, existsSync, mkdirSync, openSync } from 'fs';
+import { readdir, stat } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ignoredDirectories, isCheckout, trackedFiles } from '../git/ignored-entries';
 import type { EnvMask } from './sandbox-launch';
 
-export function collectEnvMasks(mounts: { hostPath: string; containerPath: string }[]): EnvMask[] {
+export async function collectEnvMasks(mounts: { hostPath: string; containerPath: string }[]): Promise<EnvMask[]> {
   const masks: EnvMask[] = [];
   for (const mount of mounts) {
     if (mount.containerPath.endsWith('/.git') || mount.containerPath.startsWith('/swarmloop-git/')) {
       continue;
     }
-    walkEnv(mount.hostPath, mount.containerPath, masks, gitRules(mount.hostPath));
+    await walkEnv(mount.hostPath, mount.containerPath, masks, await gitRules(mount.hostPath));
   }
   return masks;
 }
@@ -30,22 +31,36 @@ interface GitRules {
 }
 
 /** Null outside a checkout, or when git fails: the walk then masks every env file but the example. */
-function gitRules(host: string): GitRules | null {
+async function gitRules(host: string): Promise<GitRules | null> {
   if (!isCheckout(host)) {
     return null;
   }
   try {
-    return { ignored: ignoredDirectories(host), tracked: trackedFiles(host) };
+    return { ignored: await ignoredDirectories(host), tracked: await trackedFiles(host) };
   } catch {
     return null;
   }
 }
 
-function walkEnv(host: string, container: string, masks: EnvMask[], rules: GitRules | null, relativePath = ''): void {
-  if (!existsSync(host) || !statSync(host).isDirectory()) {
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function walkEnv(
+  host: string,
+  container: string,
+  masks: EnvMask[],
+  rules: GitRules | null,
+  relativePath = '',
+): Promise<void> {
+  if (!(await isDirectory(host))) {
     return;
   }
-  for (const entry of readdirSync(host, { withFileTypes: true })) {
+  for (const entry of await readdir(host, { withFileTypes: true })) {
     if (entry.name === '.git') {
       continue;
     }
@@ -54,7 +69,7 @@ function walkEnv(host: string, container: string, masks: EnvMask[], rules: GitRu
     const entryPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       if (!rules?.ignored.has(entryPath)) {
-        walkEnv(hostPath, containerFile, masks, rules, entryPath);
+        await walkEnv(hostPath, containerFile, masks, rules, entryPath);
       }
       continue;
     }

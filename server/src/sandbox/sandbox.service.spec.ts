@@ -148,8 +148,8 @@ describe('SandboxService memory cap', () => {
       if (args[0] === 'info') {
         return `4 ${3 * GB}`;
       }
-      if (args[0] === 'stats' && args[args.length - 1] === sampled) {
-        return '50.0% 100MiB / 3GiB';
+      if (args[0] === 'stats') {
+        return `${sampled} 50.0% 100MiB / 3GiB`;
       }
       throw new Error('no answer');
     });
@@ -244,8 +244,9 @@ describe('SandboxService memory cap', () => {
     it('starts held spawns in the order they came', async () => {
       const { sandbox, gate } = gated();
       gate.pause();
-      const first = sandbox.spawn(launch('first'), { onPaused: () => undefined });
-      const second = sandbox.spawn(launch('second'), { onPaused: () => undefined });
+      // Given masks skip the real file walk, whose finish time would decide the order the containers start in.
+      const first = sandbox.spawn({ ...launch('first'), envMasks: [] }, { onPaused: () => undefined });
+      const second = sandbox.spawn({ ...launch('second'), envMasks: [] }, { onPaused: () => undefined });
       gate.resume();
       await Promise.all([first, second]);
       expect(children.map((child) => child.containerName)).toEqual([

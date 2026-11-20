@@ -322,19 +322,15 @@ export class RunRepository {
 
   /** The active time of every run, or only of the runs with these ids. */
   async durationByRun(runIds?: number[]): Promise<Map<number, number>> {
-    const stats = await this.stepStats.find({
-      ...(runIds ? { where: { runId: In(runIds) } } : {}),
-      select: {
-        id: true,
-        runId: true,
-        step: true,
-        durationMs: true,
-        stepStartedAt: true,
-        startedAt: true,
-        finishedAt: true,
-      },
-      order: { id: 'ASC' },
-    });
+    const query = this.stepStats.createQueryBuilder('stat');
+    for (const column of ['id', 'runId', 'step', 'durationMs', 'stepStartedAt', 'startedAt', 'finishedAt']) {
+      query.addSelect(`stat.${column}`, column);
+    }
+    if (runIds) {
+      query.where('stat.runId IN (:...runIds)', { runIds });
+    }
+    // Plain rows: an entity per step row of the whole history is what held the main thread.
+    const stats: StepStatEntity[] = await query.orderBy('stat.id', 'ASC').getRawMany();
     const reports = await this.visitRepository.codeReviewReportMs(...(runIds ?? []));
     const byRun = new Map<number, StepStatEntity[]>();
     for (const stat of stats) {

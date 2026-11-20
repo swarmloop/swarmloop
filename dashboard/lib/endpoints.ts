@@ -103,9 +103,13 @@ export const getStats = (days: number, tz: number): Promise<StatsView> =>
   api<StatsView>(`/stats?days=${days}&tz=${tz}`);
 export const getFlow = (key: string): Promise<FlowView> => api<FlowView>(run(key));
 export const getStep = (key: string, name: string): Promise<StepView> => api<StepView>(step(key, name));
+/** The events asked for in one page: the server's MAX_LIMIT. */
+const EVENT_PAGE = 500;
 /** The events of one step, or of every step of the run when `name` is null. */
 export const getStepEvents = (key: string, name: string | null, after: number): Promise<StepEventPage> =>
-  api<StepEventPage>(`${run(key)}/events?${name === null ? '' : `step=${encodeURIComponent(name)}&`}after=${after}`);
+  api<StepEventPage>(
+    `${run(key)}/events?${name === null ? '' : `step=${encodeURIComponent(name)}&`}after=${after}&limit=${EVENT_PAGE}`,
+  );
 export const getHistory = (key: string): Promise<HistoryView> => api<HistoryView>(`${run(key)}/history`);
 export const listProjects = (): Promise<ProjectListView> => api<ProjectListView>('/checkouts/projects');
 /** The repositories of the connected code hosts that the server's tokens can push to. */

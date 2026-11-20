@@ -4,7 +4,7 @@ import { resolveRepoRoot } from '../config/repo-root';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { modelApiHosts, sandboxUserId } from './sandbox-launch';
 import { SandboxService } from './sandbox.service';
-import { worktreesMount } from './worktrees-mount';
+import { emptyWorkMount } from './empty-work-mount';
 
 /** Only the tail of the output is kept: the part that has the link, the code or the end. */
 const OUTPUT_CAP = 64 * 1024;
@@ -47,7 +47,7 @@ export class CliSignIn {
       runKey: 'sign-in',
       step: `sign-in-${runtime}-${request.key}`,
       attemptId: '',
-      mounts: [worktreesMount(root)],
+      mounts: [emptyWorkMount(root)],
       allowHosts: [...modelApiHosts(runtime), ...request.hosts],
       command: request.command,
       userId: sandboxUserId(),

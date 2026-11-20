@@ -7,7 +7,7 @@ import { AppConfig, splitList } from '../config/env';
 import { readDefaultSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
-import { SystemClock } from '../core/clock';
+import { Clock, SystemClock } from '../core/clock';
 import { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { barrier } from '../core/barrier';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -37,7 +37,7 @@ import { defaultDocker } from './default-docker';
 import { readDockerMachine } from './docker-machine';
 import type { DockerMachine } from './docker-machine';
 import { RunningWork } from './running-work';
-import { parseDockerStats } from './docker-stats';
+import { ContainerStats } from './container-stats';
 import { memoryCapOf } from './memory-cap';
 import { ContainerGate } from './container-gate';
 import { MetadataRemoval } from './metadata-removal';
@@ -62,14 +62,17 @@ export class SandboxService implements OnModuleDestroy {
   readonly gate: ContainerGate;
   readonly work: RunningWork;
   private readonly metadataRemoval = new MetadataRemoval();
+  private readonly containerStats: ContainerStats;
 
   constructor(
     @Optional() private readonly config?: AppConfig,
     @Optional() gate?: ContainerGate,
     @Optional() work?: RunningWork,
+    @Optional() clock?: Clock,
   ) {
     this.gate = gate ?? new ContainerGate(config);
     this.work = work ?? new RunningWork();
+    this.containerStats = new ContainerStats((args) => this.docker(args), this.work, clock ?? new SystemClock());
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -195,7 +198,7 @@ export class SandboxService implements OnModuleDestroy {
       prepareStateDir(launch.statePath, launch.userId);
     }
     const stateDaemonPath = await this.stateDaemonPath(launch.statePath, launch.stateDaemonPath);
-    const envMasks = launch.envMasks ?? collectEnvMasks(mounts);
+    const envMasks = launch.envMasks ?? (await collectEnvMasks(mounts));
     const maskFile = await this.maskFor(launch.statePath, envMasks.length > 0);
     const env = rawEnv();
     const workRoots = workRootsAt(
@@ -233,14 +236,7 @@ export class SandboxService implements OnModuleDestroy {
   }
 
   async stats(name: string): Promise<{ cpuPercent: number; rssBytes: number }> {
-    try {
-      const raw = await this.docker(['stats', '--no-stream', '--format', '{{.CPUPerc}} {{.MemUsage}}', name]);
-      const sample = parseDockerStats(raw);
-      this.work.sample(name, sample);
-      return sample;
-    } catch {
-      return { cpuPercent: 0, rssBytes: 0 };
-    }
+    return this.containerStats.sample(name);
   }
 
   async kill(name: string): Promise<void> {

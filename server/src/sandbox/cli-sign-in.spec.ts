@@ -31,7 +31,8 @@ describe('CliSignIn', () => {
     expect(launch).toMatchObject({ runtime: 'claude', command: ['tool', 'login'], stdin: true });
     expect(launch.env).toBeUndefined();
     expect(launch.allowHosts).toEqual(expect.arrayContaining(['api.anthropic.com', 'login.example.com']));
-    expect(launch.mounts).toEqual([{ hostPath: join(root, 'worktrees'), containerPath: '/work' }]);
+    expect(launch.mounts).toEqual([{ hostPath: join(root, 'data', 'empty-work'), containerPath: '/work' }]);
+    expect(launch.mounts?.some((mount) => mount.hostPath.startsWith(join(root, 'worktrees')))).toBe(false);
   });
 
   it('names the container by the key, so two sign-ins never share one', async () => {

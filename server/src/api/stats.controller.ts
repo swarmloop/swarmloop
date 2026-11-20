@@ -40,6 +40,8 @@ export class StatsController {
     const now = this.clock.now();
     const rows = await this.stats.rows(rangeStart(now, range));
     const requirements = await requirementBodies(this.documents, rows.runs);
-    return buildStats(rows, await this.runs.durationByRun(), now, range, requirements);
+    // Only the runs in the range are summed, so only their steps are read.
+    const durations = await this.runs.durationByRun(range.days > 0 ? rows.runs.map((run) => run.id) : undefined);
+    return buildStats(rows, durations, now, range, requirements);
   }
 }

@@ -154,6 +154,13 @@ export default tseslint.config(
     rules: { 'main-thread/no-sync-directory-work': 'error' },
   },
   {
+    // No allowlist: a file that does sync directory work may not start a process synchronously either.
+    files: ['server/src/**/*.ts'],
+    ignores: TEST_FILES,
+    plugins: { 'main-thread': mainThreadPlugin },
+    rules: { 'main-thread/no-sync-child-process': 'error' },
+  },
+  {
     // The typescript-eslint rule, because a later block that sets the core no-restricted-imports would replace these options.
     files: sourceFiles,
     ignores: TEST_FILES,

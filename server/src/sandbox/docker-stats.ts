@@ -21,3 +21,20 @@ function memoryBytes(value: number, unit: string): number {
   };
   return Math.round(value * (scale[unit] ?? 1));
 }
+
+/** Reads `{{.Name}} {{.CPUPerc}} {{.MemUsage}}` lines into one sample per container name. */
+export function parseDockerStatsListing(raw: string): Map<string, { cpuPercent: number; rssBytes: number }> {
+  const listing = new Map<string, { cpuPercent: number; rssBytes: number }>();
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed === '') {
+      continue;
+    }
+    const space = trimmed.indexOf(' ');
+    if (space < 0) {
+      continue;
+    }
+    listing.set(trimmed.slice(0, space), parseDockerStats(trimmed.slice(space + 1)));
+  }
+  return listing;
+}

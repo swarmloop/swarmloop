@@ -624,56 +624,54 @@ describe('sandbox launch', () => {
     expect(args[args.indexOf('--network') + 1]).toBe('swarmloop-registry');
   });
 
-  it('masks env files and leaves the example', () => {
+  it('masks env files and leaves the example', async () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-env-mask-'));
     writeFileSync(join(root, '.env'), 'TOKEN=secret\n');
     writeFileSync(join(root, '.env.example'), 'TOKEN=\n');
     mkdirSync(join(root, 'apps'));
     writeFileSync(join(root, 'apps', '.env.local'), 'TOKEN=secret\n');
-    const masks = collectEnvMasks([{ hostPath: root, containerPath: '/work/demo' }]);
+    const masks = await collectEnvMasks([{ hostPath: root, containerPath: '/work/demo' }]);
     expect(masks.map((mask) => mask.containerFile).sort()).toEqual(['/work/demo/.env', '/work/demo/apps/.env.local']);
   });
 
   describe('in a git checkout', () => {
-    const masked = (root: string) =>
-      collectEnvMasks([{ hostPath: root, containerPath: '/w' }])
-        .map((mask) => mask.containerFile)
-        .sort();
+    const masked = async (root: string) =>
+      (await collectEnvMasks([{ hostPath: root, containerPath: '/w' }])).map((mask) => mask.containerFile).sort();
 
-    it('leaves a tracked env file and masks an untracked one whatever its suffix', () => {
+    it('leaves a tracked env file and masks an untracked one whatever its suffix', async () => {
       const root = makeRepo({ '.env.sample': 'TOKEN=\n' });
       writeFiles(root, { '.env.local': 's\n', '.env.example': 's\n', '.env': 's\n' });
-      expect(masked(root)).toEqual(['/w/.env', '/w/.env.example', '/w/.env.local']);
+      expect(await masked(root)).toEqual(['/w/.env', '/w/.env.example', '/w/.env.local']);
     });
 
-    it.each(['node_modules', '.venv'])('does not walk an ignored %s', (folder) => {
+    it.each(['node_modules', '.venv'])('does not walk an ignored %s', async (folder) => {
       const root = makeRepo({ '.gitignore': `${folder}/\n` });
       writeFiles(root, { [`${folder}/pkg/.env`]: 's\n', '.env': 's\n' });
-      expect(masked(root)).toEqual(['/w/.env']);
+      expect(await masked(root)).toEqual(['/w/.env']);
     });
 
-    it('walks a node_modules that is not ignored like any folder', () => {
+    it('walks a node_modules that is not ignored like any folder', async () => {
       const root = makeRepo();
       writeFiles(root, { 'node_modules/pkg/.env': 's\n' });
-      expect(masked(root)).toEqual(['/w/node_modules/pkg/.env']);
+      expect(await masked(root)).toEqual(['/w/node_modules/pkg/.env']);
     });
 
-    it('treats a worktree, whose .git is a file, as a checkout', () => {
+    it('treats a worktree, whose .git is a file, as a checkout', async () => {
       const root = makeRepo({ '.env.sample': 'x\n' });
       const tree = join(mkdtempSync(join(tmpdir(), 'swarmloop-env-tree-')), 'wt');
       runGit(root, ['worktree', 'add', '-q', '-b', 'side', tree]);
       writeFiles(tree, { '.env.local': 's\n' });
-      expect(masked(tree)).toEqual(['/w/.env.local']);
+      expect(await masked(tree)).toEqual(['/w/.env.local']);
     });
   });
 
-  it('does not scan Git metadata or treat file mounts as directories', () => {
+  it('does not scan Git metadata or treat file mounts as directories', async () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-file-mount-'));
     const pointer = join(root, 'worktree-link');
     writeFileSync(pointer, 'gitdir: /swarmloop-git/git-abcdef\n');
     writeFileSync(join(root, '.env'), 'not-a-project-secret\n');
     expect(
-      collectEnvMasks([
+      await collectEnvMasks([
         { hostPath: root, containerPath: '/swarmloop-git/git-abcdef' },
         { hostPath: pointer, containerPath: '/work/app/.git' },
         { hostPath: pointer, containerPath: '/work/file' },
@@ -725,8 +723,8 @@ describe('sandbox launch', () => {
     });
     const sandbox = new SandboxService();
     sandbox.useDocker(async (args) => {
-      expect(args.slice(0, 4)).toEqual(['stats', '--no-stream', '--format', '{{.CPUPerc}} {{.MemUsage}}']);
-      return '3.25% 2KiB / 64MiB\n';
+      expect(args).toEqual(['stats', '--no-stream', '--format', '{{.Name}} {{.CPUPerc}} {{.MemUsage}}']);
+      return 'swarmloop-plan 3.25% 2KiB / 64MiB\n';
     });
     await expect(sandbox.stats('swarmloop-plan')).resolves.toEqual({ cpuPercent: 3.25, rssBytes: 2 * 1024 });
   });

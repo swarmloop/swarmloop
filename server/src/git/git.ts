@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from 'child_process';
+import { execFile } from 'child_process';
 import { realpathSync } from 'fs';
 import { basename, isAbsolute, join, resolve, sep } from 'path';
 import { rawEnv } from '../config/process-env';
@@ -32,12 +32,29 @@ export function gitRaw(args: string[], env?: NodeJS.ProcessEnv, input?: string, 
 
 const GIT_OUTPUT_CAP = 64_000_000;
 
-/** A synchronous git call for walks that cannot await. It records no command span. */
-export function gitSync(args: string[], input?: string): string {
-  return execFileSync('git', withSafeDirectory(args, checkoutRoots()), {
-    encoding: 'utf8',
-    maxBuffer: GIT_OUTPUT_CAP,
-    input,
+/** An async git call for walks over a checkout. It records no command span, so the transcript gains no command. */
+export function gitUnrecorded(args: string[], input?: string): Promise<string> {
+  return new Promise((done, fail) => {
+    const child = execFile(
+      'git',
+      withSafeDirectory(args, checkoutRoots()),
+      {
+        encoding: 'utf8',
+        maxBuffer: GIT_OUTPUT_CAP,
+      },
+      (error, stdout) => {
+        if (error) {
+          // Keep the exit code and the other fields of the error: callers read `code`.
+          fail(Object.assign(new Error(error.message), error));
+          return;
+        }
+        done(stdout);
+      },
+    );
+    if (input !== undefined && child.stdin) {
+      child.stdin.on('error', () => undefined);
+      child.stdin.end(input);
+    }
   });
 }
 
