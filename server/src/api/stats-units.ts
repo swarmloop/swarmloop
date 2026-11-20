@@ -9,7 +9,9 @@ export function countedRunsOf(runs: StatsRunRow[]): { run: StatsRunRow; ids: num
   for (const run of runs) {
     const parent = run.parentRunId ?? null;
     if (parent !== null) {
-      children.set(parent, [...(children.get(parent) ?? []), run.id]);
+      const ids = children.get(parent) ?? [];
+      ids.push(run.id);
+      children.set(parent, ids);
     }
   }
   return runs

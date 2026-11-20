@@ -44,9 +44,32 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+const MARK_CHARS = /[#>*`\-_\s]/g;
+
+function hasText(line: string): boolean {
+  return line.replace(MARK_CHARS, '') !== '';
+}
+
+/** Whether a line that ends in a newline inside `markdown` has text: the title of a longer text then does not change. */
+export function hasCompleteTitleLine(markdown: string): boolean {
+  const lines = markdown.split('\n');
+  lines.pop();
+  return lines.some(hasText);
+}
+
 /** The first line of a markdown text, without its marks. */
 function plainFirstLine(markdown: string): string {
-  const line = markdown.split('\n').find((item) => item.replace(/[#>*`\-_\s]/g, '') !== '') ?? '';
+  let line = '';
+  for (let start = 0; start <= markdown.length;) {
+    const newline = markdown.indexOf('\n', start);
+    const end = newline < 0 ? markdown.length : newline;
+    const item = markdown.slice(start, end);
+    if (hasText(item)) {
+      line = item;
+      break;
+    }
+    start = end + 1;
+  }
   const plain = line
     .replace(/^[\s#>*\-+]+/, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')

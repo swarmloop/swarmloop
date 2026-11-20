@@ -114,6 +114,23 @@ export class DocumentRepository {
       : this.documents.find({ where: { id: In(newest.map(({ id }) => Number(id))) }, order: { id: 'ASC' } });
   }
 
+  /** The latest body of `kind` of each of these runs, by run id, in one query that reads nothing else of the documents. */
+  async latestBodies(runIds: number[], kind: string): Promise<Map<number, string>> {
+    if (runIds.length === 0) {
+      return new Map();
+    }
+    const found = await this.documents
+      .createQueryBuilder('document')
+      .select(['document.run_id AS runId', 'document.body AS body'])
+      .where(
+        `document.id IN (SELECT MAX(latest.id) FROM documents latest
+           WHERE latest.kind = :kind AND latest.run_id IN (:...runIds) GROUP BY latest.run_id)`,
+        { kind, runIds },
+      )
+      .getRawMany<{ runId: number; body: string }>();
+    return new Map(found.map((row) => [row.runId, row.body]));
+  }
+
   async hasDocument(key: string, kind: string): Promise<boolean> {
     const run = await this.runs.findOne({ where: { key } });
     if (!run) {

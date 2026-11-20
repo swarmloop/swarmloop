@@ -4,7 +4,7 @@ import { Clock } from '../core/clock';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { StatsRepository } from '../history/stats.repository';
-import { requirementBodies } from './run-view/run-title';
+import { untitledRunIds } from './run-view/run-title';
 import { buildStats, rangeStart, type StatsRange } from './stats';
 
 const MAX_DAYS = 3650;
@@ -38,8 +38,15 @@ export class StatsController {
       tzOffset: integer(tz, 0, -MAX_TZ_OFFSET, MAX_TZ_OFFSET, 'tz'),
     };
     const now = this.clock.now();
-    const rows = await this.stats.rows(rangeStart(now, range));
-    const requirements = await requirementBodies(this.documents, rows.runs);
-    return buildStats(rows, await this.runs.durationByRun(), now, range, requirements);
+    const since = rangeStart(now, range);
+    const rows = await this.stats.rows(since);
+    const untitled = untitledRunIds(rows.runs);
+    const requirements =
+      untitled.length > 0 ? await this.documents.latestBodies(untitled, 'requirements') : new Map<number, string>();
+    const durations = await this.runs.durationByRun(
+      since === null ? undefined : rows.runs.map((run) => run.id),
+      rows.steps,
+    );
+    return buildStats(rows, durations, now, range, requirements);
   }
 }

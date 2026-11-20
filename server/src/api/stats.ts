@@ -114,12 +114,16 @@ function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: n
     totals.tokensOut += step.tokensOut;
     shellEdits.set(step.runId, (shellEdits.get(step.runId) ?? 0) + step.shellEdits);
     const run = byRun.get(step.runId) ?? { usd: 0, tokens: 0 };
-    byRun.set(step.runId, { usd: run.usd + step.usd, tokens: run.tokens + tokens });
+    run.usd += step.usd;
+    run.tokens += tokens;
+    byRun.set(step.runId, run);
     const runtime = step.runtime ?? runtimes.get(step.runId);
     if (runtime !== undefined) {
       const agents = byAgent.get(step.runId) ?? new Map<string, { usd: number; tokens: number }>();
       const agent = agents.get(runtime) ?? { usd: 0, tokens: 0 };
-      agents.set(runtime, { usd: agent.usd + step.usd, tokens: agent.tokens + tokens });
+      agent.usd += step.usd;
+      agent.tokens += tokens;
+      agents.set(runtime, agent);
       byAgent.set(step.runId, agents);
     }
     if (agentStep(step)) {
@@ -255,7 +259,10 @@ export function buildStats(
   const ended = { merged: 0, closed: 0 };
   let firstPass = 0;
   for (const run of rows.runs) {
-    const used = new Map([[run.runtime, { usd: 0, tokens: 0 }], ...(spend.byAgent.get(run.id) ?? [])]);
+    const used = new Map([[run.runtime, { usd: 0, tokens: 0 }]]);
+    for (const [runtime, agent] of spend.byAgent.get(run.id) ?? []) {
+      used.set(runtime, agent);
+    }
     for (const [runtime, agent] of used) {
       share(agents, runtime, agent.usd, agent.tokens);
     }
@@ -287,7 +294,9 @@ export function buildStats(
       if (ms !== null) {
         toMerge.push(ms);
         if (day) {
-          toMergeByDay.set(day.day, [...(toMergeByDay.get(day.day) ?? []), ms]);
+          const merges = toMergeByDay.get(day.day) ?? [];
+          merges.push(ms);
+          toMergeByDay.set(day.day, merges);
         }
       }
     }

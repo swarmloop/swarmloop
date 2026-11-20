@@ -8,6 +8,9 @@ const WARSAW = -60;
 
 function step(runId: number, name: string, usd: number, finishedAt: string, extra: Partial<StatsStepRow> = {}) {
   return {
+    id: 1,
+    stepStartedAt: null,
+    startedAt: finishedAt,
     runId,
     step: name,
     runtime: null,
