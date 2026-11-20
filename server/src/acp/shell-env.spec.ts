@@ -50,7 +50,7 @@ describe('shell config precedence', () => {
   it('uses the defaults for a missing file', () => {
     const config = readShellConfig(join(tmpdir(), 'swarmloop-shell-env-missing', 'env'), {});
     expect(config.runtime).toBe('claude');
-    expect(config.checkoutsRoot).toBe('..');
+    expect(config.checkoutsRoot).toBeUndefined();
     expect(config.reserveMemoryGb).toBe(2);
   });
 

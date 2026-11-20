@@ -10,8 +10,8 @@ function fileWith(...lines: string[]): string {
 }
 
 describe('readCheckoutsRoot', () => {
-  it('gives the default folder above for a missing file', () => {
-    expect(readCheckoutsRoot(join(tmpdir(), 'swarmloop-skills-missing', 'env'), {})).toBe('..');
+  it('gives nothing for a missing file', () => {
+    expect(readCheckoutsRoot(join(tmpdir(), 'swarmloop-skills-missing', 'env'), {})).toBeUndefined();
   });
 
   it('reads a value from the file, quoted or exported', () => {
