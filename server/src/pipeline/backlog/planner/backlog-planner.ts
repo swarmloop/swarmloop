@@ -193,6 +193,7 @@ export class BacklogPlanner implements OnModuleDestroy {
       text: `This turn failed: ${reason}\n\nResume runs it again with the same messages and events.`,
       proposes: null,
       turn: turnKey,
+      attachments: [],
       createdAt: this.clock.iso(),
     });
   }

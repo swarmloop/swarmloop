@@ -77,6 +77,19 @@ export class AttachmentStore {
     return run;
   }
 
+  /**
+   * Copies the named files of one key's attachments folder into another key's folder, with the same names. An earlier
+   * copy is replaced and the source stays in place.
+   */
+  copy(fromKey: string, toKey: string, names: readonly string[]): Promise<void> {
+    const run = (this.tails.get(toKey) ?? Promise.resolve()).then(() => this.copyAll(fromKey, toKey, names));
+    this.tails.set(
+      toKey,
+      run.catch(() => undefined),
+    );
+    return run;
+  }
+
   /** The names of the files a run has, in order. It reads without waiting: every agent launch asks, and a wait would move the launches of concurrent steps against each other. */
   names(key: string): string[] {
     try {
@@ -110,6 +123,18 @@ export class AttachmentStore {
       refs.push(meta.key ? meta.ref : await this.move(key, meta));
     }
     return refs;
+  }
+
+  private async copyAll(fromKey: string, toKey: string, names: readonly string[]): Promise<void> {
+    const source = attachmentsDir(this.config, fromKey);
+    const target = attachmentsDir(this.config, toKey);
+    await mkdir(target, { recursive: true, mode: 0o755 });
+    await chmod(target, 0o755);
+    for (const name of names) {
+      const file = basename(name);
+      await copyFile(join(source, file), join(target, file));
+      await chmod(join(target, file), 0o644);
+    }
   }
 
   private async known(id: string, key: string): Promise<StagedMeta> {

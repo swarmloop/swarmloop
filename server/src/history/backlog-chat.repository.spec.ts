@@ -17,10 +17,34 @@ describe('BacklogChatRepository', () => {
   it('writes a message once per key', () =>
     withPlanner(async (db) => {
       const id = await db.addBacklog();
-      expect(await db.chat.addPersonMessage(id, 'plan it', 'm1')).toMatchObject({ author: 'person', text: 'plan it' });
-      expect(await db.chat.addPersonMessage(id, 'plan it again', 'm1')).toBeNull();
+      const file = { id: 'a'.repeat(32), name: 'shot.png', size: 3 };
+      expect(await db.chat.addPersonMessage(id, 'plan it', 'm1', [file])).toMatchObject({
+        author: 'person',
+        text: 'plan it',
+        attachments: [file],
+      });
+      expect(await db.chat.addPersonMessage(id, 'plan it again', 'm1', [])).toBeNull();
       const { messages } = await db.chat.lastMessages(id, 10);
       expect(messages.map((message) => message.text)).toEqual(['plan it']);
+    }));
+
+  it('reads a stored message back with its files, and every other message with none', () =>
+    withPlanner(async (db) => {
+      const id = await db.addBacklog();
+      const file = { id: 'b'.repeat(32), name: 'shot.png', size: 3 };
+      await db.chat.addPersonMessage(id, 'with file', 'm1', [file]);
+      await db.chat.addPersonMessage(id, 'plain', 'm2', []);
+      await db.backlogs.transaction(async (writers) => {
+        await writers.addMessage({ ...planned(id), messageKey: 'p1' });
+      });
+
+      const { messages } = await db.chat.lastMessages(id, 10);
+      expect(messages.map((message) => message.attachments)).toEqual([[file], [], []]);
+      await db.chat.takeInto(id, 'turn-1');
+      expect((await db.chat.itemsOfTurn('turn-1')).messages.map((message) => message.attachments)).toEqual([
+        [file],
+        [],
+      ]);
     }));
 
   it('gives every waiting message and event to one turn together', () =>
@@ -148,6 +172,7 @@ function planned(backlogId: number) {
     text: 'here is a plan',
     proposes: 1,
     turn: 'turn-1',
+    attachments: [],
     createdAt: '2026-11-12T10:00:00Z',
   };
 }

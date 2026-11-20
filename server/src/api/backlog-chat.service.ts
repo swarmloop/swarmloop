@@ -2,6 +2,8 @@ import { ConflictException, Injectable, NotFoundException, Optional } from '@nes
 import { randomUUID } from 'crypto';
 import type { BacklogChatView } from '../contract/backlog-chat';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { AttachmentStore } from '../history/attachment-store';
+import { backlogMessageKey } from '../history/backlog-message-key';
 import { LiveHub } from '../live/live.hub';
 import { BacklogChatRepository } from '../history/backlog-chat.repository';
 import { BacklogActionSupport } from '../pipeline/backlog/backlog-action-support';
@@ -19,15 +21,23 @@ export class BacklogChatService {
     private readonly support: BacklogActionSupport,
     private readonly chats: BacklogChatRepository,
     private readonly planner: BacklogPlanner,
+    private readonly files: AttachmentStore,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
   /** The owner's message, stored once per request; a newly stored message is shown live and wakes the planner. */
-  async post(actor: string | null, name: string, text: unknown, idempotencyKey?: string): Promise<BacklogChatView> {
+  async post(
+    actor: string | null,
+    name: string,
+    text: unknown,
+    idempotencyKey?: string,
+    attachments?: string[],
+  ): Promise<BacklogChatView> {
     const { backlog } = await this.support.owned(actor, name);
     const clean = checkText(text, 'the message');
     const key = `message-${idempotencyKey?.trim() || randomUUID()}`;
-    const stored = await this.chats.addPersonMessage(backlog.id as number, clean, key);
+    const refs = await this.files.claim(backlogMessageKey(backlog.id as number), attachments);
+    const stored = await this.chats.addPersonMessage(backlog.id as number, clean, key, refs);
     if (stored) {
       this.live?.backlog({ backlog: name, message: messageView(stored) });
       this.planner.wake(backlog.id as number);

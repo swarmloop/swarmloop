@@ -54,7 +54,7 @@ describe('the launch of a planner turn', () => {
     try {
       h.setMain('web');
       const id = (await h.seedBacklog('one')).id as number;
-      await h.chat.addPersonMessage(id, 'plan it', 'm1');
+      await h.chat.addPersonMessage(id, 'plan it', 'm1', []);
       await h.openTurn(id, 'turn-a');
       expect(await h.runner.run('one', 'turn-a')).toEqual({ status: 'done' });
 

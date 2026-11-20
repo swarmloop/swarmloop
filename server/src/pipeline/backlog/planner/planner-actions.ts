@@ -176,6 +176,7 @@ export class PlannerTurnActions {
       text,
       proposes,
       turn,
+      attachments: [],
       createdAt: this.clock.iso(),
     });
   }

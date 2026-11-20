@@ -6,6 +6,7 @@ import { RunTitle1796200000000 } from './1796200000000-run-title';
 import { PeopleAndTokens1796300000000 } from './1796300000000-people-and-tokens';
 import { BacklogPlanner1796500000000 } from './1796500000000-backlog-planner';
 import { BacklogTurnVisit1796600000000 } from './1796600000000-backlog-turn-visit';
+import { BacklogMessageAttachments1796700000000 } from './1796700000000-backlog-message-attachments';
 import { ServerStalls1796400000000 } from './1796400000000-server-stalls';
 import { DocumentLatestIndex1796400000000 } from './1796400000000-document-latest-index';
 import { AgentEffort1795900000000 } from './1795900000000-agent-effort';
@@ -83,4 +84,5 @@ export const migrations = [
   DocumentLatestIndex1796400000000,
   BacklogPlanner1796500000000,
   BacklogTurnVisit1796600000000,
+  BacklogMessageAttachments1796700000000,
 ];

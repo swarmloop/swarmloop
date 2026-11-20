@@ -1,6 +1,14 @@
 import 'reflect-metadata';
 import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { BadRequestException } from '@nestjs/common';
+import { mkdtempSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { AppConfig } from '../config/env';
+import { testEnv } from '../config/env.spec-helpers';
+import type { AttachmentRef } from '../contract/attachments';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
+import { AttachmentStore } from '../history/attachment-store';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { BacklogChatRepository } from '../history/backlog-chat.repository';
 import type { BacklogMessageRecord, BacklogTurnRecord } from '../history/backlog-writers';
@@ -24,7 +32,7 @@ function setup(resumeError?: Error) {
     findBacklog: async (name: string) => (name === 'shop' ? { id: 7, name, owner: 'ada' } : null),
   };
   const chats = {
-    addPersonMessage: async (backlogId: number, text: string, key: string) => {
+    addPersonMessage: async (backlogId: number, text: string, key: string, attachments: AttachmentRef[]) => {
       if (messages.some((message) => message.messageKey === key)) return null;
       messages.push({
         id: messages.length + 1,
@@ -35,6 +43,7 @@ function setup(resumeError?: Error) {
         text,
         proposes: null,
         turn: null,
+        attachments,
         createdAt: 'now',
       });
       return messages[messages.length - 1];
@@ -49,14 +58,19 @@ function setup(resumeError?: Error) {
       if (resumeError) throw resumeError;
     },
   };
+  const files = new AttachmentStore(
+    new AppConfig(testEnv({ SWARMLOOP_ROOT: mkdtempSync(join(tmpdir(), 'backlog-chat-')) })),
+    new FakeClock(),
+  );
   const support = new BacklogActionSupport(backlogs as unknown as BacklogRepository, {} as Clock);
   const service = new BacklogChatService(
     support,
     chats as unknown as BacklogChatRepository,
     planner as unknown as BacklogPlanner,
+    files,
     live as unknown as LiveHub,
   );
-  return { routes: new BacklogChatController(service), messages, turns, woken, resumed, shown };
+  return { routes: new BacklogChatController(service), files, messages, turns, woken, resumed, shown };
 }
 
 describe('BacklogChatController', () => {
@@ -80,6 +94,28 @@ describe('BacklogChatController', () => {
     expect(messages.map((message) => [message.messageKey, message.text])).toEqual([['message-req-1', 'plan it']]);
     expect(woken).toEqual([7]);
     expect(first.messages).toHaveLength(1);
+  });
+
+  it('keeps the files with the message, once per request, and shows them in the view', async () => {
+    const { routes, files, messages } = setup();
+    const file = await files.stage('shot.png', Buffer.from('png'));
+    const first = await routes.post('ada', 'shop', { text: 'see', attachments: [file.id] }, 'req-2');
+    const again = await routes.post('ada', 'shop', { text: 'see', attachments: [file.id] }, 'req-2');
+    expect(messages).toHaveLength(1);
+    expect(messages[0].attachments).toEqual([file]);
+    expect(first.messages[0].attachments).toEqual([file]);
+    expect(again.messages[0].attachments).toEqual([file]);
+    await routes.post('ada', 'shop', { text: 'plain' });
+    expect((await routes.messages('shop')).messages[1]).not.toHaveProperty('attachments');
+  });
+
+  it('refuses an unknown upload id and stores nothing', async () => {
+    const { routes, messages, woken } = setup();
+    await expect(routes.post('ada', 'shop', { text: 'see', attachments: ['0'.repeat(32)] })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(messages).toEqual([]);
+    expect(woken).toEqual([]);
   });
 
   it('stores two messages that come without a key', async () => {
@@ -107,6 +143,7 @@ describe('BacklogChatController', () => {
       text: 'Run it?',
       proposes: 2,
       turn: 't1',
+      attachments: [],
       createdAt: 'now',
     });
     turns.push(
