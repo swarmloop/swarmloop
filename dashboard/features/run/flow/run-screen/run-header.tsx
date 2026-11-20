@@ -3,6 +3,7 @@
 import { useState, type ReactElement } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
+import HourglassBottom from '@mui/icons-material/HourglassBottom';
 import DataUsage from '@mui/icons-material/DataUsage';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import Paid from '@mui/icons-material/Paid';
@@ -14,6 +15,7 @@ import MuiLink from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { ConfirmDialog } from '../../../shell';
+import { etaText } from '../../../../lib/eta-words';
 import { duration, money, tokens, when } from '../../../../lib/format';
 import { runWord } from '../../run-word';
 import { RunStateIcon, toneColor } from '../../run-state-word';
@@ -24,12 +26,14 @@ import { personLabel } from '@contract/people';
 export function RunHeader({
   flow,
   openMs,
+  now,
   onRebase,
   onStop,
   onOpenRequirements,
 }: {
   flow: FlowView;
   openMs: number;
+  now: number;
   onRebase: () => Promise<void>;
   onStop: () => void;
   onOpenRequirements: () => void;
@@ -66,6 +70,7 @@ export function RunHeader({
       text: figures ? figures.money : money(metric.usd),
       tip: figures ? figures.moneyTip : 'Session spend',
     },
+    ...(flow.eta ? [{ Icon: HourglassBottom, ...etaText(flow.eta, now) }] : []),
     { Icon: DataUsage, text: `${tokens(metric.tokens)} tok`, tip: 'Session tokens' },
   ];
   return (

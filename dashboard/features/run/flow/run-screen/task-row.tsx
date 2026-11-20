@@ -15,6 +15,7 @@ import { DisclosureIcon } from '../../../../components/ui/disclosure-icon';
 import { ConfirmDialog } from '../../../shell';
 import { duration, localTime, money } from '../../../../lib/format';
 import { RunStateIcon, toneColor } from '../../run-state-word';
+import { TaskEta } from './task-eta';
 import { TaskDetails } from './task-details';
 import { taskNotes } from './task-notes';
 
@@ -27,12 +28,14 @@ function detailsLabel(task: TaskEntry): string {
 /** One task on one line: its status, title, time and cost, with a short caption only when it waits or needs a person, and its plan and result on demand. `dependents` are the titles of the tasks that depend on it. */
 export function TaskRow({
   task,
+  now,
   dependents,
   onSkip,
   unmet = [],
   mark,
 }: {
   task: TaskEntry;
+  now: number;
   dependents: string[];
   /** The ids of the tasks it depends on that are not settled yet. */
   unmet?: string[];
@@ -66,6 +69,7 @@ export function TaskRow({
           {task.title}
         </Typography>
       </Tooltip>
+      <TaskEta task={task} now={now} />
       {task.run ? (
         <Typography component="span" variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
           {duration(task.run.durationMs)} · {money(task.run.usd)}

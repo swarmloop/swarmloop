@@ -9,7 +9,10 @@ import type { RunState } from '../../contract/run-state';
 import { parsePaths } from '../../git/commit-paths';
 import { ARTIFACTS } from '../../steps/contract/artifacts';
 import { interruptionOf, taskEntries, type TaskRuns } from './documents';
+import type { LiveRun } from '../../eta/eta.types';
+import type { RunWaitEntity } from '../../history/run-wait.entity';
 import { ownStates, type StateSources } from './own-state';
+import { liveRunOf } from './run-eta';
 
 type Result = NonNullable<NonNullable<TaskEntry['run']>['result']>;
 
@@ -33,6 +36,12 @@ function resultOf(documents: DocumentEntity[], state: RunState): Result | null {
   return { files, proofMet: proofMet(state) };
 }
 
+/** The own run of each task, as the run page shows it and as the estimate reads it. */
+interface TaskRunViews {
+  runs: TaskRuns;
+  lives: Map<string, LiveRun>;
+}
+
 /** The own run of each task of a split run, with its state, step, spend and time. The state is read as the run list reads it. */
 export async function taskRuns(
   runs: RunRepository,
@@ -41,13 +50,15 @@ export async function taskRuns(
   documents: DocumentEntity[],
   pipeline: PipelineService,
   sources: StateSources,
+  waits: ReadonlyMap<number, RunWaitEntity[]>,
   live?: LiveHub,
   place: (key: string) => string | undefined = () => undefined,
-): Promise<TaskRuns> {
+): Promise<TaskRunViews> {
   const children: TaskRuns = new Map();
+  const lives = new Map<string, LiveRun>();
   const tasks = taskEntries(documents);
   if (tasks.length === 0) {
-    return children;
+    return { runs: children, lives };
   }
   const durations = await runs.durationByRun(rows.map((row) => row.id));
   const planned = rows.filter((child) => child.taskId && tasks.some((task) => task.id === child.taskId));
@@ -64,6 +75,7 @@ export async function taskRuns(
       const childDocuments = stored.filter((document) => document.runId === child.id);
       const note = last?.killReason === 'process died' ? interruptionOf(childDocuments, last.id) : null;
       const result = resultOf(childDocuments, own.state);
+      lives.set(child.taskId, liveRunOf(child, own, waits.get(child.id) ?? []));
       children.set(child.taskId, {
         key: child.key,
         state: own.state,
@@ -76,5 +88,5 @@ export async function taskRuns(
       });
     }
   }
-  return children;
+  return { runs: children, lives };
 }

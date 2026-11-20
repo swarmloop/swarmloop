@@ -8,6 +8,7 @@ import { receive } from '../../test/fake-socket';
 import { runSummary } from '../../test/fixtures';
 import { runsPage } from '../../test/runs-page';
 import { LiveBridgeProvider, useLiveActions } from '../shell';
+import { etaText } from '../../lib/eta-words';
 import { useRuns } from './use-runs';
 
 vi.mock('../../lib/endpoints', () => ({ listRuns: vi.fn(), removeRun: vi.fn() }));
@@ -243,5 +244,27 @@ describe('useRuns clock', () => {
     act(() => vi.advanceTimersByTime(2 * 60_000));
 
     expect(shown() - start).toBeGreaterThanOrEqual(60_000);
+  });
+
+  it('counts an estimate down as the clock moves, with no new request', async () => {
+    vi.useFakeTimers();
+    const doneAt = new Date(Date.now() + 25 * 60_000).toISOString();
+    vi.mocked(listRuns).mockClear();
+    vi.mocked(listRuns).mockResolvedValue(
+      runsPage([{ ...runSummary(), status: 'running', eta: { leftMs: 25 * 60_000, doneAt } }], { part: 'active' }),
+    );
+    function EtaProbe() {
+      const { runs, now } = useRuns();
+      return <p data-testid="eta">{runs[0]?.eta ? etaText(runs[0].eta, now).text : ''}</p>;
+    }
+    render(<EtaProbe />, { wrapper: LiveBridgeProvider });
+    await act(async () => {});
+    expect(screen.getByTestId('eta')).toHaveTextContent('~25m left');
+    const requests = vi.mocked(listRuns).mock.calls.length;
+
+    act(() => vi.advanceTimersByTime(10 * 60_000));
+
+    expect(screen.getByTestId('eta')).toHaveTextContent('~15m left');
+    expect(vi.mocked(listRuns).mock.calls.length).toBe(requests);
   });
 });

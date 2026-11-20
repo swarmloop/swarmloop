@@ -33,6 +33,7 @@ const serverLayers = [
   'environment',
   'steps',
   'pipeline',
+  'eta',
   'api',
   'acp',
   'cli',
@@ -40,6 +41,7 @@ const serverLayers = [
 const layerImports = {
   core: [],
   contract: [],
+  eta: [],
   config: ['core', 'integrations'],
   live: ['core'],
   history: ['core', 'config', 'live'],
@@ -80,6 +82,7 @@ const layerImports = {
     'environment',
     'steps',
     'pipeline',
+    'eta',
   ],
   acp: ['core', 'config', 'integrations', 'sandbox'],
   cli: ['core', 'config', 'history', 'pipeline'],

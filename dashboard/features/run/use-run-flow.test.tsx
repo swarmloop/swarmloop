@@ -216,4 +216,28 @@ describe('useRunFlow', () => {
       ['run-1', 'implementation', { prompt: 'p', phases: ['planning'], attachments: ['u1'] }],
     ]);
   });
+
+  it('keeps the clock ticking for a waiting epic that has an estimate', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    try {
+      const doneAt = new Date(Date.now() + 60_000).toISOString();
+      vi.mocked(getFlow).mockResolvedValue(
+        flowView({ status: 'waiting', name: 'Epic flow', eta: { leftMs: 60_000, doneAt } }),
+      );
+      const Clock = () => <p>{useRunFlow('run-1').now - Date.parse(doneAt)}</p>;
+      render(<Clock />, { wrapper: LiveBridgeProvider });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText('-60000')).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+
+      expect(screen.getByText('-50000')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

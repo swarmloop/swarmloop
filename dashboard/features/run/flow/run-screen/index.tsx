@@ -85,6 +85,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
     flow.tasks?.length ? (
       <TaskLayers
         tasks={flow.tasks}
+        now={now}
         revision={planRevision}
         epic={flow.epic}
         ownUsd={flow.metrics.usd}
@@ -112,6 +113,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
       <RunHeader
         flow={flow}
         openMs={openMs}
+        now={now}
         onRebase={rebaseRun}
         onStop={() => setConfirmStop(true)}
         onOpenRequirements={() => chooseStep('requirements')}

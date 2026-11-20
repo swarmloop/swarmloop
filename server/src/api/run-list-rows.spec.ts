@@ -23,9 +23,12 @@ const NOW = '2026-11-12T10:00:00Z';
 
 async function withApp(body: (app: Awaited<ReturnType<typeof seededBoot>>) => Promise<void>): Promise<void> {
   const app = await seededBoot(await mkdtemp(join(tmpdir(), 'swarmloop-run-list-rows-')));
+  // The estimates move with the clock, and these specs compare lists read at different moments.
+  const frozen = jest.spyOn(Date, 'now').mockReturnValue(Date.parse(NOW));
   try {
     await body(app);
   } finally {
+    frozen.mockRestore();
     await app.close();
   }
 }

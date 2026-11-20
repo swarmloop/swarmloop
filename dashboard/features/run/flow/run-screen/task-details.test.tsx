@@ -19,7 +19,7 @@ const entry = (extra: Partial<TaskEntry> = {}): TaskEntry => ({
 const open = async (task: TaskEntry, button: string): Promise<void> => {
   render(
     <ul>
-      <TaskRow task={task} dependents={[]} onSkip={vi.fn()} />
+      <TaskRow now={0} task={task} dependents={[]} onSkip={vi.fn()} />
     </ul>,
   );
   await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: button }));

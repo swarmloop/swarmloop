@@ -1,6 +1,9 @@
 import { Injectable, Optional, type OnModuleDestroy } from '@nestjs/common';
 import { In } from 'typeorm';
+import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
+import type { RunEta } from '../contract/eta';
+import type { EtaTable, LiveRun } from '../eta/eta.types';
 import type { RunBacklog } from '../contract/backlog';
 import type { RunsView } from '../contract/api';
 import type { Subtask } from '../contract/subtask';
@@ -10,6 +13,8 @@ import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
+import type { RunWaitEntity } from '../history/run-wait.entity';
+import { RunWaitLog } from '../history/run-wait.log';
 import { LiveHub } from '../live/live.hub';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { ContainerGate } from '../sandbox/container-gate';
@@ -22,6 +27,8 @@ import { ownStates, type OwnState } from './run-view/own-state';
 import { requirementBodies, viewTitle } from './run-view/run-title';
 import { childrenByParent, listExtras } from './run-view/status';
 import { spentUsd } from './run-queries-spend';
+import { EtaSummary } from './eta-summary';
+import { liveRunOf, runViewEta } from './run-view/run-eta';
 
 /** What is read from the database for one run, and the claim and agent place its state was worked out with. */
 interface KeptRun {
@@ -31,6 +38,8 @@ interface KeptRun {
   /** The tasks of its latest plan; only a run that can hold a plan has them. */
   plan: Subtask[] | undefined;
   own: OwnState;
+  /** The stretches the run waited in; read only while the run has not ended. */
+  waits: RunWaitEntity[];
   label: RunBacklog | undefined;
   claimed: boolean;
   place: string | undefined;
@@ -63,6 +72,9 @@ export class RunListRows implements OnModuleDestroy {
     private readonly backlogs: BacklogRepository,
     private readonly pipeline: PipelineService,
     private readonly clock: Clock,
+    private readonly etaSummary: EtaSummary,
+    private readonly waitLog: RunWaitLog,
+    private readonly config: AppConfig,
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly gate: ContainerGate = new ContainerGate(),
   ) {}
@@ -74,8 +86,10 @@ export class RunListRows implements OnModuleDestroy {
   /** The list, and how many runs were read again to make it. Reads run one after another. */
   read(): Promise<{ view: RunsView; recomputed: number }> {
     const next = this.tail.then(async () => {
+      await this.waitLog.settled();
+      const table = await this.etaSummary.table();
       const recomputed = await this.refresh();
-      return { view: this.assemble(), recomputed };
+      return { view: this.assemble(table), recomputed };
     });
     this.tail = next.catch(() => undefined);
     return next;
@@ -151,6 +165,7 @@ export class RunListRows implements OnModuleDestroy {
       (key) => places.get(key),
     );
     const labels = await this.backlogs.labelsFor(runs.map((run) => run.key));
+    const waits = await this.waitLog.waitsOf(runs.filter((run) => run.status !== 'done').map((run) => run.id));
     for (const run of runs) {
       this.kept.set(run.key, {
         run,
@@ -158,6 +173,7 @@ export class RunListRows implements OnModuleDestroy {
         requirements: requirements.get(run.id),
         plan: plans.get(run.key),
         own: states.get(run.key) as OwnState,
+        waits: waits.get(run.id) ?? [],
         label: labels.get(run.key),
         claimed: claimed.get(run.key) ?? false,
         place: places.get(run.key),
@@ -166,7 +182,7 @@ export class RunListRows implements OnModuleDestroy {
   }
 
   /** Puts the rows together from the kept facts, in memory. */
-  private assemble(): RunsView {
+  private assemble(table: EtaTable): RunsView {
     const entries = [...this.kept.values()].sort((a, b) => newestFirst(a.run, b.run));
     const runs = entries.map((entry) => entry.run);
     const keys = new Map(runs.map((run) => [run.id, run.key]));
@@ -179,23 +195,39 @@ export class RunListRows implements OnModuleDestroy {
     const states = listStates(runs, { keys, childrenOf, plans }, new Map(entries.map((e) => [e.run.key, e.own])));
     const usdOf = (run: RunEntity): number => spentUsd(run, this.pipeline, this.live);
     return {
-      runs: entries.map(({ run, durationMs, requirements, label }) => ({
-        key: run.key,
-        name: runName(run.key, run.prompt),
-        title: viewTitle(run, requirements ?? null),
-        status: run.status,
-        currentStep: run.currentStep,
-        createdAt: run.createdAt,
-        updatedAt: run.updatedAt,
-        stepStartedAt: run.stepStartedAt,
-        durationMs,
-        usd: usdOf(run),
-        ...listExtras(run, keys),
-        ...(label ? { backlog: label } : {}),
-        ...waits.get(run.key),
-        ...states[run.key],
-        ...epicTotal(run, childrenOf.get(run.id) ?? [], usdOf, this.clock.now()),
-      })),
+      runs: entries.map((entry) => {
+        const { run, durationMs, requirements, label } = entry;
+        const eta = this.etaOf(entry, childrenOf, table);
+        return {
+          key: run.key,
+          name: runName(run.key, run.prompt),
+          title: viewTitle(run, requirements ?? null),
+          status: run.status,
+          currentStep: run.currentStep,
+          createdAt: run.createdAt,
+          updatedAt: run.updatedAt,
+          stepStartedAt: run.stepStartedAt,
+          durationMs,
+          usd: usdOf(run),
+          ...listExtras(run, keys),
+          ...(label ? { backlog: label } : {}),
+          ...waits.get(run.key),
+          ...states[run.key],
+          ...epicTotal(run, childrenOf.get(run.id) ?? [], usdOf, this.clock.now()),
+          ...(eta ? { eta } : {}),
+        };
+      }),
     };
+  }
+
+  /** The estimate of a run, from the kept facts of the run and of its tasks' runs; `null` waits for a person. */
+  private etaOf(entry: KeptRun, childrenOf: Map<number, RunEntity[]>, table: EtaTable): RunEta | undefined {
+    const lives = new Map<string, LiveRun>();
+    for (const child of childrenOf.get(entry.run.id) ?? []) {
+      const kept = this.kept.get(child.key);
+      if (child.taskId && kept) lives.set(child.taskId, liveRunOf(child, kept.own, kept.waits));
+    }
+    const live = liveRunOf(entry.run, entry.own, entry.waits);
+    return runViewEta(live, entry.plan, lives, table, this.config.env.SUBTASKS_PARALLEL, this.clock.now());
   }
 }
