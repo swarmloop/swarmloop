@@ -8,6 +8,8 @@ import { runBacklog, runMilestone } from '../../../lib/backlog-endpoints';
 import { localTime } from '../../../lib/format';
 import { BacklogTaskRow } from './backlog-task-row';
 import { FoldedSection } from './folded-section';
+import { AddTaskButton } from './task-editor';
+import { useTaskDrop } from './use-task-drop';
 import { MilestoneDetails } from './milestone-details';
 
 interface BacklogSectionsProps {
@@ -23,6 +25,7 @@ export function BacklogSections({ view, login, onView }: BacklogSectionsProps): 
   const [busy, setBusy] = useState(false);
   const owner = login !== null && login === view.owner;
   const planned = view.milestones.filter((item) => item.status === 'proposed' || item.status === 'queued');
+  const drop = useTaskDrop(view.name, null, onView);
   const items = view.tasks.filter((task) => task.milestone === null);
   const start = async (call: () => Promise<BacklogView>): Promise<void> => {
     setBusy(true);
@@ -77,11 +80,17 @@ export function BacklogSections({ view, login, onView }: BacklogSectionsProps): 
         ))}
       </FoldedSection>
       <FoldedSection title="Backlog items" count={items.length}>
-        <Box component="ul" sx={{ m: 0, p: 0 }}>
+        <Box component="ul" {...drop.target} sx={{ m: 0, p: 0, minHeight: 24 }}>
           {items.map((task) => (
-            <BacklogTaskRow key={task.slug} backlog={view.name} task={task} owner={owner} onView={onView} />
+            <BacklogTaskRow key={task.slug} view={view} task={task} owner={owner} onView={onView} />
           ))}
         </Box>
+        {drop.refusal !== '' ? (
+          <Typography role="alert" variant="caption" color="error">
+            {drop.refusal}
+          </Typography>
+        ) : null}
+        <AddTaskButton view={view} milestone={null} onView={onView} />
       </FoldedSection>
       <FoldedSection title="Decisions" count={view.decisions.length}>
         <Box component="ul" sx={{ m: 0, p: 0 }}>
