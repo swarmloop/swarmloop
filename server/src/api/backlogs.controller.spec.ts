@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import type { BacklogActions } from '../pipeline/backlog/backlog-actions';
-import type { BacklogQueries } from '../pipeline/backlog/backlog-queries';
+import type { BacklogRepository } from '../history/backlog.repository';
+import { BacklogQueries } from '../pipeline/backlog/backlog-queries';
 import { BacklogsController } from './backlogs.controller';
 
 const VIEW = { name: 'shop' };
@@ -75,5 +76,74 @@ describe('BacklogsController', () => {
     expect(await routes.list()).toEqual([VIEW]);
     expect(await routes.view('shop')).toBe(VIEW);
     expect(queries.view).toHaveBeenCalledWith('shop');
+  });
+});
+
+type Row = Record<string, unknown>;
+
+function queriesOver(mergeMode: 'green' | 'ok', requirements: Row[], tasks: Row[]): BacklogQueries {
+  const backlog = { id: 1, name: 'shop', owner: 'ada', repositories: ['r'], mergeMode, paused: false };
+  const repository = {
+    listBacklogs: async () => [backlog],
+    findBacklog: async () => backlog,
+    milestones: async () => [{ id: 10, number: 3, title: 'T', goal: 'G', status: 'active' }],
+    requirements: async () => requirements,
+    tasks: async () => tasks,
+    decisions: async () => [],
+    events: async () => [],
+  };
+  return new BacklogQueries(repository as unknown as BacklogRepository);
+}
+
+const requirement = (ref: string, status: string): Row => ({ ref, milestoneId: 10, text: ref, status });
+const task = (slug: string, overrides: Row = {}): Row => ({
+  slug,
+  title: slug,
+  description: `about ${slug}`,
+  milestoneId: 10,
+  status: 'green',
+  note: '',
+  runKey: 'run-1',
+  repositories: ['r'],
+  merged: {},
+  covers: [],
+  depends: [],
+  manual: false,
+  mergeOk: false,
+  ...overrides,
+});
+
+describe('BacklogQueries view', () => {
+  it('carries the description, covers and depends of each task', async () => {
+    const queries = queriesOver('green', [], [task('a', { covers: ['M3.R1'], depends: ['b'] })]);
+    const [view] = (await queries.view('shop')).tasks;
+    expect(view).toMatchObject({ description: 'about a', covers: ['M3.R1'], depends: ['b'] });
+  });
+
+  it('says a task waits for OK only when it started, is green, has no OK and the mode or the task asks for it', async () => {
+    const tasks = [
+      task('plain'),
+      task('manual', { manual: true }),
+      task('okd', { mergeOk: true }),
+      task('no-run', { runKey: null }),
+      task('red', { status: 'red' }),
+    ];
+    const waits = async (mode: 'green' | 'ok') =>
+      Object.fromEntries(
+        (await queriesOver(mode, [], tasks).view('shop')).tasks.map((item) => [item.slug, item.waitsForOk]),
+      );
+    expect(await waits('ok')).toEqual({ plain: true, manual: true, okd: false, 'no-run': false, red: false });
+    expect(await waits('green')).toEqual({ plain: false, manual: true, okd: false, 'no-run': false, red: false });
+  });
+
+  it('lists the merged covering tasks in task order for a closed requirement only', async () => {
+    const tasks = [
+      task('first', { status: 'merged', covers: ['M3.R1', 'M3.R3'] }),
+      task('running', { status: 'running', covers: ['M3.R1'] }),
+      task('second', { status: 'merged', covers: ['M3.R1'] }),
+    ];
+    const requirements = [requirement('M3.R1', 'closed'), requirement('M3.R2', 'closed'), requirement('M3.R3', 'open')];
+    const view = await queriesOver('green', requirements, tasks).list();
+    expect(view[0].requirements.map((item) => item.closedBy)).toEqual([['first', 'second'], [], []]);
   });
 });
