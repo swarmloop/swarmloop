@@ -37,8 +37,7 @@ export class RunSubtaskCommandsService {
   }
 
   private async promptOf(parent: RunEntity, task: Subtask): Promise<string> {
-    const tasks = parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND));
-    return subtaskPromptOf(this.documents, parent, task, tasks, await this.runs.children(parent));
+    return subtaskPromptOf(this.documents, parent, task);
   }
 
   /** Starts one task of a parent run as a run of its own. A second call for the same task returns that run. */

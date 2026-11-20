@@ -160,6 +160,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
       projectFor: reproject,
       briefFor: (other) => withEnvironment(withAddedRepos(fullFor(other), added), executionRules),
       result: ask.definition,
+      briefing: { continued: continued !== null },
       freshPrompt: continued?.chatId ? withEnvironment(withAddedRepos(full, added), executionRules) : undefined,
     });
     await assertUncommitted(mounts, branch, heads);

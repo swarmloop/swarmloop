@@ -98,7 +98,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       briefFor: (other) => promptFor(other, null),
       mounts,
       continuePrompt: researchContinue(asked),
-      briefing: { continued: false },
+      briefing: { continued: chat !== null },
       result: asked,
       check: (raw) => (subtask ? [] : requirementErrors(storedList, (raw as ResearchResult).requirements)),
     });
