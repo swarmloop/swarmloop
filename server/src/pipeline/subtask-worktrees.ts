@@ -5,7 +5,7 @@ import type { Clock } from '../core/clock';
 import { FetchFailed } from '../core/swarmloop-error';
 import { fetchBranch } from '../git/rebase';
 import { originRef } from '../git/base-ref';
-import { git } from '../git/git';
+import { git, type CommitAuthor } from '../git/git';
 import { mergeConflicts } from '../git/merge-tree';
 import { worktreePath } from '../git/repo-names';
 import { root } from '../history/run-paths';
@@ -54,17 +54,21 @@ export class SubtaskWorktrees {
     parent: RunEntity,
     repos: string[],
     branch: string,
-    message: string,
+    commitAs: () => Promise<{ message: (repo: string) => string; author: CommitAuthor | null }>,
     park: boolean,
   ): Promise<OwnEdits> {
     const hosts = await this.hostsFor(parent);
     const sync = new ParentTreeSync(this.publisher);
     const lines: string[] = [];
+    let identity: Awaited<ReturnType<typeof commitAs>> | null = null;
     for (const repo of repos) {
       const path = worktreePath(root(this.config), parent.key, repo);
       if (!existsSync(path) || !(await this.hasEdits({ repo, path }))) continue;
       if (!(await fetchBranch(path, repo, branch, hosts))) continue;
-      const { paths, conflict } = await sync.commit(parent, { repo, path }, branch, message, park);
+      // The message and the author cost document reads and host calls: only a repository with edits needs them.
+      identity ??= await commitAs();
+      const { message, author } = identity;
+      const { paths, conflict } = await sync.commit(parent, { repo, path }, branch, message(repo), park, author);
       if (paths.length > 0) lines.push(`committed the parent's own edits in ${repo}: ${paths.join(', ')}`);
       if (conflict) return { committed: lines.join('; ') || null, conflict };
     }

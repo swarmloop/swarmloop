@@ -98,6 +98,7 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
   [ERROR_CODES.SUBTASKS_RUNNING]: 'subtasks',
   [ERROR_CODES.SUBTASK_WAITING]: 'subtasks',
   [ERROR_CODES.SUBTASK_BLOCKED]: 'state',
+  [ERROR_CODES.PARENT_TREE_CONFLICT]: 'state',
   [ERROR_CODES.HOST_UNAVAILABLE]: 'retrying',
   [ERROR_CODES.CI_NOT_STARTED]: 'retrying',
   [ERROR_CODES.CI_NOT_RUN]: 'state',

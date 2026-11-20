@@ -2,7 +2,7 @@ import { existsSync } from 'fs';
 import { root } from '../../history/run-paths';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef } from '../../git/base-ref';
-import { authorArgs, git, gitDetail } from '../../git/git';
+import { commitIdentity, git, gitDetail, type CommitAuthor } from '../../git/git';
 import { unmergedPaths } from '../../git/rebase';
 import { resolveGitPath } from '../../git/rebase/hidden-worktree';
 import { mountsForStep, worktreePath } from '../../git/repo-names';
@@ -68,7 +68,7 @@ export async function settleOwnConflict(
         result: rebaseResolution,
       });
       await ctx.write(ARTIFACTS.rebaseResolutionResult, resolved.resultValue as RebaseResolutionResult);
-      await continueRebase(cwd, repo);
+      await continueRebase(cwd, repo, await deps.author.of(run));
     }
   }
   const leases: { repo: string; tip: string | null }[] = [];
@@ -86,11 +86,12 @@ export async function settleOwnConflict(
 }
 
 /** Stages what the agent resolved and takes the rebase on. A stop at the next commit leaves the rebase open for the loop. */
-async function continueRebase(cwd: string, repo: string): Promise<void> {
+async function continueRebase(cwd: string, repo: string, author: CommitAuthor | null): Promise<void> {
   const still = await unmergedPaths(cwd);
   try {
     if (still.length > 0) await git(['-C', cwd, 'add', '--', ...still]);
-    await git(['-C', cwd, ...(await authorArgs(cwd)), '-c', 'core.editor=true', 'rebase', '--continue']);
+    const identity = await commitIdentity(cwd, author);
+    await git(['-C', cwd, ...identity.args, '-c', 'core.editor=true', 'rebase', '--continue'], identity.env);
   } catch (error) {
     if (!(await rebasing(cwd))) throw new SwarmloopError(`${repo} rebase failed: ${gitDetail(error)}`);
   }

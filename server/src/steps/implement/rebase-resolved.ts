@@ -9,6 +9,8 @@ import type { RebaseStop } from '../../git/rebase';
 import type { EnvironmentService } from '../../environment/environment.service';
 import { textDocument } from '../shared/handoff';
 import type { RebasedPublisher } from '../shared/rebased-publisher';
+import type { RunAuthor } from '../shared/run-author';
+import type { RunNames } from '../shared/run-names';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { StepResult } from '../contract/step-contract';
 import type { ModelStepContext } from '../agent-step';
@@ -20,6 +22,8 @@ export interface RebaseDeps {
   documents: DocumentRepository;
   flows: FlowRepository;
   publisher: RebasedPublisher;
+  names: RunNames;
+  author: RunAuthor;
   environments: EnvironmentService;
   step: string;
   runtime: RuntimeName;

@@ -37,7 +37,8 @@ import { withEnvironment } from '../../environment/environment-note';
 import { openWorkplace } from './implement-workplace';
 import { storedPlan } from '../step';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
-import { settleRebase, type SettleDeps } from './implement-rebase';
+import { settleRebase } from './implement-rebase';
+import type { RebaseDeps } from './rebase-resolved';
 import { assertUncommitted, worktreeStatus } from '../../git/worktree-git';
 import { unchangedSincePipeline } from '../pipeline/pipeline-report';
 import { rerunFailed } from './failed-commands';
@@ -328,7 +329,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     };
   }
 
-  private rebaseDeps(runtime: RuntimeName): SettleDeps {
+  private rebaseDeps(runtime: RuntimeName): RebaseDeps {
     return {
       config: this.config,
       documents: this.documents,

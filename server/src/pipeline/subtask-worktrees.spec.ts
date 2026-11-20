@@ -97,7 +97,7 @@ describe('committing the own edits of the parent before it is brought to the fea
         { key: 'proj-93' } as RunEntity,
         ['demo'],
         branch,
-        'own edits',
+        async () => ({ message: () => 'own edits', author: null }),
         park,
       );
     return { tree, shared, tip, commit };

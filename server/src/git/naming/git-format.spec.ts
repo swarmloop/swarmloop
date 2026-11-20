@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { readGitFormat } from './git-format';
@@ -45,5 +45,12 @@ describe('readGitFormat', () => {
       title: CONVENTIONAL,
       target: 'develop',
     });
+  });
+
+  it('reads a link that leaves the tree as no file', () => {
+    const outside = tree({ 'other.json': JSON.stringify({ version: 1, git: { branch: 'stolen/{key}' } }) });
+    const inside = tree({});
+    symlinkSync(join(outside, 'other.json'), join(inside, '.swarmloop.json'));
+    expect(readGitFormat(inside)).toEqual(NONE);
   });
 });

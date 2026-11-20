@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, realpathSync, statSync } from 'fs';
+import { join, sep } from 'path';
 import { fromSwarmloop, SWARMLOOP_FILE } from '../../environment/environment-config';
 
 /** Conventional Commits, the format that commitlint and commitizen enforce. */
@@ -21,12 +21,21 @@ export interface GitFormat {
   target: string | null;
 }
 
-function readText(path: string): string | null {
-  return existsSync(path) ? readFileSync(path, 'utf8') : null;
+/** The text of a regular file inside the tree. A link out of the tree, or anything that is not a file, reads as no file. */
+function readText(tree: string, name: string): string | null {
+  try {
+    const real = realpathSync(join(tree, name));
+    if (!real.startsWith(realpathSync(tree) + sep) || !statSync(real).isFile()) {
+      return null;
+    }
+    return readFileSync(real, 'utf8');
+  } catch {
+    return null;
+  }
 }
 
 function hasToolKeyInPackage(tree: string): boolean {
-  const text = readText(join(tree, 'package.json'));
+  const text = readText(tree, 'package.json');
   if (!text) {
     return false;
   }
@@ -46,7 +55,7 @@ function hasConventionalTool(tree: string): boolean {
 
 /** The format of a working tree, strongest first, key by key: the manifest, then the tools' own config, then the built-in one. */
 export function readGitFormat(tree: string): GitFormat {
-  const text = readText(join(tree, SWARMLOOP_FILE));
+  const text = readText(tree, SWARMLOOP_FILE);
   const manifest = text ? (fromSwarmloop(text).git ?? {}) : {};
   const conventional = hasConventionalTool(tree) ? CONVENTIONAL : null;
   return {

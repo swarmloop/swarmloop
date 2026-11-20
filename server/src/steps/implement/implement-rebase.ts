@@ -9,23 +9,15 @@ import { forRepo, type PerRepo } from '../../git/per-repo';
 import { mountsForStep, worktreePath } from '../../git/repo-names';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { runJournal } from '../shared/rebase-journal';
-import type { RunAuthor } from '../shared/run-author';
-import type { RunNames } from '../shared/run-names';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
 import { failConflict, resolvedResult, type RebaseDeps } from './rebase-resolved';
 import { settleOwnConflict } from './implement-own-conflict';
 import { ownConflictOf } from './own-conflict-marker';
 import { rebaseConflictPrompt } from './implement.prompts';
 
-/** What finishing an open rebase needs: the shared deps and the names and author the run's commits carry. */
-export interface SettleDeps extends RebaseDeps {
-  names: RunNames;
-  author: RunAuthor;
-}
-
 /** Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the checklist prompt. */
 export async function settleRebase(
-  deps: SettleDeps,
+  deps: RebaseDeps,
   requirements: string,
   ctx: ModelStepContext,
   marker: string,
