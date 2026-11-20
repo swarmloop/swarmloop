@@ -47,7 +47,7 @@ describe('dashboard link style', () => {
   it('leaves a run row that styles its own anchor with color inherit', () => {
     renderThemed(
       <ul>
-        <TaskRow task={task} dependents={[]} onSkip={vi.fn()} />
+        <TaskRow now={0} task={task} dependents={[]} onSkip={vi.fn()} />
       </ul>,
     );
 
