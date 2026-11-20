@@ -20,7 +20,11 @@ function answer(
   tasks: Subtask[],
   contract = ['decisions:\n- the field is called `split`\n- subtask a: store UTC\n  in every table'],
 ): SplitFields {
-  return { contract, keep: [], tasks: tasks.map(({ status: _status, ...rest }) => rest) };
+  return {
+    contract: contract.map((text) => ({ id: '', text, owner: '' })),
+    keep: [],
+    tasks: tasks.map(({ status: _status, ...rest }) => rest),
+  };
 }
 
 describe('addedTasksErrors', () => {
@@ -55,6 +59,11 @@ describe('addedTasksErrors', () => {
       [],
     );
     expect(addedTasksErrors(stored, CONTRACT, answer([stored[0], stored[1]]))).toEqual([]);
+  });
+
+  it('counts an old text decision as kept when the answer carries its text in an item with an owner', () => {
+    const items = { ...answer(stored), contract: [{ id: 'tz', owner: 'a', text: CONTRACT }] };
+    expect(addedTasksErrors(stored, CONTRACT, items)).toEqual([]);
   });
 
   it('refuses a contract decision that is gone, and accepts the same decisions in other entries', () => {

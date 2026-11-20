@@ -1,6 +1,6 @@
-import type { DocumentRepository } from '../history/document.repository';
-import { ARTIFACTS } from '../steps/contract/artifacts';
-import { parseMergeRequestSummaries } from '../steps/merge-request/merge-request-record';
+import type { DocumentRepository } from '../../history/document.repository';
+import { ARTIFACTS } from '../contract/artifacts';
+import { parseMergeRequestSummaries } from '../merge-request/merge-request-record';
 
 /** The merge request text of a task's run. A run with no readable document has none. */
 export async function mergeSummaryOf(documents: DocumentRepository, runKey: string): Promise<string> {

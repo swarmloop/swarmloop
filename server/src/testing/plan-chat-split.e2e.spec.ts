@@ -28,11 +28,35 @@ const FIRST = [split('a'), split('b'), split('c', ['a'])];
 const NEW = split('d', ['c']);
 
 const block = (value: unknown): ScriptedAnswer => ({ block: value });
-const planned = block({ summary: ['planned'], contract: ['store UTC'], tasks: FIRST, keep: [] });
-const improved = block({ summary: ['checked'], contract: ['store UTC'], tasks: FIRST, keep: [] });
+const planned = block({
+  summary: ['planned'],
+  contract: [{ id: 'item-1', text: 'store UTC', owner: 'a' }],
+  tasks: FIRST,
+  keep: [],
+});
+const improved = block({
+  summary: ['checked'],
+  contract: [{ id: 'item-1', text: 'store UTC', owner: 'a' }],
+  tasks: FIRST,
+  keep: [],
+});
 const withD = [...FIRST, NEW];
-const improvedWithD = block({ summary: ['checked'], contract: ['store UTC', 'd uses c'], tasks: withD, keep: [] });
-const adds = block({ reply: 'Added d.', summary: ['d'], contract: ['d uses c'], tasks: [NEW], keep: [] });
+const improvedWithD = block({
+  summary: ['checked'],
+  contract: [
+    { id: 'item-1', text: 'store UTC', owner: 'a' },
+    { id: 'item-2', text: 'd uses c', owner: 'a' },
+  ],
+  tasks: withD,
+  keep: [],
+});
+const adds = block({
+  reply: 'Added d.',
+  summary: ['d'],
+  contract: [{ id: 'item-1', text: 'd uses c', owner: 'a' }],
+  tasks: [NEW],
+  keep: [],
+});
 
 describe('a person writes to the planner of a split run after its tasks started', () => {
   let flow: Awaited<ReturnType<typeof createFlowHarness>>;
@@ -109,7 +133,10 @@ describe('a person writes to the planner of a split run after its tasks started'
   it('refuses a plan-improve answer that rewrites a started task and asks again', async () => {
     const rewritten = block({
       summary: ['checked'],
-      contract: ['store UTC', 'd uses c'],
+      contract: [
+        { id: 'item-1', text: 'store UTC', owner: 'a' },
+        { id: 'item-2', text: 'd uses c', owner: 'a' },
+      ],
       tasks: [{ ...FIRST[0], title: 'Another title' }, ...withD.slice(1)],
       keep: [],
     });

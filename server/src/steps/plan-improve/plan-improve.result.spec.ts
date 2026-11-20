@@ -5,7 +5,8 @@ import { resultAnswer } from '../../testing/result-answer';
 import { improveSplit } from './plan-improve.step.spec-helpers';
 
 const TASK = { id: 'a', title: 'Add it', depends: [], files: ['a.ts'], proof: 'a.spec.ts', description: 'Adds it.' };
-const split = (tasks: unknown[]): string => resultAnswer('Done.', { summary: ['why'], contract: ['rule'], tasks });
+const split = (tasks: unknown[]): string =>
+  resultAnswer('Done.', { summary: ['why'], contract: [{ id: 'item-1', text: 'rule', owner: 'a' }], tasks });
 const many = (count: number) =>
   Array.from({ length: count }, (_, n) => ({ ...TASK, id: `t${n}`, files: [`f${n}.ts`] }));
 

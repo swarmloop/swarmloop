@@ -191,7 +191,7 @@ const correctedTasks = [
 const splitAnswer = (extra: Record<string, unknown> = {}, tasks = correctedTasks): string =>
   resultAnswer('Done.', {
     summary: ['fixed the contract'],
-    contract: ['the column is called `split_on`'],
+    contract: [{ id: 'item-1', text: 'the column is called `split_on`', owner: 'a' }],
     tasks,
     ...extra,
   });
@@ -264,7 +264,7 @@ describe('plan-improve step with split', () => {
       ...(index === 1 ? { merged: { demo: 'abc123' } } : {}),
     }));
     const same = started.map(({ status: _status, merged: _merged, ...task }) => task);
-    const contract = ['the column is called `split`'];
+    const contract = [{ id: 'item-1', text: 'the column is called `split`', owner: 'a' }];
 
     it('refuses an answer that rewrites a started task and sends the reason back', async () => {
       const out = await improveSplit('PROJ-92', splitAnswer({ contract }), { stored: started });
@@ -366,7 +366,7 @@ describe('plan-improve step with split', () => {
     const answerOf = (count: number) =>
       resultAnswer('Done.', {
         summary: ['merged'],
-        contract: ['one field'],
+        contract: [{ id: 'item-1', text: 'one field', owner: 'a' }],
         tasks: Array.from({ length: count }, (_, n) => ({
           id: `t${n}`,
           title: `Task ${n}`,

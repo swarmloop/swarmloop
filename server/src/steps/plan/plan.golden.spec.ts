@@ -37,7 +37,7 @@ async function plan(agent: jest.Mock, questions: string, split = false) {
 const splitReply = result(
   resultAnswer('Done.', {
     summary: ['two parts'],
-    contract: ['the column is called `split`'],
+    contract: [{ id: 'item-1', text: 'the column is called `split`', owner: 'a' }],
     tasks: [
       {
         id: 'column',

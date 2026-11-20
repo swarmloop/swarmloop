@@ -13,7 +13,7 @@ import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { projectRules } from '../shared/project-rules';
 import { AgentLauncher } from '../shared/agent-launcher';
-import { appendImpact, assumptions, withContract, withHandoff, withImpact } from '../shared/handoff';
+import { appendImpact, assumptions, withHandoff, withImpact } from '../shared/handoff';
 import { PLAN_EXECUTION_RULE, skillPrompt } from '../shared/skill-prompt';
 import { unanswered } from '../shared/answers';
 import { storedImpact } from '../shared/research-reads';
@@ -136,19 +136,11 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     const prior = await ctx.reread(ARTIFACTS.handoff);
     const impact = storedImpact(researched, await ctx.reread(ARTIFACTS.impact));
     const sections = withNamedFileLines(
-      withContract(
-        withImpact(withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior), impact),
-        await this.parentContract(ctx.opened.run),
-      ),
+      withImpact(withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior), impact),
       [requirements, answers, prior, impact].join('\n'),
       mounts,
     );
-    // A stored plan visit makes this a re-plan; the session records the last definition sent into the shared chat.
-    const { runtime } = this.profile(this.config.env, ctx.opened.run);
-    const chat = await resumableChat(root(this.config), key, 'plan', runtime);
-    const planVisit = await this.visits.hasAgentVisit(ctx.opened.run.id, 'plan');
-    const continued = planVisit ? chat : null;
-    const received = chat?.chatId ? (chat.resultName ?? null) : null;
+    const { runtime, chat, received, goesOn } = await this.sessionFor(ctx.opened.run);
     const limits = splitLimits(ctx.opened.run, this.config.env.SPLIT_MAX_TASKS);
     const added = await ctx.reread(ARTIFACTS.addedRepos);
     const list = await ctx.reread(ARTIFACTS.requirementList);
@@ -163,7 +155,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
         resultPromptFor(asked, chatReceived),
       ].join('\n\n');
     const finish = (prompt: string): string => finished(prompt, added);
-    const chosen = continued?.chatId
+    const chosen = goesOn
       ? appendImpact(planFollowUp(answers, resultPromptFor(asked, received)), impact)
       : fullFor(runtime, received, Boolean(chat?.chatId));
     const check = (value: unknown): string[] => planErrors(completePlan(value as Partial<PlanResult>), limits, subtask);
@@ -172,6 +164,7 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       briefFor: (other) => finish(fullFor(other, null)),
       mounts,
       continuePrompt: planContinue(),
+      briefing: { continued: goesOn },
       result: asked,
       check,
     });
@@ -241,6 +234,16 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       handoff: notes.length > 0 ? [summary.trimEnd(), ...notes].join('\n') : summary,
       ...(limits.maySplit && graph ? { facts: splitFacts(graph.tasks) } : {}),
     };
+  }
+
+  /** A stored plan visit makes this a re-plan; the session records the last definition sent into the shared chat. */
+  private async sessionFor(run: RunEntity) {
+    const { runtime } = this.profile(this.config.env, run);
+    const chat = await resumableChat(root(this.config), run.key, 'plan', runtime);
+    const planVisit = await this.visits.hasAgentVisit(run.id, 'plan');
+    const continued = planVisit ? chat : null;
+    const received = chat?.chatId ? (chat.resultName ?? null) : null;
+    return { runtime, chat, received, goesOn: Boolean(continued?.chatId) };
   }
 
   /** What a message is asked and checked with: tasks only for a split run whose tasks started, an amendment for a run that implemented without splitting. */

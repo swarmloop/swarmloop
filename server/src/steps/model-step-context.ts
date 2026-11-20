@@ -25,6 +25,8 @@ export interface ModelStepContext {
     /** The full prompt, for the fresh chat that starts when the CLI no longer has the stored one. */
     freshPrompt?: string;
     resume?: boolean;
+    /** Set on a launch that may carry what the starter tells a subtask; `continued` is true when it goes on in an existing chat. */
+    briefing?: { continued: boolean };
     project?: ProjectLaunch;
     /** The full prompt for a new chat on the given runtime, when the launch moves to another agent after a provider limit. */
     briefFor?: (runtime: RuntimeName) => string;
