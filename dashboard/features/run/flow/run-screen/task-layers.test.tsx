@@ -213,7 +213,7 @@ describe('TaskLayers', () => {
         interruption: { at: '2026-11-18T13:24:00Z', relaunched: true },
       },
     });
-    render(<TaskLayers tasks={[interrupted]} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={[interrupted]} onSkip={vi.fn()} />);
 
     const row = screen.getByText('Title t3').closest('li')!;
     expect(within(row).getByRole('img', { name: /Interrupted at/ })).toBeInTheDocument();
@@ -235,7 +235,7 @@ describe('TaskLayers', () => {
         interruption: { at: '2026-11-18T13:24:00Z', relaunched: false, cause: 'stop' },
       },
     });
-    render(<TaskLayers tasks={[interrupted]} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={[interrupted]} onSkip={vi.fn()} />);
 
     const sentence = screen.getByText(/Not started again/);
     expect(sentence).toBeInTheDocument();
@@ -245,7 +245,7 @@ describe('TaskLayers', () => {
 
   it('says once which tasks a waiting task waits for, by id and without titles', () => {
     const waiting = task('t6', { depends: ['t3', 't1'], status: 'waiting', waitsFor: ['Title t3'], run: undefined });
-    render(<TaskLayers tasks={[tasks[0], tasks[2], waiting]} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={[tasks[0], tasks[2], waiting]} onSkip={vi.fn()} />);
 
     const region = screen.getByRole('region', { name: 'Tasks' });
     expect(region.textContent?.match(/after t3/g)).toHaveLength(1);
@@ -264,7 +264,7 @@ describe('TaskLayers', () => {
         stateReason: { code: 'GIT_AUTH', message: 'Push was refused' },
       },
     });
-    render(<TaskLayers tasks={[blocked]} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={[blocked]} onSkip={vi.fn()} />);
 
     const row = screen.getByText('Title t5').closest('li')!;
     expect(within(row).getByText('Push was refused')).toBeInTheDocument();
@@ -272,7 +272,7 @@ describe('TaskLayers', () => {
   });
 
   it('opens the plan from the chevron at the row end', async () => {
-    render(<TaskLayers tasks={[task('t3', { status: 'running' })]} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={[task('t3', { status: 'running' })]} onSkip={vi.fn()} />);
 
     const chevron = screen.getByRole('button', { name: /^Plan|^Changes/ });
     expect(chevron).toHaveAttribute('aria-expanded', 'false');
