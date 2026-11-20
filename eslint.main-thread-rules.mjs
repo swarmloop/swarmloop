@@ -1,5 +1,6 @@
-// Directory work on the server's main thread blocks every request while it runs. Product code uses the async form
-// from fs/promises; a file in the allowlist below still needs a sync call and says why.
+// Directory work and child processes on the server's main thread block every request while they run. Product code
+// uses the async form (fs/promises, execFile, spawn); a file in the allowlist below still needs a sync directory call
+// and says why. The sync child process calls have no allowlist.
 const BANNED = new Set(['readdirSync', 'rmSync', 'cpSync', 'opendirSync']);
 const FS_MODULES = new Set(['fs', 'node:fs']);
 const MESSAGE =
@@ -28,7 +29,37 @@ const noSyncDirectoryWork = {
   },
 };
 
-export const mainThreadPlugin = { rules: { 'no-sync-directory-work': noSyncDirectoryWork } };
+const BANNED_PROCESS = new Set(['execFileSync', 'execSync', 'spawnSync']);
+const PROCESS_MODULES = new Set(['child_process', 'node:child_process']);
+const PROCESS_MESSAGE =
+  'Do not start a process synchronously on the main thread: use the async form from child_process (execFile, spawn).';
+
+const noSyncChildProcess = {
+  meta: { type: 'problem', schema: [], docs: { description: 'Forbid sync child process calls in server code.' } },
+  create(context) {
+    return {
+      ImportDeclaration(node) {
+        if (!PROCESS_MODULES.has(node.source.value)) {
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          if (specifier.type === 'ImportSpecifier' && BANNED_PROCESS.has(specifier.imported.name)) {
+            context.report({ node: specifier, message: PROCESS_MESSAGE });
+          }
+        }
+      },
+      MemberExpression(node) {
+        if (!node.computed && node.property.type === 'Identifier' && BANNED_PROCESS.has(node.property.name)) {
+          context.report({ node: node.property, message: PROCESS_MESSAGE });
+        }
+      },
+    };
+  },
+};
+
+export const mainThreadPlugin = {
+  rules: { 'no-sync-directory-work': noSyncDirectoryWork, 'no-sync-child-process': noSyncChildProcess },
+};
 
 // The product files that still do sync directory work, each with the reason it has not moved to the async form.
 export const SYNC_DIRECTORY_ALLOWLIST = {
@@ -54,7 +85,6 @@ export const SYNC_DIRECTORY_ALLOWLIST = {
   'server/src/pipeline/backlog/planner/turn-workspace.ts': 'prepares a small turn folder in a sync function',
   'server/src/pipeline/workspace-guard.ts': 'checks a workspace folder in a sync function',
   'server/src/sandbox/egress.ts': 'writes the proxy files at container start in a sync function',
-  'server/src/sandbox/env-masks.ts': 'lists the env files to mask in a sync function',
   'server/src/sandbox/project-git.ts': 'copies the small git metadata of a container start in a sync function',
   'server/src/sandbox/sandbox-launch.ts': 'prepares the state folder of one launch in a sync function',
   'server/src/steps/prepare/prepare.step.ts': 'lists the project files while preparing in a sync function',

@@ -6,7 +6,7 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { ERROR_CODES, type ErrorCode } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { git, GIT_LIMITS, gitDetail, gitSync } from '../git/git';
+import { git, GIT_LIMITS, gitDetail, gitUnrecorded } from '../git/git';
 import { ignoredDirectories } from '../git/ignored-entries';
 import { fetchBranch, parseJournal, REBASE_JOURNAL, unfinished } from '../git/rebase';
 import { repoNames } from '../git/repo-names';
@@ -281,8 +281,8 @@ export class WorkspaceGuard {
     renameSync(worktree, aside);
     await this.add(run, checkout, worktree, branch, base);
     // The `.git` file in `aside` points to a registration that is gone, so git reads the fresh worktree's git dir.
-    const gitDir = gitSync(['-C', worktree, 'rev-parse', '--absolute-git-dir']).trim();
-    const ignored = ignoredDirectories(aside, gitDir);
+    const gitDir = (await gitUnrecorded(['-C', worktree, 'rev-parse', '--absolute-git-dir'])).trim();
+    const ignored = await ignoredDirectories(aside, gitDir);
     for (const entry of readdirSync(aside)) {
       if (entry !== '.git') {
         cpSync(join(aside, entry), join(worktree, entry), {
