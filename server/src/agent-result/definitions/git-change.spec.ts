@@ -35,7 +35,8 @@ describe('change of a plan', () => {
   });
 
   it('reads a split task with and without a change of its own', () => {
-    const split = (task: object) => block({ summary: [], contract: ['rule'], tasks: [task] });
+    const split = (task: object) =>
+      block({ summary: [], contract: [{ id: 'rule', text: 'rule', owner: 'a' }], tasks: [task] });
     expect(readResult(planFor({ split: true, subtask: false }), split({ ...TASK, change: CHANGE })).ok).toBe(true);
     expect(readResult(planFor({ split: true, subtask: false }), split(TASK)).ok).toBe(true);
     expect(readResult(planFor({ split: true, subtask: false }), split({ ...TASK, change: { type: 'x' } })).ok).toBe(
