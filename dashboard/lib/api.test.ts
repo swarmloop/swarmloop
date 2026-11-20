@@ -43,6 +43,16 @@ describe('api', () => {
     });
   });
 
+  it('says the dashboard cannot reach the server for the proxy unreachable 503', async () => {
+    respond(503, { message: 'the server is unreachable', code: 'ENOTFOUND' });
+
+    const error = await api('/runs').catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ status: 503, busy: true });
+    expect((error as Error).message).toContain('ENOTFOUND');
+    expect((error as Error).message).toContain('docker compose up -d --force-recreate server dashboard');
+  });
+
   it('keeps the message of a 503 the API sends itself', async () => {
     respond(503, { message: 'docker is down' });
 

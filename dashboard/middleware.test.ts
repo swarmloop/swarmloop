@@ -98,14 +98,38 @@ describe('middleware', () => {
     expect(await response.json()).toEqual({ message: 'the server is busy' });
   });
 
-  it('answers 503 the server is busy when the API refuses the connection', async () => {
+  it('answers 503 the server is unreachable with its code when the API refuses the connection', async () => {
+    vi.stubEnv('SWARMLOOP_API_URL', 'http://server:3920');
+    fetchMock.mockRejectedValue(
+      new TypeError('fetch failed', { cause: Object.assign(new Error('connect'), { code: 'ECONNREFUSED' }) }),
+    );
+
+    const response = await middleware(new NextRequest('http://localhost:3921/swarmloop-api/runs'));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ message: 'the server is unreachable', code: 'ECONNREFUSED' });
+  });
+
+  it('answers 503 the server is unreachable with ENOTFOUND when the API host is unknown', async () => {
+    vi.stubEnv('SWARMLOOP_API_URL', 'http://server:3920');
+    fetchMock.mockRejectedValue(
+      new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo'), { code: 'ENOTFOUND' }) }),
+    );
+
+    const response = await middleware(new NextRequest('http://localhost:3921/swarmloop-api/runs'));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ message: 'the server is unreachable', code: 'ENOTFOUND' });
+  });
+
+  it('answers 503 the server is unreachable with code unknown when the failure has no cause', async () => {
     vi.stubEnv('SWARMLOOP_API_URL', 'http://server:3920');
     fetchMock.mockRejectedValue(new TypeError('fetch failed'));
 
     const response = await middleware(new NextRequest('http://localhost:3921/swarmloop-api/runs'));
 
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ message: 'the server is busy' });
+    expect(await response.json()).toEqual({ message: 'the server is unreachable', code: 'unknown' });
   });
 
   it('proxies the OAuth routes to the API, query included', async () => {
