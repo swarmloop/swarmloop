@@ -239,7 +239,7 @@ export class ShellService {
         volume,
         volumeSubpath,
       })),
-      envMasks: collectEnvMasks(mounts).map(({ hostFile, containerFile }) => ({ hostFile, containerFile })),
+      envMasks: (await collectEnvMasks(mounts)).map(({ hostFile, containerFile }) => ({ hostFile, containerFile })),
       workRoots: workRoots(this.config),
     };
   }
