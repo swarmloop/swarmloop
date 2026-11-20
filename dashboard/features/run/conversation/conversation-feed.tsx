@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, type ReactElement } from 'react';
+import type { Route } from 'next';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import type { FlowView } from '@contract/api';
@@ -98,6 +99,18 @@ function Talk({ talk }: { talk: AgentTalk }): ReactElement {
   );
 }
 
+/** What a person said to a subtask's planner, as one line of the parent's conversation with a link to the subtask. */
+function Exchange({ entry }: { entry: PlanChatEntry }): ReactElement {
+  const reply = entry.reply ? ` Reply: ${plainText(entry.reply)}` : '';
+  const target = entry.link ?? '';
+  return (
+    <InfoLine
+      sentence={`${entry.text}${reply}`}
+      link={{ href: `/runs/${encodeURIComponent(target)}` as Route, text: `Open ${target}` }}
+    />
+  );
+}
+
 /**
  * The conversation of a run, in order: the person's messages, the planner's replies (the one being written streams), talk
  * between agents as muted lines, what needs the person (questions, a usage-limit wait, a failed or blocked step).
@@ -128,7 +141,13 @@ export function ConversationFeed({
           : null}
         {entries.map((entry, index) => (
           <Fragment key={entry.key}>
-            {isTalk(entry) ? <Talk talk={entry} /> : <Message entry={entry} />}
+            {isTalk(entry) ? (
+              <Talk talk={entry} />
+            ) : entry.kind === 'info' ? (
+              <Exchange entry={entry} />
+            ) : (
+              <Message entry={entry} />
+            )}
             {cardsAfter(index).map((revision) => (
               <RevisionCard key={revision.version} revision={revision} />
             ))}

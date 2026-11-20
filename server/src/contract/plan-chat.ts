@@ -21,11 +21,16 @@ export interface PlanChatEntry {
   attachments?: AttachmentRef[];
   /**
    * `question` is a step's question to the planner; `answer` is the planner's answer to it; `escalation` is what the
-   * planner could not settle and left to whoever started the run. Missing for a message and a reply.
+   * planner could not settle and left to whoever started the run; `info` tells the parent's chat that a person
+   * talked to a subtask's planner. Missing for a message and a reply.
    */
-  kind?: 'question' | 'answer' | 'escalation';
+  kind?: 'question' | 'answer' | 'escalation' | 'info';
   /** The step that asked, for a `question`, its `answer` and its `escalation`. */
   from?: string;
+  /** The subtask planner's reply, for an `info`. */
+  reply?: string;
+  /** The key of the subtask run the `info` is about. */
+  link?: string;
 }
 
 /** What one change of the plan added, changed and dropped, and why. */
@@ -53,8 +58,8 @@ export interface PlanChatLog {
   revisions: PlanRevision[];
 }
 
-/** What a message sent now does. `read-only` has no message box. */
-export type ComposerMode = 'plan' | 'amend' | 'add-tasks' | 'reopen' | 'follow-up' | 'read-only';
+/** What a message sent now does. `subtask` goes to the task's own planner, `epic` to the parent's planner for an ended subtask. */
+export type ComposerMode = 'plan' | 'amend' | 'add-tasks' | 'reopen' | 'follow-up' | 'subtask' | 'epic';
 
 /** An open question or paste item the person's message answers. */
 export interface ConversationQuestion {

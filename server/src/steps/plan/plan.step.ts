@@ -233,6 +233,11 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       visits: this.visits,
       root: root(this.config),
       runtimeOf: (run) => this.profile(this.config.env, run).runtime,
+      exchange: new StarterExchange(planChat, this.clock),
+      parentOf: async (run) => {
+        const parent = typeof run.parentRunId === 'number' ? await this.runs.findById(run.parentRunId) : null;
+        return parent ? { run: parent, contract: await this.parentDocument(run, CONTRACT_KIND) } : null;
+      },
     };
   }
 

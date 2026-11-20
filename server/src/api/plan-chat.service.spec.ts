@@ -72,14 +72,33 @@ describe('PlanChatService', () => {
     });
   });
 
-  it('refuses a message to a subtask and names the parent', async () => {
+  it('takes a message to a running subtask as a pending message of its own chat', async () => {
     await withPlanChat(async ({ app, chat }) => {
       const runs = app.get(RunRepository);
       const parent = await save(runs, 'proj-epic', 'implement', 'waiting');
-      await runs.openSubtask('proj-epic-a', parent.id, 'a');
-      await expect(chat.send('proj-epic-a', 'hello', 'ann')).rejects.toThrow(
-        new ConflictException('proj-epic-a is a subtask: talk to the planner of proj-epic'),
-      );
+      const subtask = await runs.openSubtask('proj-epic-a', parent.id, 'a');
+      writeRunState(subtask, { status: 'running', currentStep: 'implement' });
+      await runs.saveRun(subtask);
+      const sent = await chat.send('proj-epic-a', 'use a cursor', 'ann');
+      const log = await app.get(PlanChatStore).read('proj-epic-a');
+      expect(log.entries).toEqual([
+        expect.objectContaining({ key: `message-${sent.commandId}`, text: 'use a cursor', state: 'pending' }),
+      ]);
+    });
+  });
+
+  it("sends a merged subtask's message to the parent's chat, naming the task", async () => {
+    await withPlanChat(async ({ app, chat }) => {
+      const runs = app.get(RunRepository);
+      const parent = await save(runs, 'proj-epic', 'implement', 'waiting');
+      const subtask = await runs.openSubtask('proj-epic-a', parent.id, 'a');
+      writeRunState(subtask, { status: 'done', currentStep: 'done' });
+      subtask.mergeOutcome = JSON.stringify({ merged: { demo: { sha: 'abc', by: null, at: 'x', url: null } } });
+      await runs.saveRun(subtask);
+      await chat.send('proj-epic-a', 'rename it', 'ann');
+      const log = await app.get(PlanChatStore).read('proj-epic');
+      expect(log.entries).toEqual([expect.objectContaining({ text: 'About a: rename it', state: 'pending' })]);
+      expect((await app.get(PlanChatStore).read('proj-epic-a')).entries).toEqual([]);
     });
   });
 

@@ -52,10 +52,10 @@ export class PlannerTurns implements OnModuleDestroy {
     if (conversation) conversation.gate = this;
   }
 
-  /** True when the planner takes a message to this run between steps: it is no subtask and reached implement, so its plan is amended or gains tasks. */
+  /** True when the planner takes a message to this run between steps: it reached implement, so its plan is amended or gains tasks. */
   takesMessages(run: RunEntity): boolean {
     const turn = messageTurn(run, { state: 'running', openItems: 0 });
-    return !isSubtask(run) && (turn === 'amend' || turn === 'add-tasks');
+    return turn === 'amend' || turn === 'add-tasks';
   }
 
   /**

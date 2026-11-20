@@ -18,7 +18,10 @@ describe('composerHint', () => {
     ]);
   });
 
-  it('has no hint where there is no message box', () => {
-    expect(composerHint('read-only')).toBeUndefined();
+  it("says a subtask's message goes to its planner, and an ended one's to the epic's", () => {
+    expect([composerHint('subtask'), composerHint('epic')]).toEqual([
+      "goes to this task's planner",
+      "goes to the epic's planner",
+    ]);
   });
 });

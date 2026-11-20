@@ -53,10 +53,10 @@ export class PlanChatService {
     const run = await requireRun(this.runs, key);
     const view = await this.queries.flow(key);
     const turn = messageTurn(run, { state: view.state, parentKey: view.parentKey, openItems: view.items.length });
-    if (turn === 'subtask') {
-      throw new ConflictException(`${key} is a subtask: talk to the planner of ${view.parentKey}`);
+    if (turn === 'to-parent' && view.parentKey) {
+      return this.send(view.parentKey, `About ${run.taskId}: ${text}`, author, idempotencyKey, attachments);
     }
-    if (turn === 'follow-up') {
+    if (turn === 'follow-up' || turn === 'to-parent') {
       const ended = view.state === 'merged' || view.state === 'closed' ? view.state : 'removed';
       throw new ConflictException(`${key} is ${ended}: start a follow-up run`);
     }
