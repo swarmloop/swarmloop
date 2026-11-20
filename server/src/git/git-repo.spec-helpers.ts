@@ -3,8 +3,10 @@ import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { gitOutput } from '../testing/git-fixture';
 
+/** Runs git with no background upkeep: a detached `gc --auto` after a commit rewrites `.git/objects` while a spec copies the repository. */
 export function runGit(repo: string, args: string[]): string {
-  return gitOutput(repo, ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args]);
+  const config = ['user.name=t', 'user.email=t@example.com', 'gc.auto=0', 'maintenance.auto=false'];
+  return gitOutput(repo, ['-C', repo, ...config.flatMap((entry) => ['-c', entry]), ...args]);
 }
 
 export function writeFiles(repo: string, files: Record<string, string>): void {
