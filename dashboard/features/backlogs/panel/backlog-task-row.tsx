@@ -9,17 +9,19 @@ import { taskStateWord } from '@contract/run-state';
 import { mergeBacklogTask } from '../../../lib/backlog-endpoints';
 import { localTime } from '../../../lib/format';
 import { RunStateIcon, toneColor } from '../../run';
+import { TaskMenu } from './task-menu';
+import { taskDragProps } from './use-task-drop';
 
 type Task = BacklogView['tasks'][number];
 
 /** One backlog task on one line: state, title and note, a link to its run, and Merge for the owner while it waits for the OK. */
 export function BacklogTaskRow({
-  backlog,
+  view,
   task,
   owner,
   onView,
 }: {
-  backlog: string;
+  view: BacklogView;
   task: Task;
   owner: boolean;
   onView: (view: BacklogView) => void;
@@ -32,7 +34,7 @@ export function BacklogTaskRow({
     setMerging(true);
     setRefusal('');
     try {
-      onView(await mergeBacklogTask(backlog, task.slug));
+      onView(await mergeBacklogTask(view.name, task.slug));
     } catch (error) {
       setRefusal(error instanceof Error ? error.message : 'The merge was refused.');
     } finally {
@@ -40,7 +42,11 @@ export function BacklogTaskRow({
     }
   };
   return (
-    <Box component="li" sx={{ listStyle: 'none', minWidth: 0, py: 0.5 }}>
+    <Box
+      component="li"
+      {...(task.runKey === null ? taskDragProps(task.slug) : {})}
+      sx={{ listStyle: 'none', minWidth: 0, py: 0.5 }}
+    >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
         <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color, flexShrink: 0 }}>
           <RunStateIcon view={word} size={16} />
@@ -66,6 +72,7 @@ export function BacklogTaskRow({
             Merge
           </Button>
         ) : null}
+        <TaskMenu view={view} task={task} owner={owner} onView={onView} />
       </Box>
       {task.note !== '' ? (
         <Typography variant="caption" color="text.secondary" sx={{ pl: 3, display: 'block' }}>
