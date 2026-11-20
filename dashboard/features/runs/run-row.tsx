@@ -10,6 +10,7 @@ import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { openRunMs } from '../../lib/elapsed';
 import type { epicFigures } from '@contract/epic-figures';
+import { etaText } from '../../lib/eta-words';
 import { duration, money, relative, when } from '../../lib/format';
 import { RunStateIcon, runWord } from '../run';
 import { RowDelete, useRowReveal } from './row-delete';
@@ -51,8 +52,10 @@ export function RunRow({
   const step = view.tone === 'working' && run.state !== 'done' ? run.currentStep.replace(/[-_]/g, ' ') : '';
   // An epic's time is the server's wall clock; any other run adds the step it is in, which `durationMs` leaves out.
   const totals = run.epic ?? { durationMs: run.durationMs + openRunMs(run, now), usd: run.usd };
+  const eta = run.eta ? etaText(run.eta, now) : null;
   const parts = [
     { text: step },
+    { text: eta?.text ?? '', tip: eta?.tip },
     { text: figures?.time ?? duration(totals.durationMs), tip: figures?.timeTip },
     { text: figures?.money ?? money(totals.usd), tip: figures?.moneyTip },
   ].filter((part) => part.text);

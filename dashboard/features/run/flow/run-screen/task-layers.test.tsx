@@ -63,7 +63,7 @@ function renderRunList(runs: RunSummary[]): void {
 
 describe('TaskLayers', () => {
   it('shows per task its step, own cost, time and a link to its run', async () => {
-    render(<TaskLayers tasks={tasks} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={tasks} onSkip={vi.fn()} />);
     await openSettled();
 
     const region = screen.getByRole('region', { name: 'Tasks' });
@@ -90,7 +90,7 @@ describe('TaskLayers', () => {
         interruption: { at, relaunched: true },
       },
     });
-    render(<TaskLayers tasks={[cut, task('t4')]} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={[cut, task('t4')]} onSkip={vi.fn()} />);
 
     const region = screen.getByRole('region', { name: 'Tasks' });
     expect(region).toHaveTextContent(
@@ -100,7 +100,7 @@ describe('TaskLayers', () => {
   });
 
   it('lists blocked, running, waiting, then settled tasks, in plan order inside a group', async () => {
-    render(<TaskLayers tasks={tasks} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={tasks} onSkip={vi.fn()} />);
     await openSettled();
 
     const titles = within(screen.getByRole('region', { name: 'Tasks' }))
@@ -110,14 +110,14 @@ describe('TaskLayers', () => {
   });
 
   it('sums the subtasks in one summary line', () => {
-    render(<TaskLayers tasks={tasks} epic={{ usd: 9, durationMs: 1000 }} ownUsd={2.75} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={tasks} epic={{ usd: 9, durationMs: 1000 }} ownUsd={2.75} onSkip={vi.fn()} />);
 
     expect(screen.getByRole('region', { name: 'Tasks' })).toHaveTextContent('7 tasks · 4 merged · $6.25');
     expect(screen.getByRole('progressbar', { name: 'Merged' })).toBeInTheDocument();
   });
 
   it('keeps files and proof closed until the row is opened', async () => {
-    render(<TaskLayers tasks={tasks} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={tasks} onSkip={vi.fn()} />);
     await openSettled();
 
     expect(screen.queryByText('file-0.ts')).not.toBeInTheDocument();
@@ -148,7 +148,7 @@ describe('TaskLayers', () => {
       task('w2', { depends: ['r2', 'r3'], status: 'waiting', waitsFor: ['Title r2', 'Title r3'], run: undefined }),
       task('w3', { depends: ['m2'], status: 'waiting', waitsFor: [], run: undefined }),
     ].map((item, index) => ({ ...item, index }));
-    render(<TaskLayers tasks={f54} epic={{ usd: 20, durationMs: 1000 }} ownUsd={5} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={f54} epic={{ usd: 20, durationMs: 1000 }} ownUsd={5} onSkip={vi.fn()} />);
 
     const region = screen.getByRole('region', { name: 'Tasks' });
     expect(region).not.toHaveTextContent('Stage');
@@ -169,7 +169,7 @@ describe('TaskLayers', () => {
   });
 
   it('puts the agent time in the tooltip of the summary', async () => {
-    render(<TaskLayers tasks={tasks} epic={{ usd: 9, durationMs: 1000 }} ownUsd={2.75} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={tasks} epic={{ usd: 9, durationMs: 1000 }} ownUsd={2.75} onSkip={vi.fn()} />);
 
     await userEvent.setup({ delay: null }).hover(screen.getByText('7 tasks · 4 merged · $6.25'));
 
@@ -178,7 +178,7 @@ describe('TaskLayers', () => {
 
   it('shows a running task and a task waiting for another with the working look of the run list', () => {
     const waiting = task('t6', { status: 'waiting', waitsFor: ['Title t3'], run: undefined });
-    render(<TaskLayers tasks={[tasks[2], waiting]} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={[tasks[2], waiting]} onSkip={vi.fn()} />);
 
     const region = screen.getByRole('region', { name: 'Tasks' });
     const running = within(region).getByRole('img', { name: 'Working' });
@@ -194,7 +194,7 @@ describe('TaskLayers', () => {
       note: 'waiting for a free slot: 3 of SUBTASKS_PARALLEL running',
       run: undefined,
     });
-    render(<TaskLayers tasks={[waiting]} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={[waiting]} onSkip={vi.fn()} />);
 
     const region = screen.getByRole('region', { name: 'Tasks' });
     expect(region.textContent?.match(/waiting for/g)).toHaveLength(1);
@@ -286,7 +286,7 @@ describe('TaskLayers', () => {
 
   it('skips a blocked task', async () => {
     const onSkip = vi.fn().mockResolvedValue(undefined);
-    render(<TaskLayers tasks={tasks} onSkip={onSkip} />);
+    render(<TaskLayers now={0} tasks={tasks} onSkip={onSkip} />);
     const user = userEvent.setup({ delay: null });
 
     await user.click(screen.getByRole('button', { name: 'Skip task' }));
@@ -299,6 +299,7 @@ describe('TaskLayers', () => {
   it('shows the merge queue and the decisions, and hides them when empty', () => {
     const { rerender } = render(
       <TaskLayers
+        now={0}
         tasks={tasks}
         mergeQueue={[{ id: 't3', title: 'Send it' }]}
         decisions="- subtask a: use `UTC`"
@@ -311,7 +312,7 @@ describe('TaskLayers', () => {
     expect(decisions).toHaveTextContent('Decisions');
     expect(within(decisions).getByText('UTC').tagName).toBe('CODE');
 
-    rerender(<TaskLayers tasks={tasks} onSkip={vi.fn()} />);
+    rerender(<TaskLayers now={0} tasks={tasks} onSkip={vi.fn()} />);
 
     expect(screen.queryByRole('region', { name: 'Merge queue' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Decisions' })).not.toBeInTheDocument();
@@ -357,7 +358,7 @@ describe('TaskLayers', () => {
       depends,
       status: run.task.status,
     });
-    render(<TaskLayers tasks={[planned(third), planned(second, ['A']), planned(merged)]} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={[planned(third), planned(second, ['A']), planned(merged)]} onSkip={vi.fn()} />);
     await openSettled();
 
     expect(inList).toEqual(['Task B', 'Task C', 'Task A']);
@@ -410,7 +411,7 @@ describe('TaskLayers', () => {
         durationMs: 0,
       },
     }));
-    render(<TaskLayers tasks={planned} onSkip={vi.fn()} />);
+    render(<TaskLayers now={0} tasks={planned} onSkip={vi.fn()} />);
 
     expect(inList).toEqual(['Task C', 'Task A', 'Task B']);
     expect(titles()).toEqual(inList);
@@ -428,6 +429,7 @@ describe('TaskLayers', () => {
     };
     render(
       <TaskLayers
+        now={0}
         tasks={[
           task('t1', { status: 'blocked' }),
           task('t2', { status: 'blocked' }),
@@ -442,5 +444,24 @@ describe('TaskLayers', () => {
     expect(rows[0]).not.toHaveTextContent('in this plan');
     expect(rows[1]).toHaveTextContent('New in this plan');
     expect(rows[2]).toHaveTextContent('Changed in this plan');
+  });
+
+  it('shows the time left of a running and a waiting task and none for a merged one', async () => {
+    const now = Date.parse('2026-11-12T12:00:00.000Z');
+    const eta = (minutes: number) => ({
+      leftMs: minutes * 60_000,
+      doneAt: new Date(now + minutes * 60_000).toISOString(),
+    });
+    const running = task('t3', { status: 'running', eta: eta(25) });
+    const waiting = task('t6', { status: 'waiting', waitsFor: [], run: undefined, eta: eta(45) });
+    const merged = task('t2', { eta: eta(10) });
+    render(<TaskLayers tasks={[merged, running, waiting]} now={now} onSkip={vi.fn()} />);
+    await openSettled();
+
+    const rows = screen.getAllByRole('listitem');
+    const rowOf = (title: string) => rows.find((row) => row.textContent?.includes(title))!;
+    expect(rowOf('Title t3')).toHaveTextContent('~25m left');
+    expect(rowOf('Title t6')).toHaveTextContent('~45m left');
+    expect(rowOf('Title t2')).not.toHaveTextContent('left');
   });
 });

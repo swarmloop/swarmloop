@@ -35,6 +35,7 @@ import { RunCommandsService } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { RunListRows } from './run-list-rows';
+import { EtaSummary } from './eta-summary';
 import { RunRebaseService } from './run-rebase.service';
 import { RequestTiming } from './request-timing';
 
@@ -67,6 +68,7 @@ import { RequestTiming } from './request-timing';
   providers: [
     RunQueriesService,
     RunListRows,
+    EtaSummary,
     RunCommandsService,
     RunAnswersService,
     BacklogStart,
