@@ -1,3 +1,4 @@
+import type { DocumentEntity } from '../../history/entities';
 import type { FlowItem } from '../../contract/api';
 import type { PlanChatEntry } from '../../contract/plan-chat';
 import type { RunState } from '../../contract/run-state';
@@ -14,7 +15,13 @@ const entry = (key: string, at: string, role: PlanChatEntry['role'] = 'person'):
 const view = (
   place: { step: string; split?: boolean },
   state: RunState,
-  extra: { parentKey?: string; items?: FlowItem[]; entries?: PlanChatEntry[]; replying?: boolean } = {},
+  extra: {
+    documents?: DocumentEntity[];
+    parentKey?: string;
+    items?: FlowItem[];
+    entries?: PlanChatEntry[];
+    replying?: boolean;
+  } = {},
 ) =>
   conversationView({
     run: { currentStep: place.step, workspace: null },
@@ -24,6 +31,7 @@ const view = (
     items: extra.items ?? [],
     log: { entries: extra.entries ?? [], revisions: [] },
     replying: extra.replying ?? false,
+    documents: extra.documents,
   });
 
 describe('conversationView', () => {
@@ -60,5 +68,26 @@ describe('conversationView', () => {
     expect(shown.entries.map((item) => item.key)).toEqual(['first', 'second']);
     expect(shown.replying).toBe(true);
     expect(view({ step: 'plan' }, 'running').replying).toBe(false);
+  });
+
+  it('gives each question the time it was asked', () => {
+    const parts = { decide: 'd', sides: [], full: 'f', askedAt: '2026-01-01T12:25:00.000Z' };
+    const documents = [
+      { kind: 'questions', body: '["Which limit?"]', createdAt: '2026-01-01T10:00:00.000Z' },
+      { kind: 'questions', body: '["Which limit?","Other"]', createdAt: '2026-01-01T11:00:00.000Z' },
+      { kind: 'plan', body: 'Which limit?', createdAt: '2026-01-01T13:00:00.000Z' },
+    ] as DocumentEntity[];
+    const items: FlowItem[] = [
+      { kind: 'question', id: 'q1', label: 'Timed', answer: '', parts },
+      { kind: 'question', id: 'Which limit?\nmore', label: 'Which limit?', answer: '' },
+      { kind: 'question', id: 'Unknown', label: 'Unknown', answer: '' },
+    ];
+    const shown = view({ step: 'research' }, 'waiting', { items, documents });
+    expect(shown.questions.map((question) => question.askedAt)).toEqual([
+      '2026-01-01T12:25:00.000Z',
+      '2026-01-01T11:00:00.000Z',
+      undefined,
+    ]);
+    expect(shown.questions[2]).not.toHaveProperty('askedAt');
   });
 });

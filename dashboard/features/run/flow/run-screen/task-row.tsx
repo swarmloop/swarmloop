@@ -4,17 +4,19 @@ import Link from 'next/link';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Collapse from '@mui/material/Collapse';
+import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import type { TaskEntry } from '@contract/api';
-import { interruptionSentence } from '@contract/interruption';
 import { taskStateWord } from '@contract/run-state';
 import type { RevisionMark } from '../../conversation/revision-marks';
+import { DisclosureIcon } from '../../../../components/ui/disclosure-icon';
 import { ConfirmDialog } from '../../../shell';
 import { duration, localTime, money } from '../../../../lib/format';
 import { RunStateIcon, toneColor } from '../../run-state-word';
 import { TaskDetails } from './task-details';
+import { taskNotes } from './task-notes';
 
 /** The row's button: the plan before the task has a result, the changes after. */
 function detailsLabel(task: TaskEntry): string {
@@ -22,15 +24,18 @@ function detailsLabel(task: TaskEntry): string {
   return result ? `Changes · ${result.files.length} ${result.files.length === 1 ? 'file' : 'files'}` : 'Plan';
 }
 
-/** One task on one line: its status, title, what it waits for, time and cost, with its plan and result on demand. `dependents` are the titles of the tasks that depend on it. */
+/** One task on one line: its status, title, time and cost, with a short caption only when it waits or needs a person, and its plan and result on demand. `dependents` are the titles of the tasks that depend on it. */
 export function TaskRow({
   task,
   dependents,
   onSkip,
+  unmet = [],
   mark,
 }: {
   task: TaskEntry;
   dependents: string[];
+  /** The ids of the tasks it depends on that are not settled yet. */
+  unmet?: string[];
   onSkip: (taskId: string) => Promise<unknown>;
   /** Set when the latest plan change added or changed this task. */
   mark?: RevisionMark | null;
@@ -41,58 +46,34 @@ export function TaskRow({
   const color = toneColor(word.tone);
   const step = task.status === 'running' && task.run ? ` · ${task.run.currentStep.replaceAll('-', ' ')}` : '';
   const hasDetails = task.files.length > 0 || task.proof !== '' || task.run?.result !== undefined;
+  const { tip, caption } = taskNotes(task, word, unmet);
   const summary = (
     <>
       <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color, flexShrink: 0 }}>
-        <RunStateIcon view={word} size={16} />
+        <RunStateIcon view={{ ...word, tip }} size={16} />
         <Typography component="span" variant="caption" sx={{ color }}>
           {word.word}
           {step}
         </Typography>
       </Box>
       {mark ? (
-        <Typography component="span" variant="caption" color="primary">
+        <Typography component="span" variant="caption" color="primary" sx={{ flexShrink: 0 }}>
           {mark === 'added' ? 'New in this plan' : 'Changed in this plan'}
         </Typography>
       ) : null}
       <Tooltip title={task.title}>
-        <Typography variant="body2" noWrap sx={{ minWidth: 0, flex: '1 1 8rem' }}>
+        <Typography variant="body2" noWrap sx={{ minWidth: 0, flex: '1 1 0' }}>
           {task.title}
         </Typography>
       </Tooltip>
-      {task.waitsFor ? (
-        <Typography component="span" variant="caption" color="text.secondary">
-          {task.waitsFor.length > 0 ? `waiting for ${task.waitsFor.join(', ')}` : 'waiting for a free slot'}
-        </Typography>
-      ) : null}
-      {task.depends.length > 0 ? (
-        <Typography component="span" variant="caption" color="text.secondary">
-          after {task.depends.join(', ')}
-        </Typography>
-      ) : null}
-      {task.note && !task.waitsFor ? (
-        <Typography component="span" variant="caption" color="text.secondary">
-          {task.note}
-        </Typography>
-      ) : null}
-      {task.run?.interruption ? (
-        <Typography component="span" variant="caption" color="text.secondary">
-          {interruptionSentence(task.run.interruption, localTime)}
-        </Typography>
-      ) : null}
       {task.run ? (
-        <Typography
-          component="span"
-          variant="caption"
-          color="text.secondary"
-          sx={{ flexBasis: { xs: '100%', sm: 'auto' }, pl: { xs: 3, sm: 0 } }}
-        >
+        <Typography component="span" variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
           {duration(task.run.durationMs)} · {money(task.run.usd)}
         </Typography>
       ) : null}
     </>
   );
-  const line = { display: 'flex', alignItems: 'center', gap: 1, flex: '1 1 0', minWidth: 0, flexWrap: 'wrap' };
+  const line = { display: 'flex', alignItems: 'center', gap: 1, flex: '1 1 0', minWidth: 0 };
   return (
     <Box
       component="li"
@@ -102,7 +83,7 @@ export function TaskRow({
         ...(mark ? { bgcolor: alpha(theme.palette.primary.main, 0.1), borderRadius: 1, px: 0.5 } : {}),
       })}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
         {task.run ? (
           <Box
             component={Link}
@@ -121,16 +102,32 @@ export function TaskRow({
           <Box sx={line}>{summary}</Box>
         )}
         {hasDetails ? (
-          <Button size="small" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {detailsLabel(task)}
-          </Button>
-        ) : null}
-        {task.status === 'blocked' ? (
-          <Button size="small" onClick={() => setSkipping(true)}>
-            Skip task
-          </Button>
+          <Tooltip title={detailsLabel(task)}>
+            <IconButton
+              size="small"
+              aria-label={detailsLabel(task)}
+              aria-expanded={open}
+              onClick={() => setOpen(!open)}
+            >
+              <DisclosureIcon open={open} />
+            </IconButton>
+          </Tooltip>
         ) : null}
       </Box>
+      {caption !== '' || task.status === 'blocked' ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 3, minWidth: 0 }}>
+          {caption !== '' ? (
+            <Typography variant="caption" color="text.secondary">
+              {caption}
+            </Typography>
+          ) : null}
+          {task.status === 'blocked' ? (
+            <Button size="small" onClick={() => setSkipping(true)}>
+              Skip task
+            </Button>
+          ) : null}
+        </Box>
+      ) : null}
       <ConfirmDialog
         open={skipping}
         title={`Skip task ${task.id}?`}

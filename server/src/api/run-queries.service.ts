@@ -170,6 +170,7 @@ export class RunQueriesService {
         items: open,
         log: readPlanChat(latest(documents, ARTIFACTS.planChat.kind)),
         replying: this.turns?.replying(run.key) ?? false,
+        documents,
       }),
       sentence: withSkip(
         sentence(shown, open, documents, stats, maxReturns),

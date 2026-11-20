@@ -1,25 +1,20 @@
 'use client';
 
-import { Fragment, type ReactElement } from 'react';
+import { type ReactElement, useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import type { FlowView } from '@contract/api';
-import type { PlanChatEntry, PlanRevision } from '@contract/plan-chat';
+import type { PlanChatEntry } from '@contract/plan-chat';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
 import { Bubble, BubbleLayoutProvider, BubbleProvider } from '../transcript/bubble';
-import { useMotionMs } from '../transcript/tokens';
+import { RADIUS, SPACE, useMotionMs } from '../transcript/tokens';
 import { useStepEvents } from '../transcript/use-step-events';
-import {
-  type AgentTalk,
-  type FeedEntry,
-  isTalk,
-  limitWaitSentence,
-  plainText,
-  spokenText,
-  talkSentence,
-} from './conversation-words';
+import { useFollowBottom } from '../use-follow-bottom';
+import { type AgentTalk, type FeedEntry, plainText, spokenText, talkSentence } from './conversation-words';
+import { feedTimeline } from './feed-timeline';
 import { InfoLine } from './info-line';
-import { hasProblem, ProblemEntry } from './problem-entry';
+import { ProblemEntry } from './problem-entry';
 import { QuestionEntry } from './question-entry';
 import { RevisionCard } from './revision-card';
 
@@ -50,8 +45,8 @@ function Message({ entry }: { entry: PlanChatEntry }): ReactElement {
   );
 }
 
-/** The reply the planner is writing now, read from the events of the running plan visit. */
-function StreamingReply({ runKey, cursor }: { runKey: string; cursor: number }): ReactElement {
+/** The words of the reply the planner is writing now, read from the events of the running plan visit. */
+function useStreamingText(runKey: string, cursor: number): string {
   const { events } = useStepEvents(runKey, 'plan', cursor, true);
   const visit = (events ?? []).filter((event) => event.step === 'plan');
   const start = visit.findLastIndex((event) => event.kind === 'attempt.started');
@@ -59,7 +54,25 @@ function StreamingReply({ runKey, cursor }: { runKey: string; cursor: number }):
     .slice(start + 1)
     .filter((event) => event.kind === 'agent.message')
     .at(-1);
-  const text = message?.kind === 'agent.message' ? spokenText(message.text) : '';
+  return message?.kind === 'agent.message' ? spokenText(message.text) : '';
+}
+
+/** Reads the words of the reply being written and hands them up. It is mounted only while the planner replies. */
+function StreamReader({
+  runKey,
+  cursor,
+  onText,
+}: {
+  runKey: string;
+  cursor: number;
+  onText: (text: string) => void;
+}): null {
+  const text = useStreamingText(runKey, cursor);
+  useEffect(() => onText(text), [text, onText]);
+  return null;
+}
+
+function StreamingReply({ text }: { text: string }): ReactElement {
   return (
     <BubbleProvider value={{ actor: PLANNER, time: '', grouped: false, problem: null, eventId: '' }}>
       <Box aria-live="polite" sx={{ minHeight: STREAM_HEIGHT, display: 'flex', flexDirection: 'column' }}>
@@ -98,48 +111,79 @@ function Talk({ talk }: { talk: AgentTalk }): ReactElement {
   );
 }
 
-/**
- * The conversation of a run, in order: the person's messages, the planner's replies (the one being written streams), talk
- * between agents as muted lines, what needs the person (questions, a usage-limit wait, a failed or blocked step).
- */
-export function ConversationFeed({
-  flow,
-  entries,
-  onResume,
-}: {
+interface FeedProps {
   flow: FlowView;
   entries: FeedEntry[];
   onResume: () => void;
-}): ReactElement {
+}
+
+/**
+ * The conversation of a run, in order: the person's messages, the planner's replies (the one being written streams), talk
+ * between agents as muted lines, what needs the person (questions, a failed or blocked step, a wait only a person ends), and one line for a wait
+ * the run ends by itself.
+ */
+export function ConversationFeed({ flow, entries, onResume }: FeedProps): ReactElement {
   const ms = useMotionMs();
-  const limit = limitWaitSentence(flow);
-  const revisions = flow.conversation?.revisions ?? [];
-  const lastReply = (version: number): number =>
-    entries.findLastIndex((entry) => entry.role === 'planner' && entry.version === version);
-  const cardsAfter = (index: number): PlanRevision[] =>
-    revisions.filter((revision) =>
-      lastReply(revision.version) >= 0 ? lastReply(revision.version) === index : index === entries.length - 1,
-    );
+  const replying = flow.conversation?.replying ?? false;
+  const [written, setWritten] = useState('');
+  const streaming = replying ? written : '';
+  const rows = feedTimeline(flow, entries);
+  const { box, onScroll, unseen, scrollToBottom } = useFollowBottom(rows.length, streaming);
   return (
     <BubbleLayoutProvider value={{ width: '92%', ms }}>
-      <Box role="log" aria-label="Conversation" sx={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-        {entries.length === 0
-          ? revisions.map((revision) => <RevisionCard key={revision.version} revision={revision} />)
-          : null}
-        {entries.map((entry, index) => (
-          <Fragment key={entry.key}>
-            {isTalk(entry) ? <Talk talk={entry} /> : <Message entry={entry} />}
-            {cardsAfter(index).map((revision) => (
-              <RevisionCard key={revision.version} revision={revision} />
-            ))}
-          </Fragment>
-        ))}
-        {flow.conversation?.replying ? <StreamingReply runKey={flow.key} cursor={flow.revision} /> : null}
-        {flow.items.map((item) => (
-          <QuestionEntry key={`${item.kind}:${item.id}`} item={item} />
-        ))}
-        {limit ? <InfoLine sentence={limit} /> : null}
-        {hasProblem(flow) ? <ProblemEntry flow={flow} onResume={onResume} /> : null}
+      <Box sx={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <Box
+          ref={box}
+          role="log"
+          aria-label="Conversation"
+          onScroll={onScroll}
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1,
+            minWidth: 0,
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
+          {rows.map((row) => {
+            switch (row.type) {
+              case 'message':
+                return <Message key={row.key} entry={row.entry} />;
+              case 'talk':
+                return <Talk key={row.key} talk={row.talk} />;
+              case 'revision':
+                return <RevisionCard key={row.key} revision={row.revision} />;
+              case 'question':
+                return <QuestionEntry key={row.key} item={row.item} />;
+              case 'limit':
+              case 'info':
+                return <InfoLine key={row.key} sentence={row.sentence} />;
+              case 'problem':
+                return <ProblemEntry key={row.key} flow={flow} onResume={onResume} />;
+              case 'streaming':
+                return <StreamingReply key={row.key} text={streaming} />;
+            }
+          })}
+        </Box>
+        {replying ? <StreamReader runKey={flow.key} cursor={flow.revision} onText={setWritten} /> : null}
+        {unseen ? (
+          <Button
+            size="small"
+            variant="contained"
+            onClick={scrollToBottom}
+            sx={{
+              position: 'absolute',
+              bottom: SPACE.part,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              borderRadius: RADIUS.pill,
+            }}
+          >
+            New messages ↓
+          </Button>
+        ) : null}
       </Box>
     </BubbleLayoutProvider>
   );

@@ -59,9 +59,18 @@ describe('RevisionCard', () => {
       at: '2026-11-15T07:11:43.444Z',
       version,
     });
-    const entries = [entry('reply-one', 'planner', 3), entry('message-two', 'person')];
+    const entries = [
+      entry('reply-one', 'planner', 3),
+      { ...entry('message-two', 'person'), at: '2026-11-15T07:12:00.000Z' },
+    ];
     const flow = flowView({
-      conversation: { composer: 'plan', replying: false, entries, revisions: [revision()], questions: [] },
+      conversation: {
+        composer: 'plan',
+        replying: false,
+        entries,
+        revisions: [revision({ at: '2026-11-15T07:11:43.444Z' })],
+        questions: [],
+      },
     });
     render(<ConversationFeed flow={flow} entries={entries} onResume={vi.fn()} />, { wrapper: Wrapper });
 

@@ -59,7 +59,7 @@ export function settled(task: Pick<Subtask, 'status'>): boolean {
 }
 
 /** The ids a task still waits for. */
-export function unmetDepends<T extends Subtask>(task: T, tasks: T[]): string[] {
+export function unmetDepends<T extends Pick<Subtask, 'id' | 'depends' | 'status'>>(task: T, tasks: T[]): string[] {
   return task.depends.filter((id) => {
     const found = tasks.find((item) => item.id === id);
     return !found || !settled(found);
