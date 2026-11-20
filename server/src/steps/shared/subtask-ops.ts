@@ -2,6 +2,8 @@ import type { RunEntity } from '../../history/entities';
 import type { Subtask } from '../../contract/subtask';
 import type { OpenedStep } from '../step-run';
 import type { Need } from './needs';
+import type { StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
+import type { PlanChange, StarterPlan } from '../implement/starter-actions';
 
 /** One merge request of a subtask: the repository it is for, and where the host has it. */
 export interface SubtaskMergeRequest {
@@ -70,11 +72,22 @@ export abstract class SubtaskOps {
   /** True when the run waits in research for answers to its questions. */
   abstract asking(run: RunEntity): Promise<boolean>;
   /**
-   * Asks the planner of the parent, in the parent's own chat, the open questions of a subtask run, and sends the run
-   * the answer through the Answer command. Returns the answer. Null means the planner gave no answer and nothing was
-   * sent.
+   * Asks the planner of the parent, in the parent's own chat, the open questions of a subtask run. With `plan` the
+   * planner may act on the task list, and a refused action goes back to it in the same visit. The run is sent the
+   * decision, or, when the answer has `waitFor`, made to wait for those tasks. Returns the answer. Null means the
+   * planner gave no usable answer and nothing was sent.
    */
-  abstract answer(opened: OpenedStep, child: RunEntity, task: Subtask, contract: string): Promise<string | null>;
+  abstract answer(
+    opened: OpenedStep,
+    child: RunEntity,
+    task: Subtask,
+    contract: string,
+    plan?: StarterPlan,
+  ): Promise<StarterAnswerResult | null>;
+  /** Sends a subtask run the answer again that it refused, so the planner is not asked twice. Null while it is refused. */
+  abstract resend(child: RunEntity): Promise<StarterAnswerResult | null>;
+  /** Writes the changes of an answer as plan revisions with their reasons, in the parent's chat and in the chat of each changed task. */
+  abstract recordRevisions(parent: RunEntity, changes: PlanChange[], at: string): Promise<void>;
   /** True when the planner answered a subtask run and the delivery was refused, so `answer` sends that reply again. */
   abstract replyPending(child: RunEntity): boolean;
   /** Sends a subtask run the answer of the person to its open questions through the Answer command. */

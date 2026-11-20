@@ -1,6 +1,7 @@
 import type { RunEntity } from '../../history/entities';
 import { settled, type Subtask } from '../../contract/subtask';
-import { reaches, withDecisions } from '../plan/plan-tasks';
+import { withDecisions } from '../plan/plan-tasks';
+import { refusal } from './need-refusal';
 import { withDecision } from '../shared/handoff';
 import type { Need } from '../shared/needs';
 import type { SubtaskOps } from '../shared/subtask-ops';
@@ -10,14 +11,6 @@ import { askedQuestion } from './split-questions';
 
 /** What a pass does for the needs of one task. */
 type Action = 'wait' | 'ask' | 'edge' | 'rerun';
-
-/** Why a need cannot be waited for, or null when the task may wait for it. */
-function refusal(task: Subtask, need: Need, tasks: Subtask[]): string | null {
-  if (need.id === task.id) return `${need.id} is this task itself`;
-  if (!tasks.some((item) => item.id === need.id)) return `no task has the id ${need.id}`;
-  if (reaches(tasks, need.id, task.id)) return `${need.id} depends on ${task.id}, so waiting for it would never end`;
-  return null;
-}
 
 function refusalLine(need: Need, reason: string): string {
   return `${need.id} cannot go first: ${reason}. Do the part your task needs inside your task, or keep the current shape and write it as not built.`;

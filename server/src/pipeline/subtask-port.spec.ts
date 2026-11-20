@@ -13,6 +13,7 @@ import { ARTIFACTS } from '../steps/contract/artifacts';
 import { git } from '../testing/git-fixture';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { renderQuestions } from '../steps/research/research-record';
+import { planChangesOf } from '../steps/shared/plan-changes';
 import { ReportRefresh } from '../steps/shared/report-refresh';
 import { RunReport } from '../steps/shared/run-report';
 import { SubtaskPlannerAnswer } from './subtask-planner-answer';
@@ -20,7 +21,7 @@ import { SubtaskPort } from './subtask-port';
 
 const answered = {
   responseText: 'use the shared helper',
-  resultValue: { answer: 'use the shared helper' },
+  resultValue: { decision: 'use the shared helper' },
   chatId: 'chat-1',
   tokensIn: 0,
   tokensOut: 0,
@@ -35,7 +36,12 @@ const answered = {
   finishedAt: '',
 };
 
-async function asked(env: Parameters<typeof testEnv>[0], epic: boolean, stored: Record<string, string> = {}) {
+async function asked(
+  env: Parameters<typeof testEnv>[0],
+  epic: boolean,
+  stored: Record<string, string> = {},
+  value: Record<string, unknown> = answered.resultValue,
+) {
   const dir = mkdtempSync(join(tmpdir(), 'swarmloop-subtask-port-'));
   mkdirSync(join(dir, 'data'), { recursive: true });
   mkdirSync(agentStateDir(dir, 'parent', sessionHome('plan')), { recursive: true });
@@ -55,17 +61,18 @@ async function asked(env: Parameters<typeof testEnv>[0], epic: boolean, stored: 
   } as unknown as RunEntity;
   const launch = jest.fn((input: { result: { name: string } }) => {
     receive(input.result.name);
-    return Promise.resolve(answered);
+    return Promise.resolve({ ...answered, resultValue: value });
   });
   const submit = jest.fn().mockResolvedValue(undefined);
   const finished: VisitDraft[] = [];
+  const written: Record<string, string> = {};
   const createPort = () =>
     new SubtaskPort(
-      {} as never,
+      { findRun: async (key: string) => ({ key }) } as never,
       {
         latestBody: async (_key: string, kind: string) =>
           stored[kind] ?? (['research_result', 'plan_result', 'implementation_result'].includes(kind) ? null : 'app\n'),
-        putDocument: async () => undefined,
+        putDocument: async (_run: unknown, kind: string, body: string) => void (written[kind] = body),
       } as never,
       { submit } as never,
       { launch } as never,
@@ -80,12 +87,13 @@ async function asked(env: Parameters<typeof testEnv>[0], epic: boolean, stored: 
   let port = createPort();
   const opened = { run: parent, startedAt: '2026-01-01T00:00:00.000Z' } as never;
   await port.answer(opened, { key: 'child' } as RunEntity, { id: 't1' } as never, 'contract');
-  const again = (): Promise<string | null> =>
+  const again = (): Promise<unknown> =>
     port.answer(opened, { key: 'child-2' } as RunEntity, { id: 't2' } as never, 'contract');
   return {
     input: launch.mock.calls[0][0],
     visit: finished[0],
     submit,
+    written,
     launch,
     again,
     receive,
@@ -120,8 +128,8 @@ describe('the result prompt of the planner answer', () => {
     await again();
 
     const [first, second] = prompts(launch);
-    expect(first).toContain('- answer (string, required)');
-    expect(second).not.toContain('- answer (string, required)');
+    expect(first).toContain('- decision (string, required)');
+    expect(second).not.toContain('- decision (string, required)');
     expect(second).toContain('End with the result block as before.');
   });
 
@@ -130,7 +138,7 @@ describe('the result prompt of the planner answer', () => {
     receive('plan');
     await again();
 
-    expect(prompts(launch)[1]).toContain('- answer (string, required)');
+    expect(prompts(launch)[1]).toContain('- decision (string, required)');
   });
 
   it('asks in full after plan-improve changed the shared chat definition', async () => {
@@ -138,7 +146,7 @@ describe('the result prompt of the planner answer', () => {
     receive('plan_improve');
     await again();
 
-    expect(prompts(launch)[1]).toContain('- answer (string, required)');
+    expect(prompts(launch)[1]).toContain('- decision (string, required)');
     expect(prompts(launch)[1]).not.toContain('End with the result block as before.');
   });
 
@@ -148,10 +156,10 @@ describe('the result prompt of the planner answer', () => {
     await again();
 
     expect(prompts(launch)[1]).toContain('End with the result block as before.');
-    expect(prompts(launch)[1]).not.toContain('- answer (string, required)');
+    expect(prompts(launch)[1]).not.toContain('- decision (string, required)');
   });
 
-  it('answers with the whole answer field', async () => {
+  it('answers with the whole decision field', async () => {
     const { submit } = await asked({}, false, { questions: '- one?\n' });
 
     expect(submit.mock.calls[0][2].answers[0].body).toBe('use the shared helper');
@@ -457,5 +465,70 @@ describe('the parent finds what a subtask asks at plan and implement', () => {
     const run = { key: 'child', status: 'waiting', currentStep: 'implement' } as RunEntity;
     const question = { ...escalation, key: 'ask-1', kind: 'question' } as PlanChatEntry;
     expect(await answerer({}, [question]).planner.asking(run)).toBe(false);
+  });
+});
+
+describe("the parent's actions on a subtask's question", () => {
+  const AT = '2026-01-01T00:00:00.000Z';
+  const parent = { key: 'parent', status: 'running', currentStep: 'implement' } as RunEntity;
+  const child = { key: 'parent-a', status: 'waiting', currentStep: 'research' } as RunEntity;
+
+  /** A port over documents kept in memory, for the runs `parent` and `parent-a`. */
+  function memory() {
+    const bodies = new Map<string, string>();
+    const key = (run: string, kind: string): string => `${run}/${kind}`;
+    const documents = {
+      latestBody: async (run: string, kind: string) => bodies.get(key(run, kind)) ?? null,
+      putDocument: async (run: RunEntity, kind: string, body: string) => void bodies.set(key(run.key, kind), body),
+    };
+    const runs = {
+      findRun: async (name: string) => [parent, child].find((run) => run.key === name) ?? null,
+      findSubtask: async (_run: RunEntity, id: string) => (id === 'a' ? child : null),
+    };
+    const port = new SubtaskPort(
+      runs as never,
+      documents as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      new AppConfig(testEnv({ SWARMLOOP_ROOT: tmpdir() })),
+      new FakeClock(),
+    );
+    return { port, documents };
+  }
+
+  it("shows a change of the task list with its reason in the parent's chat and in the changed task's own chat", async () => {
+    const { port, documents } = memory();
+    const change = { taskId: 'a', reason: 'b hands its part over', before: ['old'], after: ['new'] };
+
+    await port.recordRevisions(parent, [change], AT);
+    await port.recordRevisions(parent, [change], AT);
+
+    for (const run of ['parent', 'parent-a']) {
+      const body = await documents.latestBody(run, 'plan_chat');
+      const section = planChangesOf([{ kind: 'plan_chat', body: body ?? '' }]);
+      expect(section?.body).toBe('Plan v2: b hands its part over\n  changed: new');
+    }
+  });
+
+  it('writes a change of a task that has no run in the parent’s chat only', async () => {
+    const { port, documents } = memory();
+
+    await port.recordRevisions(parent, [{ taskId: 'new', reason: 'a needs it', before: [], after: ['added'] }], AT);
+
+    expect(await documents.latestBody('parent', 'plan_chat')).toContain('a needs it');
+    expect(await documents.latestBody('parent-a', 'plan_chat')).toBeNull();
+  });
+});
+
+describe('an answer of the planner that names tasks to wait for', () => {
+  it('stores them as the needs of the subtask and closes its question instead of sending the decision', async () => {
+    const decision = { decision: 'Take b.', waitFor: [{ id: 'b', what: 'the helper' }] };
+
+    const { submit, written } = await asked({}, false, { questions: '- one?\n' }, decision);
+
+    expect(written.needs).toBe('needs:\n- b: the helper\n');
+    expect(written.questions).toBe('');
+    expect(submit).not.toHaveBeenCalled();
   });
 });

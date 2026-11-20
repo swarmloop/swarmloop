@@ -32,7 +32,12 @@ export const SPLIT_ARTIFACTS = {
   /** What a subtask was last told by its starter, per chat, so a continued chat gets only what changed. */
   starterBriefing: artifact('starter_briefing', { writers: [], readers: [], external: true, summarize: firstLine }),
   /** What a subtask's chats already took from its starter. */
-  starterTaken: artifact('starter_taken', { writers: [], readers: [], external: true, summarize: firstLine }),
+  starterTaken: artifact('starter_taken', {
+    writers: ['implement'],
+    readers: [],
+    external: true,
+    summarize: firstLine,
+  }),
   /** The starter's look at a merged task. */
   mergeLook: artifact('merge_look', { writers: [], readers: [], external: true, summarize: firstLine }),
   subtasks: artifact(SUBTASKS_KIND, {

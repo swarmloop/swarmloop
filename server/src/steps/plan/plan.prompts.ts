@@ -1,6 +1,6 @@
 import type { Subtask } from '../../contract/subtask';
 import { plan } from '../../agent-result/definitions/plan';
-import { subtaskAnswer } from '../../agent-result/definitions/subtask-answer';
+import { starterAnswer } from '../../agent-result/definitions/starter-answer';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { LINKED_CONTEXT, TASK_SCOPE } from '../shared/requirements-brief';
 import { skillSection } from '../shared/skill-prompt';
@@ -55,8 +55,34 @@ export function planChatAddsTasks(messages: readonly { text: string }[], resultT
   return planChatFollowUp(messages, [ADD_TASKS_RULES, resultText].join('\n\n'));
 }
 
-/** What the parent's planner is asked in its own chat when a subtask has questions. */
-export function subtaskAsks(task: Subtask, questions: string, contract: string, received: string | null): string {
+/** What the planner may do besides deciding, when it is asked with the tasks of the run. */
+const STARTER_ACTIONS = [
+  'Answer each question as a decision the subtask follows, in `decision`. You may also act on the task list, and every change needs its reason:',
+  '- `waitFor`: the tasks the asking task must wait for, when it needs their code before it can go on.',
+  '- `addTask`: a new task, added at the end of the list.',
+  '- `changeTask`: a change to a task that has not started. `dropTask`: a task that has not started is dropped, with the reason.',
+  'A started or merged task is never changed or dropped.',
+  'When the subtask hands a part back, never drop it: assign the part to a sibling that has not started (`changeTask`) or add a task for it (`addTask`), and give `waitFor` when the asking task needs it.',
+].join('\n');
+
+/** The tasks of the run with their state, as the planner is shown them when it may act on them. */
+function taskLines(tasks: Subtask[]): string {
+  return tasks
+    .map((task) => `- ${task.id} (${task.status}): ${task.title}; depends: ${task.depends.join(', ') || 'none'}`)
+    .join('\n');
+}
+
+/**
+ * What the parent's planner is asked in its own chat when a subtask has questions. With `tasks` it may act on the
+ * task list too; without them it sends the decisions only.
+ */
+export function subtaskAsks(
+  task: Subtask,
+  questions: string,
+  contract: string,
+  received: string | null,
+  tasks?: Subtask[],
+): string {
   return [
     `Subtask ${task.id} asks:`,
     questions.trim(),
@@ -67,9 +93,13 @@ export function subtaskAsks(task: Subtask, questions: string, contract: string, 
     'The contract now:',
     contract.trim() || '(empty)',
     '',
-    'Answer each question as a decision the subtask follows. Do not change the task list. Send the decisions only.',
+    ...(tasks
+      ? ['The tasks now:', taskLines(tasks), '', STARTER_ACTIONS]
+      : [
+          'Answer each question as a decision the subtask follows, in `decision`. Do not change the task list. Send the decision only.',
+        ]),
     '',
-    resultPromptFor(subtaskAnswer, received),
+    resultPromptFor(starterAnswer, received),
   ].join('\n');
 }
 
