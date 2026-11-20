@@ -18,7 +18,7 @@ import { VisitRepository } from '../history/visit.repository';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import type { Need } from '../steps/shared/needs';
 import { mergeHandoff } from '../steps/shared/handoff';
-import { mergeSummaryOf } from './merge-summary';
+import { mergeSummaryOf } from '../steps/shared/merge-summary';
 import type { OpenedStep } from '../steps/step-run';
 import { DELIVERED_PREFIX } from '../steps/commit/commit-result';
 import { ReportRefresh } from '../steps/shared/report-refresh';

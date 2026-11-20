@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { ARTIFACTS } from '../contract/artifacts';
 import { plan } from '../../agent-result/definitions/plan';
-import type { SplitFields, SplitTask } from '../../agent-result/definitions/split-fields';
+import type { ContractItem, SplitFields, SplitTask } from '../../agent-result/definitions/split-fields';
 import { readResult } from '../../agent-result/read-result';
 import {
   addTasksCheck,
@@ -39,8 +39,10 @@ const api: SplitTask = {
   description: 'Sends it.',
 };
 
+const item = (text: string, id = '', owner = ''): ContractItem => ({ id, text, owner });
+
 function answer(tasks: SplitTask[], extra: Partial<SplitFields> = {}): SplitFields {
-  return { contract: ['the field is called `split`'], tasks, keep: [], ...extra };
+  return { contract: [item('the field is called `split`')], tasks, keep: [], ...extra };
 }
 
 describe('taskErrors', () => {
@@ -100,7 +102,7 @@ describe('taskErrors', () => {
   });
 
   it('names a missing contract', () => {
-    expect(taskErrors(answer([column], { contract: [' '] }), limits)).toEqual(['contract is missing']);
+    expect(taskErrors(answer([column], { contract: [item(' ')] }), limits)).toEqual(['contract is missing']);
   });
 
   it('names every error of one answer at once', () => {
@@ -154,13 +156,19 @@ describe('a task description', () => {
 
 describe('the contract and the plan items', () => {
   it('renders each entry as a bullet with its later lines indented', () => {
-    expect(renderContract(['one rule', 'two rules:\n- nested\n\nafter a blank line'])).toBe(
+    expect(renderContract([item('one rule'), item('two rules:\n- nested\n\nafter a blank line')])).toBe(
       '- one rule\n- two rules:\n  - nested\n\n  after a blank line',
     );
   });
 
+  it('writes the id and owner of an item before its text', () => {
+    expect(renderContract([item('a rule\nmore', 'api', 'core'), item('old text')])).toBe(
+      '- api (owner core): a rule\n  more\n- old text',
+    );
+  });
+
   it('is the contract text the prose reader stored for the same entries', () => {
-    const entries = ['the column is called `split`', 'a second rule'];
+    const entries = [item('the column is called `split`'), item('a second rule')];
     expect(renderContract(entries)).toBe('- the column is called `split`\n- a second rule');
   });
 });
@@ -286,7 +294,7 @@ describe('withAddedTasks', () => {
     };
   };
   const added = (tasks: SplitTask[], extra: Partial<SplitFields> = {}) =>
-    answer(tasks, { contract: ['it is sent as JSON'], ...extra });
+    answer(tasks, { contract: [item('it is sent as JSON')], ...extra });
   const test: SplitTask = {
     id: 'docs',
     title: 'Docs',
@@ -340,8 +348,10 @@ describe('withAddedTasks', () => {
 
   it('gives the errors as the check of a reply and refuses a plan next to the tasks', () => {
     const check = addTasksCheck(stored(), limits);
-    expect(check({ reply: 'x', tasks: [test], contract: ['c'] })).toEqual([]);
-    expect(check({ reply: 'x', tasks: [{ ...test, id: 'api' }], contract: ['c'] })).toEqual(['duplicate task id api']);
+    expect(check({ reply: 'x', tasks: [test], contract: [{ id: 'item-1', text: 'c', owner: 'a' }] })).toEqual([]);
+    expect(
+      check({ reply: 'x', tasks: [{ ...test, id: 'api' }], contract: [{ id: 'item-1', text: 'c', owner: 'a' }] }),
+    ).toEqual(['duplicate task id api']);
     expect(check({ reply: 'x', plan: ['one'] })).toEqual([expect.stringContaining('plan is not allowed')]);
   });
 

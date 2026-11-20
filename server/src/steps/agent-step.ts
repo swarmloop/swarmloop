@@ -3,7 +3,6 @@ import type { SwarmloopEnv } from '../config/env';
 import { root } from '../history/run-paths';
 import type { RunEntity } from '../history/entities';
 import { effortFields } from '../contract/effort';
-import { CONTRACT_KIND } from '../contract/subtask';
 import type { SampleDraft, VisitDraft } from '../history/visit';
 import type { AgentRunResult } from '../agent/agent-runner';
 import { visitStatus } from '../core/pipeline-result';
@@ -25,6 +24,7 @@ import type { AgentLauncher } from './shared/agent-launcher';
 import { limitRoute } from './shared/limit-failover';
 import { recordHandoff } from './shared/handoff';
 import { modelVisit } from './shared/model-visit';
+import { StarterBriefing } from './shared/starter-briefing';
 import type { StepName } from '../contract/steps';
 import { artifact, firstLine } from './contract/artifact';
 import type { Artifact } from './contract/artifact';
@@ -82,10 +82,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     super(kernel);
   }
 
-  /** The `contract` the parent run holds right now, read when the step runs. Null for a run without a parent. */
-  protected async parentContract(run: RunEntity): Promise<string | null> {
-    return this.parentDocument(run, CONTRACT_KIND);
-  }
+  private readonly briefing = new StarterBriefing((run, kind) => this.parentDocument(run, kind));
 
   /** The newest body of a kind in the parent of a subtask, or null when the run has no parent or the parent has none. */
   protected async parentDocument(run: RunEntity, kind: string): Promise<string | null> {
@@ -256,9 +253,15 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
   private async launch(run: ModelRun, launch: Parameters<ModelStepContext['launch']>[0]): Promise<LaunchResult> {
     const instructions =
       launch.resume === false ? null : await this.documents.latestBody(run.key, INSTRUCTIONS.of(this.name));
+    const told = launch.briefing ? await this.briefing.textFor(run.opened.run, this.name, launch.briefing) : '';
+    // A prompt for a new chat is always told; the one that continues a chat is told only when it starts one.
+    const toldFull = launch.briefing
+      ? await this.briefing.textFor(run.opened.run, this.name, { continued: false })
+      : '';
     const withInstructions = (text: string): string =>
       instructions?.trim() ? `${text}\n\nLatest user instructions:\n${instructions}` : text;
-    const prompt = withInstructions(launch.prompt);
+    const prompt = withInstructions(`${launch.prompt}${told}`);
+    const fullPrompt = (text: string): string => withInstructions(`${text}${toldFull}`);
     // Only the first launch of the visit is told: later launches of the step are other chats.
     const answerErrors = run.answerErrors;
     run.answerErrors = undefined;
@@ -283,10 +286,10 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
         manifestHosts: launch.manifestHosts,
         resume: launch.resume,
         continuePrompt: launch.continuePrompt,
-        freshPrompt: launch.freshPrompt === undefined ? undefined : withInstructions(launch.freshPrompt),
+        freshPrompt: launch.freshPrompt === undefined ? undefined : fullPrompt(launch.freshPrompt),
         failover: true,
-        brief: launch.freshPrompt === undefined ? prompt : withInstructions(launch.freshPrompt),
-        briefFor: launch.briefFor && ((runtime) => withInstructions(launch.briefFor?.(runtime) ?? prompt)),
+        brief: fullPrompt(launch.freshPrompt ?? launch.prompt),
+        briefFor: launch.briefFor && ((runtime) => fullPrompt(launch.briefFor?.(runtime) ?? launch.prompt)),
         result: launch.result,
         check: launch.check,
         answerErrors,

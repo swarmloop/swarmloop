@@ -1,7 +1,7 @@
 import Joi from 'joi';
 import { defineResult, type ResultDefinition } from '../result-definition';
 import type { Requirement } from '../../contract/requirement-list';
-import { coversKey, keysFor, splitKeys, type SplitFields } from './split-fields';
+import { coversKey, keysFor, splitKeys, storedContractKey, type SplitFields } from './split-fields';
 
 /** What plan-improve hands to the server: the checked checklist or the checked split. An empty plan keeps the stored one. */
 export interface PlanImproveResult extends SplitFields {
@@ -32,8 +32,9 @@ const keys = {
   ...splitKeys(),
 };
 
-function schemaOf(hidden: string[]): Joi.ObjectSchema {
-  return Joi.object(keysFor(keys, hidden))
+function schemaOf(hidden: string[], stored = false): Joi.ObjectSchema {
+  const used = stored ? { ...keys, contract: storedContractKey() } : keys;
+  return Joi.object(keysFor(used, hidden))
     .unknown(hidden.length > 0)
     .custom((value: Partial<PlanImproveResult>, helpers) =>
       value.plan?.length && value.tasks?.length
@@ -43,7 +44,7 @@ function schemaOf(hidden: string[]): Joi.ObjectSchema {
 }
 
 /** Every field of the plan-improve result: the definition its stored kind is read with. */
-export const planImprove = defineResult('plan_improve', schemaOf([]));
+export const planImprove = defineResult('plan_improve', schemaOf([], true));
 
 /** The plan-improve result a run is asked for: a run that may not split is not told about tasks. */
 export function planImproveFor(split: boolean): ResultDefinition {

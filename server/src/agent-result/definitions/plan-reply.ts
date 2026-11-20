@@ -1,7 +1,7 @@
 import Joi from 'joi';
 import { defineResult, type ResultDefinition } from '../result-definition';
 import { planKeys, type PlanResult } from './plan';
-import { keysFor } from './split-fields';
+import { keysFor, storedContractKey } from './split-fields';
 
 /** What the planner hands back to a person: a short answer, and when the plan changes, the plan itself. */
 export interface PlanReplyResult extends Partial<Omit<PlanResult, 'questions'>> {
@@ -42,10 +42,11 @@ const ownKeys = {
 };
 
 /** The plan fields of a reply are all optional: a reply without them changes nothing. */
-function planPart(addTasksOnly: boolean): Record<string, Joi.Schema> {
+function planPart(addTasksOnly: boolean, stored: boolean): Record<string, Joi.Schema> {
   const optional = Object.fromEntries(Object.entries(PLAN_SCHEMAS).map(([name, schema]) => [name, schema.optional()]));
   return {
     ...optional,
+    ...(stored ? { contract: storedContractKey() } : {}),
     plan: PLAN_SCHEMAS.plan.description(
       'The whole checklist as it is now, one item per entry; leave out when the plan stays',
     ),
@@ -55,8 +56,8 @@ function planPart(addTasksOnly: boolean): Record<string, Joi.Schema> {
   };
 }
 
-function schemaOf(hidden: string[], shape: Pick<ReplyShape, 'addTasksOnly'>): Joi.ObjectSchema {
-  const keys = { ...ownKeys, ...planPart(Boolean(shape.addTasksOnly)) };
+function schemaOf(hidden: string[], shape: Pick<ReplyShape, 'addTasksOnly'>, stored = false): Joi.ObjectSchema {
+  const keys = { ...ownKeys, ...planPart(Boolean(shape.addTasksOnly), stored) };
   return Joi.object(keysFor(keys, hidden))
     .unknown(hidden.length > 0)
     .custom((value: PlanReplyResult, helpers) =>
@@ -67,7 +68,7 @@ function schemaOf(hidden: string[], shape: Pick<ReplyShape, 'addTasksOnly'>): Jo
 }
 
 /** Every field of the plan reply: the definition its stored kind is read with. */
-const planReply = defineResult('plan_reply', schemaOf(['name', 'overview', 'questions'], {}));
+const planReply = defineResult('plan_reply', schemaOf(['name', 'overview', 'questions'], {}, true));
 
 /**
  * The plan reply a run is asked for: a run that may not split is not told about tasks, one that is not a subtask is not

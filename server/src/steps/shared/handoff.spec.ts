@@ -10,6 +10,7 @@ import {
   mergeHandoff,
   recordHandoff,
   returnNotes,
+  withDecision,
   withHandoff,
 } from './handoff';
 
@@ -118,5 +119,13 @@ describe('handoff storage', () => {
     const draft = await recordHandoff(documents, 'K', 'plan', '- a');
     expect(draft.kind).toBe('handoff');
     expect(JSON.parse(draft.body)).toEqual([{ step: 'plan', body: '- a' }]);
+  });
+});
+
+describe('withDecision', () => {
+  it('writes the time after the task id when one is given, and leaves it out when not', () => {
+    const timed = withDecision('- x', 'a', 'first\nsecond', '2026-11-19T10:00:00.000Z');
+    expect(timed).toBe('- x\n\ndecisions:\n- subtask a at 2026-11-19T10:00:00.000Z: first\n  second\n');
+    expect(withDecision(timed, 'b', 'plain')).toBe(`${timed}- subtask b: plain\n`);
   });
 });

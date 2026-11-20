@@ -159,7 +159,9 @@ describe('PlanConversation.applyReply', () => {
       check: (value: unknown) => string[];
       result: unknown;
     };
-    expect(request.check({ reply: 'x', tasks: [task], contract: ['c'] })).not.toEqual([]);
+    expect(
+      request.check({ reply: 'x', tasks: [task], contract: [{ id: 'item-1', text: 'c', owner: 'a' }] }),
+    ).not.toEqual([]);
     expect(request.check({ reply: 'x', plan: NEW })).toEqual([]);
   });
 
@@ -236,7 +238,7 @@ describe('PlanConversation.applyReply for a split run whose tasks started', () =
   const reply = {
     reply: 'Added.',
     summary: ['d'],
-    contract: ['d uses c'],
+    contract: [{ id: '', text: 'd uses c', owner: '' }],
     tasks: [{ ...task('d', 'pending', ['c']), covers: ['R1'] }],
     keep: [],
   };

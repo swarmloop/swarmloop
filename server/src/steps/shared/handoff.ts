@@ -113,10 +113,15 @@ export function withSubtasks(
   return [...sections, { heading: 'Subtasks', body: [lead, ...entries].filter(Boolean).join('\n') }];
 }
 
-/** The contract with a decision added under `decisions:`. The heading is created when the contract has none. */
-export function withDecision(contract: string, taskId: string, answer: string): string {
+/**
+ * The contract with a decision added under `decisions:`. The heading is created when the contract has none. `at` is an
+ * ISO time written after the task id; it is left out when none is given.
+ */
+export function withDecision(contract: string, taskId: string, answer: string, at?: string): string {
   const [first = '', ...rest] = answer.trim().split('\n');
-  const entry = [`- subtask ${taskId}: ${first}`, ...rest.map((line) => `  ${line}`)].join('\n');
+  const entry = [`- subtask ${taskId}${at ? ` at ${at}` : ''}: ${first}`, ...rest.map((line) => `  ${line}`)].join(
+    '\n',
+  );
   const body = contract.trimEnd();
   return `${body}${/^decisions:\s*$/m.test(body) ? '\n' : `${body ? '\n\n' : ''}decisions:\n`}${entry}\n`;
 }

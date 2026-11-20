@@ -217,7 +217,14 @@ describe('plan step with a person message on a split run', () => {
 
   async function splitRun(status: string) {
     const flow = await planned([
-      reply({ reply: 'Added b.', summary: ['b'], contract: ['b uses a'], tasks: [added], keep: [], covers: [['R1']] }),
+      reply({
+        reply: 'Added b.',
+        summary: ['b'],
+        contract: [{ id: 'item-1', text: 'b uses a', owner: 'a' }],
+        tasks: [added],
+        keep: [],
+        covers: [['R1']],
+      }),
     ]);
     const run = (await flow.runs.findRun(KEY))!;
     run.split = true;

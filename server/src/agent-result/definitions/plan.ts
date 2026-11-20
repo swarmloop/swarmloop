@@ -1,7 +1,7 @@
 import Joi from 'joi';
 import { defineResult, type ResultDefinition } from '../result-definition';
 import type { Need } from './research';
-import { coversKey, keysFor, splitKeys, type SplitFields } from './split-fields';
+import { coversKey, keysFor, splitKeys, storedContractKey, type SplitFields } from './split-fields';
 
 /** What the plan step hands to the server: one checklist, the questions a person must answer, or a split into tasks. */
 export interface PlanResult extends SplitFields {
@@ -48,9 +48,10 @@ const keys = {
   ...splitKeys(),
 };
 
-function schemaOf(hidden: string[]): Joi.ObjectSchema {
+function schemaOf(hidden: string[], stored = false): Joi.ObjectSchema {
   // A field a run was not asked for is not described to it. An answer that sends one is told by the step's own check.
-  return Joi.object(keysFor(keys, hidden))
+  const used = stored ? { ...keys, contract: storedContractKey() } : keys;
+  return Joi.object(keysFor(used, hidden))
     .unknown(hidden.length > 0)
     .custom((value: PlanResult, helpers) => {
       const error = filled(value.needs) ? null : planShapeError(value);
@@ -64,7 +65,7 @@ export { keys as planKeys };
 const SPLIT_KEYS = ['contract', 'tasks', 'keep'];
 
 /** Every field of the plan result: the definition its stored kind is read with. */
-export const plan = defineResult('plan', schemaOf([]));
+export const plan = defineResult('plan', schemaOf([], true));
 
 /**
  * The plan result a run is asked for: a run that may not split is not told about tasks, a run that is not a subtask is

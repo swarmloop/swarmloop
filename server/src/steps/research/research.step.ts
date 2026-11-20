@@ -14,7 +14,7 @@ import { renderProjects, storedProjects } from '../../config/checkout-path';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { AgentLauncher } from '../shared/agent-launcher';
 import { isSubtask, parseSubtasks, SUBTASKS_KIND } from '../../contract/subtask';
-import { assumptions, withContract, withHandoff } from '../shared/handoff';
+import { assumptions, withHandoff } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { resumableChat } from '../../agent/agent-session';
 import { projectRules } from '../shared/project-rules';
@@ -77,10 +77,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     }
     const answers = (await ctx.reread(ARTIFACTS.answers)) ?? '';
     const prior = await ctx.reread(ARTIFACTS.handoff);
-    const sections = withContract(
-      withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior),
-      await this.parentContract(ctx.opened.run),
-    );
+    const sections = withHandoff(answers.trim() ? [{ heading: 'Answers', body: answers }] : [], prior);
     const mounts = mountsForStep(root(this.config), ctx.opened.run.key, names, null);
     const subtask = isSubtask(ctx.opened.run);
     const asked = researchFor(subtask);
@@ -101,6 +98,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       briefFor: (other) => promptFor(other, null),
       mounts,
       continuePrompt: researchContinue(asked),
+      briefing: { continued: false },
       result: asked,
       check: (raw) => (subtask ? [] : requirementErrors(storedList, (raw as ResearchResult).requirements)),
     });
