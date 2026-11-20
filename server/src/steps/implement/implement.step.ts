@@ -57,6 +57,8 @@ import { ARTIFACTS } from '../contract/artifacts';
 import type { StepSnapshot } from '../step';
 import type { PipelineResult } from '../../core/pipeline-result';
 import { SplitImplementStep } from './split-implement.step';
+import { gapOf } from './review-gaps';
+import { openQuestions } from '../shared/answers';
 
 /** The follow-ups a checks return gets in one visit while its failed commands are still red. */
 const MAX_CHECK_FOLLOW_UPS = 2;
@@ -113,7 +115,8 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
 
   /**
    * The implement of a run the planner split is the server's passes over its subtasks, not an agent. Once every task
-   * is settled, a return from a later step or a rebase conflict is fixed by the agent on the merged feature branch.
+   * is settled, a defect return from a later step or a rebase conflict is fixed by the agent on the merged feature
+   * branch. A final review that marks requirements missing is the split pass's: it becomes a task of the list.
    */
   override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
     const run = await this.runs.findRun(key);
@@ -122,9 +125,12 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       return super.execute(key, options, snapshot);
     }
     const marker = ((await this.reader.reread(key, ARTIFACTS.rebaseConflict)) ?? '').trim();
+    const taken = JSON.parse((await this.reader.reread(key, ARTIFACTS.starterTaken)) || '[]') as string[];
+    const gap = await gapOf(this.documents, key, taken);
+    const asking = openQuestions((await this.reader.reread(key, ARTIFACTS.subtaskQuestions)) ?? '', []).length > 0;
     const fixing =
       withStatuses(tasks).every(settled) &&
-      (marker.startsWith('pending') || !!(await returnedNotes(this.documents, run.id)));
+      (marker.startsWith('pending') || (!gap && !asking && !!(await returnedNotes(this.documents, run.id))));
     return fixing ? super.execute(key, options, snapshot) : this.split.execute(key, options, snapshot);
   }
 

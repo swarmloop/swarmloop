@@ -4,6 +4,7 @@ import { deriveState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
 import type { AppConfig } from '../../config/env';
 import type { Clock } from '../../core/clock';
+import type { DocumentRepository } from '../../history/document.repository';
 import type { FlowRepository } from '../../history/flow.repository';
 import type { VisitRepository } from '../../history/visit.repository';
 import {
@@ -29,7 +30,8 @@ import type { SplitMerge } from './split-merge';
 import { REBASED_PREFIX } from './split-rebase';
 import type { SplitNeeds } from './split-needs';
 import { SplitQuestions } from './split-questions';
-import type { StarterInbox } from './starter-inbox';
+import type { InboxPass, StarterInbox } from './starter-inbox';
+import { gapOf, takeGap } from './review-gaps';
 import { earliestRetry } from './subtask-retry';
 
 const BLOCKED_ACTION = 'Resume, Replay or Skip task clears it';
@@ -46,6 +48,7 @@ interface SplitPassDeps {
   merges: SplitMerge;
   needs: SplitNeeds;
   inbox: StarterInbox;
+  documents: DocumentRepository;
   clock: Clock;
   config: AppConfig;
   flows: FlowRepository;
@@ -78,9 +81,10 @@ export class SplitPass {
     const delivered = await this.questions.deliver(run, read, asked, answers, startedAt);
     const held = this.questions.pending(delivered.body, answers);
     const answered = await this.deps.inbox.take(ctx, withStatuses(subtasks), delivered.contract, held);
-    const needed = await this.deps.needs.run(ctx.opened, answered.tasks, answered.contract, held);
+    const gapped = await this.gaps(ctx, answered);
+    const needed = await this.deps.needs.run(ctx.opened, gapped.tasks, gapped.contract, held);
     const carried = openQuestions(delivered.body, []);
-    const asks = [...answered.asks, ...needed.asks];
+    const asks = [...gapped.asks, ...needed.asks];
     const open = [...carried, ...asks.map((ask) => ask.question)];
     const questions = renderQuestions(open);
     const storedParts = (await ctx.reread(ARTIFACTS.questionParts)) ?? [];
@@ -90,7 +94,7 @@ export class SplitPass {
     const unmoved = [followed.unmoved, mergeNote].filter(Boolean).join('; ') || null;
     const tasks = await this.explain(run, await this.start(run, merged));
     const taken =
-      answered.taken === null ? [] : [{ artifact: ARTIFACTS.starterTaken, value: JSON.stringify(answered.taken) }];
+      gapped.taken === null ? [] : [{ artifact: ARTIFACTS.starterTaken, value: JSON.stringify(gapped.taken) }];
     const outputs: StepResult['outputs'] = [
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
       ...(needed.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: needed.contract }]),
@@ -103,6 +107,26 @@ export class SplitPass {
     const result = await this.route(ctx, tasks, open, outputs, { refusal, unfetched });
     const noted = unmoved ? this.withUnmoved(result, unmoved) : result;
     return own.committed ? { ...noted, summary: `${noted.summary}; ${own.committed}` } : noted;
+  }
+
+  /**
+   * Once every task is settled, a final review that marks requirements partial or missing becomes a task of the list,
+   * and the review is taken, so the parent's own implement does not get it.
+   */
+  private async gaps(ctx: StepContext, answered: InboxPass): Promise<InboxPass> {
+    const { run, startedAt } = ctx.opened;
+    const stored = answered.taken ?? (JSON.parse((await ctx.reread(ARTIFACTS.starterTaken)) || '[]') as string[]);
+    const gap = answered.tasks.every(settled) ? await gapOf(this.deps.documents, run.key, stored) : null;
+    if (!gap) return answered;
+    const requirements = (await ctx.reread(ARTIFACTS.requirementList)) ?? [];
+    const taken = takeGap({ contract: answered.contract, tasks: answered.tasks, requirements }, gap, startedAt);
+    await this.deps.subtasks.recordRevisions(run, taken.changes, startedAt);
+    return {
+      contract: taken.contract,
+      tasks: taken.tasks,
+      asks: [...answered.asks, ...taken.asks],
+      taken: [...stored, gap.key],
+    };
   }
 
   /** The note of a worktree that kept its commits goes into the summary, and into the reason of a wait or a block. */
@@ -138,7 +162,7 @@ export class SplitPass {
       const text = `${startedAt} ${refusal ?? blockedNames(blocked)}: ${line}${blocked.length > 0 ? `; ${BLOCKED_ACTION}` : ''}`;
       return { route: { to: 'block', reason: text, code: ERROR_CODES.SUBTASK_BLOCKED }, summary: text, outputs };
     }
-    if (tasks.every(settled)) {
+    if (tasks.every(settled) && open.length === 0) {
       return this.finish(run, tasks, ctx, outputs);
     }
     if (open.length > 0) {
