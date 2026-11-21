@@ -102,7 +102,10 @@ export class RunSubtaskCommandsService {
       throw new BadRequestException(`${taskId} is not a task of ${key}`);
     }
     const child = await this.runs.findSubtask(parent, taskId);
-    if (child) await this.close(child);
+    if (child) {
+      await this.close(child);
+      await this.subtasks.closeMergeRequests(parent, child);
+    }
     await this.documents.putDocument(
       parent,
       SUBTASKS_KIND,

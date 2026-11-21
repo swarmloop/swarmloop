@@ -72,7 +72,10 @@ export class SplitPass {
     const view = await settledView(this.deps.subtasks, run, withStatuses(subtasks));
     const own = await this.deps.subtasks.commitOwnEdits(run, view !== null);
     if (own.conflict) {
-      if (view) return handOver(ctx, view, { ...own, conflict: own.conflict }, subtasks);
+      if (view) {
+        await this.closeSkipped(run, withStatuses(subtasks), view);
+        return handOver(ctx, view, { ...own, conflict: own.conflict }, subtasks);
+      }
       const reason = `${startedAt} ${own.conflict}; the implement agent resolves it once every task is settled; a Resume or a message then goes on`;
       const text = [reason, own.committed].filter(Boolean).join('; ');
       return {
@@ -114,9 +117,19 @@ export class SplitPass {
         : [{ artifact: ARTIFACTS.questionParts, value: parts }]),
       ...taken,
     ];
+    await this.closeSkipped(run, withStatuses(subtasks), tasks);
     const result = await this.route(ctx, tasks, open, outputs, { refusal, unfetched });
     const noted = unmoved ? this.withUnmoved(result, unmoved) : result;
     return own.committed ? { ...noted, summary: `${noted.summary}; ${own.committed}` } : noted;
+  }
+
+  /** The open merge requests of a task this pass marked skipped are closed. A merged request stays as it is. */
+  private async closeSkipped(parent: RunEntity, stored: Subtask[], next: Subtask[]): Promise<void> {
+    for (const task of next.filter((item) => item.status === 'skipped')) {
+      if (stored.find((item) => item.id === task.id)?.status === 'skipped') continue;
+      const child = await this.deps.subtasks.find(parent, task.id);
+      if (child) await this.deps.subtasks.closeMergeRequests(parent, child);
+    }
   }
 
   /**
