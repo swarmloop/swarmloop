@@ -29,6 +29,30 @@ describe('working directory block', () => {
     );
   });
 
+  it('names each outside read before the stay line, with one and with several mounts', () => {
+    const reads = [
+      { path: '/work/brief/diff.md', what: 'the complete diff' },
+      { path: '/work/brief/skills/a.md', what: 'a skill file' },
+    ];
+    const also =
+      'Also read, and nothing else outside: /work/brief/diff.md (the complete diff), /work/brief/skills/a.md (a skill file).';
+    const one = workingDirectoryBlock(['a'], [{ hostPath: '/tmp/missing-a', containerPath: '/work/a' }], reads).split(
+      '\n',
+    );
+    expect(one[1]).toBe(also);
+    expect(one[2]).toMatch(/^Do not look outside it\./);
+    const two = workingDirectoryBlock(
+      ['a', 'b'],
+      [
+        { hostPath: '/tmp/missing-a', containerPath: '/work/a' },
+        { hostPath: '/tmp/missing-b', containerPath: '/work/b' },
+      ],
+      reads,
+    ).split('\n');
+    expect(two[3]).toBe(also);
+    expect(two[4]).toMatch(/^Do not look outside these paths\./);
+  });
+
   it('reports source files from the directory itself', () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-work-'));
     mkdirSync(join(root, 'empty'));

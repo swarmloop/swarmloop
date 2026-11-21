@@ -550,3 +550,55 @@ describe('AgentLaunch credential of a launch', () => {
     expect(runtimeCredential).toHaveBeenCalledWith('claude', 'grace');
   });
 });
+
+describe('AgentLauncher log folder', () => {
+  async function promptSent(prompt: string): Promise<string> {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-launcher-logs-'));
+    const sent: string[] = [];
+    const runner = {
+      run: (options: { prompt: string }) => {
+        sent.push(options.prompt);
+        return Promise.resolve({
+          chatId: null,
+          resumed: false,
+          killReason: null,
+          tokensIn: 0,
+          tokensOut: 0,
+          usd: 0,
+          calls: 1,
+        });
+      },
+    } as unknown as AgentProcessRunner;
+    const visits = { tokenTotal: () => Promise.resolve(0) } as unknown as VisitRepository;
+    const launcher = new AgentLauncher(runner, visits, new RunStop());
+    const run = { id: 1, runtime: 'cursor', agentCalls: 0, spentUsd: 0, activeAttempt: 'attempt-1' } as RunEntity;
+    await launcher.launch({
+      root,
+      run,
+      key: 'run1',
+      step: 'implement',
+      mode: 'agent',
+      tools: 'write',
+      runtime: 'cursor',
+      model: 'm',
+      timeLimitMs: 20_000,
+      prompt,
+      workspace: root,
+      mounts: [{ hostPath: root, containerPath: '/work/demo' }],
+    });
+    return sent[0];
+  }
+
+  it('allows the log folder in a prompt that names a cut log, and in no other prompt', async () => {
+    const block = 'The only working directory is /work/demo (demo). It has no source files.';
+    const stay = 'Do not look outside it. Do not open .git.';
+    const cut = await promptSent(
+      [block, stay, '', 'Check output cut. The whole log is /work/logs/checks-log.txt.'].join('\n'),
+    );
+    expect(cut).toContain(
+      `${block}\nAlso read, and nothing else outside: /work/logs/ (the full logs of cut check and pipeline output).\n${stay}`,
+    );
+    const plain = await promptSent([block, stay, '', 'Nothing was cut.'].join('\n'));
+    expect(plain).not.toContain('Also read');
+  });
+});

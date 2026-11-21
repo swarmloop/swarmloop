@@ -22,6 +22,7 @@ import {
 import { reviewAnswerDefinition, reviewDefinition, type ReviewResult } from '../../agent-result/definitions/review';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { skillPrompt } from '../shared/skill-prompt';
+import { REVIEW_DIFF_READ } from './review-diff';
 import type { Requirement } from '../../contract/requirement-list';
 import type { Subtask } from '../../contract/subtask';
 import type { KeepLine } from '../shared/keep-lines';
@@ -247,6 +248,7 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
     [
       skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts, {
         rules: projectRules(names, input.mounts, runtime, false),
+        reads: [REVIEW_DIFF_READ],
       }),
       resultPromptFor(answered ? reviewAnswerDefinition(reviewer.name) : reviewDefinition(reviewer.name), null),
     ].join('\n\n');
