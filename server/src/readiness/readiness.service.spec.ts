@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
 import { tmpdir } from 'os';
@@ -178,6 +178,47 @@ describe('ReadinessService', () => {
     expect((await service.fresh()).items.map((item) => item.id)).not.toContain('stalls');
   });
 
+  it('does not start a version probe when Docker info fails', async () => {
+    const service = setup();
+    let versionStarted = false;
+    docker.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'info') throw new Error('Docker unavailable');
+      if (args[0] === 'version') versionStarted = true;
+      return '';
+    });
+    expect(await itemOf(service, 'docker')).toMatchObject({ status: 'fail', line: 'docker is not running' });
+    expect(versionStarted).toBe(false);
+  });
+
+  it('fails when the Docker Engine is older than 26 and passes with 26', async () => {
+    const service = setup();
+    docker.mockImplementation(async (args: string[]) => (args[0] === 'version' ? '25.0.3\n' : ''));
+    const old = await itemOf(service, 'docker');
+    expect(old.status).toBe('fail');
+    expect(old.line).toContain('25.0.3');
+    expect(old.line).toContain('Engine 26');
+    expect(old.action).toBe('update Docker to Engine 26 or newer');
+    docker.mockImplementation(async (args: string[]) => (args[0] === 'version' ? '26.1.4\n' : ''));
+    expect((await itemOf(service, 'docker')).status).toBe('ok');
+    docker.mockImplementation(async (args: string[]) => (args[0] === 'version' ? 'n/a' : ''));
+    expect(await itemOf(service, 'docker')).toMatchObject({ status: 'ok', line: 'docker answers' });
+  });
+
+  it('names the volumes the server keeps its worktrees and checkouts in', async () => {
+    const checkouts = join(realpathSync(tmpdir()), 'readiness-checkouts');
+    const service = setup({ CHECKOUTS_ROOT: checkouts });
+    const worktrees = join(realpathSync(dirs[0]), 'worktrees');
+    const mounts = [
+      { Type: 'volume', Name: 'swarmloop-worktrees', Destination: worktrees },
+      { Type: 'volume', Name: 'swarmloop-checkouts', Destination: checkouts },
+    ];
+    docker.mockImplementation(async (args: string[]) => (args[0] === 'inspect' ? JSON.stringify(mounts) : ''));
+    const item = await itemOf(service, 'paths');
+    expect(item.status).toBe('ok');
+    expect(item.line).toContain(`${worktrees} is volume swarmloop-worktrees for the daemon`);
+    expect(item.line).toContain(`${checkouts} is volume swarmloop-checkouts for the daemon`);
+  });
+
   it('fails when docker is down', async () => {
     const service = setup();
     docker.mockRejectedValue(new Error('Cannot connect to the Docker daemon'));
@@ -263,7 +304,9 @@ describe('ReadinessService', () => {
 
     const release: (() => void)[] = [];
     docker.mockReset();
-    docker.mockImplementation(() => new Promise<string>((done) => release.push(() => done(''))));
+    docker.mockImplementation((args: string[]) =>
+      args[0] === 'info' ? new Promise<string>((done) => release.push(() => done(''))) : Promise.resolve(''),
+    );
     clock.advance(31_000);
     const [a, b] = await Promise.all([service.report(), service.report()]);
     expect(a).toBe(first);
@@ -291,7 +334,9 @@ describe('ReadinessService', () => {
     try {
       const service = setup();
       const releases: (() => void)[] = [];
-      docker.mockImplementation(() => new Promise<string>((done) => releases.push(() => done(''))));
+      docker.mockImplementation((args: string[]) =>
+        args[0] === 'info' ? new Promise<string>((done) => releases.push(() => done(''))) : Promise.resolve(''),
+      );
       const answer = service.report();
       await jest.advanceTimersByTimeAsync(1000);
       expect(await answer).toMatchObject({ items: [], checkedAt: null });

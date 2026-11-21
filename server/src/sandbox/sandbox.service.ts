@@ -1,5 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
-import { mkdirSync, readFileSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
@@ -14,13 +14,11 @@ import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
 import {
-  BindMount,
   emptyEnvFile,
   EnvMask,
   agentImage,
   prepareStateDir,
   SandboxLaunch,
-  resolveDaemonPath,
   sandboxArgs,
   sandboxUserId,
 } from '../sandbox/sandbox-launch';
@@ -41,6 +39,9 @@ import { ContainerStats } from './container-stats';
 import { memoryCapOf } from './memory-cap';
 import { ContainerGate } from './container-gate';
 import { MetadataRemoval } from './metadata-removal';
+import { OwnMounts } from './own-mounts';
+import type { DaemonPlace } from './own-mounts';
+import { handToSandbox, SandboxOwnership } from './sandbox-owner';
 import type { AgentHold } from './container-gate';
 
 export type { DockerRunner };
@@ -55,7 +56,8 @@ export interface SandboxChild extends ChildProcess {
 export class SandboxService implements OnModuleDestroy {
   private docker: DockerRunner = defaultDocker;
   private readonly maskFile = join(tmpdir(), 'swarmloop-empty-env');
-  private binds: BindMount[] | null = null;
+  private readonly ownMounts = new OwnMounts(() => this.docker);
+  private ownership = new SandboxOwnership();
   private egressProxy: Egress | null = null;
   private machineInfo: DockerMachine | undefined;
 
@@ -83,6 +85,16 @@ export class SandboxService implements OnModuleDestroy {
     this.docker = docker;
     this.egressProxy = null;
     this.machineInfo = undefined;
+  }
+
+  /** Replaces the hand-over of a mounted tree to the sandbox user. */
+  useHandOver(handOver: typeof handToSandbox): void {
+    this.ownership = new SandboxOwnership(handOver);
+  }
+
+  /** Prepares writable volume subpaths once per Git index and user, shared by server and host shells. */
+  prepareMounts(mounts: SandboxMount[], uid: number): Promise<string[]> {
+    return this.ownership.prepare(mounts, uid);
   }
 
   /** Docker's CPUs and memory. Only an answer is kept, so an outage is tried again. */
@@ -194,6 +206,7 @@ export class SandboxService implements OnModuleDestroy {
     launch: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'> & { envMasks?: EnvMask[] },
   ): Promise<SandboxChild> {
     const mounts = await this.withDaemonPaths(launch.mounts);
+    await this.prepareMounts(mounts, launch.userId);
     if (launch.statePath) {
       prepareStateDir(launch.statePath, launch.userId);
     }
@@ -337,7 +350,7 @@ export class SandboxService implements OnModuleDestroy {
     }
     const local = statePath ? emptyEnvFile(statePath) : this.maskFile;
     ensureMaskFile(local);
-    return resolveDaemonPath(local, await this.ownBinds());
+    return this.ownMounts.resolveBind(local);
   }
 
   async stateDaemonPath(path?: string, given?: string): Promise<string | undefined> {
@@ -347,34 +360,16 @@ export class SandboxService implements OnModuleDestroy {
     if (!path) {
       return undefined;
     }
-    return resolveDaemonPath(path, await this.ownBinds());
+    return this.ownMounts.resolveBind(path);
   }
 
-  async withDaemonPaths(mounts: SandboxMount[]): Promise<SandboxMount[]> {
-    const binds = await this.ownBinds();
-    return mounts.map((mount) => {
-      if (mount.volume || mount.daemonPath) {
-        return mount;
-      }
-      return { ...mount, daemonPath: resolveDaemonPath(mount.hostPath, binds) };
-    });
+  withDaemonPaths(mounts: SandboxMount[]): Promise<SandboxMount[]> {
+    return this.ownMounts.withDaemonPaths(mounts);
   }
 
-  private async ownBinds(): Promise<BindMount[]> {
-    if (this.binds) {
-      return this.binds;
-    }
-    try {
-      const id = readFileSync('/etc/hostname', 'utf8').trim();
-      const raw = await this.docker(['inspect', '--format', '{{json .Mounts}}', id]);
-      const parsed = JSON.parse(raw) as { Type?: string; Destination?: string; Source?: string }[];
-      this.binds = parsed
-        .filter((mount) => mount.Type === 'bind' && mount.Destination && mount.Source)
-        .map((mount) => ({ destination: mount.Destination ?? '', source: mount.Source ?? '' }));
-    } catch {
-      this.binds = [];
-    }
-    return this.binds;
+  /** Where the daemon finds a server folder: a volume with a subpath, or a path. */
+  daemonPlace(dir: string): Promise<DaemonPlace> {
+    return this.ownMounts.daemonPlace(dir);
   }
 
   async ensureNetwork(name: string, internal: boolean): Promise<void> {

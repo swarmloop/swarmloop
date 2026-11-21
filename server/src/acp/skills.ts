@@ -1,6 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { readSettings } from '../config/load-env';
 import type { SkillCommand } from './agent';
 
 export function loadSkills(directory: string): SkillCommand[] {
@@ -15,10 +14,6 @@ export function loadSkills(directory: string): SkillCommand[] {
       name,
       description: describe(readFileSync(join(directory, name, 'SKILL.md'), 'utf8'), name),
     }));
-}
-
-export function readCheckoutsRoot(envFile: string, launchEnv?: Readonly<NodeJS.ProcessEnv>): string | undefined {
-  return readSettings(envFile, launchEnv).values.CHECKOUTS_ROOT || undefined;
 }
 
 function describe(body: string, name: string): string {

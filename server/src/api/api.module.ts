@@ -6,6 +6,7 @@ import { HistoryModule } from '../history/history.module';
 import { LiveGateway } from './live.gateway';
 import { LiveModule } from '../live/live.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
+import { RepositoryOrigins } from '../steps/shared/repository-origins';
 import { ProvidersModule } from '../integrations/providers.module';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
@@ -80,6 +81,7 @@ import { RequestTiming } from './request-timing';
     ChatService,
     PlanChatService,
     ShellService,
+    RepositoryOrigins,
     SettingsService,
     CommandHandlers,
     LiveGateway,

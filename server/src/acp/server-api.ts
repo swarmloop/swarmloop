@@ -1,6 +1,7 @@
 import type {
   ChatBody,
   ChatView,
+  CloneOriginsView,
   CreateRunBody,
   FlowView,
   OpenShellBody,
@@ -29,10 +30,11 @@ export interface ServerApi {
   stop(key: string): Promise<RunRef>;
   shellOpen(body: OpenShellBody): Promise<ShellFeature | { matches: ShellMatch[] }>;
   shellFeature(key: string): Promise<ShellFeature>;
-  shellLock(key: string, container: string): Promise<ShellStatusView>;
+  shellLock(key: string, container: string, userId?: number): Promise<ShellStatusView>;
   shellUnlock(key: string): Promise<ShellStatusView>;
   snapshots(key: string): Promise<SnapshotsView>;
   rewind(key: string, id: number): Promise<RewindView>;
+  cloneOrigins(): Promise<CloneOriginsView>;
 }
 
 export class HttpServerApi implements ServerApi {
@@ -91,8 +93,8 @@ export class HttpServerApi implements ServerApi {
     return this.send('GET', `/runs/${encodeURIComponent(key)}/shell`);
   }
 
-  shellLock(key: string, container: string): Promise<ShellStatusView> {
-    return this.send('POST', `/runs/${encodeURIComponent(key)}/shell/lock`, { container });
+  shellLock(key: string, container: string, userId?: number): Promise<ShellStatusView> {
+    return this.send('POST', `/runs/${encodeURIComponent(key)}/shell/lock`, { container, userId });
   }
 
   shellUnlock(key: string): Promise<ShellStatusView> {
@@ -105,6 +107,10 @@ export class HttpServerApi implements ServerApi {
 
   rewind(key: string, id: number): Promise<RewindView> {
     return this.send('POST', `/runs/${encodeURIComponent(key)}/rewind`, { id });
+  }
+
+  cloneOrigins(): Promise<CloneOriginsView> {
+    return this.send('GET', '/checkouts/origins');
   }
 
   startCliLogin(machine: string): Promise<CliLoginStarted> {

@@ -6,6 +6,9 @@ This format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), an
 
 ## [Unreleased]
 
+### Changed
+- f111: Worktrees and checkouts now live in the Docker volumes `swarmloop-worktrees` and `swarmloop-checkouts`, not in folders of the host. An existing installation runs `scripts/move-to-volumes.sh` once with the server stopped (from a clone, or the one file fetched into the installation folder), then deletes `CHECKOUTS_ROOT` from `.env`, which the server no longer reads. A new installation needs nothing.
+
 ## [0.3.1] - 2026-11-15
 
 ### Changed

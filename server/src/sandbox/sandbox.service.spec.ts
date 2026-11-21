@@ -305,3 +305,68 @@ describe('SandboxService memory cap', () => {
     });
   });
 });
+
+describe('SandboxService hand-over of a volume folder', () => {
+  const saved = { ...process.env };
+  let root: string;
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'swarmloop-hand-')));
+    mkdirSync(join(root, 'worktrees', 'k', 'demo'), { recursive: true });
+    process.env.SWARMLOOP_ROOT = root;
+    process.env.SANDBOX_EGRESS = 'open';
+  });
+
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+
+  async function start(mounts: SandboxLaunch['mounts']): Promise<{ handed: [string, number][]; started: string[][] }> {
+    const handed: [string, number][] = [];
+    const started: string[][] = [];
+    const sandbox = new SandboxService();
+    sandbox.useDocker(async (args) =>
+      args[0] === 'inspect'
+        ? JSON.stringify([{ Type: 'volume', Name: 'swarmloop-worktrees', Destination: join(root, 'worktrees') }])
+        : '',
+    );
+    sandbox.useHandOver(async (path, uid) => {
+      expect(started).toHaveLength(0);
+      handed.push([path, uid]);
+      return [];
+    });
+    sandbox.spawnDocker = (args) => {
+      started.push(args);
+      const child = new EventEmitter() as SandboxChild;
+      child.containerName = 'c';
+      return child;
+    };
+    await sandbox.spawn({
+      runtime: 'claude',
+      runKey: 'k',
+      step: 'plan',
+      attemptId: 'a',
+      mounts,
+      allowHosts: [],
+      command: ['agent'],
+      userId: 501,
+    });
+    return { handed, started };
+  }
+
+  it('hands a read-write subpath mount to the launch user before docker starts', async () => {
+    const demo = join(root, 'worktrees', 'k', 'demo');
+    const { handed, started } = await start([{ hostPath: demo, containerPath: '/work/demo' }]);
+    expect(handed).toEqual([[demo, 501]]);
+    expect(started).toHaveLength(1);
+  });
+
+  it('hands over neither a read-only mount nor a whole-volume mount', async () => {
+    const demo = join(root, 'worktrees', 'k', 'demo');
+    const { handed } = await start([
+      { hostPath: demo, containerPath: '/work/demo', readonly: true },
+      { hostPath: join(root, 'worktrees'), containerPath: '/work' },
+    ]);
+    expect(handed).toEqual([]);
+  });
+});

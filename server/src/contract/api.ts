@@ -39,6 +39,7 @@ export type {
   SnapshotsView,
   RewindView,
 } from './api-bodies';
+export type { CloneOriginsView, ShellFeature, ShellMatch, ShellMount } from './shell';
 
 export interface RunSummary {
   key: string;
@@ -304,27 +305,6 @@ export interface HistoryView {
     cpuPeak: number;
     memPeak: number;
   }[];
-}
-
-export interface ShellMount {
-  hostPath: string;
-  containerPath: string;
-}
-
-export interface ShellFeature {
-  key: string;
-  created: boolean;
-  status: string;
-  currentStep: string;
-  runtime: string;
-  resumeChatId: string | null;
-  mounts: ShellMount[];
-}
-
-export interface ShellMatch {
-  key: string;
-  status: string;
-  currentStep: string;
 }
 
 /** The projects a new run can use. */

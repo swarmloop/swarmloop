@@ -50,13 +50,10 @@ describe('shell config precedence', () => {
   it('uses the defaults for a missing file', () => {
     const config = readShellConfig(join(tmpdir(), 'swarmloop-shell-env-missing', 'env'), {});
     expect(config.runtime).toBe('claude');
-    expect(config.checkoutsRoot).toBe('..');
     expect(config.reserveMemoryGb).toBe(2);
   });
 
   it('lets an explicit empty win over the file and the defaults', () => {
-    expect(configWith('CHECKOUTS_ROOT=').checkoutsRoot).toBe('');
-    expect(readShellConfig(fileWith('CHECKOUTS_ROOT=/x'), { CHECKOUTS_ROOT: '' }).checkoutsRoot).toBe('');
     expect(() => readShellConfig(fileWith('AGENTS_IMPLEMENT='), {})).toThrow('AGENTS_IMPLEMENT is missing or invalid');
     expect(() => readShellConfig(fileWith('AGENTS_IMPLEMENT=cursor:x'), { AGENTS_IMPLEMENT: '' })).toThrow(
       'AGENTS_IMPLEMENT is missing or invalid',
@@ -64,11 +61,7 @@ describe('shell config precedence', () => {
   });
 
   it('reads quoted and exported entries', () => {
-    const config = configWith(
-      'export CURSOR_API_KEY="quoted key"',
-      "ANTHROPIC_API_KEY='single'",
-      'export CHECKOUTS_ROOT=/repos',
-    );
-    expect(config).toMatchObject({ cursorKey: 'quoted key', anthropicKey: 'single', checkoutsRoot: '/repos' });
+    const config = configWith('export CURSOR_API_KEY="quoted key"', "ANTHROPIC_API_KEY='single'");
+    expect(config).toMatchObject({ cursorKey: 'quoted key', anthropicKey: 'single' });
   });
 });

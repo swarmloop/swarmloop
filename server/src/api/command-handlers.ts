@@ -13,7 +13,8 @@ import { PlanChatService } from './plan-chat.service';
 import { ShellService } from './shell.service';
 
 /** What the shell command carries: one of the three shell actions. */
-export type ShellPayload = { op: 'open'; path: string } | { op: 'lock'; container: string } | { op: 'unlock' };
+export type ShellPayload =
+  { op: 'open'; path: string } | { op: 'lock'; container: string; userId?: number } | { op: 'unlock' };
 
 /** What the step and replay commands carry next to the step name. */
 export interface StepPayload {
@@ -81,7 +82,7 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     on('shell', (key, payload, context) => {
       const action = payload as unknown as ShellPayload;
       if (action.op === 'open') return this.shell.open(action.path, context.created);
-      return action.op === 'lock' ? this.shell.lock(key, action.container) : this.shell.unlock(key);
+      return action.op === 'lock' ? this.shell.lock(key, action.container, action.userId) : this.shell.unlock(key);
     });
   }
 
