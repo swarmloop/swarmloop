@@ -5,6 +5,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import type { BacklogView } from '@contract/backlog';
+import { etaPhase } from '@contract/eta';
 import { taskStateWord } from '@contract/run-state';
 import { mergeBacklogTask } from '../../../lib/backlog-endpoints';
 import { localTime } from '../../../lib/format';
@@ -28,7 +29,11 @@ export function BacklogTaskRow({
 }): ReactElement {
   const [merging, setMerging] = useState(false);
   const [refusal, setRefusal] = useState('');
-  const word = taskStateWord({ status: task.status }, localTime);
+  const { run } = task;
+  const word = taskStateWord(
+    run && etaPhase(run.state, run.stateReason) === 'person' ? { status: task.status, run } : { status: task.status },
+    localTime,
+  );
   const color = toneColor(word.tone);
   const merge = async (): Promise<void> => {
     setMerging(true);

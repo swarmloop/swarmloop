@@ -24,6 +24,7 @@ export function task(overrides: Partial<Task> = {}): Task {
     status: 'running',
     note: '',
     runKey: null,
+    run: null,
     waitsForOk: false,
     repositories: ['shop'],
     merged: {},

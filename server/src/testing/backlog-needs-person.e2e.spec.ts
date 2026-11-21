@@ -5,6 +5,7 @@ import { BacklogRepository } from '../history/backlog.repository';
 import { RunRepository } from '../history/run.repository';
 import { storedState } from '../history/run-state';
 import { remoteProject } from '../integrations/code-host/remote-project';
+import { BacklogQueries } from '../pipeline/backlog/backlog-queries';
 import { BacklogPlanner } from '../pipeline/backlog/planner/backlog-planner';
 import { CommandService } from '../pipeline/command.service';
 import { FAKE_MODEL_KEY } from './env.spec-helpers';
@@ -101,5 +102,7 @@ describe('a backlog whose run waits for a person', () => {
     ]);
     const run = (await flow.app.app.get(RunRepository).findRun(runKey))!;
     expect(storedState(run)).toMatchObject({ state: 'waiting', reason: { code: 'NEEDS_ANSWERS' } });
+    const [shown] = (await flow.app.app.get(BacklogQueries).view(BACKLOG)).tasks;
+    expect(shown.run).toMatchObject({ state: 'waiting', stateReason: { code: 'NEEDS_ANSWERS' } });
   });
 });

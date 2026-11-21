@@ -54,7 +54,7 @@ export type MainStyle = 'green' | 'red' | 'pending' | 'no-pipeline';
 /** The action service over a database, with a command door that only records the stops it is asked for. */
 function actionParts(db: Awaited<ReturnType<typeof repositoryDatabase>>, config: AppConfig) {
   const backlogs = db.app.get(BacklogRepository);
-  const queries = new BacklogQueries(backlogs);
+  const queries = new BacklogQueries(backlogs, db.app.get(RunRepository));
   const support = new BacklogActionSupport(backlogs, db.clock);
   const stops: string[] = [];
   const commands = {
