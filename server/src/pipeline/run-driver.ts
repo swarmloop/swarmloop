@@ -30,7 +30,7 @@ import { root } from '../history/run-paths';
 import { assertInsideWork, workRoots } from '../sandbox/allowed-path';
 import { flagError } from './flag-error';
 import { snapshotRun } from './worktree-snapshot';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import type { WorkspaceGuard } from './workspace-guard';
 import { workspaceBlock } from './workspace-guard';
 import type { DiskGuard } from './disk-guard';
@@ -355,7 +355,7 @@ export class RunDriver {
 
 /** The run waits with the reason that its step asked the planner. */
 function asksPlanner(run: RunEntity): boolean {
-  return run.status === 'waiting' && deriveState(run).reason?.code === REASON.asksPlanner;
+  return run.status === 'waiting' && storedState(run).reason?.code === REASON.asksPlanner;
 }
 
 function targetError(path: string | undefined): string | null {

@@ -20,6 +20,7 @@ import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { RunStop } from '../agent/run-stop';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { writeRunState } from '../history/run-state';
+import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { StepRegistry } from '../steps/step.registry';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
@@ -66,6 +67,7 @@ export async function boot(
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), HistoryModule, LiveModule, AuthModule],
     providers: [
       RunQueriesService,
+      RunStateRefresh,
       RunListRows,
       EtaSummary,
       RunReport,

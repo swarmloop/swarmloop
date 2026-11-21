@@ -109,6 +109,7 @@ function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock, onRelease: (
   const runs = {
     findRun: jest.fn(async () => state),
     held: async () => false,
+    notify: jest.fn(),
     release: jest.fn(async (_run: RunEntity, change: { status: string; reason?: { code: string } }) => {
       onRelease();
       released.push({ status: change.status, code: change.reason?.code });

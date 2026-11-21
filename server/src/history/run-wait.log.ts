@@ -7,7 +7,7 @@ import { etaPhase } from '../contract/eta';
 import { Clock } from '../core/clock';
 import { LiveHub } from '../live/live.hub';
 import { RunEntity } from './run.entity';
-import { deriveState } from './run-state';
+import { storedState } from './run-state';
 import { RunWaitEntity } from './run-wait.entity';
 
 /**
@@ -93,11 +93,11 @@ export class RunWaitLog implements OnApplicationBootstrap, OnModuleDestroy {
   /** Brings the run's open stretch in line with its state. True when the run has ended. */
   private async record(manager: EntityManager, key: string): Promise<boolean> {
     const run = await manager.findOne(RunEntity, {
-      select: { id: true, status: true, stateReason: true, mergeOutcome: true },
+      select: { id: true, status: true, state: true, stateReason: true, mergeOutcome: true },
       where: { key },
     });
     if (!run) return false;
-    const { state, reason } = deriveState(run);
+    const { state, reason } = storedState(run);
     const phase = etaPhase(state, reason);
     const open = await manager.findOne(RunWaitEntity, { where: { runId: run.id, endedAt: IsNull() } });
     const waiting = phase === 'person' || phase === 'timed';

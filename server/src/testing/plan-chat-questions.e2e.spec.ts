@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
 import { BlockAgentRunner, type ScriptedAnswer } from './result-answer';
@@ -57,7 +57,7 @@ describe('a step asks the planner', () => {
     const waiting: unknown[] = [];
     blocks.hooks['plan-2'] = async () => {
       const run = (await runOf())!;
-      waiting.push({ state: deriveState(run), attempt: run.activeAttempt });
+      waiting.push({ state: storedState(run), attempt: run.activeAttempt });
     };
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });

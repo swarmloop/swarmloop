@@ -2,7 +2,7 @@ import type { Logger } from '@nestjs/common';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
 import type { RunRepository } from '../history/run.repository';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { ERROR_CODES } from '../contract/error-codes';
 import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND } from '../contract/subtask';
 import type { RebaseEvent, SubtaskMergeRequest } from '../steps/shared/subtask-ops';
@@ -25,7 +25,7 @@ export class SubtaskRebases {
 
   async rebase(run: RunEntity, event?: RebaseEvent): Promise<boolean> {
     if (!(await this.canTakeRebase(run, !!event))) return false;
-    if (deriveState(run).state === 'running') {
+    if (storedState(run).state === 'running') {
       if (event) await this.queueRebase(run, event.note);
       return !!event;
     }
@@ -63,7 +63,7 @@ export class SubtaskRebases {
 
   /** A run that waits for a person or a sibling is never resumed by a rebase, and a stopped one is a person's. */
   private async canTakeRebase(run: RunEntity, byEvent: boolean): Promise<boolean> {
-    const { state, reason } = deriveState(run);
+    const { state, reason } = storedState(run);
     const states = byEvent
       ? ['failed', 'done', 'waiting', 'idle', 'blocked', 'running']
       : ['failed', 'done', 'waiting', 'idle'];

@@ -11,7 +11,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, isStep, nextSessionKey, ticketKey } from '../core/pipeline-result';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { SubtaskClose } from './subtask-close';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { PhaseName, pipelineStepOf, reviewerOf, STEPS } from '../contract/steps';
 import { REASON, STOP_NOTE } from '../contract/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
@@ -207,7 +207,7 @@ export class RunCommandsService {
   /** A parent that waits between passes, or that a blocked subtask holds, is stopped for good: no pass starts a subtask until Resume. */
   private async holdParent(key: string): Promise<void> {
     const fresh = await this.runs.findRun(key);
-    const code = fresh ? deriveState(fresh).reason?.code : undefined;
+    const code = fresh ? storedState(fresh).reason?.code : undefined;
     const between = fresh?.status === 'waiting' && SUBTASK_WAIT_CODES.some((wait) => wait === code);
     if (fresh && (between || (fresh.status === 'blocked' && code === ERROR_CODES.SUBTASK_BLOCKED))) {
       await this.runs.release(fresh, {

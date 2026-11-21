@@ -11,6 +11,7 @@ import { ARTIFACTS } from '../../steps/contract/artifacts';
 import { interruptionOf, taskEntries, type TaskRuns } from './documents';
 import type { LiveRun } from '../../eta/eta.types';
 import type { RunWaitEntity } from '../../history/run-wait.entity';
+import type { DocumentRepository } from '../../history/document.repository';
 import { ownStates, type StateSources } from './own-state';
 import { liveRunOf } from './run-eta';
 
@@ -49,7 +50,7 @@ export async function taskRuns(
   rows: RunEntity[],
   documents: DocumentEntity[],
   pipeline: PipelineService,
-  sources: StateSources,
+  sources: StateSources & { documents: Pick<DocumentRepository, 'latestDocuments'> },
   waits: ReadonlyMap<number, RunWaitEntity[]>,
   live?: LiveHub,
   place: (key: string) => string | undefined = () => undefined,

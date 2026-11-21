@@ -5,7 +5,10 @@ import { filterRuns, type Part, type RunChange, type RunsPage } from '../contrac
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
+import { SubtaskPort } from '../pipeline/subtask-port';
+import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { createTestApp, type TestApp } from './test-app';
+import { BlockAgentRunner, DEFAULT_RESEARCH } from './result-answer';
 import { remember } from './runs.spec-helpers';
 
 const KEY = 'PROJ-900';
@@ -55,7 +58,10 @@ describe('the run list follows a run to the end', () => {
 
   beforeEach(async () => {
     fakeBatchTimer();
-    app = await createTestApp({ socket: true });
+    app = await createTestApp({
+      socket: true,
+      blocks: new BlockAgentRunner({ research: [{ block: { ...DEFAULT_RESEARCH, questions: ['Which field?'] } }] }),
+    });
   });
 
   afterEach(async () => {
@@ -132,8 +138,10 @@ describe('the run list follows a run to the end', () => {
     writeRunState(run, { status: 'done', currentStep: 'done' });
     await runs().saveRun(run);
     await pass();
-    run.mergeOutcome = JSON.stringify({
-      merged: { demo: { sha: 'abc', by: 'person', at: new Date().toISOString(), url: null } },
+    writeRunState(run, {
+      status: 'done',
+      currentStep: 'done',
+      merge: { merged: { demo: { sha: 'abc', by: 'person', at: new Date().toISOString(), url: null } } },
     });
     await runs().saveRun(run);
     await pass();
@@ -187,5 +195,26 @@ describe('the run list follows a run to the end', () => {
     expect(activeFiltered.keys()).toEqual([]);
     expect(doneFiltered.keys()).toEqual([KEY]);
     expect(all.runs.map((run) => run.state)).toEqual(['merged']);
+  });
+
+  it('(d) a held run that stops waiting with open questions shows waiting for a person once its claim ends', async () => {
+    // The pipeline still holds the run after its step wrote everything, until the driver is let go.
+    let letGo: () => void = () => undefined;
+    const holding = new Promise<void>((resolve) => (letGo = resolve));
+    jest.spyOn(app.app.get(SubtaskPort), 'notifyParent').mockImplementationOnce(() => holding);
+    await remember(runs(), app.app.get(DocumentRepository), KEY, 'research', 'waiting');
+    await app.pipeline.startDetached(KEY);
+    const active = new HeldList(app, 'active', '');
+    await open(active);
+
+    await app.app.get(RunStateRefresh).settled();
+    await pass();
+    expect(active.runs.map((item) => item.state)).toEqual(['running']);
+
+    letGo();
+    await app.pipeline.whenIdle(KEY);
+    await pass();
+
+    expect(active.runs.map((item) => [item.state, item.stateReason?.code])).toEqual([['waiting', 'NEEDS_ANSWERS']]);
   });
 });

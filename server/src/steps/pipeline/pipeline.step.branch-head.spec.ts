@@ -4,7 +4,7 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { DocumentRepository } from '../../history/document.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import type { PipelineRef } from '../../integrations/code-host/code-host';
@@ -74,7 +74,7 @@ describe('pipeline step on a branch whose head moved', () => {
       await app.get(PipelineService).step('pipeline', 'PROJ-321');
       const after = await app.get(RunRepository).findRun('PROJ-321');
       expect(after?.status).toBe('waiting');
-      expect(deriveState(after!).reason?.code).toBe('CI_NOT_STARTED');
+      expect(storedState(after!).reason?.code).toBe('CI_NOT_STARTED');
       const log = await app.get(DocumentRepository).latestBody('PROJ-321', 'pipeline_log');
       expect(log).toContain('sha: new');
       expect(log).not.toContain('result: pass');

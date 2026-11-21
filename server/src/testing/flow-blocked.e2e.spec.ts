@@ -8,7 +8,7 @@ import { VisitRepository } from '../history/visit.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { CommandService } from '../pipeline/command.service';
 import { RunRepository } from '../history/run.repository';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
@@ -93,7 +93,7 @@ describe('one blocked task holds only its dependents', () => {
     await assertInvariants(app);
 
     expect(await statuses(app)).toEqual({ a: 'blocked', b: 'waiting', c: 'merged', d: 'running', e: 'running' });
-    const state = deriveState((await app.app.get(RunRepository).findRun(KEY))!);
+    const state = storedState((await app.app.get(RunRepository).findRun(KEY))!);
     expect(state.state).toBe('waiting');
     expect(state.reason?.message).toContain('subtask a is blocked; Resume, Replay or Skip task clears it');
     expect((await tasksOf(app))[1]?.note).toBe('waiting for a, which is blocked');
@@ -119,10 +119,10 @@ describe('one blocked task holds only its dependents', () => {
     await app.pipeline.step('implement', KEY);
     await end(app, 'a', 'blocked');
     await app.pipeline.step('implement', KEY);
-    expect(deriveState((await runs.findRun(KEY))!).state).toBe('waiting');
+    expect(storedState((await runs.findRun(KEY))!).state).toBe('waiting');
     await end(app, 'c', 'done', 1);
     await app.pipeline.step('implement', KEY);
-    expect(deriveState((await runs.findRun(KEY))!).state).toBe('blocked');
+    expect(storedState((await runs.findRun(KEY))!).state).toBe('blocked');
 
     let during: Record<string, string> = {};
     installScripts(
@@ -165,7 +165,7 @@ describe('one blocked task holds only its dependents', () => {
     expect((await statuses(app)).a).toBe('skipped');
     expect((await statuses(app)).b).toBe('running');
     const child = (await runs.findRun(`${KEY}-a`))!;
-    expect(deriveState(child).state).toBe('skipped');
+    expect(storedState(child).state).toBe('skipped');
     await expect(app.app.get(CommandService).submit('resume', child.key, {})).rejects.toThrow('this task was skipped');
     await expect(app.app.get(CommandService).submit('rebase', child.key, {})).rejects.toThrow('this task was skipped');
   });
@@ -199,7 +199,7 @@ describe('one blocked task holds only its dependents', () => {
 
   /** Nothing the parent or the subtask shows reads blocked or failed, or offers Resume or Skip (a running run keeps its Replay, as always). */
   async function expectNotBlocked(): Promise<void> {
-    const state = deriveState((await flow.app.app.get(RunRepository).findRun(KEY))!);
+    const state = storedState((await flow.app.app.get(RunRepository).findRun(KEY))!);
     expect(['blocked', 'failed']).not.toContain(state.state);
     const sentence = (await queries().flow(KEY)).taskLine ?? '';
     for (const text of [state.reason?.message ?? '', sentence]) {
@@ -335,7 +335,7 @@ describe('one blocked task holds only its dependents', () => {
     // again by the tick. The statuses read below come from a pass that sees the failed subtask: the test runs it.
     await flow.app.pipeline.step('implement', KEY);
     expect((await statuses(flow.app)).a).toBe('blocked');
-    const parent = deriveState((await flow.app.app.get(RunRepository).findRun(KEY))!);
+    const parent = storedState((await flow.app.app.get(RunRepository).findRun(KEY))!);
     expect(parent.reason?.message).toContain('subtask a is blocked');
     expect(parent.reason?.message).toContain('Resume, Replay or Skip task clears it');
     await assertInvariants(flow.app);
@@ -377,7 +377,7 @@ describe('one blocked task holds only its dependents', () => {
 
     await flow.app.pipeline.step('implement', KEY);
     expect((await statuses(flow.app)).a).toBe('blocked');
-    const parent = deriveState((await runs.findRun(KEY))!);
+    const parent = storedState((await runs.findRun(KEY))!);
     expect(parent.reason?.message).toContain('subtask a is blocked');
     expect(parent.reason?.message).toContain('Resume, Replay or Skip task clears it');
   });

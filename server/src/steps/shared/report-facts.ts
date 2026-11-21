@@ -12,7 +12,7 @@ import { ARTIFACTS } from '../contract/artifacts';
 import { reportExchanges, type ReportExchange } from './report-exchange';
 import { reportPath, returnCount, returnsText, type PathStep } from './report-path';
 import { epicTotal } from './epic-total';
-import { readOutcome, deriveState } from '../../history/run-state';
+import { readOutcome, storedState } from '../../history/run-state';
 import { parseSubtasks, SUBTASKS_KIND } from '../../contract/subtask';
 import { readStored } from './report-stored';
 import { requirementsFact } from './requirements-fact';
@@ -104,7 +104,7 @@ const mergedRun = (run: RunEntity): boolean => 'merged' in (readOutcome(run.merg
 async function taskLine(deps: ReportFactsDeps, child: RunEntity, title: string | undefined): Promise<string> {
   const documents = await deps.documents.listDocuments(child.id);
   const path = reportPath(await deps.visits.listStats(child.id), documents);
-  return `${title ?? MISSING}: ${mergedRun(child) ? 'merged' : deriveState(child).state}, ${returnsText(returnCount(path))}`;
+  return `${title ?? MISSING}: ${mergedRun(child) ? 'merged' : storedState(child).state}, ${returnsText(returnCount(path))}`;
 }
 
 /** The tasks of a split parent from its subtask runs. Undefined for a run without any. */

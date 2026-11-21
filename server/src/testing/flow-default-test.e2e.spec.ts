@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { putStamped } from '../steps/shared/gate.spec-helpers';
 import { RunRebase } from '../steps/run-rebase';
 import { RunRepository } from '../history/run.repository';
@@ -83,7 +83,7 @@ describe('a CI failure in a test only the default branch has is fixed by a rebas
     await flow.app.pipeline.runThrough(KEY);
     await tick();
 
-    expect(deriveState(await find()).state).toBe('done');
+    expect(storedState(await find()).state).toBe('done');
     expect(git(flow.tree, ['cat-file', '-e', `HEAD:${TEST_FILE}`])).toBe('');
     expect((await find()).attemptsPipeline).toBe(0);
     expect(await steps()).not.toContain('implement');
@@ -141,7 +141,7 @@ describe('a whole run from requirements to done with every agent step answering 
     }
 
     const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
-    expect(deriveState(run).state).toBe('done');
+    expect(storedState(run).state).toBe('done');
     expect(blocks.steps).toEqual(
       expect.arrayContaining([
         'research',

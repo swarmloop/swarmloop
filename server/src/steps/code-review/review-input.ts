@@ -7,7 +7,7 @@ import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { currentPlan } from '../shared/current-plan';
 import { renderImplementation } from '../implement/implement-record';
 import { storedProjects } from '../../config/checkout-path';
@@ -79,7 +79,7 @@ export async function retrying(visits: VisitRepository, opened: OpenedStep): Pro
     return false;
   }
   // The run waited for a provider limit: the reviewers that answered keep their answers, the others run again.
-  if (opened.prior && deriveState(opened.prior).reason?.code === ERROR_CODES.RUNTIME_LIMIT) {
+  if (opened.prior && storedState(opened.prior).reason?.code === ERROR_CODES.RUNTIME_LIMIT) {
     return true;
   }
   const last = [...(await visits.listStats(opened.run.id))].reverse().find((item) => item.step === 'code-review');

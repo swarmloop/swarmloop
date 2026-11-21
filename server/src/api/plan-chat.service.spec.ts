@@ -9,6 +9,7 @@ import { CheckoutRepository } from '../history/checkout.repository';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
+import type { MergeOutcome } from '../contract/run-state';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { CommandService } from '../pipeline/command.service';
@@ -93,8 +94,11 @@ describe('PlanChatService', () => {
       const runs = app.get(RunRepository);
       const parent = await save(runs, 'proj-epic', 'implement', 'waiting');
       const subtask = await runs.openSubtask('proj-epic-a', parent.id, 'a');
-      writeRunState(subtask, { status: 'done', currentStep: 'done' });
-      subtask.mergeOutcome = JSON.stringify({ merged: { demo: { sha: 'abc', by: null, at: 'x', url: null } } });
+      writeRunState(subtask, {
+        status: 'done',
+        currentStep: 'done',
+        merge: { merged: { demo: { sha: 'abc', by: null, at: 'x', url: null } } },
+      });
       await runs.saveRun(subtask);
       await chat.send('proj-epic-a', 'rename it', 'ann');
       const log = await app.get(PlanChatStore).read('proj-epic');
@@ -106,13 +110,13 @@ describe('PlanChatService', () => {
   it('refuses a merged, a closed and a removed run with the follow-up text', async () => {
     await withPlanChat(async ({ app, chat }) => {
       const runs = app.get(RunRepository);
-      const outcomes = {
-        merged: JSON.stringify({ merged: { demo: { sha: 'abc', by: null, at: 'x', url: null } } }),
-        closed: JSON.stringify({ closed: { repo: 'demo', by: null, at: 'x' } }),
+      const outcomes: Record<string, MergeOutcome> = {
+        merged: { merged: { demo: { sha: 'abc', by: null, at: 'x', url: null } } },
+        closed: { closed: { repo: 'demo', by: null, at: 'x' } },
       };
       for (const [name, outcome] of Object.entries(outcomes)) {
         const run = await save(runs, `proj-${name}`, 'done', 'done');
-        run.mergeOutcome = outcome;
+        writeRunState(run, { status: 'done', currentStep: 'done', merge: outcome });
         await runs.saveRun(run);
         await expect(chat.send(`proj-${name}`, 'more', 'ann')).rejects.toThrow(
           new ConflictException(`proj-${name} is ${name}: start a follow-up run`),

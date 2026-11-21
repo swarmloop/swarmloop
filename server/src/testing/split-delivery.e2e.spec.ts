@@ -8,7 +8,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { StepEventLog } from '../history/step-event.log';
 import { VisitRepository } from '../history/visit.repository';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { branchName, summaryForBranch } from '../git/naming/git-names';
 import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
@@ -175,7 +175,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
 
     for (const id of ['a', 'b']) {
       const child = (await app.app.get(RunRepository).findRun(`${KEY}-${id}`))!;
-      expect(deriveState(child).state).toBe('merged');
+      expect(storedState(child).state).toBe('merged');
       expect(child.mergeOutcome).toContain('"sha"');
     }
     const flow = await app.app.get(RunQueriesService).flow(KEY);
@@ -195,7 +195,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
 
     await app.app.get(CommandService).submit('stop', KEY, {});
 
-    expect(deriveState((await parentRun(app))!).state).toBe('stopped');
+    expect(storedState((await parentRun(app))!).state).toBe('stopped');
     await app.app.get(Reconciler).resumeSubtaskParents();
     await settle(app);
     expect(built.launched).toEqual([`${KEY}-a`, `${KEY}-b`]);
@@ -305,7 +305,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     }
 
     expect(await statuses(app)).toEqual({ a: 'merged' });
-    expect(deriveState((await app.app.get(RunRepository).findRun(`${KEY}-a`))!).state).toBe('merged');
+    expect(storedState((await app.app.get(RunRepository).findRun(`${KEY}-a`))!).state).toBe('merged');
     expect((await parentRun(app))?.currentStep).not.toBe('implement');
     const improve = (await app.app.get(RunQueriesService).flow(KEY)).phases
       .flatMap((phase) => phase.steps)
@@ -423,7 +423,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     expect(summaries.join('\n')).toContain('src/shared.ts, src/own.ts');
     expect(await statuses(app)).toEqual({ a: 'merged' });
     expect((await parentRun(app))?.currentStep).not.toBe('implement');
-    expect(deriveState((await parentRun(app))!).state).not.toBe('blocked');
+    expect(storedState((await parentRun(app))!).state).not.toBe('blocked');
     expect(git(bare, ['show', `refs/heads/${feature}:src/shared.ts`])).toBe(lines('task one', 'own five').trimEnd());
     expect(git(bare, ['show', `refs/heads/${feature}:src/own.ts`])).toBe('own');
     expect(git(parentTree, ['status', '--porcelain'])).toBe('');
@@ -457,7 +457,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     await app.pipeline.step('pipeline', KEY);
     const parent = (await parentRun(app))!;
     expect(parent.currentStep).toBe('done');
-    expect(deriveState(parent).reason?.code).not.toBe('PARENT_TREE_CONFLICT');
+    expect(storedState(parent).reason?.code).not.toBe('PARENT_TREE_CONFLICT');
     expect(git(bare, ['show', `refs/heads/${feature}:src/shared.ts`])).toBe(lines('task one + own one').trimEnd());
     expect(git(bare, ['merge-base', '--is-ancestor', before, originHead()])).toBe('');
     expect(originHead()).not.toBe(before);
@@ -474,7 +474,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     for (let count = 0; count < 3; count++) await tick();
 
     const parent = (await parentRun(app))!;
-    const { state, reason } = deriveState(parent);
+    const { state, reason } = storedState(parent);
     expect(state).toBe('blocked');
     expect(reason?.code).toBe('PARENT_TREE_CONFLICT');
     expect(reason?.message).toContain('src/shared.ts');
@@ -493,7 +493,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
       (file) => writeFileSync(file, lines('own one')),
       [task('a'), task('b')],
     );
-    expect(deriveState((await parentRun(app))!).reason?.code).toBe('PARENT_TREE_CONFLICT');
+    expect(storedState((await parentRun(app))!).reason?.code).toBe('PARENT_TREE_CONFLICT');
 
     writeFileSync(shared, lines('task one', 'own five'));
     await app.app.get(CommandService).accept('resume', KEY, {});

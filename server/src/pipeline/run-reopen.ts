@@ -3,7 +3,7 @@ import { ERROR_CODES } from '../contract/error-codes';
 import { HostUnavailable } from '../core/swarmloop-error';
 import type { PipelineResult } from '../core/pipeline-result';
 import { RunRepository } from '../history/run.repository';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 
 /** Gives a done run back to the flow when the planner changed its plan: plan-improve checks the plan, and the work goes on. */
@@ -20,7 +20,7 @@ export class RunReopen {
    */
   async reopen(key: string, start: (key: string) => Promise<PipelineResult>): Promise<PipelineResult> {
     const run = await this.runs.findRun(key);
-    if (!run || run.workspace === 'removed' || deriveState(run).state !== 'done') {
+    if (!run || run.workspace === 'removed' || storedState(run).state !== 'done') {
       return { exitCode: 0, message: `${key} is left as it is` };
     }
     // The run leaves `done` first, so the revised plan is never left on a finished run.

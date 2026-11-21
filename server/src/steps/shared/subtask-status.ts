@@ -1,10 +1,10 @@
-import { deriveState, readOutcome } from '../../history/run-state';
+import { storedState, readOutcome } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
 import { settled, type Subtask, type SubtaskStatus } from '../../contract/subtask';
 
 /** The status of a task that its run gives. A run whose merge is recorded is merged, whoever merged it. */
 export function taskStatusOf(task: Subtask, child: RunEntity): SubtaskStatus {
-  const { state } = deriveState(child);
+  const { state } = storedState(child);
   if (state === 'merged') return 'merged';
   if (child.status === 'done') return 'green';
   if (state === 'blocked' || state === 'failed') return 'blocked';

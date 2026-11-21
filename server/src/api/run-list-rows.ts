@@ -8,7 +8,6 @@ import type { RunBacklog } from '../contract/backlog';
 import type { RunsView } from '../contract/api';
 import type { Subtask } from '../contract/subtask';
 import { BacklogRepository } from '../history/backlog.repository';
-import { CheckoutRepository } from '../history/checkout.repository';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
@@ -67,7 +66,6 @@ export class RunListRows implements OnModuleDestroy {
   constructor(
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
-    private readonly checkouts: CheckoutRepository,
     private readonly commands: CommandRepository,
     private readonly backlogs: BacklogRepository,
     private readonly pipeline: PipelineService,
@@ -159,7 +157,7 @@ export class RunListRows implements OnModuleDestroy {
     const plans = await listPlans(this.documents, runs, childrenOf);
     const requirements = await requirementBodies(this.documents, runs);
     const states = await ownStates(
-      { documents: this.documents, checkouts: this.checkouts, commands: this.commands },
+      { commands: this.commands },
       runs,
       (key) => claimed.get(key) ?? false,
       (key) => places.get(key),
