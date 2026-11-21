@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
-import { LoopEventEntity, RunEntity, StepStatEntity } from './entities';
+import { BacklogMessageEntity } from './backlog-planner.entities';
+import { CommandEntity, DocumentEntity, LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 import { ServerStallEntity } from './server-stall.entities';
 import { repositoryDatabase } from './repository.spec-helpers';
 import { StatsRepository } from './stats.repository';
@@ -64,6 +65,82 @@ describe('StatsRepository', () => {
         steps: [],
         loops: [],
         stalls: [],
+        person: { answers: [], planChats: [], backlogMessages: [] },
+      });
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('reads what people wrote from a time on: answers with a person, the latest plan chats and backlog messages', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const data = db.app.get(DataSource);
+      const [one, two] = await data
+        .getRepository(RunEntity)
+        .save([run('one', '2026-11-05T00:00:00.000Z'), run('two', '2026-10-01T00:00:00.000Z')]);
+      const command = (id: string, type: string, actor: string | null, createdAt: string): Partial<CommandEntity> => ({
+        id,
+        runId: one.id,
+        type,
+        payload: '{}',
+        actor,
+        state: 'done',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      await data
+        .getRepository(CommandEntity)
+        .save([
+          command('new', 'answer', 'ada', '2026-11-05T00:00:00.000Z'),
+          command('old', 'answer', 'ada', '2026-10-01T00:00:00.000Z'),
+          command('anonymous', 'answer', null, '2026-11-05T00:00:00.000Z'),
+          command('other', 'resume', 'ada', '2026-11-05T00:00:00.000Z'),
+        ]);
+      const chat = (runId: number, body: string, createdAt: string): Partial<DocumentEntity> => ({
+        runId,
+        stepStatId: 0,
+        kind: 'plan_chat',
+        attempt: 1,
+        body,
+        path: 'p',
+        createdAt,
+      });
+      await data
+        .getRepository(DocumentEntity)
+        .save([
+          chat(one.id, 'first', '2026-11-04T00:00:00.000Z'),
+          chat(one.id, 'second', '2026-11-05T00:00:00.000Z'),
+          chat(two.id, 'stale', '2026-10-01T00:00:00.000Z'),
+        ]);
+      const message = (
+        key: string,
+        author: string,
+        kind: string,
+        createdAt: string,
+      ): Partial<BacklogMessageEntity> => ({
+        backlogId: 1,
+        messageKey: key,
+        author,
+        kind,
+        text: 't',
+        createdAt,
+      });
+      await data
+        .getRepository(BacklogMessageEntity)
+        .save([
+          message('a', 'person', 'message', '2026-11-05T00:00:00.000Z'),
+          message('b', 'planner', 'message', '2026-11-05T00:00:00.000Z'),
+          message('c', 'person', 'message', '2026-10-01T00:00:00.000Z'),
+          message('d', 'person', 'reply', '2026-11-05T00:00:00.000Z'),
+        ]);
+
+      const { person } = await db.app.get(StatsRepository).rows('2026-11-01T00:00:00.000Z');
+
+      expect(person).toEqual({
+        answers: [{ id: 'new', createdAt: '2026-11-05T00:00:00.000Z' }],
+        planChats: ['second'],
+        backlogMessages: [{ createdAt: '2026-11-05T00:00:00.000Z' }],
       });
     } finally {
       await db.close();

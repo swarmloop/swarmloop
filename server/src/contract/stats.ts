@@ -93,6 +93,14 @@ export interface StatsTotals {
   closed: number;
   /** Median time from done to merge of the merged runs; null without one. */
   medianToMergeMs: number | null;
+  /** Requirement ids the requirements reviewer's last round marked met, over the merged counted runs of the range. */
+  requirementsMet: number;
+  /** All requirement ids of those runs. A run without per-id statuses adds nothing to either count. */
+  requirementsTotal: number;
+  /** Returns (reviewers, checks, CI) in the merged counted runs of the range, subtasks included. */
+  caughtAndFixed: number;
+  /** Prompts of runs a person started, answers with a person, and person plan-chat and backlog-chat messages written in the range, each counted once. */
+  personMessages: number;
 }
 
 /** The runs started from `from` to `to` (local days, inclusive) and everything they did. */
