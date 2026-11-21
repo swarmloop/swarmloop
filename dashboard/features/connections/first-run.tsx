@@ -1,15 +1,17 @@
 'use client';
 
 import type { FormEvent, ReactElement } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import type { TokenSignInView } from '@contract/api';
 import { getManifest, getOwner, saveGitlabApplication } from '../../lib/endpoints';
 import { HOST_TEXTS } from './logos';
+import { TokenSignIn } from './token-sign-in';
 
 export interface ManifestForm {
   action: string;
@@ -28,7 +30,13 @@ export function ManifestPost({ form }: { form: ManifestForm }): ReactElement {
 }
 
 /** The first screen of a server with no login yet: make the host app, or hand over the host application. */
-export function FirstRun(): ReactElement {
+export function FirstRun({
+  tokens = [],
+  next = null,
+}: {
+  tokens?: TokenSignInView[];
+  next?: string | null;
+}): ReactElement {
   const [org, setOrg] = useState('');
   const [others, setOthers] = useState<string[]>([]);
   const typed = useRef(false);
@@ -147,6 +155,16 @@ export function FirstRun(): ReactElement {
                 <Button type="submit" variant="contained" disabled={busy}>
                   {entry.firstRun.submit}
                 </Button>
+                {tokens
+                  .filter((tokenEntry) => tokenEntry.provider === entry.key)
+                  .map((tokenEntry) => (
+                    <Fragment key={tokenEntry.provider}>
+                      <Typography variant="body2" color="text.secondary" align="center">
+                        or
+                      </Typography>
+                      <TokenSignIn entry={tokenEntry} label={entry.label} next={next} />
+                    </Fragment>
+                  ))}
               </>
             )}
           </Paper>

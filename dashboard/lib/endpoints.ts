@@ -7,6 +7,7 @@ import type {
   FlowView,
   HistoryView,
   MeView,
+  ProvidersView,
   ProjectsView,
   ProjectListView,
   RemoteEntry,
@@ -45,7 +46,10 @@ const post = (body?: unknown): RequestInit => ({
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 
-export const getProviders = (): Promise<{ providers: string[] }> => api('/auth/providers');
+export const getProviders = (): Promise<ProvidersView> => api('/auth/providers');
+/** Signs in with a personal access token made on the host. Answers where the browser goes next. */
+export const signInWithToken = (provider: string, token: string, next: string | null): Promise<{ url: string }> =>
+  api(`/auth/${provider}/token`, post({ token, next: next ?? undefined }));
 /** The signed-in person, with the host and the avatar of the host account. */
 export const getSession = (): Promise<MeView> => api<MeView>('/auth/me');
 /** The manifest of the GitHub App and the GitHub page it is posted to, for the account or an organization. */

@@ -24,6 +24,7 @@ import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { PersonalTokens } from './personal-tokens.service';
 import { SecretBox, secretKey } from './secret-box';
 import { SessionService } from './session.service';
+import { SignInService } from './sign-in.service';
 
 @Module({
   imports: [HistoryModule],
@@ -35,6 +36,7 @@ import { SessionService } from './session.service';
     AuthService,
     HostAppsService,
     ConnectionsService,
+    SignInService,
     ...codeHostAdapters().flatMap((adapter) => (adapter.appFlow ? [adapter.appFlow] : [])),
     { provide: HOST_APP_STORE, useExisting: HostAppsService },
     PersonalCredentials,

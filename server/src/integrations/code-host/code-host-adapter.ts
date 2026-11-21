@@ -43,6 +43,10 @@ export interface CodeHostAdapter {
   readonly keepsTokensWithoutApp: boolean;
   /** Whether the app of the host is one the person registers with the host, not a plain OAuth app. */
   readonly storesApplication: boolean;
+  /** Whether a person can sign in by pasting a personal access token made on the host. */
+  readonly signsInWithToken: boolean;
+  /** The host page where a person makes that token, with its name and scopes filled in. */
+  tokenPage?(env: CodeHostEnv): string;
   /** The Nest class of the host's app flow, when it has one. */
   readonly appFlow?: Type<AppFlow>;
   /** The urls and words of the host's login and api, built from the env. */
