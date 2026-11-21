@@ -72,6 +72,17 @@ describe('DoneLately', () => {
     expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title of late-1');
   });
 
+  it('finds a run finished last that was created first, past the fifth page', async () => {
+    const rows = [
+      ...Array.from({ length: 110 }, (_, index) => mergedAt(`early-${index}`, '2026-01-01T00:00:00.000Z')),
+      mergedAt('first-made', '2026-03-01T00:00:00.000Z', { createdAt: '2024-01-01T00:00:00.000Z' }),
+    ];
+    vi.mocked(listRuns).mockImplementation(listRunsFrom(rows));
+    render(<DoneLately />, { wrapper: PartsWrapper });
+    await screen.findByText('Title of first-made');
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title of first-made');
+  });
+
   it('shows an accepted milestone once, with its cost, returns and elapsed time, and not its task runs', async () => {
     vi.mocked(listRuns).mockImplementation(
       listRunsFrom([

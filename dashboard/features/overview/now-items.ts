@@ -76,7 +76,7 @@ export function nowCards(backlogs: BacklogView[], active: RunSummary[], now: num
       }),
   );
   const working = nested(active)
-    .tops.filter((run) => !run.backlog && runWord(run).tone === 'working')
+    .tops.filter((run) => (!run.backlog || run.backlog.milestone === null) && runWord(run).tone === 'working')
     .map(runCard);
   return [...milestones, ...working].slice(0, NOW_SHOWN);
 }

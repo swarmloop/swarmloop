@@ -97,7 +97,7 @@ const GRID_SX = {
   m: 0,
   p: 0,
   display: 'grid',
-  gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(4, minmax(0, 1fr))' },
+  gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
   gap: 1,
 } as const;
 
@@ -136,8 +136,8 @@ export function ReadinessPanel(): ReactElement {
   const problems = items.filter((item) => item.status !== 'ok');
   const failing = problems.some((item) => item.status === 'fail');
   return (
-    <Paper variant="outlined" component="section" id="readiness" aria-label="Readiness" sx={{ p: { xs: 2, md: 2.5 } }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+    <Paper variant="outlined" component="section" id="readiness" aria-label="Readiness" sx={{ p: 1.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <Box
           component="span"
           sx={{
@@ -178,7 +178,7 @@ export function ReadinessPanel(): ReactElement {
                   alignItems: 'center',
                   gap: 1,
                   px: 1.25,
-                  py: 1,
+                  py: 0.5,
                   borderRadius: 1.5,
                   bgcolor: 'action.hover',
                   minWidth: 0,
@@ -188,14 +188,18 @@ export function ReadinessPanel(): ReactElement {
               >
                 <Icon sx={{ fontSize: 18, color, flexShrink: 0 }} />
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }} noWrap>
+                  <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }} noWrap>
                     {NAMES[item.id]}
                   </Typography>
-                  <Typography sx={{ fontSize: 12, color: 'text.secondary', lineHeight: 1.3 }} noWrap>
+                  <Typography
+                    variant="caption"
+                    sx={{ display: 'block', color: 'text.secondary', lineHeight: 1.3 }}
+                    noWrap
+                  >
                     {item.status === 'ok' ? shortLine(item) : word}
                   </Typography>
                   {ownUse(item) ? (
-                    <Typography sx={{ fontSize: 11, color: 'text.secondary', lineHeight: 1.3 }}>
+                    <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', lineHeight: 1.3 }}>
                       {ownUse(item)}
                     </Typography>
                   ) : null}

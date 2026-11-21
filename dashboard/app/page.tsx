@@ -37,9 +37,10 @@ export default function HomePage(): React.ReactElement {
         sx={{
           display: 'flex',
           flexDirection: 'column',
-          gap: 1.5,
-          // The root grows with its content, so nothing is clipped or scrolls inside; short content fills the viewport.
+          gap: 1,
+          // Short content fills the viewport; the fullest page is sized to fit it, so nothing is clipped or scrolls inside.
           minHeight: `calc(100vh - ${CHROME})`,
+          maxHeight: `calc(100vh - ${CHROME})`,
           typography: 'body2',
         }}
       >

@@ -58,7 +58,7 @@ export type StatsStallRow = Pick<ServerStallEntity, 'startedAt' | 'durationMs' |
 export interface StatsPersonRows {
   /** Answer commands with a person. `id` is the key suffix (`message-<id>`) of the plan chat entry the same answer wrote. */
   answers: { id: string; createdAt: string }[];
-  /** Bodies of the latest plan chat of each run whose latest one was written since. */
+  /** The latest plan chat of each run that changed since, when written since. */
   planChats: string[];
   /** Messages a person wrote to a backlog's planner. */
   backlogMessages: { createdAt: string }[];
@@ -140,12 +140,17 @@ export class StatsRepository {
       where: { author: 'person', kind: 'message', ...recent },
       order: { id: 'ASC' },
     });
+    // Each run's latest plan chat is found through the (run_id, kind, id) index, for the runs that changed since.
+    const changed =
+      since === null
+        ? ''
+        : ' WHERE run.updated_at >= :since OR run.id IN (SELECT command.run_id FROM commands command WHERE command.created_at >= :since)';
     const chats = this.documents
       .createQueryBuilder('document')
       .select('document.body', 'body')
-      .where('document.kind = :kind', { kind: PLAN_CHAT_KIND })
-      .andWhere(
-        'document.id = (SELECT MAX(latest.id) FROM documents latest WHERE latest.run_id = document.run_id AND latest.kind = :kind)',
+      .where(
+        `document.id IN (SELECT (SELECT MAX(latest.id) FROM documents latest WHERE latest.run_id = run.id AND latest.kind = :kind) FROM runs run${changed})`,
+        { kind: PLAN_CHAT_KIND, since },
       );
     if (since !== null) {
       chats.andWhere('document.createdAt >= :since', { since });

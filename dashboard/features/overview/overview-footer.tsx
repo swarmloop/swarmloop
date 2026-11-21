@@ -21,8 +21,6 @@ export function OverviewFooter({ children }: { children: ReactNode }): ReactElem
         flexDirection: 'column',
         gap: 1,
         typography: 'caption',
-        // The readiness panel sets its own sizes; here its text reads at the page's body size.
-        '& .MuiTypography-body1': { fontSize: '0.875rem' },
       }}
     >
       <Box component="nav" aria-label="Pages" sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>

@@ -39,7 +39,7 @@ function CardView({ card, now }: { card: NowCard; now: number }): ReactElement {
         border: 1,
         borderColor: 'divider',
         borderRadius: 1,
-        p: 1.5,
+        p: 1,
         color: 'inherit',
         textDecoration: 'none',
         minWidth: 0,

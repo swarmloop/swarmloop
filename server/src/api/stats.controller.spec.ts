@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
+import { CommandEntity, DocumentEntity, RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { RunRepository } from '../history/run.repository';
@@ -75,5 +76,54 @@ describe('StatsController', () => {
     const one = await full.meter.measure(() => full.data.query('SELECT 1'));
 
     expect(one.statements).toBe(1);
+  });
+  it('counts a person message in the range on a run created before it once', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const data = db.app.get(DataSource);
+      const day = 24 * 60 * 60 * 1000;
+      const created = new Date(db.clock.now() - 40 * day).toISOString();
+      const at = new Date(db.clock.now() - day).toISOString();
+      const run = await data.getRepository(RunEntity).save({
+        key: 'old',
+        status: 'running',
+        currentStep: 'plan',
+        runtime: 'claude',
+        codeHost: '',
+        createdAt: created,
+        updatedAt: created,
+      });
+      const command = (id: string, type: string): Partial<CommandEntity> => ({
+        id,
+        runId: run.id,
+        type,
+        payload: '{}',
+        actor: 'ada',
+        state: 'done',
+        createdAt: at,
+        updatedAt: at,
+      });
+      await data.getRepository(CommandEntity).save([command('chat-1', 'plan-chat'), command('answer-1', 'answer')]);
+      const entry = (key: string) => ({ key, role: 'person', author: 'ada', text: 'hi', at, state: 'taken' });
+      await data.getRepository(DocumentEntity).save({
+        runId: run.id,
+        stepStatId: 0,
+        kind: 'plan_chat',
+        attempt: 1,
+        body: JSON.stringify({ entries: [entry('message-chat-1'), entry('message-answer-1')], revisions: [] }),
+        path: 'p',
+        createdAt: at,
+      });
+      const controller = new StatsController(
+        db.app.get(StatsRepository),
+        db.app.get(RunRepository),
+        db.app.get(DocumentRepository),
+        db.clock,
+      );
+
+      expect((await controller.report(undefined, '0')).totals.personMessages).toBe(2);
+    } finally {
+      await db.close();
+    }
   });
 });
