@@ -52,11 +52,12 @@ function shellLaunch(args: {
   mount: SandboxMount;
   phase: 'setup' | 'checks';
   check?: { index: number };
+  place?: number;
   manifest?: ManifestHosts;
   statePath: string;
   userId: ReturnType<typeof sandboxUserId>;
 }): Parameters<ShellDeps['sandbox']['spawn']>[0] {
-  const { input, launch, command, mount, phase, check, manifest, statePath, userId } = args;
+  const { input, launch, command, mount, phase, check, place, manifest, statePath, userId } = args;
   return {
     runtime: input.runtime,
     runKey: input.key,
@@ -70,6 +71,7 @@ function shellLaunch(args: {
     userId,
     project: { ...launch, shell: command },
     resultLost: true,
+    ...(place !== undefined ? { checkPlace: place } : {}),
   };
 }
 
@@ -88,6 +90,8 @@ export async function runShell(
   check?: { index: number; file: string; name?: string },
   /** The manifest hosts of the setup. Checks get none. */
   manifest?: ManifestHosts,
+  /** The number of the check place the command runs in. */
+  place?: number,
 ): Promise<{ exitCode: number; tail: string; outOfMemoryBytes?: number }> {
   const { root, clock, sandbox, live } = deps;
   const userId = sandboxUserId();
@@ -146,7 +150,7 @@ export async function runShell(
     });
   };
   const child = await sandbox
-    .spawn(shellLaunch({ input, launch, command, mount, phase, check, manifest, statePath, userId }), {
+    .spawn(shellLaunch({ input, launch, command, mount, phase, check, place, manifest, statePath, userId }), {
       onPaused,
       work: phase === 'setup' ? 'setup' : 'check',
     })

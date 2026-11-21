@@ -20,6 +20,7 @@ import {
 import { imageName } from './image-resolver';
 import { assertDaemonPath, assertMask, assertMount, assertProject, sandboxMount } from './sandbox-checks';
 import { CLI_ROOT, egressProxyArgs, projectImageArgs } from './sandbox-args';
+import { coreListText } from './core-slices';
 import type { SandboxLaunch } from './sandbox-types';
 
 import type { SandboxMount } from '../core/sandbox-mount';
@@ -201,6 +202,11 @@ export function sandboxEngine(value = rawEnv().SANDBOX_DOCKER_RUNTIME): string {
   return engine;
 }
 
+/** The cores a project container may use. Tools size themselves to the cores they see. */
+function coreArgs(launch: SandboxLaunch): string[] {
+  return launch.project && launch.cpuSlice ? ['--cpuset-cpus', coreListText(launch.cpuSlice)] : [];
+}
+
 export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sandboxEngine()): string[] {
   if (launch.userId <= 0) {
     throw new SwarmloopError('sandbox user is root');
@@ -263,6 +269,7 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
     project ? PROJECT_PIDS : SANDBOX_PIDS,
     '--cpu-shares',
     String(SANDBOX_CPU_SHARES),
+    ...coreArgs(launch),
     '--read-only',
     '--tmpfs',
     project ? PROJECT_TMP : '/tmp:rw,nosuid,nodev,size=64m,mode=1777',

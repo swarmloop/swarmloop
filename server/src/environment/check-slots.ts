@@ -1,13 +1,22 @@
 interface Waiting {
   key: string;
   onAhead: (ahead: number) => void;
-  resolve: (release: (() => void) | null) => void;
+  resolve: (taken: TakenPlace | null) => void;
   told: number;
 }
 
-/** One first-come-first-served line of places for the check commands of the whole server. */
+/** A place given to a command: its number, and the function that gives it back. */
+interface TakenPlace {
+  place: number;
+  release: () => void;
+}
+
+/**
+ * One first-come-first-served line of places for the check commands of the whole server. The places are numbered
+ * from 0, and a number that is given back is given again.
+ */
 export class CheckSlots {
-  private taken = 0;
+  private readonly held = new Set<number>();
   private line: Waiting[] = [];
 
   constructor(
@@ -17,9 +26,9 @@ export class CheckSlots {
 
   /**
    * Waits for a place. `onAhead` gets the number of commands before this one in the line, each time it changes.
-   * Resolves with the function that gives the place back, or with null when the run is halted or `drop` took the command out of the line.
+   * Resolves with the place and the function that gives it back, or with null when the run is halted or `drop` took the command out of the line.
    */
-  take(key: string, onAhead: (ahead: number) => void): Promise<(() => void) | null> {
+  take(key: string, onAhead: (ahead: number) => void): Promise<TakenPlace | null> {
     if (this.halted(key)) {
       return Promise.resolve(null);
     }
@@ -40,20 +49,29 @@ export class CheckSlots {
   }
 
   private advance(): void {
-    for (let next = this.line[0]; next && this.taken < this.limit(); next = this.line[0]) {
+    for (let next = this.line[0]; next && this.held.size < this.limit(); next = this.line[0]) {
       this.line.shift();
-      this.taken += 1;
-      next.resolve(this.releaser());
+      const place = this.lowestFree();
+      this.held.add(place);
+      next.resolve({ place, release: this.releaser(place) });
     }
     this.tell();
   }
 
-  private releaser(): () => void {
+  private lowestFree(): number {
+    let place = 0;
+    while (this.held.has(place)) {
+      place += 1;
+    }
+    return place;
+  }
+
+  private releaser(place: number): () => void {
     let given = false;
     return () => {
       if (!given) {
         given = true;
-        this.taken -= 1;
+        this.held.delete(place);
         this.advance();
       }
     };

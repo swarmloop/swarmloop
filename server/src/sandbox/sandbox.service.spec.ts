@@ -105,6 +105,34 @@ describe('SandboxService memory cap', () => {
     expect(check.memoryCapBytes).toBe(2 * GB);
   });
 
+  describe('cores', () => {
+    const cores = (args: string[]): string | undefined =>
+      args.includes('--cpuset-cpus') ? args[args.indexOf('--cpuset-cpus') + 1] : undefined;
+    const eight = () => `8 ${3 * GB}`;
+
+    it('gives a check in a project image the cores of its place', async () => {
+      const sandbox = service(eight);
+      await sandbox.spawn(launch('checks-0', { command: [], project: projectLaunch, checkPlace: 1 }));
+      expect(cores(runs[0] ?? [])).toBe('2-3');
+    });
+
+    it('gives agents in a project image a slice each, in turns over all the cores', async () => {
+      const sandbox = service(eight);
+      await sandbox.spawn(launch('plan', { project: { ...projectLaunch, shell: undefined } }));
+      await sandbox.spawn(launch('implement', { project: { ...projectLaunch, shell: undefined } }));
+      expect(runs.map(cores)).toEqual(['0-1', '2-3']);
+    });
+
+    it('leaves an agent outside a project image and unknown cores as they are', async () => {
+      const sandbox = service(eight);
+      await sandbox.spawn(launch('plan'));
+      expect(cores(runs[0] ?? [])).toBeUndefined();
+      const unknown = service(() => Promise.reject(new Error('down')));
+      await unknown.spawn(launch('checks-0', { command: [], project: projectLaunch, checkPlace: 0 }));
+      expect(cores(runs[1] ?? [])).toBeUndefined();
+    });
+  });
+
   it('starts without a memory cap when docker does not tell its size', async () => {
     const sandbox = service(() => Promise.reject(new Error('down')));
     const child = await sandbox.spawn(launch('plan'));

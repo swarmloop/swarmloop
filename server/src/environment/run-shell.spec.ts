@@ -86,6 +86,18 @@ describe('runShell', () => {
     expect(held).toEqual(['setup', 'check']);
   });
 
+  it('hands the place of a check to its container and gives a setup none', async () => {
+    const w = world(1);
+    const file = checkOutputPath(w.root, 'r1', 'implement', 'attempt-1', 0);
+
+    await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'setup');
+    await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'checks', { index: 0, file }, undefined, 2);
+
+    const launches = (w.deps.sandbox.spawn as jest.Mock).mock.calls.map(([given]) => given);
+    expect(launches[0]).not.toHaveProperty('checkPlace');
+    expect(launches[1]).toEqual(expect.objectContaining({ checkPlace: 2 }));
+  });
+
   it('gives a setup the same tail, mark and whole file', async () => {
     const w = world(498);
 

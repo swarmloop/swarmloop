@@ -10,7 +10,8 @@ import { collectEnvMasks } from './env-masks';
 import { SandboxService } from './sandbox.service';
 import { parseDockerStats } from './docker-stats';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
-import { hostRefusal, packageRegistries, setupHosts } from './sandbox-hosts';
+import { packageRegistries, setupHosts } from './sandbox-hosts';
+import { home, launch } from './sandbox-launch.spec-helpers';
 import {
   agentStateDir,
   emptyEnvFile,
@@ -23,25 +24,6 @@ import {
   sandboxUserId,
   stepContainers,
 } from '../sandbox/sandbox-launch';
-
-const home = '/Users/dev';
-
-function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
-  return {
-    runtime: 'cursor',
-    runKey: 'PROJ-1',
-    step: 'research',
-    attemptId: 'attempt-1',
-    mounts: [{ hostPath: '/tmp/worktrees/PROJ-1/demo', containerPath: '/work/demo' }],
-    workRoots: ['/tmp/worktrees'],
-    envMasks: [{ hostFile: '/tmp/worktrees/PROJ-1/demo/.env', containerFile: '/work/demo/.env' }],
-    allowHosts: [],
-    command: ['agent', '--print', 'hello'],
-    userId: 501,
-    maskFile: '/tmp/swarmloop-empty-env',
-    ...patch,
-  };
-}
 
 describe('sandbox launch', () => {
   describe('sign-in hosts', () => {
@@ -99,6 +81,46 @@ describe('sandbox launch', () => {
           expect(block).not.toMatch(/^\s+(cpu_shares|cpus):/m);
         }
       }
+    });
+
+    describe('cores', () => {
+      const project = {
+        image: 'swarmloop-env-demo:0123456789ab',
+        cliVolume: 'swarmloop-cli-claude-0123456789ab',
+        path: '/usr/local/bin:/usr/bin:/bin',
+        certFile: true,
+        caches: [],
+      };
+      const cores = (patch: Partial<SandboxLaunch>): string | undefined => {
+        const args = sandboxArgs(launch(patch), home, '');
+        return args.includes('--cpuset-cpus') ? args[args.indexOf('--cpuset-cpus') + 1] : undefined;
+      };
+      const check = (index: number, machine: number): string | undefined =>
+        cores({
+          command: [],
+          project: { ...project, shell: 'npm test' },
+          cpuSlice: { cores: machine, places: 3, index },
+        });
+
+      it('gives the checks of 8 cores and 3 places two cores each', () => {
+        expect([0, 1, 2].map((place) => check(place, 8))).toEqual(['0-1', '2-3', '4-5']);
+      });
+
+      it('gives every check one core when there are fewer cores than places', () => {
+        expect([0, 1, 2].map((place) => check(place, 2))).toEqual(['0', '1', '0']);
+      });
+
+      it('gives an agent in a project image a slice of the same size', () => {
+        expect(cores({ project, cpuSlice: { cores: 8, places: 3, index: 0 } })).toBe('0-1');
+      });
+
+      it('leaves a container outside a project image and a container with unknown cores as they are', () => {
+        expect(cores({ cpuSlice: { cores: 8, places: 3, index: 0 } })).toBeUndefined();
+        expect(sandboxArgs(launch({ cpuSlice: { cores: 8, places: 3, index: 0 } }), home, '')).toEqual(
+          sandboxArgs(launch(), home, ''),
+        );
+        expect(cores({ project })).toBeUndefined();
+      });
     });
 
     it('caps the memory only when a cap is given', () => {
@@ -512,95 +534,6 @@ describe('sandbox launch', () => {
     expect(setupHosts()).toEqual(expect.arrayContaining(['github.com', 'release-assets.githubusercontent.com']));
     expect(packageRegistries()).not.toContain('github.com');
     expect(() => sandboxArgs(launch({ allowHosts: setupHosts() }), home)).not.toThrow();
-  });
-
-  describe('manifest hosts', () => {
-    const saved = { ...process.env };
-    afterEach(() => {
-      for (const name of ['GITLAB_BASE_URL', 'GITHUB_BASE_URL', 'JIRA_BASE_URL', 'PROJECT_HOSTS_ALLOW']) {
-        if (saved[name] === undefined) {
-          delete process.env[name];
-        } else {
-          process.env[name] = saved[name];
-        }
-      }
-    });
-
-    it('keeps the built-in lists and adds the extra hosts once', () => {
-      expect(setupHosts(['pub.dev', 'pypi.org'])).toEqual([...setupHosts(), 'pub.dev']);
-      expect(packageRegistries(['pub.dev'])).toEqual([...packageRegistries(), 'pub.dev']);
-      expect(packageRegistries()).not.toContain('pub.dev');
-    });
-
-    it.each([
-      ['github.com', 'is a code host'],
-      ['gitlab.com', 'is a code host'],
-      ['api.anthropic.com', 'is a model API host'],
-      ['localhost', 'is a local address'],
-      ['10.0.0.1', 'is a local address'],
-      ['::1', 'is a local address'],
-      ['https://pub.dev', 'is not a host name'],
-      ['pub.dev', null],
-      ['registry.npmjs.org', null],
-    ])('the ceiling answers %p: %p', (host, reason) => {
-      expect(hostRefusal(host, 'agent', [])).toBe(reason);
-    });
-
-    it('refuses the hosts of the code hosts, Jira and the checkout origin', () => {
-      process.env.GITLAB_BASE_URL = 'https://git.corp.example/api/v4';
-      process.env.GITHUB_BASE_URL = 'https://ghe.corp.example';
-      process.env.JIRA_BASE_URL = 'https://corp.atlassian.net';
-      for (const host of ['git.corp.example', 'ghe.corp.example', 'corp.atlassian.net', 'origin.example']) {
-        expect(hostRefusal(host, 'setup', ['origin.example'])).toBe('is a code host');
-      }
-    });
-
-    it('keeps the setup downloads away from the agent but not from the setup', () => {
-      expect(hostRefusal('nodejs.org', 'agent', [])).toBe('is setup-only');
-      expect(hostRefusal('nodejs.org', 'setup', [])).toBeNull();
-      expect(hostRefusal('github.com', 'agent', [])).toBe('is a code host');
-    });
-
-    it('limits the manifest to PROJECT_HOSTS_ALLOW when it is set', () => {
-      expect(hostRefusal('pub.dev', 'agent', [])).toBeNull();
-      process.env.PROJECT_HOSTS_ALLOW = 'pub.dev, Storage.googleapis.com';
-      expect(hostRefusal('pub.dev', 'agent', [])).toBeNull();
-      expect(hostRefusal('storage.googleapis.com', 'setup', [])).toBeNull();
-      expect(hostRefusal('example.org', 'agent', [])).toBe('is not in PROJECT_HOSTS_ALLOW');
-      process.env.PROJECT_HOSTS_ALLOW = 'github.com';
-      expect(hostRefusal('github.com', 'agent', [])).toBe('is a code host');
-    });
-
-    it('lets sandboxArgs launch a manifest host and refuses one that breaks the ceiling again', () => {
-      const manifestHosts = { hosts: ['pub.dev'], origins: [] };
-      const args = sandboxArgs(launch({ allowHosts: ['pub.dev'], manifestHosts }), home);
-      expect(args).toEqual(sandboxArgs(launch({ allowHosts: ['pub.dev'], manifestHosts }), home));
-      expect(() =>
-        sandboxArgs(
-          launch({ allowHosts: ['gitlab.com'], manifestHosts: { hosts: ['gitlab.com'], origins: [] } }),
-          home,
-        ),
-      ).toThrow('gitlab.com is a code host');
-      expect(() =>
-        sandboxArgs(
-          launch({
-            allowHosts: ['git.corp.example'],
-            manifestHosts: { hosts: ['git.corp.example'], origins: ['git.corp.example'] },
-          }),
-          home,
-        ),
-      ).toThrow('git.corp.example is a code host');
-    });
-
-    it('still refuses an allowed host that the manifest did not name', () => {
-      expect(() =>
-        sandboxArgs(
-          launch({ allowHosts: ['pub.dev', 'api.example.com'], manifestHosts: { hosts: ['pub.dev'], origins: [] } }),
-          home,
-        ),
-      ).toThrow('api.example.com is a production host');
-      expect(() => sandboxArgs(launch({ allowHosts: ['pub.dev'] }), home)).toThrow('pub.dev is a production host');
-    });
   });
 
   it('rejects a production host, the home directory, and root', () => {

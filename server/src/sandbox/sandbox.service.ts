@@ -13,6 +13,7 @@ import { barrier } from '../core/barrier';
 import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
+import type { CpuSlice } from './sandbox-types';
 import {
   emptyEnvFile,
   EnvMask,
@@ -37,6 +38,7 @@ import type { DockerMachine } from './docker-machine';
 import { RunningWork } from './running-work';
 import { ContainerStats } from './container-stats';
 import { memoryCapOf } from './memory-cap';
+import { CoreTurns } from './core-slices';
 import { ContainerGate } from './container-gate';
 import { MetadataRemoval } from './metadata-removal';
 import { OwnMounts } from './own-mounts';
@@ -60,6 +62,7 @@ export class SandboxService implements OnModuleDestroy {
   private ownership = new SandboxOwnership();
   private egressProxy: Egress | null = null;
   private machineInfo: DockerMachine | undefined;
+  private readonly coreTurns = new CoreTurns();
 
   readonly gate: ContainerGate;
   readonly work: RunningWork;
@@ -114,6 +117,12 @@ export class SandboxService implements OnModuleDestroy {
       await this.machine(),
       (this.config?.env.RESERVE_MEMORY_GB ?? Number(readDefaultSettings().RESERVE_MEMORY_GB)) * 1024 ** 3,
     );
+  }
+
+  /** The cores a project container may use, from the cores Docker has and the places of the checks. */
+  private coreSlice(given: Pick<SandboxLaunch, 'project' | 'checkPlace'>): CpuSlice | undefined {
+    const places = this.config?.env.CHECKS_PARALLEL ?? Number(readDefaultSettings().CHECKS_PARALLEL);
+    return this.coreTurns.sliceFor(this.knownMachine(), places, given);
   }
 
   /** The egress proxy all sandboxes go out through. SANDBOX_EGRESS=open turns it off. */
@@ -182,7 +191,8 @@ export class SandboxService implements OnModuleDestroy {
           metadata.push(...(await projectGitMount(mount, directory)));
         }
       }
-      const prepared = { ...given, mounts: [...given.mounts, ...metadata], memoryCapBytes };
+      const cpuSlice = this.coreSlice(given);
+      const prepared = { ...given, mounts: [...given.mounts, ...metadata], memoryCapBytes, cpuSlice };
       const acquired = egress ? await withEgress(egress, prepared) : { launch: prepared, release: () => undefined };
       release = acquired.release;
       const { launch } = acquired;
