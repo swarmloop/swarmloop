@@ -447,4 +447,44 @@ describe('factColumns', () => {
       code: REASON.stopped,
     });
   });
+
+  describe('blocked code precedence', () => {
+    const blocked = (code?: string) => ({ status: 'blocked', stateReason: code ? reasonOf(code) : null });
+    const stored = (code: string | undefined, blockCode: string) => {
+      const row = blocked(code);
+      const { state, reason } = storedState({ ...row, ...factColumns(row, { ...facts, blockCode }) });
+      return { state, code: reason?.code };
+    };
+
+    it.each([
+      [REASON.stopped, 'stopped'],
+      [ERROR_CODES.RESOURCE_UNKNOWN, 'blocked'],
+      [ERROR_CODES.INPUT_MISSING, 'blocked'],
+      [ERROR_CODES.SUBTASK_BLOCKED, 'blocked'],
+      [ERROR_CODES.PARENT_TREE_CONFLICT, 'blocked'],
+      [REASON.loopLimit, 'blocked'],
+      [ERROR_CODES.PIPELINE_UNFIXED, 'blocked'],
+    ])('keeps a stored %s over the code of the error text', (code, state) => {
+      expect(stored(code, REASON.didNotFit)).toEqual({ state, code });
+    });
+
+    it.each([REASON.didNotFit, REASON.checkFailed])('gives %s from the error text over a stored BLOCKED', (code) => {
+      expect(stored(REASON.blocked, code)).toEqual({ state: 'blocked', code });
+    });
+
+    it('reads plain BLOCKED with no stored code and no code in the error text', () => {
+      expect(stored(undefined, REASON.blocked)).toEqual({ state: 'blocked', code: REASON.blocked });
+    });
+
+    it('gives the code of the error text over a stored REBASE_CONFLICT', () => {
+      expect(stored(ERROR_CODES.REBASE_CONFLICT, REASON.didNotFit)).toEqual({
+        state: 'blocked',
+        code: REASON.didNotFit,
+      });
+    });
+
+    it('fills in the loop limit of a step over a stored BLOCKED', () => {
+      expect(stored(REASON.blocked, REASON.loopLimit)).toEqual({ state: 'blocked', code: REASON.loopLimit });
+    });
+  });
 });
