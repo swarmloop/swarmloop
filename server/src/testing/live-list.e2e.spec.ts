@@ -29,7 +29,10 @@ class HeldList {
     return this.runs.map((run) => run.key);
   }
 
-  /** What the dashboard does on mount and on every reconnect: GET /runs for the shown part and filter. */
+  /**
+   * What the dashboard does on mount and on every reconnect: GET /runs for the shown part and filter.
+   * This mirrors the client; the reconnect reload itself is reproduced in use-runs.test.tsx.
+   */
   async reload(): Promise<void> {
     const query = new URLSearchParams({ part: this.part, q: this.q });
     const response = await fetch(`${this.app.url}/runs?${query.toString()}`, { headers: this.app.auth });
