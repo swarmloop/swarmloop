@@ -9,7 +9,7 @@ import { CommandEntity, RunEntity } from './entities';
 import { RunRepository } from './run.repository';
 import { transaction } from './transaction';
 import type { StoredAgents } from '../contract/api';
-import { deriveState, ownerColumns } from './run-state';
+import { storedState, ownerColumns } from './run-state';
 import { LEGACY_MACHINE } from '../contract/people';
 
 interface AcceptInput {
@@ -176,7 +176,7 @@ export function conflict(
     message,
     error: 'Conflict',
     code,
-    state: state ?? deriveState(run).state,
+    state: state ?? storedState(run).state,
     revision: run.revision,
   });
 }

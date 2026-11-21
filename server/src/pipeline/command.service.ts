@@ -8,7 +8,7 @@ import { CommandRepository, conflict } from '../history/command.repository';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { blockCode, deriveState } from '../history/run-state';
+import { blockCode, factColumns, storedState } from '../history/run-state';
 import { actionsFor, SKIPPED_NOTE } from '../contract/run-state';
 import type { CommandReceipt, CommandType } from '../contract/command';
 import { barrier } from '../core/barrier';
@@ -138,7 +138,7 @@ export class CommandService {
     const after = (await this.runs.findRun(key)) ?? run;
     return {
       value: outcome.value as T,
-      receipt: { commandId: command.id, revision: after.revision, state: deriveState(after).state },
+      receipt: { commandId: command.id, revision: after.revision, state: storedState(after).state },
     };
   }
 
@@ -223,16 +223,17 @@ export class CommandService {
   private admit(type: CommandType, key: string, run: RunEntity | null, code: string | null): void {
     if (!run) return;
     const held = this.runs.held(run);
-    if (type !== 'remove' && deriveState(run).state === 'skipped') {
+    if (type !== 'remove' && storedState(run).state === 'skipped') {
       throw new ConflictException(SKIPPED_NOTE);
     }
     if (BUSY_TYPES.includes(type) && held) {
       throw conflict('RUN_BUSY', `${key} is already running`, run, 'running');
     }
-    const state = deriveState(
-      { status: run.status === 'running' && !held ? 'failed' : run.status, stateReason: run.stateReason },
-      { blockCode: code ?? undefined },
-    );
+    const status = run.status === 'running' && !held ? 'failed' : run.status;
+    const state = storedState({
+      ...run,
+      ...factColumns({ status, stateReason: run.stateReason }, { blockCode: code ?? undefined }),
+    });
     if (
       type === 'resume' &&
       code !== null &&

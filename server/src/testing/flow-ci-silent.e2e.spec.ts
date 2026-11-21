@@ -4,7 +4,7 @@ import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, NEEDS_PERSON } from '../contract/run-state';
 import { DocumentRepository } from '../history/document.repository';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
@@ -32,7 +32,7 @@ describe('a commit whose CI does not start is waited for and nudged, never faile
   });
 
   const find = async () => (await flow.app.app.get(RunRepository).findRun(KEY))!;
-  const stateNow = async () => deriveState(await find());
+  const stateNow = async () => storedState(await find());
   const head = () => git(flow.tree, ['rev-parse', 'HEAD']);
   const log = async () => (await flow.app.app.get(DocumentRepository).latestBody(KEY, 'pipeline_log')) ?? '';
 

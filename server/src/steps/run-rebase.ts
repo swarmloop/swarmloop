@@ -18,7 +18,7 @@ import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { mountsForStep, repoNames, worktreePath } from '../git/repo-names';
 import { ARTIFACTS } from './contract/artifacts';
 import { ERROR_CODES } from '../contract/error-codes';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { MergeRequestDrafts } from './merge-request/merge-request-draft';
 import { runJournal } from './shared/rebase-journal';
 import type { RebaseJournal } from '../git/rebase';
@@ -59,7 +59,7 @@ export class RunRebase {
   async rebase(key: string, resume = false, byParent = false): Promise<'resume' | 'start' | 'stay'> {
     const run = await this.requireRun(key);
     this.assertOffered(run, byParent);
-    const stays = byParent && deriveState(run).state === 'blocked';
+    const stays = byParent && storedState(run).state === 'blocked';
     const status = run.status;
     if (!resume) {
       await this.assertSubtasksIdle(run);
@@ -111,7 +111,7 @@ export class RunRebase {
 
   /** A Rebase is for the states `actionsFor` offers it in, and for a blocked or working subtask when its parent sends it. */
   private assertOffered(run: RunEntity, byParent: boolean): void {
-    const { state, reason } = deriveState(run);
+    const { state, reason } = storedState(run);
     const parentMay = byParent && isSubtask(run) && (state === 'blocked' || state === 'running');
     if (!parentMay && !actionsFor(state, reason?.code ?? null).includes('rebase')) {
       throw new ConflictException(`${run.key} is ${state}`);

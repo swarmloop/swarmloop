@@ -5,7 +5,7 @@ import { join } from 'path';
 import { DocumentRepository } from '../history/document.repository';
 import { CommandService } from '../pipeline/command.service';
 import { actionsFor, NEEDS_PERSON } from '../contract/run-state';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { putStamped } from '../steps/shared/gate.spec-helpers';
 import { createFlowHarness } from './flow-harness';
@@ -33,7 +33,7 @@ describe('the real merge-request and pipeline steps on the fake host', () => {
   });
 
   const find = async () => (await flow.app.app.get(RunRepository).findRun(KEY))!;
-  const stateNow = async () => deriveState(await find());
+  const stateNow = async () => storedState(await find());
   const head = () => git(flow.tree, ['rev-parse', 'HEAD']);
   const request = async () => (await flow.host.findMergeRequest({ project: PROJECT, source: SOURCE })).record;
 

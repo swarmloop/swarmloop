@@ -3,7 +3,7 @@ import { ERROR_CODES } from '../contract/error-codes';
 import { NEEDS_PERSON } from '../contract/run-state';
 import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { save } from '../testing/runs.spec-helpers';
 import { createTestApp } from '../testing/test-app';
 import type { TestApp } from '../testing/test-app';
@@ -57,7 +57,7 @@ describe('reconciler passes', () => {
     const run = (await runs.findRun(KEY))!;
     expect(run.status).toBe('failed');
     // A failed run stores no reason: its code is STEP_FAILED by default, which the needs-a-person list names.
-    expect(deriveState(run)).toEqual({ state: 'failed', reason: null });
+    expect(storedState(run)).toEqual({ state: 'failed', reason: null });
     expect(NEEDS_PERSON).toHaveProperty(ERROR_CODES.STEP_FAILED);
   });
 

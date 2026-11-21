@@ -13,7 +13,7 @@ async function setup() {
   const run = await db.app.get(RunRepository).openWaiting('run-1', '/target');
   const move = async (status: string, code?: string, extra: object = {}) => {
     const stateReason = code ? JSON.stringify({ code, message: code, ...extra }) : null;
-    await dataSource.getRepository(RunEntity).update({ key: run.key }, { status, stateReason });
+    await dataSource.getRepository(RunEntity).update({ key: run.key }, { status, state: status, stateReason });
     hub.changed(run.key);
     await log.settled();
   };

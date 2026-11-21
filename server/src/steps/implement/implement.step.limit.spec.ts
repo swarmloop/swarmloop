@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentRunInput } from '../../agent/agent-runner';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
@@ -36,7 +36,7 @@ describe('implement step and a provider limit', () => {
       expect(done.message).not.toContain('implementation is missing');
       expect(run.status).toBe('waiting');
       expect(run.currentStep).toBe('implement');
-      expect(deriveState(run).reason?.code).toBe('RUNTIME_LIMIT');
+      expect(storedState(run).reason?.code).toBe('RUNTIME_LIMIT');
       expect(run.agentCalls).toBe(1);
     } finally {
       await app.close();

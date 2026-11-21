@@ -5,7 +5,7 @@ import type { CodeHost } from '../../integrations/code-host/code-host';
 import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState, writeRunState } from '../../history/run-state';
+import { storedState, writeRunState } from '../../history/run-state';
 import { CommandService } from '../../pipeline/command.service';
 import { createTestApp, type TestApp } from '../../testing/test-app';
 import { SubtaskOps } from '../shared/subtask-ops';
@@ -105,7 +105,7 @@ export async function finish(app: TestApp, id: string): Promise<void> {
 }
 
 export async function parentState(app: TestApp) {
-  return deriveState((await app.app.get(RunRepository).findRun(KEY))!);
+  return storedState((await app.app.get(RunRepository).findRun(KEY))!);
 }
 
 export const FEATURE = 'feature/PROJ-300-ship-the-field';

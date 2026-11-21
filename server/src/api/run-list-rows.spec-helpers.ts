@@ -4,7 +4,6 @@ import { Clock } from '../core/clock';
 import type { Subtask } from '../contract/subtask';
 import { SUBTASKS_KIND } from '../contract/subtask';
 import { BacklogRepository } from '../history/backlog.repository';
-import { CheckoutRepository } from '../history/checkout.repository';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
@@ -21,7 +20,6 @@ export async function freshView(app: TestingModule) {
   const rows = new RunListRows(
     app.get(RunRepository),
     app.get(DocumentRepository),
-    app.get(CheckoutRepository),
     app.get(CommandRepository),
     app.get(BacklogRepository),
     app.get(PipelineService),

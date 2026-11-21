@@ -8,7 +8,7 @@ import { ERROR_CODES } from '../../contract/error-codes';
 import { DocumentEntity } from '../../history/entities';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState, writeRunState } from '../../history/run-state';
+import { storedState, writeRunState } from '../../history/run-state';
 import { CommandService } from '../../pipeline/command.service';
 import { Reconciler } from '../../pipeline/reconciler';
 import { FAKE_MODEL_KEY } from '../../testing/env.spec-helpers';
@@ -69,7 +69,7 @@ describe('split implement', () => {
     expect(existsSync(join(app.root, 'worktrees', `${KEY}-b`))).toBe(false);
     expect(await statuses(app)).toEqual({ a: 'running', b: 'waiting', c: 'running' });
     expect((await tasksOf(app))[1]?.note).toBe('waiting for a');
-    expect(deriveState(await child(app, 'b')).reason).toMatchObject({
+    expect(storedState(await child(app, 'b')).reason).toMatchObject({
       code: ERROR_CODES.SUBTASK_WAITING,
       message: 'waiting for a',
     });
@@ -231,8 +231,8 @@ describe('split implement', () => {
     await app.app.get(CommandService).submit('stop', KEY, {});
 
     expect((await parentState(app)).state).toBe('stopped');
-    expect(deriveState(await child(app, 'a')).state).toBe('stopped');
-    expect(deriveState(await child(app, 'b')).state).toBe('stopped');
+    expect(storedState(await child(app, 'a')).state).toBe('stopped');
+    expect(storedState(await child(app, 'b')).state).toBe('stopped');
     await app.app.get(Reconciler).resumeSubtaskParents();
     await settle(app);
     expect(built.launched).toEqual([`${KEY}-a`, `${KEY}-b`]);

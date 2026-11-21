@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import type { AgentRunInput } from '../../agent/agent-runner';
 import { ERROR_CODES } from '../../contract/error-codes';
-import { deriveState, writeRunState } from '../../history/run-state';
+import { storedState, writeRunState } from '../../history/run-state';
 import { RunRepository } from '../../history/run.repository';
 import { RuntimeCooldownRepository } from '../../history/runtime-cooldown.repository';
 import type { CooldownKey } from '../../history/runtime-cooldown.repository';
@@ -56,7 +56,7 @@ const agentCallsOf = async (app: World) =>
 const runtimesOf = (agent: jest.Mock) => agent.mock.calls.map((call) => (call[0] as AgentRunInput).runtime);
 const codes = async (app: World) =>
   Promise.all(
-    [FIRST, SECOND].map(async (key) => deriveState((await app.get(RunRepository).findRun(key))!).reason?.code),
+    [FIRST, SECOND].map(async (key) => storedState((await app.get(RunRepository).findRun(key))!).reason?.code),
   );
 
 describe('implement step and a person saying a usage limit is over', () => {

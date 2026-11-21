@@ -11,7 +11,7 @@ import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpe
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { Clock } from '../../core/clock';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { RunRepository } from '../../history/run.repository';
 import { RuntimeCooldownRepository } from '../../history/runtime-cooldown.repository';
 import { VisitRepository } from '../../history/visit.repository';
@@ -176,7 +176,7 @@ describe('code-review step and a provider limit', () => {
       await seed(app, 'PROJ-302');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-302');
       const run = (await app.get(RunRepository).findRun('PROJ-302'))!;
-      const state = deriveState(run);
+      const state = storedState(run);
 
       expect(done.message).not.toContain('decision is missing');
       expect(run.status).toBe('waiting');
@@ -211,7 +211,7 @@ describe('code-review step and a provider limit', () => {
       await seed(app, 'PROJ-306');
       await app.get(PipelineService).step('code-review', 'PROJ-306');
       const run = (await app.get(RunRepository).findRun('PROJ-306'))!;
-      const limit = deriveState(run).reason?.limit;
+      const limit = storedState(run).reason?.limit;
 
       expect(limit?.resetsAt).toBe(new Date(START + 60 * 60_000).toISOString());
       expect(limit?.resumesAt).toBe(new Date(START + 60 * 60_000).toISOString());
@@ -284,7 +284,7 @@ describe('code-review step and a provider limit', () => {
       const run = (await app.get(RunRepository).findRun('PROJ-305'))!;
 
       expect(done.exitCode).toBe(1);
-      expect(deriveState(run).reason?.code).not.toBe('RUNTIME_LIMIT');
+      expect(storedState(run).reason?.code).not.toBe('RUNTIME_LIMIT');
       expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-quality')).toHaveLength(1);
       expect((await app.get(RuntimeCooldownRepository).cooling(START, ENV_CLAUDE)).size).toBe(0);
     } finally {

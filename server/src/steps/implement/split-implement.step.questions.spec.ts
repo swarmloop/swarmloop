@@ -10,7 +10,7 @@ import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { RunQueriesService } from '../../api/run-queries.service';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState, writeRunState } from '../../history/run-state';
+import { storedState, writeRunState } from '../../history/run-state';
 import { CommandService } from '../../pipeline/command.service';
 import { SubtaskPort } from '../../pipeline/subtask-port';
 import { type TestApp } from '../../testing/test-app';
@@ -255,7 +255,7 @@ describe('subtask questions', () => {
 
     const after = (await runs.findRun(KEY))!;
     expect(after.revision).toBe(before.revision);
-    expect(deriveState(after).reason).toEqual(deriveState(before).reason);
+    expect(storedState(after).reason).toEqual(storedState(before).reason);
     expect(await app.app.get(VisitRepository).listStats(after.id)).toHaveLength(visits);
     expect(after.subtaskFingerprint).toBe(await runs.subtaskFingerprint(after));
   });
@@ -271,7 +271,7 @@ describe('subtask questions', () => {
     let parent = (await runs.findRun(KEY))!;
     expect(parent.subtaskFingerprint).not.toBeNull();
     expect(await subtasks.subtasksChanged(parent)).toBe(true);
-    expect(deriveState(parent).reason?.message).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(storedState(parent).reason?.message).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
 
     await pass(app);
     parent = (await runs.findRun(KEY))!;

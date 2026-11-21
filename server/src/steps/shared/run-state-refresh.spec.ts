@@ -106,9 +106,8 @@ describe('RunStateRefresh', () => {
   });
 
   it('keeps the code a blocked run stores', async () => {
-    const { db, refresh, run, documents, set, read } = await setup();
+    const { db, refresh, set, read } = await setup();
     try {
-      await documents.putDocument(run, 'error', 'The plan does not fit the limit.');
       await set({ status: 'blocked', currentStep: 'plan', stateReason: reasonOf(ERROR_CODES.GIT_RULES) });
       expect(await read()).toEqual({ state: 'blocked', code: ERROR_CODES.GIT_RULES });
       await refresh.onModuleDestroy();

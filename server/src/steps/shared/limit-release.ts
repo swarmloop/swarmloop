@@ -4,7 +4,7 @@ import { agentsFor } from '../../config/agents';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { Clock } from '../../core/clock';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { RuntimeCooldownRepository } from '../../history/runtime-cooldown.repository';
 import { PersonalCredentials } from '../../auth/personal-credentials.service';
 import { cooldownKeys } from './limit-failover';
@@ -25,7 +25,7 @@ export class LimitRelease {
 
   async release(key: string): Promise<void> {
     const run = await this.runs?.findRun(key);
-    if (!run || run.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.RUNTIME_LIMIT) return;
+    if (!run || run.status !== 'waiting' || storedState(run).reason?.code !== ERROR_CODES.RUNTIME_LIMIT) return;
     const runtimes = agentsFor(this.config.env, run, run.currentStep).map((agent) => agent.runtime);
     const keys = await cooldownKeys(run, runtimes, this.runs, this.credentials);
     if ((await this.cooldowns.earliest(keys)).resumeAt > this.clock.now()) {

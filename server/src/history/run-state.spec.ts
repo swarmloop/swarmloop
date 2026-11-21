@@ -7,7 +7,6 @@ import type { RunAction, RunState } from '../contract/run-state';
 import {
   blockCode,
   clearEpic,
-  deriveState,
   factColumns,
   liveState,
   markEpic,
@@ -44,12 +43,17 @@ const STATE_OF_STATUS: Record<string, RunState> = {
   done: 'done',
 };
 
+/** The state of a row as the refresh stores it from these document facts, read back from the columns. */
+function withFacts(run: Parameters<typeof factColumns>[0], facts: Parameters<typeof factColumns>[1]) {
+  return storedState({ ...run, ...factColumns(run, facts) });
+}
+
 describe('deriveState', () => {
   it('maps every status and step the goldens record', () => {
     const runs = goldenRuns();
     expect(runs.length).toBeGreaterThan(20);
     for (const run of runs) {
-      expect({ run, state: deriveState(run).state }).toEqual({ run, state: STATE_OF_STATUS[run.status] });
+      expect({ run, state: storedState(run).state }).toEqual({ run, state: STATE_OF_STATUS[run.status] });
     }
   });
 
@@ -60,54 +64,54 @@ describe('deriveState', () => {
       message: 'Claude hit its usage limit.',
       limit,
     });
-    expect(deriveState({ status: 'waiting', stateReason })).toEqual({
+    expect(storedState({ status: 'waiting', stateReason })).toEqual({
       state: 'waiting',
       reason: { code: ERROR_CODES.RUNTIME_LIMIT, message: 'Claude hit its usage limit.', limit },
     });
   });
 
   it('keeps waiting after ok idle, and a person needed waiting', () => {
-    expect(deriveState({ status: 'waiting' })).toEqual({ state: 'idle', reason: null });
-    expect(deriveState({ status: 'waiting' }, { needsAnswers: true }).state).toBe('waiting');
+    expect(storedState({ status: 'waiting' })).toEqual({ state: 'idle', reason: null });
+    expect(withFacts({ status: 'waiting' }, { needsAnswers: true }).state).toBe('waiting');
   });
 
   it('keeps the stored STALLED reason on a waiting run, not idle', () => {
     const run = { status: 'waiting', currentStep: 'implement', stateReason: null } as RunEntity;
     writeRunState(run, { status: 'waiting', reason: { code: REASON.stalled, message: 'Stalled' } });
     expect(run.state).toBe('waiting');
-    expect(deriveState(run).reason).toEqual({ code: 'STALLED', message: 'Stalled' });
+    expect(storedState(run).reason).toEqual({ code: 'STALLED', message: 'Stalled' });
   });
 
   it('calls a return to implement idle with the reason RETURNED', () => {
-    expect(deriveState({ status: 'waiting' }, { returned: true })).toEqual({
+    expect(withFacts({ status: 'waiting' }, { returned: true })).toEqual({
       state: 'idle',
       reason: { code: REASON.returned, message: 'returned to implement' },
     });
   });
 
   it('derives queued, stopping and stopped from the facts and the stored Stop', () => {
-    expect(deriveState({ status: 'waiting' }, { queued: true }).state).toBe('queued');
-    expect(deriveState({ status: 'running' }, { stopping: true }).state).toBe('stopping');
+    expect(liveState({ status: 'waiting' }, { queued: true }).state).toBe('queued');
+    expect(liveState({ status: 'running' }, { stopping: true }).state).toBe('stopping');
     const stopped = JSON.stringify({ code: REASON.stopped, message: 'stopped' });
-    expect(deriveState({ status: 'failed', stateReason: stopped }).state).toBe('stopped');
-    expect(deriveState({ status: 'failed' }).state).toBe('failed');
+    expect(storedState({ status: 'failed', stateReason: stopped }).state).toBe('stopped');
+    expect(storedState({ status: 'failed' }).state).toBe('failed');
   });
 
   it('gives a running run the live words of an agent that waits for a place, and Stop wins over them', () => {
     const agentPlace = 'Waiting for a free agent place (4 of 4 busy)';
-    expect(deriveState({ status: 'running' }, { agentPlace })).toEqual({
+    expect(liveState({ status: 'running' }, { agentPlace })).toEqual({
       state: 'running',
       reason: { code: REASON.agentPlace, message: agentPlace },
     });
-    expect(deriveState({ status: 'running' }, { agentPlace, stopping: true })).toEqual({
+    expect(liveState({ status: 'running' }, { agentPlace, stopping: true })).toEqual({
       state: 'stopping',
       reason: null,
     });
   });
 
   it('gives a block its code', () => {
-    expect(deriveState({ status: 'blocked' }, { blockCode: REASON.checkFailed }).reason?.code).toBe('CHECK_FAILED');
-    expect(deriveState({ status: 'blocked' }).reason?.code).toBe('BLOCKED');
+    expect(withFacts({ status: 'blocked' }, { blockCode: REASON.checkFailed }).reason?.code).toBe('CHECK_FAILED');
+    expect(storedState({ status: 'blocked' }).reason?.code).toBe('BLOCKED');
   });
 });
 
@@ -164,13 +168,13 @@ describe('deriveState of a done run', () => {
   const note = JSON.stringify({ code: REASON.mergeWatchUnavailable, message: 'cannot read' });
 
   it('is done while the merge request waits, merged or closed once the outcome is stored', () => {
-    expect(deriveState({ status: 'done' }).state).toBe('done');
-    expect(deriveState({ status: 'done', mergeOutcome: merged }).state).toBe('merged');
-    expect(deriveState({ status: 'done', mergeOutcome: closed }).state).toBe('closed');
+    expect(storedState({ status: 'done' }).state).toBe('done');
+    expect(storedState({ status: 'done', mergeOutcome: merged }).state).toBe('merged');
+    expect(storedState({ status: 'done', mergeOutcome: closed }).state).toBe('closed');
   });
 
   it('shows the stored note of a done run', () => {
-    expect(deriveState({ status: 'done', stateReason: note }).reason?.code).toBe(REASON.mergeWatchUnavailable);
+    expect(storedState({ status: 'done', stateReason: note }).reason?.code).toBe(REASON.mergeWatchUnavailable);
   });
 
   it('writes the outcome with the state, keeps it while done, and clears it when the run leaves done', () => {
@@ -230,7 +234,7 @@ describe('deriveState of a split run between passes', () => {
   const reason = (code: string) => JSON.stringify({ code, message: '1/2 merged · 1 running' });
 
   it.each([ERROR_CODES.SUBTASKS_RUNNING, ERROR_CODES.SUBTASK_WAITING])('a waiting run with %s is waiting', (code) => {
-    expect(deriveState({ status: 'waiting', stateReason: reason(code) })).toMatchObject({
+    expect(storedState({ status: 'waiting', stateReason: reason(code) })).toMatchObject({
       state: 'waiting',
       reason: { code },
     });
@@ -238,16 +242,13 @@ describe('deriveState of a split run between passes', () => {
 
   it('keeps SUBTASK_BLOCKED for a blocked run', () => {
     expect(
-      deriveState(
-        { status: 'blocked', stateReason: reason(ERROR_CODES.SUBTASK_BLOCKED) },
-        { blockCode: REASON.blocked },
-      ),
+      withFacts({ status: 'blocked', stateReason: reason(ERROR_CODES.SUBTASK_BLOCKED) }, { blockCode: REASON.blocked }),
     ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.SUBTASK_BLOCKED } });
   });
 
   it('keeps PARENT_TREE_CONFLICT for a blocked run', () => {
     expect(
-      deriveState(
+      withFacts(
         { status: 'blocked', stateReason: reason(ERROR_CODES.PARENT_TREE_CONFLICT) },
         { blockCode: REASON.blocked },
       ),
@@ -262,7 +263,7 @@ describe('deriveState of a run with a next try', () => {
   it.each([ERROR_CODES.HOST_UNAVAILABLE, ERROR_CODES.CI_NOT_STARTED, ERROR_CODES.DOCKER_UNAVAILABLE])(
     'a waiting run with %s is waiting',
     (code) => {
-      expect(deriveState({ status: 'waiting', stateReason: stored(code) })).toEqual({
+      expect(storedState({ status: 'waiting', stateReason: stored(code) })).toEqual({
         state: 'waiting',
         reason: { code, message: 'did not answer', retryAt },
       });
@@ -282,7 +283,7 @@ describe('deriveState of a run with a next try', () => {
       reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: 'did not answer', retryAt },
     });
     expect(run.state).toBe('waiting');
-    expect(deriveState({ status: run.status, stateReason: run.stateReason }).reason?.retryAt).toBe(retryAt);
+    expect(storedState({ status: run.status, stateReason: run.stateReason }).reason?.retryAt).toBe(retryAt);
   });
 });
 
@@ -290,7 +291,7 @@ describe('deriveState of a block that a person must clear', () => {
   const stored = (code: string) => JSON.stringify({ code, message: 'stopped' });
 
   it.each([REASON.loopLimit, ERROR_CODES.SPEND_LIMIT, ERROR_CODES.PIPELINE_UNFIXED])('keeps the stored %s', (code) => {
-    expect(deriveState({ status: 'blocked', stateReason: stored(code) }, { blockCode: REASON.blocked })).toMatchObject({
+    expect(withFacts({ status: 'blocked', stateReason: stored(code) }, { blockCode: REASON.blocked })).toMatchObject({
       state: 'blocked',
       reason: { code },
     });
@@ -298,12 +299,12 @@ describe('deriveState of a block that a person must clear', () => {
 
   it('keeps a stored RESOURCE_UNKNOWN and reads a blocked DOCKER_UNAVAILABLE as before', () => {
     expect(
-      deriveState(
+      withFacts(
         { status: 'blocked', stateReason: stored(ERROR_CODES.RESOURCE_UNKNOWN) },
         { blockCode: REASON.blocked },
       ),
     ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.RESOURCE_UNKNOWN } });
-    expect(deriveState({ status: 'blocked', stateReason: stored(ERROR_CODES.DOCKER_UNAVAILABLE) }, {})).toMatchObject({
+    expect(withFacts({ status: 'blocked', stateReason: stored(ERROR_CODES.DOCKER_UNAVAILABLE) }, {})).toMatchObject({
       state: 'blocked',
       reason: { code: ERROR_CODES.DOCKER_UNAVAILABLE },
     });
@@ -323,7 +324,7 @@ describe('the epic mark', () => {
 describe('deriveState of a skipped task', () => {
   it.each(['failed', 'blocked', 'waiting', 'running'])('is skipped whatever the status (%s)', (status) => {
     const stateReason = JSON.stringify({ code: REASON.skipped, message: 'this task was skipped' });
-    expect(deriveState({ status, stateReason }).state).toBe('skipped');
+    expect(storedState({ status, stateReason }).state).toBe('skipped');
   });
 });
 
@@ -402,9 +403,33 @@ describe('factColumns', () => {
 
   it('keeps the code a blocked row stores', () => {
     const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.GIT_RULES) };
-    expect(read(factColumns(run, { ...facts, blockCode: REASON.loopLimit }))).toEqual({
+    expect(read(factColumns(run, { ...facts, blockCode: REASON.blocked }))).toEqual({
       state: 'blocked',
       code: ERROR_CODES.GIT_RULES,
+    });
+  });
+
+  it('keeps a stored code that is not on the kept list over the loop limit a step gives alone', () => {
+    const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.DISK_LOW) };
+    expect(read(factColumns(run, { ...facts, blockCode: REASON.loopLimit }))).toEqual({
+      state: 'blocked',
+      code: ERROR_CODES.DISK_LOW,
+    });
+  });
+
+  it('gives the code read from the error text over a stored code that is not on the kept list', () => {
+    const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.GIT_RULES) };
+    expect(read(factColumns(run, { ...facts, blockCode: REASON.didNotFit }))).toEqual({
+      state: 'blocked',
+      code: REASON.didNotFit,
+    });
+  });
+
+  it('keeps a stored code on the kept list over the code of the error text', () => {
+    const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.SPEND_LIMIT) };
+    expect(read(factColumns(run, { ...facts, blockCode: REASON.didNotFit }))).toEqual({
+      state: 'blocked',
+      code: ERROR_CODES.SPEND_LIMIT,
     });
   });
 

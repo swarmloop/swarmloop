@@ -231,6 +231,23 @@ test('forbidOutside lets only the checks step call the server checks, and a spec
   assert.match(violations[1], /^server\/src\/steps\/implement\/implement-improve\.step\.ts:1:/);
 });
 
+test('forbidOutside reports a state derived outside the run state module and lets that module and its spec be', () => {
+  const files = {
+    'server/src/history/run-state.ts': 'function deriveState(run) {}\n',
+    'server/src/history/run-state.spec.ts': "describe('deriveState', () => {});\n",
+    'server/src/api/run-view/flow-waiting.ts': 'const { state } = deriveState(run, facts);\n',
+    'server/src/pipeline/foo.spec.ts': 'expect(deriveState(run).state).toBe(x);\n',
+    'server/src/pipeline/bar.ts': 'const { state } = storedState(run);\n',
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 2);
+  assert.match(violations[0], /^server\/src\/api\/run-view\/flow-waiting\.ts:1:/);
+  assert.match(violations[1], /^server\/src\/pipeline\/foo\.spec\.ts:1:/);
+});
+
 test('forbidOutside keeps the old phase name in the migration and nowhere else', () => {
   const old = ['brain', 'storm'].join('');
   const files = {

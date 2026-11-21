@@ -281,7 +281,7 @@ describe('sentence of a stop with its own next step', () => {
       message: 'Stalled 4 times with no reason; Resume to try again',
     });
     expect(say(stalled)).toBe('Stalled 4 times with no reason; Resume to try again');
-    expect(resumeState(stalled, [], [])).toBe('ready');
+    expect(resumeState(stalled, [])).toBe('ready');
   });
 
   it('says what a loop limit block does on any step', () => {

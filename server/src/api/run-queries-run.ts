@@ -76,13 +76,13 @@ export async function runState(
   agentPlace?: string,
 ): Promise<Pick<FlowView, 'resume' | 'state' | 'stateReason' | 'merge' | 'actions' | 'revision'>> {
   const pending = await commands.pending(run.id);
-  const { state, reason, actions } = stateView(run, open, documents, {
+  const { state, reason, actions } = stateView(run, {
     stopping: pending.some((command) => command.type === 'stop'),
     queued: pending.some((command) => command.type !== 'stop'),
     agentPlace,
   });
   return {
-    resume: resumeState(run, open, documents),
+    resume: resumeState(run, open),
     state,
     stateReason: reason,
     ...mergeView(run),

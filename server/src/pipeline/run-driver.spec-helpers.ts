@@ -18,7 +18,7 @@ import type { Step, StepSnapshot } from '../steps/step';
 import { createTestApp, type TestApp } from '../testing/test-app';
 import { recordingDocuments, traceRun, type RecordingDocuments } from '../testing/step-trace.spec-helpers';
 import { PipelineService } from './pipeline.service';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { actionsFor } from '../contract/run-state';
 
 export const KEY = 'PROJ-1';
@@ -107,7 +107,7 @@ export async function drive(
     const result = await app.app.get(PipelineService).runThrough(key, options);
     const reads = Object.fromEntries([...steps].map(([name, step]) => [name, step.recorder.kinds]));
     const stored = await app.app.get(RunRepository).findRun(key);
-    const { state, reason } = stored ? deriveState(stored) : { state: null, reason: null };
+    const { state, reason } = stored ? storedState(stored) : { state: null, reason: null };
     const actions = state ? actionsFor(state, reason?.code ?? null) : [];
     const trace = { result, ...(await traceRun(app.app.get(DataSource), key, reads)) };
     return { result, trace, state, reason, actions };

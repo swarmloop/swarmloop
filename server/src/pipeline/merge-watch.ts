@@ -9,7 +9,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { EventRepository } from '../history/event.repository';
 import { MERGE_WATCH_COUNTER } from '../history/loop-detail';
 import { RunRepository } from '../history/run.repository';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { parseMergeRequests } from '../steps/merge-request/merge-request-record';
 
@@ -135,7 +135,7 @@ export class MergeWatch {
 
   /** Stores the note once: a pass that finds the same note writes nothing. */
   private async note(run: RunEntity, doneAt: string, reason: { code: string; message: string }): Promise<void> {
-    if (run.doneAt === doneAt && deriveState(run).reason?.code === reason.code) return;
+    if (run.doneAt === doneAt && storedState(run).reason?.code === reason.code) return;
     await this.runs.release(run, { status: 'done', doneAt, reason });
   }
 }

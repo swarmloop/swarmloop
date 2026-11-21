@@ -9,7 +9,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 import { RunRepository } from '../../history/run.repository';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 
 import { DocumentRepository } from '../../history/document.repository';
 
@@ -218,7 +218,7 @@ describe('pipeline step', () => {
       const after = await app.get(RunRepository).findRun('PROJ-311');
       expect(after?.currentStep).toBe('pipeline');
       expect(after?.status).toBe('waiting');
-      expect(deriveState(after!).reason?.code).toBe('CI_NOT_STARTED');
+      expect(storedState(after!).reason?.code).toBe('CI_NOT_STARTED');
       const log = await app.get(DocumentRepository).latestBody('PROJ-311', 'pipeline_log');
       expect(log).toContain('demo CI did not start');
       expect(log).toContain('PR has merge conflicts');

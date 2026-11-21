@@ -7,7 +7,7 @@ import { AppConfig } from '../config/env';
 import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
 import { SERVER_INSTANCE } from '../core/server-instance';
-import { claimedColumns, deriveState, stateColumns, titleColumns } from './run-state';
+import { claimedColumns, storedState, stateColumns, titleColumns } from './run-state';
 import type { RunStateChange } from './run-state';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -78,7 +78,7 @@ export class RunRepository {
   /** The key, revision and state of every subtask of a run: what a pass of the parent sees. */
   async subtaskFingerprint(parent: RunEntity): Promise<string> {
     const children = await this.children(parent);
-    const seen = children.map((child) => [child.key, child.revision, deriveState(child).state]);
+    const seen = children.map((child) => [child.key, child.revision, storedState(child).state]);
     return JSON.stringify(seen.sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
   }
 
