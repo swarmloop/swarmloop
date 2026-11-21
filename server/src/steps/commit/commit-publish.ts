@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { commitIdentity, originUrl, type CommitAuthor } from '../../git/git';
+import { withWorktree } from '../../git/worktree-lock';
 import type { RunEntity } from '../../history/entities';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { finishedRuns, rerunJobs } from '../pipeline/ci-host';
@@ -51,18 +52,23 @@ export class CommitPublish {
   ): Promise<boolean> {
     let again = false;
     for (const tree of trees) {
-      const cwd = tree.path;
-      const origin = await originUrl(cwd, tree.repo, 'origin failed');
+      const origin = await withWorktree(tree.path, () => originUrl(tree.path, tree.repo, 'origin failed'));
       if (!origin) {
         continue;
       }
-      const published = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch(tree.repo)}`);
-      if (published === (await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'))) {
+      const delivered = await withWorktree(tree.path, async () => {
+        const published = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch(tree.repo)}`);
+        return published === (await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'));
+      });
+      if (delivered) {
         again = true;
       } else {
+        // The lock is taken inside the work guard runs, never around guard: guard may ask the implement agent.
         await this.guarded(tree, run, origin);
       }
-      heads.push(`${tree.repo} ${await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed')}`);
+      heads.push(
+        `${tree.repo} ${await withWorktree(tree.path, () => gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'))}`,
+      );
     }
     if (again) {
       await this.rerunFailedJobs(run, await ctx.reread(ARTIFACTS.pipelineRef), ctx.calls);
@@ -98,7 +104,18 @@ export class CommitPublish {
     );
   }
 
-  private async commitAndPush(
+  private commitAndPush(
+    tree: Tree,
+    planned: PlannedPath[],
+    message: (repo: string) => Promise<string>,
+    denied: string[],
+    run: RunEntity,
+    author: CommitAuthor | null,
+  ): Promise<boolean> {
+    return withWorktree(tree.path, () => this.commitAndPushHeld(tree, planned, message, denied, run, author));
+  }
+
+  private async commitAndPushHeld(
     tree: Tree,
     planned: PlannedPath[],
     message: (repo: string) => Promise<string>,
@@ -143,9 +160,11 @@ export class CommitPublish {
   }
 
   /** The branch is read as it is now: an answered refusal may have renamed it. */
-  private async pushHead(tree: Tree, run: RunEntity, origin: string): Promise<boolean> {
-    const branch = await this.names.branch(run, tree.repo);
-    const published = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
-    return this.publisher.pushRef(tree, branch, published, run, origin, 'commit');
+  private pushHead(tree: Tree, run: RunEntity, origin: string): Promise<boolean> {
+    return withWorktree(tree.path, async () => {
+      const branch = await this.names.branch(run, tree.repo);
+      const published = await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`);
+      return this.publisher.pushRef(tree, branch, published, run, origin, 'commit');
+    });
   }
 }

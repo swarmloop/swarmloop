@@ -1,5 +1,6 @@
 import { git } from '../../git/git';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
+import { withWorktree } from '../../git/worktree-lock';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { StepContext } from '../base-step';
@@ -45,13 +46,15 @@ async function treeOf(
 ): Promise<string | null> {
   for (const repo of checkedRepoNames(repos)) {
     const cwd = worktreePath(root, key, repo);
-    if ((await originProject(cwd)) === project) {
+    const tree = await withWorktree(cwd, async () => {
+      if ((await originProject(cwd)) !== project) return undefined;
       try {
         return (await git(['-C', cwd, 'rev-parse', `${sha}^{tree}`])).trim();
       } catch {
         return null;
       }
-    }
+    });
+    if (tree !== undefined) return tree;
   }
   return null;
 }

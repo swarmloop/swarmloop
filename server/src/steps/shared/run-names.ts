@@ -7,6 +7,7 @@ import { readGitFormat, type GitFormat } from '../../git/naming/git-format';
 import { branchName, commitMessage, mergeRequestTitle, summaryForBranch } from '../../git/naming/git-names';
 import { formatBranchNames, parseBranchNames, storedBranch } from '../../git/naming/stored-branch';
 import { worktreePath } from '../../git/repo-names';
+import { withWorktree } from '../../git/worktree-lock';
 import type { RunEntity } from '../../history/run.entity';
 import { root } from '../../history/run-paths';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -162,7 +163,7 @@ export class RunNames {
   private async fresh(run: Run, repo: string, summary: string, change: GitChange | undefined): Promise<string> {
     const today = branchName(run.key, summary);
     const tree = worktreePath(root(this.kernel.config), run.key, repo);
-    if (existsSync(tree) && (await git(['-C', tree, 'branch', '--show-current'])) === today) {
+    if (existsSync(tree) && (await withWorktree(tree, () => git(['-C', tree, 'branch', '--show-current']))) === today) {
       return today;
     }
     return branchName(run.key, summary, { template: readGitFormat(tree).branch, change });
