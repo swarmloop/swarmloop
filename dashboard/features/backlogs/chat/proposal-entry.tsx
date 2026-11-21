@@ -8,11 +8,8 @@ import type { BacklogView } from '@contract/backlog';
 import type { BacklogMessageView } from '@contract/backlog-chat';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
 import { runBacklog, runMilestone } from '../../../lib/backlog-endpoints';
-import { MessageBubble } from '../../run';
+import { isLong, MessageBubble } from '../../run';
 import { toEntry } from './message-entry';
-
-/** How many lines of the milestone show before the rest folds. */
-const FOLD_LINES = 12;
 
 function proposalText(view: BacklogView, number: number): string {
   const milestone = view.milestones.find((item) => item.number === number);
@@ -31,7 +28,7 @@ function proposalText(view: BacklogView, number: number): string {
 }
 
 function Folded({ text }: { text: string }): ReactElement {
-  if (text.split('\n').length <= FOLD_LINES) {
+  if (!isLong(text)) {
     return <MarkdownBody text={text} />;
   }
   return (
