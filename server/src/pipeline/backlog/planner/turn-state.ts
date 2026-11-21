@@ -8,7 +8,7 @@ import { BacklogRepository, type BacklogTaskRecord } from '../../../history/back
 import type { MilestoneRecord, RequirementRecord } from '../../../history/backlog-writers';
 import { DocumentRepository } from '../../../history/document.repository';
 import { RunRepository } from '../../../history/run.repository';
-import { deriveState } from '../../../history/run-state';
+import { storedState } from '../../../history/run-state';
 import { backlogTasks, type RunFacts } from '../task-readiness';
 import { EventFacts } from './event-facts';
 
@@ -141,7 +141,7 @@ export class BacklogTurnState {
     const runFacts = new Map<string, RunFacts>();
     for (const record of records) {
       const run = record.runKey === null ? null : await this.runs.findRun(record.runKey);
-      if (run) runFacts.set(run.key, { state: deriveState(run).state, currentStep: run.currentStep });
+      if (run) runFacts.set(run.key, { state: storedState(run).state, currentStep: run.currentStep });
     }
     const shown = new Map(backlogTasks(records, active, runFacts).map((task) => [task.id, task.status]));
     const states = [];

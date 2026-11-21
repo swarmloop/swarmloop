@@ -142,6 +142,49 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
   }
 }
 
+type StoredRow = StateRow & Partial<Pick<RunEntity, 'state'>>;
+
+/** The state of the run as its row stores it. A row with no state column is read from the row alone; the refresh fills it. */
+export function storedState(run: StoredRow): { state: RunState; reason: StateReason | null } {
+  return run.state ? { state: run.state as RunState, reason: readReason(run.stateReason) } : deriveState(run);
+}
+
+/** What a run view knows beyond the row: a request in flight and the words of an agent that waits for a place. */
+interface LiveFacts {
+  queued?: boolean;
+  stopping?: boolean;
+  agentPlace?: string;
+}
+
+/** The stored state with the live facts a request or the process adds. Without any, it is the stored state. */
+export function liveState(run: StoredRow, live: LiveFacts): { state: RunState; reason: StateReason | null } {
+  const stored = storedState(run);
+  if (live.queued && (stored.state === 'idle' || stored.state === 'waiting')) return { state: 'queued', reason: null };
+  if (stored.state !== 'running') return stored;
+  if (live.stopping) return { state: 'stopping', reason: null };
+  return live.agentPlace ? { state: 'running', reason: { code: REASON.agentPlace, message: live.agentPlace } } : stored;
+}
+
+/**
+ * The state columns the refresh writes from the facts of a run's documents. It derives as `deriveState` does, except
+ * that a blocked row keeps the code its writer stored: the code of the error text fills in only a row with none.
+ */
+export function factColumns(
+  run: StateRow,
+  facts: Pick<StateFacts, 'needsAnswers' | 'returned' | 'blockCode'>,
+): Pick<RunEntity, 'state' | 'stateReason'> {
+  const stored = readReason(run.stateReason);
+  const code = stored?.code ?? facts.blockCode ?? REASON.blocked;
+  const derived =
+    run.status === 'blocked' && stored?.code !== REASON.skipped
+      ? {
+          state: code === REASON.stopped ? ('stopped' as const) : ('blocked' as const),
+          reason: reasonOf(code, stored?.message ?? 'blocked'),
+        }
+      : deriveState(run, facts);
+  return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };
+}
+
 export interface RunStateChange {
   status: string;
   currentStep?: string;

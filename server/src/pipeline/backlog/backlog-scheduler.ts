@@ -6,7 +6,7 @@ import { Clock } from '../../core/clock';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { BacklogChatRepository } from '../../history/backlog-chat.repository';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import { BacklogEvents } from './backlog-events';
 import { BacklogMerge } from './backlog-merge';
@@ -161,7 +161,7 @@ export class BacklogScheduler implements OnModuleDestroy {
     for (const record of stored) {
       const run = record.runKey === null ? null : await this.runs.findRun(record.runKey);
       if (record.runKey !== null && run)
-        facts.set(record.runKey, { state: deriveState(run).state, currentStep: run.currentStep });
+        facts.set(record.runKey, { state: storedState(run).state, currentStep: run.currentStep });
     }
     const unread = stored.some((record) => record.status === 'merged') ? await this.chat.unhandledMergedSlugs(id) : [];
     const tasks = backlogTasks(stored, active, facts, new Set(unread));

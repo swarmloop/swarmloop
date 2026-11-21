@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { needsPerson } from '../../contract/run-state';
+import { etaPhase } from '../../contract/eta';
 import { settled } from '../../contract/subtask';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { VisitRepository } from '../../history/visit.repository';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { RepositoryHost } from '../../steps/shared/repository-host';
@@ -67,15 +67,15 @@ export class BacklogEvents {
       const run = record.runKey === null ? null : await this.runs.findRun(record.runKey);
       if (!run) continue;
       found.set(run.key, run);
-      facts.set(run.key, { state: deriveState(run).state, currentStep: run.currentStep });
+      facts.set(run.key, { state: storedState(run).state, currentStep: run.currentStep });
     }
     const tasks = backlogTasks(records, active, facts);
     const visits = await this.visits.latestVisits([...found.values()].map((run) => run.id));
     for (const record of records.filter((task) => !settled(task))) {
       const run = found.get(record.runKey ?? '');
       if (!run) continue;
-      const { state, reason } = deriveState(run);
-      if (needsPerson(state, reason)) {
+      const { state, reason } = storedState(run);
+      if (etaPhase(state, reason) === 'person') {
         const visit = visits.get(run.id)?.id;
         await this.backlogs.recordEvent(backlogId, `needs-person:${run.key}:${visit ?? 'none'}`, 'run-needs-person', {
           slug: record.slug,
