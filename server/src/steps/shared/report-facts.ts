@@ -1,5 +1,4 @@
 import { CODE_REVIEWERS } from '../../contract/steps';
-import type { Requirement } from '../../contract/requirement-list';
 import type { Clock } from '../../core/clock';
 import type { ReviewResult } from '../../agent-result/definitions/review';
 import { storedReview } from '../../agent-result/stored-review';
@@ -16,6 +15,7 @@ import { epicTotal } from './epic-total';
 import { readOutcome, deriveState } from '../../history/run-state';
 import { parseSubtasks, SUBTASKS_KIND } from '../../contract/subtask';
 import { readStored } from './report-stored';
+import { requirementsFact } from './requirements-fact';
 
 export type { PathStep } from './report-path';
 
@@ -68,19 +68,6 @@ const MISSING = '—';
 
 function latest(documents: StoredDocument[], kind: string): StoredDocument | undefined {
   return [...documents].reverse().find((document) => document.kind === kind);
-}
-
-function requirementsFact(
-  documents: StoredDocument[],
-  marks: ReviewResult['requirements'],
-): ReportFacts['requirements'] {
-  const stored = latest(documents, ARTIFACTS.requirementList.kind);
-  const list: Requirement[] | null = stored ? readStored(() => ARTIFACTS.requirementList.parse(stored.body)) : null;
-  if (!list || list.length === 0 || !marks) {
-    return null;
-  }
-  const met = list.filter((item) => marks.some((mark) => mark.id === item.id && mark.status === 'met')).length;
-  return { met, total: list.length };
 }
 
 async function checksFact(deps: ReportFactsDeps, runId: number): Promise<ReportFacts['checks']> {

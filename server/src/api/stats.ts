@@ -15,6 +15,8 @@ import { runName } from './run-view/flow';
 import { viewTitle } from './run-view/run-title';
 import { localDay, MINUTE_MS } from './local-day';
 import { stallsOf } from './stats-stalls';
+import { personMessagesOf } from './stats-person';
+import { requirementsOf } from './stats-requirements';
 import { countedRunsOf, sumOver } from './stats-units';
 
 export { localDay };
@@ -237,6 +239,7 @@ export function buildStats(
   now: number,
   range: StatsRange,
   requirements: Map<number, string> = new Map(),
+  mergedDocuments: { runId: number; kind: string; body: string }[] = [],
 ): StatsView {
   const to = localDay(now, range.tzOffset);
   const firstDay = rows.firstRunAt === null ? to : [localDay(rows.firstRunAt, range.tzOffset), to].sort()[0];
@@ -253,6 +256,8 @@ export function buildStats(
   const toMerge: number[] = [];
   const toMergeByDay = new Map<string, number[]>();
   const ended = { merged: 0, closed: 0 };
+  const mergedIds: number[] = [];
+  let caughtAndFixed = 0;
   let firstPass = 0;
   for (const run of rows.runs) {
     const used = new Map([[run.runtime, { usd: 0, tokens: 0 }], ...(spend.byAgent.get(run.id) ?? [])]);
@@ -267,6 +272,10 @@ export function buildStats(
     const usd = sumOver(ids, (id) => spend.byRun.get(id)?.usd ?? 0);
     const durationMs = sumOver(ids, (id) => durations.get(id) ?? 0);
     counts[outcome] += 1;
+    if (run.state === 'merged') {
+      mergedIds.push(run.id);
+      caughtAndFixed += backs;
+    }
     buckets[Math.min(backs, RETURN_BUCKETS.length - 1)] += 1;
     if (outcome === 'done' && backs === 0) {
       firstPass += 1;
@@ -306,6 +315,7 @@ export function buildStats(
     };
   });
 
+  const requirementsSum = requirementsOf(mergedIds, mergedDocuments);
   return {
     from,
     to,
@@ -325,6 +335,10 @@ export function buildStats(
       medianDoneMs: median(doneDurations),
       ...ended,
       medianToMergeMs: median(toMerge),
+      requirementsMet: requirementsSum.met,
+      requirementsTotal: requirementsSum.total,
+      caughtAndFixed,
+      personMessages: personMessagesOf(rows, rangeStart(now, range)),
     },
     days: [...days.values()].map((day) => ({
       ...day,

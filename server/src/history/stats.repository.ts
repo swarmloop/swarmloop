@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { hasTitleText } from '../contract/requirements-view';
-import { LoopEventEntity, RunEntity, StepStatEntity } from './entities';
+import { PLAN_CHAT_KIND } from '../contract/plan-chat';
+import { BacklogMessageEntity } from './backlog-planner.entities';
+import { CommandEntity, DocumentEntity, LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 import { ServerStallEntity } from './server-stall.entities';
 
 /** How much of a prompt is read for the name and the title: both use only its first lines. */
@@ -30,7 +32,7 @@ const STEP_COLUMNS = [
 ] as const satisfies readonly (keyof StatsStepRow)[];
 
 export type StatsRunRow = Pick<RunEntity, 'id' | 'key' | 'prompt' | 'status' | 'runtime' | 'createdAt'> &
-  Partial<Pick<RunEntity, 'title' | 'parentRunId' | 'state' | 'mergeOutcome' | 'doneAt'>>;
+  Partial<Pick<RunEntity, 'title' | 'parentRunId' | 'state' | 'mergeOutcome' | 'doneAt' | 'startedBy'>>;
 export type StatsStepRow = Pick<
   StepStatEntity,
   | 'runId'
@@ -52,6 +54,16 @@ export type StatsLoopRow = Pick<LoopEventEntity, 'runId' | 'counter' | 'reason' 
 
 export type StatsStallRow = Pick<ServerStallEntity, 'startedAt' | 'durationMs' | 'kind'>;
 
+/** What people wrote since a time, as raw rows: the counting is the caller's. */
+export interface StatsPersonRows {
+  /** Answer commands with a person. `id` is the key suffix (`message-<id>`) of the plan chat entry the same answer wrote. */
+  answers: { id: string; createdAt: string }[];
+  /** Bodies of the latest plan chat of each run whose latest one was written since. */
+  planChats: string[];
+  /** Messages a person wrote to a backlog's planner. */
+  backlogMessages: { createdAt: string }[];
+}
+
 export interface StatsRows {
   /** When the first run of all started, or null before any. A range never reaches back past it. */
   firstRunAt: string | null;
@@ -59,6 +71,7 @@ export interface StatsRows {
   steps: StatsStepRow[];
   loops: StatsLoopRow[];
   stalls: StatsStallRow[];
+  person: StatsPersonRows;
 }
 
 /** The rows the statistics are counted from. Reads only; the counting is the caller's. */
@@ -69,6 +82,9 @@ export class StatsRepository {
     @InjectRepository(StepStatEntity) private readonly steps: Repository<StepStatEntity>,
     @InjectRepository(LoopEventEntity) private readonly loops: Repository<LoopEventEntity>,
     @InjectRepository(ServerStallEntity) private readonly stalls: Repository<ServerStallEntity>,
+    @InjectRepository(CommandEntity) private readonly commands: Repository<CommandEntity>,
+    @InjectRepository(DocumentEntity) private readonly documents: Repository<DocumentEntity>,
+    @InjectRepository(BacklogMessageEntity) private readonly backlogMessages: Repository<BacklogMessageEntity>,
   ) {}
 
   /** The runs created at `since` or later (every run when null), with their steps and their returns. */
@@ -85,6 +101,7 @@ export class StatsRepository {
         state: true,
         mergeOutcome: true,
         doneAt: true,
+        startedBy: true,
       },
       where: since === null ? {} : { createdAt: MoreThanOrEqual(since) },
       order: { id: 'ASC' },
@@ -97,8 +114,9 @@ export class StatsRepository {
       where: since === null ? {} : { startedAt: MoreThanOrEqual(since) },
       order: { id: 'ASC' },
     });
+    const person = await this.personRows(since);
     if (runs.length === 0) {
-      return { firstRunAt, runs, steps: [], loops: [], stalls };
+      return { firstRunAt, runs, steps: [], loops: [], stalls, person };
     }
     const scope = since === null ? {} : { runId: In(runs.map((run) => run.id)) };
     const steps = await this.stepRows(since === null ? null : runs.map((run) => run.id));
@@ -106,7 +124,34 @@ export class StatsRepository {
       select: { runId: true, counter: true, reason: true, detail: true, createdAt: true },
       where: scope,
     });
-    return { firstRunAt, runs, steps, loops, stalls };
+    return { firstRunAt, runs, steps, loops, stalls, person };
+  }
+
+  /** What people wrote at `since` or later (ever when null): answers, plan chats and backlog messages. */
+  private async personRows(since: string | null): Promise<StatsPersonRows> {
+    const recent = since === null ? {} : { createdAt: MoreThanOrEqual(since) };
+    const answers = await this.commands.find({
+      select: { id: true, createdAt: true },
+      where: { type: 'answer', actor: Not(IsNull()), ...recent },
+      order: { createdAt: 'ASC' },
+    });
+    const backlogMessages = await this.backlogMessages.find({
+      select: { createdAt: true },
+      where: { author: 'person', kind: 'message', ...recent },
+      order: { id: 'ASC' },
+    });
+    const chats = this.documents
+      .createQueryBuilder('document')
+      .select('document.body', 'body')
+      .where('document.kind = :kind', { kind: PLAN_CHAT_KIND })
+      .andWhere(
+        'document.id = (SELECT MAX(latest.id) FROM documents latest WHERE latest.run_id = document.run_id AND latest.kind = :kind)',
+      );
+    if (since !== null) {
+      chats.andWhere('document.createdAt >= :since', { since });
+    }
+    const planChats: { body: string }[] = await chats.orderBy('document.id', 'ASC').getRawMany();
+    return { answers, planChats: planChats.map(({ body }) => body), backlogMessages };
   }
 
   /** Fills `prompt` of each run: its first 4096 characters, or the whole text when the prefix is not enough. */
