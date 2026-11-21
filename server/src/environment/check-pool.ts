@@ -52,12 +52,13 @@ export async function runOnceMore(
   command: string,
   mount: CheckedRepo['mount'],
   check?: { index: number; file: string; name?: string },
+  place?: number,
 ): Promise<Awaited<ReturnType<typeof runShell>>> {
-  const first = await runShell(deps, input, launch, command, mount, 'checks', check);
+  const first = await runShell(deps, input, launch, command, mount, 'checks', check, undefined, place);
   if (first.outOfMemoryBytes === undefined) {
     return first;
   }
-  return runShell(deps, input, launch, command, mount, 'checks', check);
+  return runShell(deps, input, launch, command, mount, 'checks', check, undefined, place);
 }
 
 /** A Stop took check commands out of the line before they started: the checks did not run. */
@@ -84,16 +85,16 @@ export class CheckPool {
   async withPlace<T>(
     input: EnvironmentInput,
     onAhead: (ahead: number) => void,
-    fn: () => Promise<T>,
+    fn: (place: number) => Promise<T>,
   ): Promise<T | null> {
-    const release = await this.slots.take(input.key, onAhead);
-    if (!release) {
+    const taken = await this.slots.take(input.key, onAhead);
+    if (!taken) {
       return null;
     }
     try {
-      return await fn();
+      return await fn(taken.place);
     } finally {
-      release();
+      taken.release();
     }
   }
 
@@ -136,7 +137,7 @@ export class CheckPool {
     return this.withPlace(
       input,
       (ahead) => this.waiting(input, row, ahead),
-      () => this.runInPlace(input, attemptId, repo, row),
+      (place) => this.runInPlace(input, attemptId, repo, row, place),
     );
   }
 
@@ -155,17 +156,26 @@ export class CheckPool {
     attemptId: string,
     repo: CheckedRepo,
     row: CheckCommandEntity,
+    place: number,
   ): Promise<CheckResult> {
     const { clock, shell } = this.deps;
     await this.mark(input, row, { status: 'running', startedAt: clock.iso() });
     const name = row.name ?? row.command;
     let outcome: Awaited<ReturnType<typeof runOnceMore>>;
     try {
-      outcome = await runOnceMore(shell(), input, repo.prepared.launch, row.command, repo.mount, {
-        index: row.commandIndex,
-        name,
-        file: checkOutputPath(shell().root, input.key, input.step, attemptId, row.commandIndex),
-      });
+      outcome = await runOnceMore(
+        shell(),
+        input,
+        repo.prepared.launch,
+        row.command,
+        repo.mount,
+        {
+          index: row.commandIndex,
+          name,
+          file: checkOutputPath(shell().root, input.key, input.step, attemptId, row.commandIndex),
+        },
+        place,
+      );
     } catch (error) {
       await this.mark(input, row, { status: 'failed', endedAt: clock.iso() });
       throw error;

@@ -18,6 +18,7 @@ import { missingModelCredential, ok, worst, type Outcome } from './readiness-out
 import { DiskGuard } from '../pipeline/disk-guard';
 import { OwnUseMeter } from '../pipeline/own-use-meter';
 import { readDockerEngine } from '../sandbox/docker-machine';
+import { sliceSize } from '../sandbox/core-slices';
 import { imageName } from '../sandbox/image-resolver';
 import { agentImage, sandboxUserId } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -155,7 +156,11 @@ export class ReadinessService {
       return ok('docker answers');
     }
     const gb = Number((machine.memoryBytes / GB).toFixed(1));
-    return ok(`${machine.cpus} CPUs · ${gb} GB`);
+    const places = this.config.env.CHECKS_PARALLEL;
+    const size = sliceSize(machine.cpus, places);
+    return ok(
+      `${machine.cpus} CPUs · ${gb} GB · ${places} ${places === 1 ? 'check' : 'checks'} × ${size} ${size === 1 ? 'core' : 'cores'}`,
+    );
   }
 
   private arch(): Outcome {

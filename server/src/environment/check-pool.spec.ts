@@ -243,6 +243,12 @@ describe('CheckPool', () => {
     ]);
   });
 
+  it('runs each check command with the number of its place', async () => {
+    const { pool, inputOf, repoOf, spawned } = setup({ exits: () => 0, limit: { value: 2 } });
+    await pool.runAll(inputOf('r1'), 'a1', [repoOf(['a', 'b'])]);
+    expect(spawned.map((launch) => launch.checkPlace).sort()).toEqual([0, 1]);
+  });
+
   it('shows a waiting command its place in the line and starts it when a place frees', async () => {
     const samples = [
       { sampledAt: '2026-01-01T00:00:00.000Z', cpuPercent: 7, rssBytes: 2048, source: '0' },

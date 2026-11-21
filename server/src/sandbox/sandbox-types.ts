@@ -50,6 +50,17 @@ export interface SandboxLaunch {
   tty?: boolean;
   /** The memory the container may take. Set by the service from the memory Docker has less the reserve. */
   memoryCapBytes?: number;
+  /** The number of the check place the command runs in. Set by the check pool. */
+  checkPlace?: number;
+  /** The cores the container may use. Set by the service from the cores Docker has. */
+  cpuSlice?: CpuSlice;
+}
+
+/** One share of the cores: slice `index` of `places` equal shares of `cores`. */
+export interface CpuSlice {
+  cores: number;
+  places: number;
+  index: number;
 }
 
 export interface ProjectLaunch {

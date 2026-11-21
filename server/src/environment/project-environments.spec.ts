@@ -392,6 +392,15 @@ describe('ProjectEnvironments checks', () => {
       expect({ rows: rows.length, stored: stored.length }).toEqual({ rows: known.rows, stored: known.stored });
     });
 
+    it('runs a named command in a numbered check place', async () => {
+      const { service, input, spawned } = setup({ config });
+      const repo = basename(input.mounts[0].hostPath);
+      await service.prepare(input);
+      const known = spawned.length;
+      await service.rerun(input, [{ repo, command: 'npm run lint', tail: '' }]);
+      expect(spawned.slice(known).map((launch) => launch.checkPlace)).toEqual([0]);
+    });
+
     it('returns the commands that are still red with their new tail', async () => {
       const { service, input } = setup({
         config,

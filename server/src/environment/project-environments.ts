@@ -270,7 +270,7 @@ export class ProjectEnvironments {
         const result = await this.pool.withPlace(
           input,
           (ahead) => this.live?.log({ key: input.key, step: input.step, body: `${waitingText(ahead)}\n` }),
-          () => runOnceMore(this.shellDeps(), input, prepared.launch, command, mount),
+          (place) => runOnceMore(this.shellDeps(), input, prepared.launch, command, mount, undefined, place),
         );
         if (!result) {
           throw new ChecksStopped();
