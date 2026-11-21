@@ -22,6 +22,19 @@ describe('review diff', () => {
     expect(section.patch).toContain('<?php');
   });
 
+  it('names an empty diff when the branch has no change against its base', async () => {
+    const repo = mainRepo('swarmloop-review-diff-empty-');
+    git(repo, ['checkout', '-b', 'feature/nothing']);
+
+    const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
+
+    const sentence = 'The diff is empty: this branch has no change against its base.';
+    expect(section.body).toContain(sentence);
+    expect(section.patch).toContain(sentence);
+    expect(section.body).not.toContain('Changed files:');
+    expect(section.patch).not.toContain('Changed files:');
+  });
+
   it('diffs a clean worktree against the branch the prompt names, not against the default branch', async () => {
     const repo = mainRepo('swarmloop-review-diff-named-');
     git(repo, ['checkout', '-b', 'feature/parent']);
