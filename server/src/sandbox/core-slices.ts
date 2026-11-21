@@ -1,5 +1,16 @@
 import type { CpuSlice, SandboxLaunch } from './sandbox-types';
 
+/** The cores a check needs at least: test runners start half or all but one of the cores they see as workers. */
+export const CHECK_CORES = 4;
+
+/** How many checks run at once: at most `checksParallel`, as many as fit with `CHECK_CORES` each, never below one. Unknown cores allow `checksParallel`. */
+export function checksAtOnce(cores: number | undefined, checksParallel: number): number {
+  if (cores === undefined) {
+    return checksParallel;
+  }
+  return Math.max(1, Math.min(checksParallel, Math.floor(cores / CHECK_CORES)));
+}
+
 /** The cores one container gets: an equal share for each of the places, and at least one. */
 export function sliceSize(cores: number, places: number): number {
   return Math.max(1, Math.floor(cores / places));
@@ -17,7 +28,7 @@ export function coreListText(slice: CpuSlice): string {
   return last === first + cores.length - 1 ? `${first}-${last}` : cores.join(',');
 }
 
-/** Chooses the slice of each project container: a check by its place, any other by turns over all the cores. */
+/** Chooses the slice of each project container: a check by its place (the places are the checks at once), any other by turns over all the cores. */
 export class CoreTurns {
   private turn = 0;
 

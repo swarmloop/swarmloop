@@ -55,7 +55,7 @@ export class RequiredCheckRepeated extends RequiredCheckFailed {}
 interface EnvironmentDeps {
   env: () => Pick<SwarmloopEnv, 'SWARMLOOP_ROOT' | 'CHECKS_PARALLEL'>;
   clock: Clock;
-  sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath' | 'stats'>;
+  sandbox: Pick<SandboxService, 'run' | 'spawn' | 'kill' | 'stateDaemonPath' | 'stats' | 'machine'>;
   documents: Pick<DocumentRepository, 'latestBody' | 'putDocument'>;
   commands: Pick<CheckCommandRepository, 'add' | 'save'>;
   live?: Pick<LiveHub, 'log' | 'changed'>;
@@ -83,6 +83,7 @@ export class ProjectEnvironments {
     this.live = deps.live;
     this.pool = new CheckPool({
       checksParallel: () => deps.env().CHECKS_PARALLEL,
+      readCores: () => deps.sandbox.machine(),
       clock: deps.clock,
       documents: deps.documents,
       commands: deps.commands,
@@ -270,7 +271,8 @@ export class ProjectEnvironments {
         const result = await this.pool.withPlace(
           input,
           (ahead) => this.live?.log({ key: input.key, step: input.step, body: `${waitingText(ahead)}\n` }),
-          (place) => runOnceMore(this.shellDeps(), input, prepared.launch, command, mount, undefined, place),
+          (place, cpuSlice) =>
+            runOnceMore(this.shellDeps(), input, prepared.launch, command, mount, undefined, place, cpuSlice),
         );
         if (!result) {
           throw new ChecksStopped();

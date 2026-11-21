@@ -114,6 +114,43 @@ describe('sandbox launch', () => {
         expect(cores({ project, cpuSlice: { cores: 8, places: 3, index: 0 } })).toBe('0-1');
       });
 
+      it('gives a check the weight of 1024 and the cores of its place, an agent and a setup 256 and a slice of the same size', () => {
+        const shares = (patch: Partial<SandboxLaunch>): string => {
+          const args = sandboxArgs(launch(patch), home, '');
+          return args[args.indexOf('--cpu-shares') + 1] ?? '';
+        };
+        const checkLaunch = {
+          command: [],
+          project: { ...project, shell: 'npm test' },
+          checkPlace: 1,
+          cpuSlice: { cores: 8, places: 2, index: 1 },
+        };
+        const setupLaunch = {
+          step: 'setup',
+          command: [],
+          project: { ...project, shell: 'npm ci' },
+          cpuSlice: { cores: 8, places: 2, index: 0 },
+        };
+        const agentLaunch = { project, cpuSlice: { cores: 8, places: 2, index: 0 } };
+        expect([shares(checkLaunch), cores(checkLaunch)]).toEqual(['1024', '4-7']);
+        expect([shares(setupLaunch), cores(setupLaunch)]).toEqual(['256', '0-3']);
+        expect([shares(agentLaunch), cores(agentLaunch)]).toEqual(['256', '0-3']);
+      });
+
+      it('gives a check, an agent and a setup with unknown cores no cores and 256', () => {
+        const unknown = [
+          { command: [], project: { ...project, shell: 'npm test' }, checkPlace: 1 },
+          { project },
+          { step: 'setup', command: [], project: { ...project, shell: 'npm ci' } },
+        ];
+        for (const patch of unknown) {
+          const args = sandboxArgs(launch(patch), home, '');
+          expect(args).not.toContain('--cpuset-cpus');
+          expect(args[args.indexOf('--cpu-shares') + 1]).toBe('256');
+          expect(args).toEqual(sandboxArgs(launch({ ...patch, checkPlace: undefined }), home, ''));
+        }
+      });
+
       it('leaves a container outside a project image and a container with unknown cores as they are', () => {
         expect(cores({ cpuSlice: { cores: 8, places: 3, index: 0 } })).toBeUndefined();
         expect(sandboxArgs(launch({ cpuSlice: { cores: 8, places: 3, index: 0 } }), home, '')).toEqual(

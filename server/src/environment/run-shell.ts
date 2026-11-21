@@ -9,31 +9,20 @@ import type { SandboxMount } from '../core/sandbox-mount';
 import { startCommandSpan } from '../core/step-event-scope';
 import type { LiveSample } from '../contract/live';
 import { SERVER_PAUSE_NOTE } from '../contract/server-pause';
-import type { RunEntity } from '../history/entities';
 import type { SampleDraft } from '../history/visit';
-import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
 import type { LiveHub } from '../live/live.hub';
 import { containerSampler } from '../sandbox/container-sampler';
 import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
-import { setupHosts } from '../sandbox/sandbox-hosts';
 import { agentStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
+import type { CpuSlice } from '../sandbox/sandbox-types';
+import { startShell, type ShellInput } from './shell-launch';
 
 const SETUP_TIMEOUT_MS = 30 * 60_000;
 const TAIL_LINES = 80;
 /** The lines the live view shows of a running command. */
 const LIVE_LINES = 200;
 const TAIL_CHARS = 6000;
-
-/** What a shell needs of the run: the same fields as an environment input. */
-interface ShellInput {
-  run: RunEntity;
-  key: string;
-  step: string;
-  mounts: SandboxMount[];
-  runtime: RuntimeName;
-  samples?: SampleDraft[];
-}
 
 export interface ShellDeps {
   root: string;
@@ -42,37 +31,6 @@ export interface ShellDeps {
   live?: Pick<LiveHub, 'log'>;
   /** True for a run the user stopped: its containers die by docker stop and kill, not by their memory cap. */
   halted?: (key: string) => boolean;
-}
-
-/** The sandbox launch of one setup or check command. */
-function shellLaunch(args: {
-  input: ShellInput;
-  launch: ProjectLaunch;
-  command: string;
-  mount: SandboxMount;
-  phase: 'setup' | 'checks';
-  check?: { index: number };
-  place?: number;
-  manifest?: ManifestHosts;
-  statePath: string;
-  userId: ReturnType<typeof sandboxUserId>;
-}): Parameters<ShellDeps['sandbox']['spawn']>[0] {
-  const { input, launch, command, mount, phase, check, place, manifest, statePath, userId } = args;
-  return {
-    runtime: input.runtime,
-    runKey: input.key,
-    step: check ? `${input.step}-${check.index}` : input.step,
-    attemptId: input.run.activeAttempt ?? '',
-    mounts: [mount, ...input.mounts.filter((item) => item !== mount)],
-    statePath,
-    allowHosts: phase === 'setup' ? setupHosts(manifest?.hosts) : [],
-    ...(phase === 'setup' && manifest?.hosts.length ? { manifestHosts: manifest } : {}),
-    command: [],
-    userId,
-    project: { ...launch, shell: command },
-    resultLost: true,
-    ...(place !== undefined ? { checkPlace: place } : {}),
-  };
 }
 
 /**
@@ -92,6 +50,8 @@ export async function runShell(
   manifest?: ManifestHosts,
   /** The number of the check place the command runs in. */
   place?: number,
+  /** The allocation used at admission, including an explicit unknown-core fallback. */
+  cpuSlice?: CpuSlice | null,
 ): Promise<{ exitCode: number; tail: string; outOfMemoryBytes?: number }> {
   const { root, clock, sandbox, live } = deps;
   const userId = sandboxUserId();
@@ -149,16 +109,15 @@ export async function runShell(
       ...(check ? { command: check.index, samples: liveSamples(input.samples ?? []) } : {}),
     });
   };
-  const child = await sandbox
-    .spawn(shellLaunch({ input, launch, command, mount, phase, check, place, manifest, statePath, userId }), {
-      onPaused,
-      work: phase === 'setup' ? 'setup' : 'check',
-    })
-    .catch(async (error: unknown) => {
+  const child = await startShell(
+    sandbox,
+    { input, launch, command, mount, phase, check, place, cpuSlice, manifest, statePath, userId },
+    onPaused,
+    async () => {
       finish({ exitCode: null });
       await new Promise<void>((done) => file.end(done));
-      throw error;
-    });
+    },
+  );
   const take = containerSampler(
     sandbox,
     clock,

@@ -40,6 +40,9 @@ const SANDBOX_PIDS = '256';
 /** Below the default weight of 1024 that the server and the dashboard keep, so they win a fight for the CPU. */
 const SANDBOX_CPU_SHARES = 256;
 
+/** A check gets four times the weight of an agent, so on cores they share the check gets four times the CPU time. */
+const CHECK_CPU_SHARES = 1024;
+
 const MODEL_ENV = new Set(RUNTIME_NAMES.flatMap((name) => runtimeFor(name).credentialNames));
 /** Settings a CLI behind the egress proxy may get on top of its placeholder key. */
 const EGRESS_ENV: Record<string, (value: string) => boolean> = {
@@ -207,6 +210,11 @@ function coreArgs(launch: SandboxLaunch): string[] {
   return launch.project && launch.cpuSlice ? ['--cpuset-cpus', coreListText(launch.cpuSlice)] : [];
 }
 
+/** The CPU weight: a check on cores of its place outweighs agents and setup. */
+function cpuShares(launch: SandboxLaunch): number {
+  return launch.project && launch.cpuSlice && launch.checkPlace !== undefined ? CHECK_CPU_SHARES : SANDBOX_CPU_SHARES;
+}
+
 export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sandboxEngine()): string[] {
   if (launch.userId <= 0) {
     throw new SwarmloopError('sandbox user is root');
@@ -268,7 +276,7 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
     '--pids-limit',
     project ? PROJECT_PIDS : SANDBOX_PIDS,
     '--cpu-shares',
-    String(SANDBOX_CPU_SHARES),
+    String(cpuShares(launch)),
     ...coreArgs(launch),
     '--read-only',
     '--tmpfs',

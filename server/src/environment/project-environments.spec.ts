@@ -423,6 +423,16 @@ describe('ProjectEnvironments checks', () => {
     expect(alive.max).toBe(3);
   });
 
+  it('never has more check containers alive than fit with four cores each', async () => {
+    const { service, input, alive } = setup({
+      config: { ...manifest, checks: twelve },
+      checkTurns: 5,
+      machine: { cpus: 8, memoryBytes: 16 * 1024 ** 3 },
+    });
+    await service.check(input);
+    expect(alive.max).toBe(2);
+  });
+
   it('numbers the commands of every repository and keeps their rows', async () => {
     const { service, input, rows } = setup({ config: { ...manifest, checks: ['npm test', 'npm run lint'] } });
     await service.check({ ...input, run: { id: 4, activeAttempt: 'a1' } as RunEntity });

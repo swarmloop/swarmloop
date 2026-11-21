@@ -18,7 +18,7 @@ import { missingModelCredential, ok, worst, type Outcome } from './readiness-out
 import { DiskGuard } from '../pipeline/disk-guard';
 import { OwnUseMeter } from '../pipeline/own-use-meter';
 import { readDockerEngine } from '../sandbox/docker-machine';
-import { sliceSize } from '../sandbox/core-slices';
+import { CHECK_CORES, checksAtOnce, sliceSize } from '../sandbox/core-slices';
 import { imageName } from '../sandbox/image-resolver';
 import { agentImage, sandboxUserId } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -156,10 +156,15 @@ export class ReadinessService {
       return ok('docker answers');
     }
     const gb = Number((machine.memoryBytes / GB).toFixed(1));
-    const places = this.config.env.CHECKS_PARALLEL;
-    const size = sliceSize(machine.cpus, places);
+    const asked = this.config.env.CHECKS_PARALLEL;
+    const fit = checksAtOnce(machine.cpus, asked);
+    const size = sliceSize(machine.cpus, fit);
+    const note =
+      asked > fit
+        ? ` (CHECKS_PARALLEL ${asked}; ${fit} ${fit === 1 ? 'fits' : 'fit'} with ${CHECK_CORES} cores each)`
+        : '';
     return ok(
-      `${machine.cpus} CPUs · ${gb} GB · ${places} ${places === 1 ? 'check' : 'checks'} × ${size} ${size === 1 ? 'core' : 'cores'}`,
+      `${machine.cpus} CPUs · ${gb} GB · ${fit} ${fit === 1 ? 'check' : 'checks'} × ${size} ${size === 1 ? 'core' : 'cores'}${note}`,
     );
   }
 
