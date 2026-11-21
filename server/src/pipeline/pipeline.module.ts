@@ -78,6 +78,7 @@ import { BacklogTurnState } from './backlog/planner/turn-state';
 import { BacklogTurnWorkspace } from './backlog/planner/turn-workspace';
 import { EventFacts } from './backlog/planner/event-facts';
 import { StallWatch } from './stall-watch';
+import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
@@ -141,6 +142,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     MergeWatch,
     Reconciler,
     StallWatch,
+    RunStateRefresh,
     PlannerTurns,
     PlanConversation,
     BacklogActionSupport,

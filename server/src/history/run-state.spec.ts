@@ -4,7 +4,17 @@ import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, REASON } from '../contract/run-state';
 import type { RunAction, RunState } from '../contract/run-state';
-import { blockCode, clearEpic, deriveState, markEpic, stateColumns, writeRunState } from './run-state';
+import {
+  blockCode,
+  clearEpic,
+  deriveState,
+  factColumns,
+  liveState,
+  markEpic,
+  stateColumns,
+  storedState,
+  writeRunState,
+} from './run-state';
 
 const GOLDEN_DIR = join(__dirname, '..', 'testing', 'golden');
 
@@ -314,5 +324,102 @@ describe('deriveState of a skipped task', () => {
   it.each(['failed', 'blocked', 'waiting', 'running'])('is skipped whatever the status (%s)', (status) => {
     const stateReason = JSON.stringify({ code: REASON.skipped, message: 'this task was skipped' });
     expect(deriveState({ status, stateReason }).state).toBe('skipped');
+  });
+});
+
+const reasonOf = (code: string, message = 'm') => JSON.stringify({ code, message });
+const read = (columns: { state: string | null; stateReason: string | null }) => ({
+  state: columns.state,
+  code: columns.stateReason ? (JSON.parse(columns.stateReason) as { code: string }).code : null,
+});
+
+describe('storedState', () => {
+  it('reads a stored NEEDS_ANSWERS as waiting', () => {
+    const run = { status: 'waiting', state: 'waiting', stateReason: reasonOf('NEEDS_ANSWERS', 'waiting for a person') };
+    expect(storedState(run)).toEqual({
+      state: 'waiting',
+      reason: { code: 'NEEDS_ANSWERS', message: 'waiting for a person' },
+    });
+  });
+
+  it('reads a null state as the row derivation', () => {
+    expect(storedState({ status: 'waiting', state: null, stateReason: null })).toEqual({ state: 'idle', reason: null });
+    expect(storedState({ status: 'blocked', state: null, stateReason: null }).state).toBe('blocked');
+  });
+});
+
+describe('liveState', () => {
+  const waiting = { status: 'waiting', state: 'idle', stateReason: null };
+  const running = { status: 'running', state: 'running', stateReason: null };
+
+  it('equals the stored state without live facts', () => {
+    expect(liveState(waiting, {})).toEqual(storedState(waiting));
+    expect(liveState(running, {})).toEqual(storedState(running));
+  });
+
+  it('shows a run with a command in flight as queued', () => {
+    expect(liveState(waiting, { queued: true })).toEqual({ state: 'queued', reason: null });
+  });
+
+  it('shows a running run with a stop in flight as stopping', () => {
+    expect(liveState(running, { stopping: true })).toEqual({ state: 'stopping', reason: null });
+  });
+
+  it('shows the words of an agent that waits for a place', () => {
+    expect(liveState(running, { agentPlace: 'one place free soon' }).reason?.message).toBe('one place free soon');
+  });
+});
+
+describe('factColumns', () => {
+  const facts = { needsAnswers: false, returned: false, blockCode: undefined };
+
+  it('says waiting for a person on a run with open questions', () => {
+    expect(read(factColumns({ status: 'waiting' }, { ...facts, needsAnswers: true }))).toEqual({
+      state: 'waiting',
+      code: 'NEEDS_ANSWERS',
+    });
+  });
+
+  it('clears the open questions once they are gone', () => {
+    const run = { status: 'waiting', stateReason: reasonOf('NEEDS_ANSWERS') };
+    expect(read(factColumns(run, facts))).toEqual({ state: 'idle', code: null });
+  });
+
+  it('marks a run that went back to implement as returned', () => {
+    expect(read(factColumns({ status: 'waiting' }, { ...facts, returned: true }))).toEqual({
+      state: 'idle',
+      code: REASON.returned,
+    });
+  });
+
+  it('keeps a stored waiting code such as RUNTIME_LIMIT', () => {
+    const run = { status: 'waiting', stateReason: reasonOf(ERROR_CODES.RUNTIME_LIMIT) };
+    expect(read(factColumns(run, { ...facts, needsAnswers: true }))).toEqual({
+      state: 'waiting',
+      code: ERROR_CODES.RUNTIME_LIMIT,
+    });
+  });
+
+  it('keeps the code a blocked row stores', () => {
+    const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.GIT_RULES) };
+    expect(read(factColumns(run, { ...facts, blockCode: REASON.loopLimit }))).toEqual({
+      state: 'blocked',
+      code: ERROR_CODES.GIT_RULES,
+    });
+  });
+
+  it('gives a blocked row with no code the code of its error', () => {
+    expect(read(factColumns({ status: 'blocked' }, { ...facts, blockCode: REASON.didNotFit }))).toEqual({
+      state: 'blocked',
+      code: REASON.didNotFit,
+    });
+  });
+
+  it('keeps a stored stopped reason', () => {
+    const run = { status: 'blocked', stateReason: reasonOf(REASON.stopped) };
+    expect(read(factColumns(run, { ...facts, blockCode: REASON.blocked }))).toEqual({
+      state: 'stopped',
+      code: REASON.stopped,
+    });
   });
 });

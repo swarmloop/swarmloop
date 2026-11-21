@@ -5,7 +5,7 @@ import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog
 import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState, readOutcome } from '../../history/run-state';
+import { storedState, readOutcome } from '../../history/run-state';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import { parseMergeRequests, type MergeRequestLine } from '../../steps/merge-request/merge-request-record';
@@ -61,7 +61,7 @@ export class BacklogMerge {
     const run = await this.runs.findRun(task.runKey as string);
     if (!run) return;
     try {
-      const { state } = deriveState(run);
+      const { state } = storedState(run);
       if (state === 'merged') await this.adopt(task, readOutcome(run.mergeOutcome));
       else if (state === 'closed') await this.save(task, { note: CLOSED_NOTE });
       else if (state !== 'done') await this.save(task, { note: '' });

@@ -6,7 +6,7 @@ import { Clock } from '../../core/clock';
 import type { BacklogWriters } from '../../history/backlog-writers';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { chainSharedFiles } from '../../steps/plan/plan-tasks';
 import { CommandService } from '../command.service';
 import {
@@ -140,7 +140,7 @@ export class BacklogTaskActions {
     const task = this.find(await this.support.reads(context).tasks(backlog.id as number), slug);
     checkNotSettled(task);
     const run = task.runKey === null ? null : await this.runs.findRun(task.runKey);
-    if (task.runKey !== null && run !== null && !ENDED.includes(deriveState(run).state)) {
+    if (task.runKey !== null && run !== null && !ENDED.includes(storedState(run).state)) {
       await this.commands.submit('stop', task.runKey, {});
     }
     await this.support.write(context, async (writers) => {
