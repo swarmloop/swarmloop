@@ -1,27 +1,20 @@
 'use client';
 
-import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
 import Skeleton from '@mui/material/Skeleton';
 import Link from 'next/link';
-import { ReadinessPanel } from '../features/readiness';
+import { ReadinessLine } from '../features/readiness';
 import { useLiveBridge } from '../features/shell';
-import { StatsSection } from '../features/stats';
+import { StatsSection, useStatsVersion } from '../features/stats';
 import { HOSTS } from './login/hosts';
 
 export default function HomePage(): React.ReactElement {
-  const runs = useLiveBridge((snapshot) => snapshot.runs);
   const loaded = useLiveBridge((snapshot) => snapshot.loaded);
   // The same counts as the run list's switch, so a subtask is never counted on its own.
   const { active, done, all } = useLiveBridge((snapshot) => snapshot.counts);
-  // The statistics reload when a run appears, goes, changes status or changes part (held by the list or not), not on every live tick.
-  const stamp = useLiveBridge((snapshot) => snapshot.statusStamp);
-  const version = useMemo(
-    () => `${runs.map((run) => `${run.key}:${run.status}`).join(',')}|${active}/${done}/${all}|${stamp}`,
-    [runs, active, done, all, stamp],
-  );
+  const version = useStatsVersion();
   const empty = loaded && all === 0;
 
   return (
@@ -45,7 +38,7 @@ export default function HomePage(): React.ReactElement {
           </Button>
         ) : null}
       </Box>
-      <ReadinessPanel />
+      <ReadinessLine />
       <StatsSection version={version} />
     </Box>
   );
