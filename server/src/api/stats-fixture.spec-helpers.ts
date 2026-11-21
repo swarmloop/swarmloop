@@ -91,12 +91,13 @@ function stepRow(runId: number, index: number, created: number): Partial<StepSta
 /**
  * A database of 500 runs with 13 KB prompts, 15 000 step rows, 1 000 code-review exchanges and 1 500 requirements
  * documents of 17 KB, spread over the 60 days before `now`. Inserted in chunks through the query builder.
+ * `runCount` defaults to 500; a smaller count builds the same rows for its first runs.
  */
-export async function seedStatsFixture(data: DataSource, now: number): Promise<void> {
+export async function seedStatsFixture(data: DataSource, now: number, runCount: number = FIXTURE_RUNS): Promise<void> {
   await insertAll(
     data,
     RunEntity,
-    Array.from({ length: FIXTURE_RUNS }, (_, index) => runRow(index, now)),
+    Array.from({ length: runCount }, (_, index) => runRow(index, now)),
     14,
   );
   const runs = await data
