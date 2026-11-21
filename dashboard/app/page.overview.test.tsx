@@ -94,7 +94,9 @@ describe('Overview page', () => {
   it('sizes the page root to the viewport so nothing scrolls', async () => {
     renderPage();
     const root = screen.getByRole('heading', { name: 'Overview' }).parentElement as HTMLElement;
-    expect(root.style.height || getComputedStyle(root).height).toContain('100vh');
+    // At least the viewport below the app bar, and free to grow: a fixed height would clip content that needs more.
+    expect(getComputedStyle(root).minHeight).toContain('100vh');
+    expect(getComputedStyle(root).height).toBe('');
     await screen.findByText('Merged');
   });
 

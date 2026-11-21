@@ -567,6 +567,26 @@ describe('stats range', () => {
       expect(stats.totals).toMatchObject({ requirementsMet: 2, requirementsTotal: 3 });
     });
 
+    it('counts the last requirements round, and a last round with no per-id statuses adds nothing', () => {
+      const data = rows();
+      Object.assign(data.runs[0], merged);
+      Object.assign(data.runs[3], merged);
+      const empty = doc(4, 'review_requirements_result', {
+        decision: 'ok',
+        review: 'r',
+        summary: ['s'],
+        requirements: [],
+      });
+      const stats = buildStats(data, durations, NOW, range, new Map(), [
+        list(1, 3),
+        marks(1, 'partial', 'partial', 'partial'),
+        marks(1, 'met', 'met', 'partial'),
+        list(4, 2),
+        empty,
+      ]);
+      expect(stats.totals).toMatchObject({ requirementsMet: 2, requirementsTotal: 3 });
+    });
+
     it('counts the returns of merged runs, subtasks included, and no others', () => {
       const data = rows();
       Object.assign(data.runs[0], merged);

@@ -37,9 +37,9 @@ export default function HomePage(): React.ReactElement {
         sx={{
           display: 'flex',
           flexDirection: 'column',
-          gap: 2,
-          height: `calc(100vh - ${CHROME})`,
-          minHeight: 0,
+          gap: 1.5,
+          // The root grows with its content, so nothing is clipped or scrolls inside; short content fills the viewport.
+          minHeight: `calc(100vh - ${CHROME})`,
           typography: 'body2',
         }}
       >

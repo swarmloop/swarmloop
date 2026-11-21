@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { listBacklogs } from '../../lib/backlog-endpoints';
 import { listRuns } from '../../lib/endpoints';
-import { activeMilestoneBacklog } from '../../test/backlog-fixtures';
+import { activeMilestoneBacklog, backlogView, milestone, task } from '../../test/backlog-fixtures';
 import { epicRun, milestoneRun, questionRun, subtaskRun, workingRun } from '../../test/overview-fixtures';
 import { listRunsFrom } from '../../test/runs-page';
 import { NowSection } from './index';
@@ -78,5 +78,59 @@ describe('NowSection', () => {
     render(<NowSection />, { wrapper: PartsWrapper });
     expect(screen.getAllByTestId('now-placeholder')).not.toHaveLength(0);
     expect(screen.queryByText('Nothing running')).not.toBeInTheDocument();
+  });
+
+  it('shows a progress bar for the step of a run, further along at a later step', async () => {
+    load([workingRun('early', { currentStep: 'plan' }), workingRun('late', { currentStep: 'pipeline' })]);
+    render(<NowSection />, { wrapper: PartsWrapper });
+    const early = (await screen.findByText('Title of early')).closest('a') as HTMLElement;
+    const late = screen.getByText('Title of late').closest('a') as HTMLElement;
+    expect(within(early).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '20');
+    expect(within(late).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+  });
+
+  const milestoneOf = (tasks: ReturnType<typeof task>[]) =>
+    backlogView({ name: 'shop', milestones: [milestone({ status: 'active' })], tasks });
+
+  it('shows the latest estimate of the unfinished tasks of a milestone', async () => {
+    load(
+      [
+        workingRun('run-a', { eta: { leftMs: 10 * 60_000, doneAt: '2026-01-01T00:10:00.000Z' } }),
+        workingRun('run-b', { eta: { leftMs: 60 * 60_000, doneAt: '2026-01-01T01:00:00.000Z' } }),
+      ],
+      [
+        milestoneOf([
+          task({ slug: 'a', runKey: 'run-a' }),
+          task({ slug: 'b', runKey: 'run-b' }),
+          task({ slug: 'c', status: 'merged', runKey: null }),
+        ]),
+      ],
+    );
+    render(<NowSection />, { wrapper: PartsWrapper });
+    const card = (await screen.findByText('Checkout')).closest('a') as HTMLElement;
+    expect(within(card).getByText('~1h left')).toBeInTheDocument();
+  });
+
+  it('shows no estimate for a milestone while a task waits for another or has no estimate', async () => {
+    load(
+      [workingRun('run-a')],
+      [
+        milestoneOf([
+          task({ slug: 'a', runKey: 'run-a' }),
+          task({ slug: 'b', status: 'waiting', depends: ['a'], runKey: null }),
+        ]),
+      ],
+    );
+    render(<NowSection />, { wrapper: PartsWrapper });
+    const card = (await screen.findByText('Checkout')).closest('a') as HTMLElement;
+    expect(within(card).getByText('no estimate yet')).toBeInTheDocument();
+    expect(within(card).queryByText(/left/)).not.toBeInTheDocument();
+  });
+
+  it('says when the runs cannot be read', async () => {
+    vi.mocked(listBacklogs).mockResolvedValue([]);
+    vi.mocked(listRuns).mockRejectedValue(new Error('down'));
+    render(<NowSection />, { wrapper: PartsWrapper });
+    expect(await screen.findByText('Could not load what runs now.')).toBeInTheDocument();
   });
 });

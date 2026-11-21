@@ -12,7 +12,8 @@ export function requirementsOf(runIds: number[], documents: StoredDocument[]): {
   const sum = { met: 0, total: 0 };
   for (const id of runIds) {
     const own = documents.filter((document) => document.runId === id);
-    const fact = requirementsFact(own, storedReview('requirements', own)?.requirements);
+    const statuses = storedReview('requirements', own)?.requirements;
+    const fact = statuses && statuses.length > 0 ? requirementsFact(own, statuses) : null;
     sum.met += fact?.met ?? 0;
     sum.total += fact?.total ?? 0;
   }

@@ -67,3 +67,11 @@ export function returnsFlow(key: string, counts: number[], url = `https://exampl
     returns: counts.map((count, index) => ({ counter: `counter-${index}`, count, from: 'checks', to: 'implement' })),
   });
 }
+
+/** A merged run that was merged at the given time, whenever it was created. */
+export function mergedAt(key: string, at: string, overrides: Partial<RunSummary> = {}): RunSummary {
+  return mergedRun(key, {
+    merge: { merged: { shop: { sha: null, by: null, at, url: null } } },
+    ...overrides,
+  });
+}
