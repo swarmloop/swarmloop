@@ -131,82 +131,84 @@ export function Returns({ stats }: { stats: StatsView }): ReactElement {
   }));
   const maxRuns = Math.max(...stats.returnsPerRun.map((bucket) => bucket.runs), 1);
   return (
-    <ChartCard
-      title="Why work came back"
-      headline={`${returns} ${returns === 1 ? 'return' : 'returns'}`}
-      note={`${returnsByKind(totals.returnsByKind, ' · ')} · ${percent(totals.firstPass, totals.done)} of done runs passed first time`}
-    >
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 172px' }, gap: 3, alignItems: 'start' }}>
-        <BarList
-          rows={rows}
-          color={CHART.returns}
-          empty="Nothing came back in this range."
-          other={(rest) => {
-            const value = rest.reduce((sum, row) => sum + row.value, 0);
-            return {
-              name: `${rest.length} more`,
-              value,
-              label: String(value),
-              detail: rest.map((row) => row.name).join(', '),
-            };
-          }}
-        />
-        <Box>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            Returns per run
-          </Typography>
-          <Box
-            sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 110 }}
-            role="list"
-            aria-label="Returns per run"
-          >
-            {stats.returnsPerRun.map((bucket) => (
-              <Tooltip
-                key={bucket.returns}
-                title={`${bucket.runs} ${bucket.runs === 1 ? 'run' : 'runs'} went back ${bucket.returns === '1' ? 'once' : `${bucket.returns} times`}`}
-                placement="top"
-                arrow
-                disableInteractive
-              >
-                <Box
-                  role="listitem"
-                  tabIndex={0}
-                  aria-label={`${bucket.returns} returns: ${bucket.runs} runs`}
-                  sx={{
-                    flex: 1,
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'flex-end',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    outline: 'none',
-                    '&:hover .col, &:focus-visible .col': { filter: 'brightness(1.12)' },
-                  }}
+    <Box id="returns" sx={{ height: '100%', minWidth: 0 }}>
+      <ChartCard
+        title="Why work came back"
+        headline={`${returns} ${returns === 1 ? 'return' : 'returns'}`}
+        note={`${returnsByKind(totals.returnsByKind, ' · ')} · ${percent(totals.firstPass, totals.done)} of done runs passed first time`}
+      >
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 172px' }, gap: 3, alignItems: 'start' }}>
+          <BarList
+            rows={rows}
+            color={CHART.returns}
+            empty="Nothing came back in this range."
+            other={(rest) => {
+              const value = rest.reduce((sum, row) => sum + row.value, 0);
+              return {
+                name: `${rest.length} more`,
+                value,
+                label: String(value),
+                detail: rest.map((row) => row.name).join(', '),
+              };
+            }}
+          />
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Returns per run
+            </Typography>
+            <Box
+              sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 110 }}
+              role="list"
+              aria-label="Returns per run"
+            >
+              {stats.returnsPerRun.map((bucket) => (
+                <Tooltip
+                  key={bucket.returns}
+                  title={`${bucket.runs} ${bucket.runs === 1 ? 'run' : 'runs'} went back ${bucket.returns === '1' ? 'once' : `${bucket.returns} times`}`}
+                  placement="top"
+                  arrow
+                  disableInteractive
                 >
-                  <Typography sx={{ fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                    {bucket.runs}
-                  </Typography>
                   <Box
-                    className="col"
+                    role="listitem"
+                    tabIndex={0}
+                    aria-label={`${bucket.returns} returns: ${bucket.runs} runs`}
                     sx={{
-                      width: '100%',
-                      height: `${(bucket.runs / maxRuns) * 72}px`,
-                      minHeight: bucket.runs > 0 ? 3 : 0,
-                      bgcolor: bucket.returns === '0' ? CHART.done : CHART.returns,
-                      borderRadius: '4px 4px 0 0',
+                      flex: 1,
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'flex-end',
+                      alignItems: 'center',
+                      gap: 0.5,
+                      outline: 'none',
+                      '&:hover .col, &:focus-visible .col': { filter: 'brightness(1.12)' },
                     }}
-                  />
-                  <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>{bucket.returns}</Typography>
-                </Box>
-              </Tooltip>
-            ))}
+                  >
+                    <Typography sx={{ fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                      {bucket.runs}
+                    </Typography>
+                    <Box
+                      className="col"
+                      sx={{
+                        width: '100%',
+                        height: `${(bucket.runs / maxRuns) * 72}px`,
+                        minHeight: bucket.runs > 0 ? 3 : 0,
+                        bgcolor: bucket.returns === '0' ? CHART.done : CHART.returns,
+                        borderRadius: '4px 4px 0 0',
+                      }}
+                    />
+                    <Typography sx={{ fontSize: 11, color: 'text.secondary' }}>{bucket.returns}</Typography>
+                  </Box>
+                </Tooltip>
+              ))}
+            </Box>
           </Box>
         </Box>
-      </Box>
-      <Box sx={{ mt: 2 }}>
-        <CiOnly ci={ciReturns} />
-      </Box>
-    </ChartCard>
+        <Box sx={{ mt: 2 }}>
+          <CiOnly ci={ciReturns} />
+        </Box>
+      </ChartCard>
+    </Box>
   );
 }
