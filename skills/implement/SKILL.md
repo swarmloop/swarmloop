@@ -28,5 +28,7 @@ A limit never decides which requirement goes. When a required change does not fi
 
 Package registries are reachable for a library install. Do not call Jira, GitLab, or any other host.
 
+Change a dependency through the project's package manager, never by editing its lockfile. For a package version you do not know, read what the installed package ships (its types, README, changelog) instead of writing from memory.
+
 End the answer with the result block. `implementation` says what changed. `summary` says why this way, and ends with one line for each item of the input or the plan that is not built, `not built: <item> - <why>`, or the single line `not built: nothing`. Stopping part way without that line is never allowed. After a return, fix the broken behavior named in the note. Do not add a mechanism it did not name. `summary` says that behavior now holds. If a finding was wrong for this codebase or version, say that in one line. A pipeline return is a test that failed on this commit. Change the code or that test. Do not leave those files as they are. A pipeline return outranks the approved checklist. So do instructions a person added after the checklist was approved. If the fix contradicts an item, do the fix. When an item changes, send the full corrected checklist in `plan`. Without a contradiction, leave `plan` out.
 

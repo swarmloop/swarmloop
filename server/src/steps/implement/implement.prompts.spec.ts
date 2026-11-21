@@ -1,6 +1,11 @@
 import { withCommand } from '../../environment/check-failures';
 import { markedTail } from '../../core/run-logs';
-import { implementImproveFollowUp, OWN_CONFLICT_LEAD, ownConflictPrompt } from './implement.prompts';
+import {
+  implementImproveFollowUp,
+  OWN_CONFLICT_LEAD,
+  ownConflictPrompt,
+  rebaseConflictPrompt,
+} from './implement.prompts';
 
 const notesOf = (tail: string) => `## checks\nrepo: required check failed (exit 1):\n${withCommand('npm test', tail)}`;
 
@@ -35,5 +40,21 @@ describe('the prompt for the conflict of the parent’s own edits', () => {
     expect(prompt).toContain('bbb222');
     expect(prompt).toContain("keep both the parent's own edits and the merged tasks' changes");
     expect(prompt).not.toContain('The commit being replayed is');
+  });
+});
+
+describe('the prompt for a rebase conflict', () => {
+  it('tells the agent to take the base version of a lockfile and run the package manager again', () => {
+    const prompt = rebaseConflictPrompt({
+      repo: 'demo',
+      files: ['package-lock.json'],
+      requirements: 'r',
+      base: 'abc',
+      commit: 'def',
+    });
+    expect(prompt).toContain(
+      "A conflict in a lockfile or another file the package manager writes is not merged by hand: keep the new base's version of it, then run the package manager again for this branch's changes to its manifest.",
+    );
+    expect(prompt).toContain('Do not run git.');
   });
 });

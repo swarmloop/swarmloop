@@ -26,13 +26,23 @@ export async function returnedTo(flow: Flow, run: RunEntity, notes: string): Pro
   await flow.app.app.get(DocumentRepository).putDocument(run, 'return', notes);
 }
 
-/** Leaves the feature worktree in a rebase whose two edits to the same field conflict. */
-export function conflictingRebase(flow: Flow): void {
+/**
+ * Leaves the feature worktree in a rebase whose two edits to the same file conflict. The file and what the feature and
+ * the base write into it default to the field of `src/readme.ts`.
+ */
+export function conflictingRebase(flow: Flow, edits: { file?: string; feature?: string; base?: string } = {}): void {
+  const {
+    file = join('src', 'readme.ts'),
+    feature = 'export const readme = 2;\n',
+    base = 'export const readme = 3;\n',
+  } = edits;
   const clone = join(flow.app.root, 'demo');
-  writeFileSync(join(flow.tree, 'src', 'readme.ts'), 'export const readme = 2;\n');
+  writeFileSync(join(flow.tree, file), feature);
+  git(flow.tree, ['add', file]);
   git(flow.tree, ['commit', '-am', 'feature change']);
   git(clone, ['switch', 'main']);
-  writeFileSync(join(clone, 'src', 'readme.ts'), 'export const readme = 3;\n');
+  writeFileSync(join(clone, file), base);
+  git(clone, ['add', file]);
   git(clone, ['commit', '-am', 'base change']);
   git(clone, ['push', 'origin', 'main']);
   git(clone, ['switch', 'holder']);

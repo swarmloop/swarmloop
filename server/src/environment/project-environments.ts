@@ -1,21 +1,17 @@
-import { basename, join } from 'path';
+import { basename } from 'path';
 import type { SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import type { Clock } from '../core/clock';
-import { runProbe } from './image-probe';
 import { CheckPool, ChecksStopped, outOfMemoryError, runOnceMore, waitingText } from './check-pool';
 import { runShell, type ShellDeps } from './run-shell';
-import { startCommandSpan } from '../core/step-event-scope';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { CheckCommandRepository } from '../history/check-command.repository';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
-import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime';
 import type { LiveHub } from '../live/live.hub';
-import { CliBundles } from '../sandbox/cli-bundle';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { ProjectLaunch } from '../sandbox/sandbox-launch';
-import { agentImage, prepareStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
+import { agentImage } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import { addCheckRows } from './check-rows';
 import { recordPasses, visitStart, type VisitStart } from './check-passes';
@@ -24,7 +20,9 @@ import { failuresOf, withCommand, type FailureDeps } from './check-failures';
 import { checksFingerprint } from './checks-fingerprint';
 import { countsFor } from '../history/gate-stamp';
 import { git } from '../git/git';
-import { imagePath, projectSlug, resolveProjectImage } from './project-image';
+import { ImageBuildFailed, imagePath, resolveProjectImage } from './project-image';
+import { ProjectLaunches } from './project-launches';
+import { checksDefinition, HeadEnvironmentUnreadable, type ImageSource } from './checks-definition';
 import type {
   CheckedRepo,
   CheckFailure,
@@ -33,6 +31,11 @@ import type {
   FailedCommand,
   PreparedEnvironment,
 } from './environment-types';
+
+/** The reason a changed definition cannot be checked on, or null for any other error. */
+function headFailure(error: unknown): string | null {
+  return error instanceof HeadEnvironmentUnreadable || error instanceof ImageBuildFailed ? error.message : null;
+}
 
 export const ENVIRONMENT = 'environment';
 const CHECKS_PASS = 'checks_pass';
@@ -59,10 +62,12 @@ interface EnvironmentDeps {
   halted?: (key: string) => boolean;
 }
 
-/** The agent's toolchain: the project image, the CLI mounted into it, and the setup that ran once for the run. */
+/**
+ * The agent's toolchain: the project image of the run's base revision, the CLI mounted into it, and the setup that ran
+ * once for the run. The checks use the run's own commands in the image the changed files define; the agent never does.
+ */
 export class ProjectEnvironments {
-  private readonly bundles: CliBundles;
-  private readonly probed = new Map<string, Promise<boolean>>();
+  private readonly launches: ProjectLaunches;
   private readonly clock: Clock;
   private readonly sandbox: EnvironmentDeps['sandbox'];
   private readonly documents: EnvironmentDeps['documents'];
@@ -85,7 +90,7 @@ export class ProjectEnvironments {
       halted: deps.halted,
       shell: () => this.shellDeps(),
     });
-    this.bundles = new CliBundles((args, timeoutMs) => this.sandbox.run(args, timeoutMs));
+    this.launches = new ProjectLaunches(deps);
   }
 
   /** Takes the waiting check commands of a run out of the line. */
@@ -95,30 +100,56 @@ export class ProjectEnvironments {
 
   /** Null when no repository of the run describes an environment: the agent then works as before. */
   async prepare(input: EnvironmentInput): Promise<PreparedEnvironment | null> {
-    const { runtime } = input;
+    const found = await this.locate(input);
+    if (!found) {
+      return null;
+    }
+    const { record, mount } = found;
+    return this.prepareIn(input, record, mount, { config: record.config, ref: record.ref });
+  }
+
+  /** The environment the checks run in: the run's own commands and setup, in the image the changed files define. */
+  private async prepareForChecks(input: EnvironmentInput): Promise<PreparedEnvironment | null> {
+    const found = await this.locate(input);
+    if (!found) {
+      return null;
+    }
+    const { record, mount } = found;
+    return this.prepareIn(input, record, mount, await checksDefinition(mount, record));
+  }
+
+  private async locate(input: EnvironmentInput): Promise<{ record: EnvironmentRecord; mount: SandboxMount } | null> {
     const record = await this.record(input);
     if (!record) {
       return null;
     }
     const mount = input.mounts.find((item) => basename(item.hostPath) === record.repo) ?? input.mounts[0];
-    if (!mount) {
-      return null;
-    }
-    if (record.config.dockerfile && !record.ref) {
+    return mount ? { record, mount } : null;
+  }
+
+  /** The image comes from `source`, everything else (setup, hosts, caches) from the record. */
+  private async prepareIn(
+    input: EnvironmentInput,
+    record: EnvironmentRecord,
+    mount: SandboxMount,
+    source: ImageSource,
+  ): Promise<PreparedEnvironment> {
+    const { runtime } = input;
+    if (source.config.dockerfile && !source.ref) {
       throw new SwarmloopError(
         `${record.repo}: environment has no saved base revision. Rebase this run before building its project image.`,
       );
     }
     const docker = (args: string[], timeoutMs?: number) => this.sandbox.run(args, timeoutMs);
-    const image = await resolveProjectImage(docker, mount.hostPath, record.repo, record.config, record.ref);
-    const cliVolume = await this.cliBundle(runtime, agentImage(runtime));
-    const hasCerts = await this.probe(image, cliVolume, runtime);
+    const image = await resolveProjectImage(docker, mount.hostPath, record.repo, source.config, source.ref);
+    const cliVolume = await this.launches.cliBundle(runtime, agentImage(runtime));
+    const hasCerts = await this.launches.probe(image, cliVolume, runtime);
     const launch: ProjectLaunch = {
       image,
       cliVolume,
       path: await imagePath(docker, image),
       certFile: !hasCerts,
-      caches: await this.caches(record.repo, record.config.cache),
+      caches: await this.launches.caches(record.repo, record.config.cache),
     };
     const origins = record.config.hosts ? await originHosts(mount.hostPath) : [];
     const command = record.config.setup;
@@ -138,27 +169,8 @@ export class ProjectEnvironments {
     return { launch, record: { ...record, image }, origins };
   }
 
-  /** The CLI volume of the agent image. */
-  private async cliBundle(runtime: RuntimeName, agentRef: string): Promise<string> {
-    const finish = startCommandSpan({
-      actor: 'server',
-      repo: '',
-      cwd: process.cwd(),
-      executable: 'cli bundle ready',
-      args: [],
-    });
-    try {
-      const volume = await this.bundles.ensure(runtime, agentRef);
-      finish({ exitCode: 0 });
-      return volume;
-    } catch (error) {
-      finish({ exitCode: 1, output: error instanceof Error ? error.message : String(error) });
-      throw error;
-    }
-  }
-
   /**
-   * Server-owned completion gate. Each repository uses its own frozen commands and image. Every command runs, up to
+   * Server-owned completion gate. Each repository uses its own frozen commands, in the image its changed files define. Every command runs, up to
    * CHECKS_PARALLEL at once, and a failure of one does not stop the others: the error names all of them. A command
    * with `paths` is skipped, unless the last return named it (`named`), when the run's diff does not touch them or when
    * it passed earlier in this run on the same files under them; a change outside every `paths` list runs all.
@@ -167,10 +179,19 @@ export class ProjectEnvironments {
     const attemptId = input.run.activeAttempt ?? '';
     const repos: CheckedRepo[] = [];
     const starts = new Map<CheckedRepo, VisitStart>();
+    const failures: CheckFailure[] = [];
     let passed = 0;
     let total = 0;
     for (const mount of input.mounts) {
-      const prepared = await this.prepare({ ...input, mounts: [mount] });
+      let prepared: PreparedEnvironment | null;
+      try {
+        prepared = await this.prepareForChecks({ ...input, mounts: [mount] });
+      } catch (error) {
+        const reason = headFailure(error);
+        if (reason === null) throw error;
+        failures.push({ repo: basename(mount.hostPath), body: `${basename(mount.hostPath)}: ${reason}`, repeated: '' });
+        continue;
+      }
       const entries = prepared?.record.config.checks ?? [];
       if (!prepared || entries.length === 0) {
         continue;
@@ -193,7 +214,6 @@ export class ProjectEnvironments {
       }
     }
     await this.pool.runAll(input, attemptId, repos);
-    const failures: CheckFailure[] = [];
     for (const repo of repos) {
       await recordPasses({ clock: this.clock, documents: this.documents }, input, repo, starts.get(repo) ?? null);
       const own = await failuresOf(this.failureDeps(), input, repo);
@@ -223,13 +243,24 @@ export class ProjectEnvironments {
   }
 
   /**
-   * Runs the named failed commands again, one after the other, in the environment `check` uses. A command the project
+   * Runs the named failed commands again, one after the other, in the image `check` uses: the one the changed files define. A command the project
    * no longer lists is dropped. Records nothing: the full checks step stays the only gate. Returns the ones still red.
    */
   async rerun(input: EnvironmentInput, failed: FailedCommand[]): Promise<FailedCommand[]> {
     const red: FailedCommand[] = [];
     for (const mount of failed.length > 0 ? input.mounts : []) {
-      const prepared = await this.prepare({ ...input, mounts: [mount] });
+      let prepared: PreparedEnvironment | null;
+      try {
+        prepared = await this.prepareForChecks({ ...input, mounts: [mount] });
+      } catch (error) {
+        const reason = headFailure(error);
+        if (reason === null) throw error;
+        const repo = basename(mount.hostPath);
+        red.push(
+          ...failed.filter((item) => item.repo === repo).map(({ command }) => ({ repo, command, tail: reason })),
+        );
+        continue;
+      }
       if (!prepared) {
         continue;
       }
@@ -326,31 +357,5 @@ export class ProjectEnvironments {
       await this.documents.putDocument(input.run, `${ENVIRONMENT}:${repo}`, 'null');
     }
     return null;
-  }
-
-  /** Once per image and CLI: does the CLI start there, and does the image bring its own CA bundle. */
-  private probe(image: string, cliVolume: string, runtime: RuntimeName): Promise<boolean> {
-    const key = `${image}\0${cliVolume}`;
-    let found = this.probed.get(key);
-    if (!found) {
-      found = runProbe(this.sandbox, image, cliVolume, runtime).catch((error: unknown) => {
-        this.probed.delete(key);
-        throw error;
-      });
-      this.probed.set(key, found);
-    }
-    return found;
-  }
-
-  private async caches(repo: string, paths: string[]): Promise<ProjectLaunch['caches']> {
-    const root = resolveRepoRoot(this.deps.env().SWARMLOOP_ROOT, __dirname);
-    const userId = sandboxUserId();
-    const caches: ProjectLaunch['caches'] = [];
-    for (const containerPath of paths) {
-      const dir = join(root, 'data', 'env-cache', projectSlug(repo), containerPath.slice(1).replace(/\//g, '-'));
-      prepareStateDir(dir, userId);
-      caches.push({ containerPath, daemonPath: (await this.sandbox.stateDaemonPath(dir)) ?? dir });
-    }
-    return caches;
   }
 }
