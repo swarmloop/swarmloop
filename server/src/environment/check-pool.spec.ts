@@ -148,11 +148,14 @@ describe('CheckPool', () => {
     alive.max = 0;
     await pool.runAll(input, 'a2', [repoOf(['g', 'h', 'i'])]);
     expect(alive.max).toBe(2);
-    expect(spawned.map((launch) => launch.cpuSlice)).toEqual([
+    const slices = spawned.map((launch) => launch.cpuSlice);
+    expect(slices.slice(0, 2)).toEqual([
       { cores: 8, places: 2, index: 0 },
       { cores: 8, places: 2, index: 1 },
-      { cores: 8, places: 2, index: 0 },
     ]);
+    // The third command takes the place of whichever of the first two ends first, which the pool does not order.
+    expect([0, 1]).toContain(slices[2]?.index);
+    expect(slices[2]).toMatchObject({ cores: 8, places: 2 });
   });
 
   it('starts no check command while the server is paused, says so, and starts them in line order after', async () => {
