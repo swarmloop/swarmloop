@@ -28,7 +28,7 @@ export function useBacklogs(): BacklogsState {
   }, [client, stamp]);
   return {
     backlogs: query.data ?? [],
-    loaded: query.isSuccess,
+    loaded: query.data !== undefined,
     error: query.error ? query.error.message : null,
   };
 }

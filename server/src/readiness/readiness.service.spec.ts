@@ -158,7 +158,7 @@ describe('ReadinessService', () => {
     expect(await itemOf(service, 'stalls')).toMatchObject({
       status: 'warn',
       line: 'The server stalled 2 times in the last hour, 32 s in all (server blocked)',
-      link: '/#statistics',
+      link: '/stats#statistics',
     });
   });
 

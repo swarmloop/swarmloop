@@ -2,33 +2,17 @@
 
 import { type ReactElement, useEffect, useState } from 'react';
 import Link from 'next/link';
-import type { Route } from 'next';
 import Box from '@mui/material/Box';
 import LinearProgress from '@mui/material/LinearProgress';
-import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
-import type { RunSummary } from '@contract/api';
-import { nested } from '@contract/run-list';
-import { backlogPath } from '../../lib/backlog-path';
 import { etaText } from '../../lib/eta-words';
-import { phaseLabel } from '../../lib/phase-label';
 import { useBacklogs } from '../backlogs';
-import { RunStateIcon, phaseOf, runWord, toneColor } from '../run';
+import { RunStateIcon, runWord, toneColor } from '../run';
+import { type NowCard, nowCards } from './now-items';
+import { CARD_GRID_SX, LoadFailed, Placeholders, sectionState } from './section-state';
 import { useOverviewRuns } from './use-overview-runs';
 
-const SHOWN = 6;
 const TICK_MS = 30_000;
-
-interface Card {
-  id: string;
-  title: string;
-  href: Route;
-  /** Tasks merged and in all, for a milestone or an epic. */
-  tasks?: { merged: number; total: number };
-  /** The step a run is at, in words. */
-  step?: string;
-  run?: RunSummary;
-}
 
 function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
@@ -39,21 +23,14 @@ function useNow(): number {
   return now;
 }
 
-function runCard(run: RunSummary): Card {
-  const counts = run.taskCounts;
-  const total = Object.values(counts ?? {}).reduce((sum, value) => sum + value, 0);
-  return {
-    id: run.key,
-    title: run.title,
-    href: `/runs/${encodeURIComponent(run.key)}` as Route,
-    run,
-    ...(counts ? { tasks: { merged: counts.merged ?? 0, total } } : { step: phaseLabel(phaseOf(run.currentStep)) }),
-  };
-}
-
-function CardView({ card, now }: { card: Card; now: number }): ReactElement {
+function CardView({ card, now }: { card: NowCard; now: number }): ReactElement {
   const view = card.run ? runWord(card.run) : null;
-  const eta = card.run?.eta ? etaText(card.run.eta, now) : null;
+  const estimate = card.run ? card.run.eta : card.milestoneEta;
+  const eta = estimate
+    ? etaText(estimate, now)
+    : card.milestoneEta === null
+      ? { text: 'no estimate yet', tip: '' }
+      : null;
   return (
     <Box
       component={Link}
@@ -79,7 +56,12 @@ function CardView({ card, now }: { card: Card; now: number }): ReactElement {
           <Typography variant="body2">{`${card.tasks.merged}/${card.tasks.total} tasks`}</Typography>
         </>
       ) : null}
-      {card.step ? <Typography variant="body2">{card.step}</Typography> : null}
+      {card.step ? (
+        <>
+          <LinearProgress variant="determinate" value={card.step.percent} sx={{ my: 0.5 }} />
+          <Typography variant="body2">{card.step.label}</Typography>
+        </>
+      ) : null}
       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', color: view ? toneColor(view.tone) : 'info.main' }}>
         {view ? <RunStateIcon view={view} size={16} /> : null}
         <Typography variant="body2" noWrap>
@@ -95,28 +77,13 @@ function CardView({ card, now }: { card: Card; now: number }): ReactElement {
   );
 }
 
-/** What works now: active milestones, then top-level runs and epics that move by themselves. */
+/** What works now, as cards. */
 export function NowSection(): ReactElement {
-  const { loaded, active } = useOverviewRuns();
-  const { backlogs } = useBacklogs();
+  const runs = useOverviewRuns();
+  const { backlogs, loaded, error } = useBacklogs();
   const now = useNow();
-  const milestones: Card[] = backlogs.flatMap((backlog) =>
-    backlog.milestones
-      .filter((milestone) => milestone.status === 'active')
-      .map((milestone) => {
-        const tasks = backlog.tasks.filter((task) => task.milestone === milestone.number);
-        return {
-          id: `${backlog.name}/${milestone.number}`,
-          title: milestone.title,
-          href: backlogPath(backlog.name),
-          tasks: { merged: tasks.filter((task) => task.status === 'merged').length, total: tasks.length },
-        };
-      }),
-  );
-  const working = nested(active)
-    .tops.filter((run) => !run.backlog && runWord(run).tone === 'working')
-    .map(runCard);
-  const cards = [...milestones, ...working].slice(0, SHOWN);
+  const state = sectionState(runs, { loaded, failed: error !== null });
+  const cards = nowCards(backlogs, runs.active, now);
   return (
     <Box component="section" aria-label="Now" sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
@@ -125,16 +92,14 @@ export function NowSection(): ReactElement {
         </Typography>
         <Link href="/">All runs</Link>
       </Box>
-      {!loaded ? (
-        <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-          {[0, 1, 2].map((index) => (
-            <Skeleton key={index} variant="rounded" height={84} data-testid="now-placeholder" />
-          ))}
-        </Box>
+      {state === 'loading' ? (
+        <Placeholders count={3} height={84} testId="now-placeholder" grid />
+      ) : state === 'failed' ? (
+        <LoadFailed what="what runs now" />
       ) : cards.length === 0 ? (
         <Typography color="text.secondary">Nothing running</Typography>
       ) : (
-        <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+        <Box sx={CARD_GRID_SX}>
           {cards.map((card) => (
             <CardView key={card.id} card={card} now={now} />
           ))}

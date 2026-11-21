@@ -58,13 +58,32 @@ describe('NeedsYou', () => {
     load([failedRun('epic-1'), subtaskRun('sub-1', 'epic-1', { state: 'failed', status: 'failed' })]);
     render(<NeedsYou />, { wrapper: PartsWrapper });
     const region = await screen.findByRole('region', { name: 'Needs you' });
+    await screen.findByRole('link', { name: 'Resume' });
     expect(within(region).getAllByRole('link', { name: 'Resume' })).toHaveLength(1);
   });
 
   it('renders nothing when nobody is needed', async () => {
     load([]);
     const { container } = render(<NeedsYou />, { wrapper: PartsWrapper });
-    await vi.waitFor(() => expect(listBacklogs).toHaveBeenCalled());
-    expect(container).toBeEmptyDOMElement();
+    await vi.waitFor(() => expect(container).toBeEmptyDOMElement());
+  });
+
+  it('shows placeholders on the first paint and a line when the runs cannot be read', async () => {
+    load([]);
+    vi.mocked(listRuns).mockReturnValue(new Promise(() => undefined));
+    const { unmount } = render(<NeedsYou />, { wrapper: PartsWrapper });
+    expect(screen.getAllByTestId('needs-placeholder')).not.toHaveLength(0);
+    unmount();
+    vi.mocked(listRuns).mockRejectedValue(new Error('down'));
+    render(<NeedsYou />, { wrapper: PartsWrapper });
+    expect(await screen.findByText('Could not load what needs you.')).toBeInTheDocument();
+  });
+
+  it('keeps the placeholders until the backlogs arrive', () => {
+    load([questionRun('ask-1')]);
+    vi.mocked(listBacklogs).mockReturnValue(new Promise(() => undefined));
+    render(<NeedsYou />, { wrapper: PartsWrapper });
+    expect(screen.getAllByTestId('needs-placeholder')).not.toHaveLength(0);
+    expect(screen.queryByRole('link', { name: 'Answer' })).not.toBeInTheDocument();
   });
 });

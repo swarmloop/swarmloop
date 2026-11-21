@@ -2,31 +2,34 @@
 
 import type { ReactElement } from 'react';
 import Link from 'next/link';
-import type { Route } from 'next';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import { useQuery } from '@tanstack/react-query';
-import type { RunSummary } from '@contract/api';
-import { nested } from '@contract/run-list';
+import { useQueries } from '@tanstack/react-query';
 import { getFlow } from '../../lib/endpoints';
 import { money } from '../../lib/format';
+import { useBacklogs } from '../backlogs';
 import { RunStateIcon, runWord } from '../run';
+import { type DoneItem, DONE_SHOWN, doneItems } from './done-items';
 import { longDuration, returnsWords } from './overview-format';
+import { LoadFailed, Placeholders, sectionState } from './section-state';
 import { useOverviewRuns } from './use-overview-runs';
 
-const SHOWN = 5;
-
-function DoneLine({ run }: { run: RunSummary }): ReactElement {
-  const flow = useQuery({ queryKey: ['overview-flow', run.key], queryFn: () => getFlow(run.key) });
-  const totals = run.epic ?? { durationMs: run.durationMs, usd: run.usd };
-  const returns = (flow.data?.returns ?? []).reduce((sum, item) => sum + item.count, 0);
-  const request = flow.data?.mergeRequests[0];
-  const view = runWord(run);
+function DoneLine({ item }: { item: DoneItem }): ReactElement {
+  const flows = useQueries({
+    queries: item.runKeys.map((key) => ({ queryKey: ['overview-flow', key], queryFn: () => getFlow(key) })),
+  });
+  const loaded = flows.every((flow) => flow.data !== undefined);
+  const returns = flows.reduce(
+    (sum, flow) => sum + (flow.data?.returns ?? []).reduce((all, one) => all + one.count, 0),
+    0,
+  );
+  const request = item.milestone ? undefined : flows[0]?.data?.mergeRequests[0];
+  const view = runWord(item.run);
   return (
     <Box component="li" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
       <Box
         component={Link}
-        href={`/runs/${encodeURIComponent(run.key)}` as Route}
+        href={item.href}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -39,16 +42,16 @@ function DoneLine({ run }: { run: RunSummary }): ReactElement {
       >
         <RunStateIcon view={view} />
         <Typography noWrap sx={{ flex: 1 }}>
-          {run.title}
+          {item.title}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {longDuration(totals.durationMs)}
+          {longDuration(item.durationMs)}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {money(totals.usd)}
+          {money(item.usd)}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {flow.data ? returnsWords(returns, run.state === 'done' || run.state === 'merged') : ''}
+          {loaded ? returnsWords(returns, item.run.state === 'done' || item.run.state === 'merged') : ''}
         </Typography>
       </Box>
       {request ? (
@@ -60,11 +63,13 @@ function DoneLine({ run }: { run: RunSummary }): ReactElement {
   );
 }
 
-/** The last five finished top-level runs, one line each. */
+/** The last five finished top-level items, one line each. */
 export function DoneLately(): ReactElement | null {
-  const { done } = useOverviewRuns();
-  const lines = nested(done).tops.slice(0, SHOWN);
-  if (lines.length === 0) {
+  const runs = useOverviewRuns();
+  const { backlogs, loaded, error } = useBacklogs();
+  const state = sectionState(runs, { loaded, failed: error !== null });
+  const lines = doneItems(runs.done, backlogs);
+  if (state === 'ready' && lines.length === 0) {
     return null;
   }
   return (
@@ -72,11 +77,17 @@ export function DoneLately(): ReactElement | null {
       <Typography variant="subtitle2" component="h2">
         Done lately
       </Typography>
-      <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
-        {lines.map((run) => (
-          <DoneLine key={run.key} run={run} />
-        ))}
-      </Box>
+      {state === 'loading' ? (
+        <Placeholders count={DONE_SHOWN} height={32} testId="done-placeholder" grid={false} />
+      ) : null}
+      {state === 'failed' ? <LoadFailed what="what got done" /> : null}
+      {state === 'ready' ? (
+        <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
+          {lines.map((item) => (
+            <DoneLine key={item.key} item={item} />
+          ))}
+        </Box>
+      ) : null}
     </Box>
   );
 }
