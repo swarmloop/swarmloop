@@ -37,6 +37,12 @@ describe('StatsPage', () => {
     expect(screen.getByText('Server stalls per day')).toBeInTheDocument();
   });
 
+  it('shows the statistics under the checks', async () => {
+    renderPage();
+    expect(await screen.findByLabelText('Runs: 4')).toBeInTheDocument();
+    expect(screen.getByText('Why work came back')).toBeInTheDocument();
+  });
+
   it('anchors the returns chart as returns', async () => {
     renderPage();
     await screen.findByLabelText('Runs: 4');
