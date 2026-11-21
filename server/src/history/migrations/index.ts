@@ -1,3 +1,4 @@
+import { CommandActor1796800000000 } from './1796800000000-command-actor';
 import { IntegrationSecrets1796000000000 } from './1796000000000-integration-secrets';
 import { CredentialCooldowns1796000000001 } from './1796000000001-credential-cooldowns';
 import { DropUnusedData1796100000000 } from './1796100000000-drop-unused-data';
@@ -87,4 +88,5 @@ export const migrations = [
   BacklogTurnVisit1796600000000,
   RunWaits1796700000000,
   BacklogMessageAttachments1796700000000,
+  CommandActor1796800000000,
 ];
