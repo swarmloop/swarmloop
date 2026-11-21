@@ -5,7 +5,8 @@ import { tmpdir } from 'os';
 import type { AddressInfo } from 'net';
 import type { Server } from 'http';
 import { join } from 'path';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import type { INestApplication } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PeopleService } from '../auth/people.service';
@@ -111,6 +112,8 @@ interface TestAppOptions {
   reconcilerTimer?: boolean;
   /** Defaults to true: `test-admin` is seen first, so the first admin exists. False leaves the people empty, for a spec of the first person. */
   seedAdmin?: boolean;
+  /** Serves socket.io on the listening port, as the shipped server does. Off by default: most specs open no socket. */
+  socket?: boolean;
   /** The app removes the root when it closes. Defaults to true for a root it made. */
   ownsRoot?: boolean;
 }
@@ -134,6 +137,13 @@ export interface TestApp {
   close(): Promise<void>;
   /** A restart: this app stops and a new one starts on the same root and database. The new app owns the root. */
   restart(): Promise<TestApp>;
+}
+
+/** The application, serving socket.io on its listening port when asked, as the shipped server does. */
+function nestApplication(module: TestingModule, socket = false): INestApplication {
+  const app = module.createNestApplication();
+  if (socket) app.useWebSocketAdapter(new IoAdapter(app));
+  return app;
 }
 
 /** The first admin exists unless the spec is about the first person to sign in. */
@@ -261,7 +271,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     steps.set('pipeline', module.get(PipelineStep));
   }
 
-  const app = module.createNestApplication();
+  const app = nestApplication(module, options.socket);
   try {
     await app.listen(0, '127.0.0.1');
   } catch (error) {

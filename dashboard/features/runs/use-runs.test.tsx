@@ -268,3 +268,64 @@ describe('useRuns clock', () => {
     expect(vi.mocked(listRuns).mock.calls.length).toBe(requests);
   });
 });
+
+describe('useRuns on a reconnect', () => {
+  const finished = { ...runSummary(), key: 'run-9', name: 'Run nine', title: 'Run nine', state: 'merged' as const };
+
+  function ShownProbe() {
+    const { runs } = useRuns();
+    const { showList } = useLiveActions();
+    useEffect(() => showList('done', 'nine'), [showList]);
+    return (
+      <div>
+        {runs.map((run) => (
+          <p key={run.key}>{run.name}</p>
+        ))}
+      </div>
+    );
+  }
+
+  async function shown(): Promise<void> {
+    vi.mocked(listRuns).mockReset();
+    vi.mocked(listRuns).mockResolvedValue(runsPage([], { part: 'done' }));
+    render(<ShownProbe />, { wrapper: LiveBridgeProvider });
+    await waitFor(() => expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: 'nine' }));
+    act(() => receive('connect'));
+    vi.mocked(listRuns).mockClear();
+  }
+
+  it('reads the shown part and filter again and shows the answer', async () => {
+    await shown();
+    vi.mocked(listRuns).mockResolvedValue(runsPage([finished], { part: 'done' }));
+
+    act(() => receive('disconnect'));
+    act(() => receive('connect'));
+
+    expect(await screen.findByText('Run nine')).toBeInTheDocument();
+    expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: 'nine' });
+  });
+
+  it('reads again when the disconnect and the connect fall in one render batch', async () => {
+    await shown();
+
+    act(() => {
+      receive('disconnect');
+      receive('connect');
+    });
+
+    await waitFor(() => expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: 'nine' }));
+  });
+
+  it('does not read again on the first connect', async () => {
+    vi.mocked(listRuns).mockReset();
+    vi.mocked(listRuns).mockResolvedValue(runsPage([], { part: 'done' }));
+    render(<ShownProbe />, { wrapper: LiveBridgeProvider });
+    await waitFor(() => expect(listRuns).toHaveBeenCalled());
+    vi.mocked(listRuns).mockClear();
+
+    act(() => receive('connect'));
+    await act(async () => {});
+
+    expect(listRuns).not.toHaveBeenCalled();
+  });
+});

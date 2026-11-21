@@ -30,6 +30,7 @@ export function useRuns(): {
 } {
   const runs = useLiveBridge((snapshot) => snapshot.runs);
   const connected = useLiveBridge((snapshot) => snapshot.connected);
+  const connects = useLiveBridge((snapshot) => snapshot.connects);
   const loaded = useLiveBridge((snapshot) => snapshot.loaded);
   const counts = useLiveBridge((snapshot) => snapshot.counts);
   const { part, q } = useLiveBridge((snapshot) => snapshot.view);
@@ -91,14 +92,14 @@ export function useRuns(): {
     };
   }, [reload]);
 
-  // A socket that connects again may have missed changes: the first page is read again.
-  const wasConnected = useRef(connected);
+  // A socket that connects again may have missed changes: the shown part and filter are read again. The first connect is covered by the read of the mount.
+  const seenConnects = useRef(connects);
   useEffect(() => {
-    if (connected && !wasConnected.current) {
+    if (connects > 1 && connects > seenConnects.current) {
       reload();
     }
-    wasConnected.current = connected;
-  }, [connected, reload]);
+    seenConnects.current = connects;
+  }, [connects, reload]);
 
   // While a filter finds nothing, the hint of how many runs the other part holds follows the counts.
   const countsKey = `${counts.active}/${counts.done}/${counts.all}`;
