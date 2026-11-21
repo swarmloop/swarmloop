@@ -7,8 +7,12 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { isDenied } from '../../git/commit-paths';
 import { baseBranch, originRef } from '../../git/base-ref';
 import { gitMissing, gitRaw } from '../../git/git';
+import type { OutsideRead } from '../shared/outside-reads';
 
 export const REVIEW_DIFF_PATH = '/work/brief/diff.md';
+
+/** The path a reviewer's prompt allows, because its Diff section asks for it. */
+export const REVIEW_DIFF_READ: OutsideRead = { path: REVIEW_DIFF_PATH, what: 'the complete diff' };
 
 const EMPTY_DIFF = 'The diff is empty: this branch has no change against its base.';
 

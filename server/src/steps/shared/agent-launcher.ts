@@ -19,6 +19,7 @@ import { VisitRepository } from '../../history/visit.repository';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
 import { withAttachments } from './attachments-section';
+import { withLogReads } from './outside-reads';
 import { promptSections } from './prompt-manifest';
 import { LimitFailover } from './limit-failover';
 import type { AgentLaunchRequest } from './agent-launch-request';
@@ -130,9 +131,11 @@ export class AgentLauncher {
       onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(work)),
       // A launch killed mid-tool leaves a block open that would hold back every later launch's events.
       onLaunchEnd: bindToStepScope(() => feed.finish().forEach(work)),
-      prompt: withRules(withAttachments(request.prompt, names)),
+      prompt: withRules(withLogReads(withAttachments(request.prompt, names))),
       freshPrompt:
-        request.freshPrompt === undefined ? undefined : withRules(withAttachments(request.freshPrompt, names)),
+        request.freshPrompt === undefined
+          ? undefined
+          : withRules(withLogReads(withAttachments(request.freshPrompt, names))),
       workspace: request.workspace,
       outputFile: outputFileFor(request.root, request.key, request.step, request.run.activeAttempt),
       sessionFile,

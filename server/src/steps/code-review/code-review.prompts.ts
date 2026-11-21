@@ -2,6 +2,7 @@ import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/def
 import { reviewReport } from '../../agent-result/definitions/review-report';
 import type { CoveredRequirement } from '../../contract/requirement-list';
 import { resultPromptFor } from '../../agent-result/result-prompt';
+import { REVIEW_DIFF_PATH } from './review-diff';
 
 /** The merge request summary prompt for a new chat: the decisions to copy, and the full result text. */
 export function reportFollowUp(
@@ -53,7 +54,7 @@ export function reviewResume(
   const note = (body: string): string => body.trim() || '- nothing recorded';
   const lines = [
     `Continue this ${name} review. This chat is only the ${name} angle.`,
-    'The complete diff is /work/brief/diff.md. Read it, and read the files in the working directory that this angle needs.',
+    `The complete diff is ${REVIEW_DIFF_PATH}. Read it, and read the files in the working directory that this angle needs.`,
     'Do not run tests, a service, a database, or the application. Do not run git.',
     'Implement and implement-improve have run since your last decision. What they did and why:',
     '',
@@ -88,7 +89,7 @@ export function reviewContinue(name: string, received: string | null = reviewDef
   return [
     `Continue this ${name} review. This chat is only the ${name} angle.`,
     'You were interrupted before the decision. Finish this review. Do not start over.',
-    'The complete diff is /work/brief/diff.md.',
+    `The complete diff is ${REVIEW_DIFF_PATH}.`,
     'Do not run tests, a service, a database, or the application. Do not run git.',
     resultPromptFor(reviewDefinition(name), received),
   ].join('\n');

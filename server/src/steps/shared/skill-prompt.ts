@@ -3,6 +3,8 @@ import { join } from 'path';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { NEAR_TESTS_MARK, NEAR_TESTS_RULE } from './near-tests-rule';
+import { alsoReadLine, skillFileReads, STAY_LINE_START } from './outside-reads';
+import type { OutsideRead } from './outside-reads';
 import { requirementsBrief } from './requirements-brief';
 
 /** The name a prompt gives a mounted repository. */
@@ -12,20 +14,22 @@ export function mountLabel(names: string[], mount: SandboxMount, index: number):
     : (names[index] ?? names[0] ?? 'work');
 }
 
-export function workingDirectoryBlock(names: string[], mounts: SandboxMount[]): string {
+export function workingDirectoryBlock(names: string[], mounts: SandboxMount[], reads: OutsideRead[] = []): string {
   const labeled = mounts.map((mount, index) => ({
     name: mountLabel(names, mount, index),
     path: mount.containerPath,
     state: sourceState(mount.hostPath),
   }));
-  const stay = (where: string): string =>
-    `Do not look outside ${where}. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.`;
+  const stay = (where: string): string[] => [
+    ...(reads.length > 0 ? [alsoReadLine(reads)] : []),
+    `${STAY_LINE_START}${where}. Do not open .git. Do not read the home directory, /opt, /proc, transcripts, or CLI files.`,
+  ];
   if (labeled.length === 1) {
     const only = labeled[0];
-    return [`The only working directory is ${only.path} (${only.name}). ${only.state}`, stay('it')].join('\n');
+    return [`The only working directory is ${only.path} (${only.name}). ${only.state}`, ...stay('it')].join('\n');
   }
   const lines = labeled.map((item) => `- ${item.name} at ${item.path}. ${item.state}`);
-  return ['Working directories, and nowhere else:', ...lines, stay('these paths')].join('\n');
+  return ['Working directories, and nowhere else:', ...lines, ...stay('these paths')].join('\n');
 }
 
 export const LOCAL_RUN_RULE =
@@ -101,6 +105,7 @@ export function skillPrompt(
     split?: boolean;
     planTool?: boolean;
     rules?: { heading: string; body: string }[];
+    reads?: OutsideRead[];
   } = {},
 ): string {
   const file = join(__dirname, '../../../../skills', skill, 'SKILL.md');
@@ -110,13 +115,16 @@ export function skillPrompt(
   } catch {
     throw new SwarmloopError(`${skill} skill is missing`);
   }
-  const where =
-    mounts.length > 0
-      ? workingDirectoryBlock(names, mounts)
-      : ['Worktrees:', ...names.map((name) => `- ${name}`)].join('\n');
   // The `## Split` section of a skill is for a run that may split. Any other run reads the text before it.
   const first = text.split(new RegExp(`^${ANSWER_HEADING}$`, 'm'))[0] ?? text;
   const body = options.split ? first : (first.split(/^## Split$/m)[0] ?? first);
+  const reads = [...(options.reads ?? []), ...skillFileReads(body)];
+  const where =
+    mounts.length > 0
+      ? workingDirectoryBlock(names, mounts, reads)
+      : ['Worktrees:', ...names.map((name) => `- ${name}`), ...(reads.length > 0 ? [alsoReadLine(reads)] : [])].join(
+          '\n',
+        );
   const executionRule = options.deferExecutionRules ? '' : LOCAL_RUN_RULE;
   const parts = [
     where,
