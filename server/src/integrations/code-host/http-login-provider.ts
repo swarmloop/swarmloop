@@ -7,6 +7,7 @@ import type {
   AppFlow,
   AppSource,
   Endpoints,
+  Grant,
   Identity,
   LoginFacts,
   LoginProvider,
@@ -85,22 +86,30 @@ export class HttpOAuthProvider implements LoginProvider {
       throw new SwarmloopError(`${this.name} did not accept the login code`);
     }
     const headers = this.endpoints.userHeaders(granted.access_token);
-    const { groups } = this.endpoints;
-    const person = await this.userOf(headers);
-    return {
-      user: text(person[this.endpoints.user.field]),
-      ...(text(person.avatar_url) ? { avatarUrl: text(person.avatar_url) } : {}),
-      groups: names(await this.send(`${this.endpoints.api}${groups.path}`, headers), groups.field),
-      ...(this.connects()
+    return this.identityOf(
+      headers,
+      await this.userOf(headers),
+      this.connects()
         ? {
-            grant: {
-              accessToken: granted.access_token,
-              refreshToken: granted.refresh_token ?? '',
-              expiresIn: granted.expires_in,
-            },
+            accessToken: granted.access_token,
+            refreshToken: granted.refresh_token ?? '',
+            expiresIn: granted.expires_in,
           }
-        : {}),
-    };
+        : undefined,
+    );
+  }
+
+  async identifyToken(token: string): Promise<Identity | null> {
+    const headers = this.endpoints.userHeaders(token);
+    const response = await request(this.clock, `${this.endpoints.api}${this.endpoints.user.path}`, headers, []);
+    if (response.status === 401 || response.status === 403) {
+      return null;
+    }
+    if (response.status >= 400) {
+      throw new SwarmloopError(`${this.name} answered ${response.status}`);
+    }
+    const person = JSON.parse(response.body.toString('utf8')) as Record<string, unknown>;
+    return this.identityOf(headers, person, { accessToken: token, refreshToken: '' });
   }
 
   async tokenOwner(): Promise<string | null> {
@@ -138,6 +147,21 @@ export class HttpOAuthProvider implements LoginProvider {
       throw new SwarmloopError(`${this.name} login is not configured`);
     }
     return app;
+  }
+
+  /** The person the token belongs to, with the orgs or groups they are in. */
+  private async identityOf(
+    headers: Record<string, string>,
+    person: Record<string, unknown>,
+    grant: Grant | undefined,
+  ): Promise<Identity> {
+    const { groups } = this.endpoints;
+    return {
+      user: text(person[this.endpoints.user.field]),
+      ...(text(person.avatar_url) ? { avatarUrl: text(person.avatar_url) } : {}),
+      groups: names(await this.send(`${this.endpoints.api}${groups.path}`, headers), groups.field),
+      ...(grant ? { grant } : {}),
+    };
   }
 
   private async userOf(headers: Record<string, string>): Promise<Record<string, unknown>> {

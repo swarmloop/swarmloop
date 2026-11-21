@@ -13,7 +13,6 @@ import {
   Res,
 } from '@nestjs/common';
 import { AppConfig } from '../config/env';
-import { decide, parseAllow } from './allow-list';
 import { AuthService, type Credentials } from './auth.service';
 import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsService } from './connections.service';
@@ -21,13 +20,15 @@ import { cookieOptions, startState, STATE_COOKIE, type CookieResponse } from './
 import { appFlowRoutes, applicationRoutes, routeHost } from './host-routes';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
-import { problemOf, problemUrl, safeNext, type ProblemBase } from './login-problem';
-import type { MeView } from '../contract/api';
-import { FIRST_RUN_MAKER, takesOverApp } from './first-run-maker';
+import { problemOf, safeNext, type ProblemBase } from './login-problem';
+import type { MeView, ProvidersView } from '../contract/api';
+import { codeHostAdapter, codeHostAdapters, codeHostBaseUrl } from '../integrations/code-host/code-host-adapters';
+import { FIRST_RUN_MAKER } from './first-run-maker';
 import { PeopleService } from './people.service';
 import type { AppFlow, LoginProvider, ManifestForm, ProviderName } from '../integrations/code-host/login-provider';
 import { Public } from './public.decorator';
-import { cookieValue, SESSION_COOKIE, SESSION_DAYS, SessionService, sessionIdOf } from './session.service';
+import { cookieValue, SESSION_COOKIE, SessionService, sessionIdOf } from './session.service';
+import { SignInService } from './sign-in.service';
 
 type Headers = Credentials & { host?: string };
 type FlowProvider = LoginProvider & { appFlow: AppFlow };
@@ -46,6 +47,7 @@ export class AuthController {
     private readonly apps: HostAppsService,
     private readonly repos: CheckoutRepos,
     private readonly people: PeopleService,
+    private readonly signIns: SignInService,
   ) {}
 
   /** `login` is false until the first app is connected: the dashboard then shows the first-run screen. */
@@ -170,8 +172,47 @@ export class AuthController {
   }
 
   @Get('providers')
-  providers(): { providers: string[] } {
-    return { providers: this.auth.configured().map((provider) => provider.name) };
+  providers(): ProvidersView {
+    const { env } = this.config;
+    return {
+      providers: this.auth.configured().map((provider) => provider.name),
+      tokens: codeHostAdapters().flatMap((adapter) =>
+        adapter.signsInWithToken && adapter.tokenPage
+          ? [
+              {
+                provider: adapter.name,
+                base: codeHostBaseUrl(adapter, env).toString().replace(/\/$/, ''),
+                tokenPage: adapter.tokenPage(env),
+              },
+            ]
+          : [],
+      ),
+    };
+  }
+
+  /** Signs in with a personal access token the person made on the host: no application is needed. Open whenever the login is. */
+  @Post(':provider/token')
+  async signInWithToken(
+    @Param('provider') name: string,
+    @Body() body: { token?: string; next?: string },
+    @Req() request: { headers: Headers },
+    @Res({ passthrough: true }) response: CookieResponse,
+  ): Promise<{ url: string }> {
+    const provider = this.anyProvider(name);
+    if (!codeHostAdapter(provider.name)?.signsInWithToken) {
+      throw new NotFoundException(`${name} login is not configured`);
+    }
+    const token = body.token?.trim() ?? '';
+    if (!token) {
+      throw new BadRequestException('token is required');
+    }
+    const identity = await provider.identifyToken(token).catch((error: unknown) => {
+      throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} login failed`);
+    });
+    if (!identity) {
+      throw new BadRequestException(`${provider.label} did not accept this token`);
+    }
+    return { url: await this.signIns.complete(provider, identity, request.headers, response, body.next) };
   }
 
   @Get('me')
@@ -247,55 +288,7 @@ export class AuthController {
       .catch((error: unknown) => {
         throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} login failed`);
       });
-    const { grant } = identity;
-    const push = grant
-      ? async () => {
-          const repos = (await this.repos.list()).filter((repo) => repo.host === provider.name);
-          return provider.canPush(grant.accessToken, repos).catch((error: unknown) => {
-            throw new BadGatewayException(
-              error instanceof Error ? error.message : `${provider.name} push check failed`,
-            );
-          });
-        }
-      : undefined;
-    const first = grant
-      ? async () => this.auth.onThisMachine(headers) && (await this.connections.noneOn(provider.name))
-      : undefined;
-    const verdict = await decide(
-      parseAllow(this.config.env.SWARMLOOP_ALLOW),
-      { provider: provider.name, ...identity },
-      async () =>
-        (await provider.tokenOwner()) ??
-        ((await this.connections.ownsOrFirst(provider.name, identity.user, this.auth.onThisMachine(headers)))
-          ? identity.user
-          : null),
-      push,
-      first,
-    );
-    if (!verdict.allowed) {
-      response.redirect(
-        problemUrl('/login', 'refused', { host: provider.name, account: identity.user, reason: verdict.reason }),
-      );
-      return;
-    }
-    await this.people.seen(identity.user);
-    if (identity.grant) {
-      // The first person to sign in through an app made on this machine is the one who made it.
-      const app = this.apps.find(provider.name);
-      if (app && takesOverApp(app.madeBy) && (await this.connections.noneOn(provider.name))) {
-        await this.apps.save({ ...app, madeBy: identity.user });
-      }
-      await this.connections.connect(provider.name, identity.user, identity.grant).catch((error: unknown) => {
-        throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} connect failed`);
-      });
-    }
-    const session = await this.sessions.create(identity.user, provider.name, identity.avatarUrl);
-    response.cookie(SESSION_COOKIE, session.id, {
-      ...cookieOptions(this.config),
-      path: '/',
-      maxAge: SESSION_DAYS * 24 * 3600 * 1000,
-    });
-    response.redirect(safeNext(pending.next));
+    response.redirect(await this.signIns.complete(provider, identity, headers, response, pending.next));
   }
 
   @Post('logout')

@@ -244,6 +244,7 @@ export const fakeThirdAdapter: CodeHostAdapter = {
   clientEnvKeys: { clientId: 'GITLAB_OAUTH_CLIENT_ID', clientSecret: 'GITLAB_OAUTH_CLIENT_SECRET' },
   keepsTokensWithoutApp: false,
   storesApplication: false,
+  signsInWithToken: false,
   ownerFromActor: false,
   endpoints: (env) => endpointsOf(env[BASE_KEY]),
   login: (env, clock, apps, appFlow) =>

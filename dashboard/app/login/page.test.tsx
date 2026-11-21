@@ -1,13 +1,26 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getInstallUrl, getOwner, getProviders } from '../../lib/endpoints';
+import { ApiError } from '../../lib/api';
+import { getInstallUrl, getOwner, getProviders, signInWithToken } from '../../lib/endpoints';
 import LoginPage from './page';
 
-vi.mock('../../lib/endpoints', () => ({ getProviders: vi.fn(), getInstallUrl: vi.fn(), getOwner: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({
+  getProviders: vi.fn(),
+  getInstallUrl: vi.fn(),
+  getOwner: vi.fn(),
+  signInWithToken: vi.fn(),
+}));
+
+const gitlabToken = {
+  provider: 'gitlab',
+  base: 'https://git.corp.example',
+  tokenPage: 'https://git.corp.example/-/user_settings/personal_access_tokens?name=swarmloop',
+};
 
 beforeEach(() => {
   vi.mocked(getProviders).mockReset();
+  vi.mocked(signInWithToken).mockReset();
   vi.mocked(getInstallUrl).mockReset().mockResolvedValue({ url: 'https://github.com/apps/x/installations/new' });
   vi.mocked(getOwner).mockReset().mockResolvedValue({ owner: 'acme', others: [] });
   window.history.pushState({}, '', '/login');
@@ -15,7 +28,7 @@ beforeEach(() => {
 
 describe('LoginPage', () => {
   it('shows a button only for the configured provider', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['gitlab'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['gitlab'], tokens: [] });
 
     render(<LoginPage />);
 
@@ -27,7 +40,7 @@ describe('LoginPage', () => {
   });
 
   it('shows a button for each of two providers', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github', 'gitlab'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github', 'gitlab'], tokens: [] });
 
     render(<LoginPage />);
 
@@ -39,7 +52,7 @@ describe('LoginPage', () => {
   });
 
   it('says so when no provider is configured', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: [] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [] });
 
     render(<LoginPage />);
 
@@ -50,7 +63,7 @@ describe('LoginPage', () => {
   });
 
   it('shows the install step after the app is made, in place of the login buttons', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [] });
     window.history.pushState({}, '', '/login?install=1');
 
     render(<LoginPage />);
@@ -65,7 +78,7 @@ describe('LoginPage', () => {
   });
 
   it('shows where the app was installed and a Log in button', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [] });
     window.history.pushState({}, '', '/login?installed=acme');
 
     render(<LoginPage />);
@@ -75,7 +88,7 @@ describe('LoginPage', () => {
   });
 
   it('shows Installed when the account is empty', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [] });
     window.history.pushState({}, '', '/login?installed=');
 
     render(<LoginPage />);
@@ -84,7 +97,7 @@ describe('LoginPage', () => {
   });
 
   it('shows the logo', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [] });
 
     const { container } = render(<LoginPage />);
 
@@ -93,7 +106,7 @@ describe('LoginPage', () => {
   });
 
   it('shows the mark of each provider, and a neutral mark with the raw name for an unknown one', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github', 'gitlab', 'forgejo'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github', 'gitlab', 'forgejo'], tokens: [] });
 
     render(<LoginPage />);
 
@@ -119,7 +132,7 @@ describe('LoginPage', () => {
 
   it('loads the providers again on Try again', async () => {
     vi.mocked(getProviders).mockRejectedValueOnce(new Error('api is not reachable'));
-    vi.mocked(getProviders).mockResolvedValueOnce({ providers: ['github'] });
+    vi.mocked(getProviders).mockResolvedValueOnce({ providers: ['github'], tokens: [] });
 
     render(<LoginPage />);
     expect(await screen.findByText('api is not reachable')).toBeInTheDocument();
@@ -143,7 +156,7 @@ describe('LoginPage', () => {
     ['?error=expired', ['The login took too long or started somewhere else. Try again.']],
     ['?error=host&host=gitlab&reason=timeout', ['GitLab did not answer: timeout']],
   ])('shows the text of the login problem %s', async (search, texts) => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [] });
     window.history.pushState({}, '', `/login${search}`);
 
     render(<LoginPage />);
@@ -154,7 +167,7 @@ describe('LoginPage', () => {
   });
 
   it('links a refusal to the sign-out page of the host', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [] });
     window.history.pushState({}, '', '/login?error=refused&host=github&account=bob');
 
     render(<LoginPage />);
@@ -166,7 +179,7 @@ describe('LoginPage', () => {
   });
 
   it('shows the first-run form under one heading when no provider is configured', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: [] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [] });
 
     render(<LoginPage />);
 
@@ -178,7 +191,7 @@ describe('LoginPage', () => {
   });
 
   it('shows a login problem above the first-run form when no provider is configured', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: [] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [] });
     window.history.pushState({}, '', '/login?error=host&host=github&reason=x');
 
     render(<LoginPage />);
@@ -190,7 +203,7 @@ describe('LoginPage', () => {
   });
 
   it('gives the first button focus', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github', 'gitlab'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github', 'gitlab'], tokens: [] });
 
     render(<LoginPage />);
 
@@ -199,7 +212,7 @@ describe('LoginPage', () => {
   });
 
   it('passes next on to the button', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [] });
     window.history.pushState({}, '', '/login?next=%2Fruns%2Fx');
 
     render(<LoginPage />);
@@ -208,5 +221,56 @@ describe('LoginPage', () => {
       'href',
       '/auth/github/login?next=%2Fruns%2Fx',
     );
+  });
+
+  it('offers the token sign-in, once, when no application exists', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [gitlabToken] });
+
+    render(<LoginPage />);
+
+    expect(await screen.findByText('GitLab at https://git.corp.example')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Create a token' })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Create a token' })).toHaveAttribute('href', gitlabToken.tokenPage);
+    expect(screen.getAllByLabelText('Personal access token')).toHaveLength(1);
+  });
+
+  it('shows the token sign-in under the provider buttons', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['gitlab'], tokens: [gitlabToken] });
+
+    render(<LoginPage />);
+
+    expect(await screen.findByRole('link', { name: 'Continue with GitLab' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Personal access token')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in with token' })).toBeInTheDocument();
+  });
+
+  it('posts the token and goes to next', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [gitlabToken] });
+    vi.mocked(signInWithToken).mockResolvedValue({ url: '/runs/x' });
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign, search: '?next=%2Fruns%2Fx' });
+
+    try {
+      render(<LoginPage />);
+      const user = userEvent.setup({ delay: null });
+      await user.type(await screen.findByLabelText('Personal access token'), ' glpat-abc ');
+      await user.click(screen.getByRole('button', { name: 'Sign in with token' }));
+
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/runs/x'));
+      expect(signInWithToken).toHaveBeenCalledWith('gitlab', 'glpat-abc', '/runs/x');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('shows the refusal under the field', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [gitlabToken] });
+    vi.mocked(signInWithToken).mockRejectedValue(new ApiError(400, 'GitLab did not accept this token'));
+
+    render(<LoginPage />);
+    const user = userEvent.setup({ delay: null });
+    await user.type(await screen.findByLabelText('Personal access token'), 'glpat-bad{Enter}');
+
+    expect(await screen.findByText('GitLab did not accept this token')).toBeInTheDocument();
   });
 });

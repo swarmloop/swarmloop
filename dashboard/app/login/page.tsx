@@ -8,7 +8,8 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
-import { FirstRun } from '../../features/connections';
+import type { TokenSignInView } from '@contract/api';
+import { FirstRun, TokenSignIn } from '../../features/connections';
 import { getInstallUrl, getProviders } from '../../lib/endpoints';
 import { hostOf, installHost } from './hosts';
 import { LoginProblemAlert } from './login-problem-alert';
@@ -94,6 +95,17 @@ function ProviderButtons({ providers, next }: { providers: string[]; next: strin
   );
 }
 
+/** A token sign-in for each host that takes one, under the buttons. */
+function TokenSignIns({ tokens, next }: { tokens: TokenSignInView[]; next: string | null }): ReactElement {
+  return (
+    <>
+      {tokens.map((entry) => (
+        <TokenSignIn key={entry.provider} entry={entry} label={hostOf(entry.provider).label} next={next} />
+      ))}
+    </>
+  );
+}
+
 function LoadingButtons(): ReactElement {
   return (
     <>
@@ -105,6 +117,7 @@ function LoadingButtons(): ReactElement {
 
 export default function LoginPage(): ReactElement {
   const [providers, setProviders] = useState<string[] | null>(null);
+  const [tokens, setTokens] = useState<TokenSignInView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [install, setInstall] = useState(false);
   const [installed, setInstalled] = useState<string | null>(null);
@@ -114,7 +127,10 @@ export default function LoginPage(): ReactElement {
     setError(null);
     setProviders(null);
     getProviders().then(
-      (view) => setProviders(view.providers),
+      (view) => {
+        setTokens(view.tokens);
+        setProviders(view.providers);
+      },
       (cause: unknown) => setError(cause instanceof Error ? cause.message : 'api is not reachable'),
     );
   }, []);
@@ -142,7 +158,12 @@ export default function LoginPage(): ReactElement {
   } else if (providers === null) {
     choice = <LoadingButtons />;
   } else {
-    choice = <ProviderButtons providers={providers} next={next} />;
+    choice = (
+      <>
+        <ProviderButtons providers={providers} next={next} />
+        <TokenSignIns tokens={tokens} next={next} />
+      </>
+    );
   }
 
   return (
@@ -163,7 +184,7 @@ export default function LoginPage(): ReactElement {
         {firstRun ? (
           <>
             <LoginProblemAlert />
-            <FirstRun />
+            <FirstRun tokens={tokens} next={next} />
           </>
         ) : (
           <>

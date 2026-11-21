@@ -27,6 +27,7 @@ export const adapter: CodeHostAdapter = {
   clientEnvKeys: { clientId: 'GITHUB_OAUTH_CLIENT_ID', clientSecret: 'GITHUB_OAUTH_CLIENT_SECRET' },
   keepsTokensWithoutApp: false,
   storesApplication: false,
+  signsInWithToken: false,
   appFlow: GithubAppService,
   endpoints: githubEndpoints,
   login: (env, clock, apps, appFlow) =>

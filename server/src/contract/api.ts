@@ -392,6 +392,19 @@ export interface ChatView {
   text: string;
 }
 
+/** A host where a person signs in by pasting a personal access token: where it is made. */
+export interface TokenSignInView {
+  provider: string;
+  base: string;
+  tokenPage: string;
+}
+
+/** `/auth/providers`: the hosts with a login, and the hosts that take a token. */
+export interface ProvidersView {
+  providers: string[];
+  tokens: TokenSignInView[];
+}
+
 /** `/auth/me`: who is signed in. */
 export interface MeView {
   user: string | null;

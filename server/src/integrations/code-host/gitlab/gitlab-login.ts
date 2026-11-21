@@ -4,9 +4,17 @@ import type { Endpoints } from '../login-provider';
 /** What the host calls the app of its login. */
 export const GITLAB_APP_LABEL = 'Application';
 
-export function gitlabEndpoints(env: Pick<SwarmloopEnv, 'GITLAB_BASE_URL'>): Endpoints {
-  const base = new URL(env.GITLAB_BASE_URL || 'https://gitlab.com');
-  const root = base.toString().replace(/\/$/, '');
+type GitlabBase = Pick<SwarmloopEnv, 'GITLAB_BASE_URL'>;
+
+const rootOf = (env: GitlabBase): string =>
+  new URL(env.GITLAB_BASE_URL || 'https://gitlab.com').toString().replace(/\/$/, '');
+
+/** The page where a person makes a personal access token with the name and scopes swarmloop needs. */
+export const gitlabTokenPage = (env: GitlabBase): string =>
+  `${rootOf(env)}/-/user_settings/personal_access_tokens?name=swarmloop&scopes=read_user,api,write_repository`;
+
+export function gitlabEndpoints(env: GitlabBase): Endpoints {
+  const root = rootOf(env);
   return {
     appLabel: GITLAB_APP_LABEL,
     installs: false,

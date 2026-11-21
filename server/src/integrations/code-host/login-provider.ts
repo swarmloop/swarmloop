@@ -94,6 +94,8 @@ export interface LoginProvider {
   authorizeUrl(redirectUri: string, state: string, verifier: string): string;
   /** Trades the code for a token, reads the login and memberships, and drops the token unless the provider connects. An empty verifier means the code was not asked for with PKCE. */
   identify(code: string, redirectUri: string, verifier: string): Promise<Identity>;
+  /** Reads the person from a personal access token, with the token as the grant. Null when the host refuses the token. */
+  identifyToken(token: string): Promise<Identity | null>;
   /** The owner of the configured server token, or null when none is set. */
   tokenOwner(): Promise<string | null>;
   /** True when the token can push to at least one of `repos`. A repository the token cannot see counts as no push. */

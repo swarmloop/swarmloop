@@ -14,6 +14,12 @@ import { startFakeGithub } from './fake-provider.spec-helpers';
 import { redirectOf } from './login-problem.spec-helpers';
 
 const TOKEN = 'machine-secret';
+const GITLAB_TOKENS = {
+  provider: 'gitlab',
+  base: 'https://gitlab.com',
+  tokenPage:
+    'https://gitlab.com/-/user_settings/personal_access_tokens?name=swarmloop&scopes=read_user,api,write_repository',
+};
 
 describe('login and the auth guard', () => {
   let github: Awaited<ReturnType<typeof startFakeGithub>>;
@@ -73,7 +79,10 @@ describe('login and the auth guard', () => {
 
   it('lists only the configured providers', async () => {
     await start('github:ann');
-    expect(await (await fetch(`${app.url}/auth/providers`)).json()).toEqual({ providers: ['github'] });
+    expect(await (await fetch(`${app.url}/auth/providers`)).json()).toEqual({
+      providers: ['github'],
+      tokens: [GITLAB_TOKENS],
+    });
     expect((await fetch(`${app.url}/auth/gitlab/login`, { redirect: 'manual' })).status).toBe(404);
   });
 
@@ -296,7 +305,10 @@ describe('without a login provider', () => {
       // The no-login mode is gone: a browser needs a session even before a login exists, the first admin's token still opens the API.
       expect((await fetch(`${app.url}/runs`)).status).toBe(401);
       expect((await fetch(`${app.url}/runs`, { headers: { authorization: `Bearer ${TOKEN}` } })).status).toBe(200);
-      expect(await (await fetch(`${app.url}/auth/providers`)).json()).toEqual({ providers: [] });
+      expect(await (await fetch(`${app.url}/auth/providers`)).json()).toEqual({
+        providers: [],
+        tokens: [GITLAB_TOKENS],
+      });
     } finally {
       await app.close();
     }

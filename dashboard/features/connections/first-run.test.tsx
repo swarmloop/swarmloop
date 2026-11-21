@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getManifest, getOwner, saveGitlabApplication } from '../../lib/endpoints';
@@ -8,6 +8,7 @@ vi.mock('../../lib/endpoints', () => ({
   getManifest: vi.fn(),
   getOwner: vi.fn(),
   saveGitlabApplication: vi.fn(),
+  signInWithToken: vi.fn(),
 }));
 
 const submit = vi.fn();
@@ -100,5 +101,19 @@ describe('FirstRun', () => {
   it('offers no public option', () => {
     render(<FirstRun />);
     expect(screen.queryByText(/public/i)).not.toBeInTheDocument();
+  });
+
+  it('offers the token sign-in in the GitLab card, after "or", when the server takes one', () => {
+    const gitlab = { provider: 'gitlab', base: 'https://git.corp.example', tokenPage: 'https://git.corp.example/t' };
+    render(<FirstRun tokens={[gitlab]} />);
+    const card = screen.getByRole('form', { name: 'Connect GitLab' });
+    expect(within(card).getByText('or')).toBeInTheDocument();
+    expect(within(card).getByLabelText('Personal access token')).toBeInTheDocument();
+    expect(within(card).getByText('GitLab at https://git.corp.example')).toBeInTheDocument();
+  });
+
+  it('shows no token sign-in when the server offers none', () => {
+    render(<FirstRun />);
+    expect(screen.queryByLabelText('Personal access token')).not.toBeInTheDocument();
   });
 });

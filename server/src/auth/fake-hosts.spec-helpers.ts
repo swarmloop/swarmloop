@@ -19,6 +19,8 @@ export interface FakeHost {
   pushers: Set<string>;
   /** `<login>:<owner>/<name>` of the repositories a person cannot see: the host answers 404. */
   hidden: Set<string>;
+  /** A GitLab personal access token to its login. A `glpat-` token that is not here is refused at `/user`. */
+  personal: Map<string, string>;
   stop(): Promise<void>;
 }
 
@@ -33,6 +35,7 @@ export async function startFakeHosts(): Promise<FakeHost> {
   const revoked = new Set<string>();
   const pushers = new Set<string>();
   const hidden = new Set<string>();
+  const personal = new Map<string, string>();
   const issued = new Map<string, number>();
   const issue = (name: string) => {
     const count = (issued.get(name) ?? 0) + 1;
@@ -52,7 +55,8 @@ export async function startFakeHosts(): Promise<FakeHost> {
       seen.push({ method: request.method ?? 'GET', path, authorization, body });
       const send = (value: unknown, status = 200) =>
         response.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(value));
-      const name = authorization.replace(/^Bearer ghu_/, '').split('_')[0];
+      const bearer = authorization.replace(/^Bearer /, '');
+      const name = personal.get(bearer) ?? authorization.replace(/^Bearer ghu_/, '').split('_')[0];
       if (path.includes('/app-manifests/')) {
         secrets.push('fake-client-secret', '-----BEGIN FAKE KEY-----');
         send(
@@ -75,6 +79,8 @@ export async function startFakeHosts(): Promise<FakeHost> {
         }
       } else if (path === '/api/v3/user') {
         send({ login: name, avatar_url: `https://avatars.test/${name}.png` });
+      } else if (path === '/api/v4/user' && bearer.startsWith('glpat-') && !personal.has(bearer)) {
+        send({ message: '401 Unauthorized' }, 401);
       } else if (path === '/api/v4/user') {
         send({ username: name, avatar_url: `https://avatars.test/${name}.png` });
       } else if (path.startsWith('/api/v4/projects/') && request.method === 'GET') {
@@ -129,6 +135,7 @@ export async function startFakeHosts(): Promise<FakeHost> {
     secrets,
     pushers,
     hidden,
+    personal,
     stop: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }

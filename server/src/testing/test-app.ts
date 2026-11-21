@@ -109,6 +109,8 @@ interface TestAppOptions {
   realHost?: boolean;
   /** Starts the reconciler's timer. Off by default: a test drives its passes itself, one awaited pass at a time. */
   reconcilerTimer?: boolean;
+  /** Defaults to true: `test-admin` is seen first, so the first admin exists. False leaves the people empty, for a spec of the first person. */
+  seedAdmin?: boolean;
   /** The app removes the root when it closes. Defaults to true for a root it made. */
   ownsRoot?: boolean;
 }
@@ -132,6 +134,11 @@ export interface TestApp {
   close(): Promise<void>;
   /** A restart: this app stops and a new one starts on the same root and database. The new app owns the root. */
   restart(): Promise<TestApp>;
+}
+
+/** The first admin exists unless the spec is about the first person to sign in. */
+async function seedAdmin(people: PeopleService, login: string, seed = true): Promise<void> {
+  if (seed) await people.seen(login);
 }
 
 export async function createTestApp(options: TestAppOptions = {}): Promise<TestApp> {
@@ -272,7 +279,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
 
   const people = app.get(PeopleService);
   const admin = 'test-admin';
-  await people.seen(admin);
+  await seedAdmin(people, admin, options.seedAdmin);
 
   return {
     app,
