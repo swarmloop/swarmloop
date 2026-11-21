@@ -1,3 +1,5 @@
+import type { StateReason } from '../contract/run-state';
+
 export const CHAT_LOCK = 'chat_lock';
 
 const PID_LOCK = /^(waiting|blocked|failed|done) (\d+)$/;
@@ -9,31 +11,56 @@ interface ChatLock {
   pid?: number;
   container?: string;
   since?: number;
+  /** The stored reason the hold took. Left out of a body written without one. */
+  reason?: StateReason;
 }
 
-export function chatLockBody(status: string, pid: number): string {
-  return `${status} ${pid}\n`;
+function reasonLine(reason: StateReason | null | undefined): string {
+  return reason ? `${JSON.stringify(reason)}\n` : '';
 }
 
-export function containerLockBody(status: string, container: string, now: number): string {
-  return `${status} container ${container} ${now}\n`;
+export function chatLockBody(status: string, pid: number, reason?: StateReason | null): string {
+  return `${status} ${pid}\n${reasonLine(reason)}`;
+}
+
+export function containerLockBody(status: string, container: string, now: number, reason?: StateReason | null): string {
+  return `${status} container ${container} ${now}\n${reasonLine(reason)}`;
+}
+
+function readReason(line: string | undefined): StateReason | undefined {
+  if (!line?.trim()) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(line) as StateReason;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The change that gives a run back what a lock took: its status and its stored reason. */
+export function lockRelease(lock: ChatLock): { status: string; reason: StateReason | null } {
+  return { status: lock.status, reason: lock.reason ?? null };
 }
 
 export function readChatLock(body: string | null | undefined): ChatLock | null {
-  const text = (body ?? '').trim();
+  const [first, second] = (body ?? '').trim().split('\n');
+  const text = first.trim();
+  const reason = readReason(second);
   const container = CONTAINER_LOCK.exec(text);
   if (container) {
     const parsed: ChatLock = { status: container[1], container: container[2] };
     if (container[3] !== undefined) {
       parsed.since = Number(container[3]);
     }
-    return parsed;
+    return reason ? { ...parsed, reason } : parsed;
   }
   const pid = PID_LOCK.exec(text);
   if (!pid) {
     return null;
   }
-  return { status: pid[1], pid: Number(pid[2]) };
+  const parsed: ChatLock = { status: pid[1], pid: Number(pid[2]) };
+  return reason ? { ...parsed, reason } : parsed;
 }
 
 function ownerAlive(pid: number | null): boolean {

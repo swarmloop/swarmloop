@@ -24,13 +24,13 @@ import { DiskGuard } from './disk-guard';
 import { dockerWait } from '../steps/step-error-end';
 import { cooldownKeys } from '../steps/shared/limit-failover';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
+import { CHAT_LOCK, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { RunSettler, relaunchKey, type RelaunchDecision } from './run-settler';
 import { StallWatch } from './stall-watch';
 import { SubtaskPort } from './subtask-port';
-import { settleShell } from './shell-lock';
+import { settleChat, settleShell } from './shell-lock';
 
 export { silentMessage } from './run-settler';
 
@@ -363,12 +363,7 @@ export class Reconciler implements OnModuleDestroy {
       return;
     }
     if (this.ownedHere(run, lock?.pid)) return;
-    const resume = chatResume(body, run.ownerPid);
-    if (resume) {
-      await this.runs.release(run, { status: resume });
-      await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
-      return;
-    }
+    if (await settleChat(this.runs, this.documents, run, body)) return;
     if (await this.settler.settleRebase(run)) return;
     const deadAttempt = run.activeAttempt;
     const decision = await this.settler.settleAttempt(run, this.slept, () => this.relaunchDecision(run, deadAttempt));
