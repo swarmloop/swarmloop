@@ -6,7 +6,7 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { baseBranch, originRef } from '../../git/base-ref';
 import { originUrl } from '../../git/git';
 import { commitResult, deliveredResult, undeliveredResult } from './commit-result';
-import { unchangedOutcome } from './commit-delivered';
+import { unchangedOutcome, type BranchOnOrigin } from './commit-delivered';
 import { gitAt, status, Tree } from './commit-git';
 import { checkedRepoNames } from '../../git/repo-names';
 import { RunStop } from '../../agent/run-stop';
@@ -67,7 +67,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     if (!phases.includes('ci') && !again) {
       const body = await this.preview(trees, branch, named);
       if (body === null) {
-        return this.unchanged(opened);
+        return this.unchanged(opened, trees, branch, named);
       }
       return commitResult('waiting', `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
@@ -75,7 +75,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     const rerun = planned.length === 0 && (await this.reader.newer(key, ARTIFACTS.ciRerun, ARTIFACTS.commit));
     if (!rerun && planned.length === 0) {
       if (!(await this.hasWork(trees, named))) {
-        return this.unchanged(opened);
+        return this.unchanged(opened, trees, branch, named);
       }
       if (!(await this.somethingToPush(trees, branch, named))) {
         if (await this.publishedHead(trees, branch)) {
@@ -83,7 +83,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
           await this.publisher.stampRefs(opened.run, trees);
           return commitResult('ok', `${opened.startedAt} commit done\n${label}`);
         }
-        return this.unchanged(opened);
+        return this.unchanged(opened, trees, branch, named);
       }
     }
     assertNotStopped(this.runStop, key);
@@ -157,8 +157,19 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
   }
 
   /** Nothing to commit is not an error: the task is already delivered, or the run goes back to implement. */
-  private async unchanged(opened: OpenedStep): Promise<StepResult> {
-    const outcome = await unchangedOutcome(this.kernel.documents, opened.run.key);
+  private async unchanged(
+    opened: OpenedStep,
+    trees: Tree[],
+    branch: (repo: string) => string,
+    named: string | null,
+  ): Promise<StepResult> {
+    const hosts = await this.publisher.hostsFor(opened.run);
+    const branches: BranchOnOrigin[] = [];
+    for (const tree of trees) {
+      const base = (await this.baseRev(tree, named)) ?? (await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'));
+      branches.push({ tree, branch: branch(tree.repo), base, hosts });
+    }
+    const outcome = await unchangedOutcome(this.kernel.documents, opened.run.key, branches);
     return 'delivered' in outcome
       ? deliveredResult(opened.startedAt, outcome.delivered)
       : undeliveredResult(opened.startedAt, outcome.issues);
