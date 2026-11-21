@@ -4,6 +4,7 @@ import { listBacklogs } from '../../lib/backlog-endpoints';
 import { listRuns } from '../../lib/endpoints';
 import { proposedMilestoneBacklog } from '../../test/backlog-fixtures';
 import { failedRun, questionRun, subtaskRun } from '../../test/overview-fixtures';
+import { ERROR_CODES } from '@contract/error-codes';
 import { listRunsFrom } from '../../test/runs-page';
 import { NeedsYou } from './index';
 import { PartsWrapper } from './test-wrapper.spec-helpers';
@@ -34,6 +35,14 @@ describe('NeedsYou', () => {
     load([failedRun('bad-1')]);
     render(<NeedsYou />, { wrapper: PartsWrapper });
     expect(await screen.findByRole('link', { name: 'Resume' })).toHaveAttribute('href', '/runs/bad-1');
+    expect(screen.queryByRole('link', { name: 'Answer' })).not.toBeInTheDocument();
+  });
+
+  it('shows a run waiting on a git sign-in problem with its Resume button to the run', async () => {
+    load([questionRun('auth', { stateReason: { code: ERROR_CODES.GIT_AUTH, message: 'git sign-in failed' } })]);
+    render(<NeedsYou />, { wrapper: PartsWrapper });
+    expect(await screen.findByRole('link', { name: 'Resume' })).toHaveAttribute('href', '/runs/auth');
+    expect(screen.getAllByText('Title of auth')).toHaveLength(1);
     expect(screen.queryByRole('link', { name: 'Answer' })).not.toBeInTheDocument();
   });
 

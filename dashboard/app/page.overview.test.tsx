@@ -174,12 +174,8 @@ describe('Overview page', () => {
     expect(screen.queryByText('First-pass rate')).not.toBeInTheDocument();
   });
 
-  it('uses at most three text sizes', async () => {
-    load(manyRuns());
-    renderPage();
-    await screen.findByText('Title of done-0');
-    await screen.findByText('Everything is ready');
-    // Icon titles are tooltips, not text on the page. jsdom does not inherit, so a size comes from the nearest ancestor that sets one.
+  /** Every size that text on the page has. Icon titles are tooltips, not text on the page. jsdom does not inherit, so a size comes from the nearest ancestor that sets one. */
+  function textSizes(): string[] {
     const sizeOf = (element: HTMLElement | null): string =>
       element === null ? '' : getComputedStyle(element).fontSize || sizeOf(element.parentElement);
     const sizes = new Set<string>();
@@ -188,6 +184,70 @@ describe('Overview page', () => {
         sizes.add(sizeOf(element));
       }
     }
-    expect([...sizes].sort()).toEqual(['0.75rem', '0.875rem', '40px']);
+    return [...sizes].sort();
+  }
+
+  it('uses at most three text sizes', async () => {
+    load(manyRuns());
+    renderPage();
+    await screen.findByText('Title of done-0');
+    await screen.findByText('Everything is ready');
+    expect(textSizes()).toEqual(['0.75rem', '0.875rem', '40px']);
+  });
+
+  it.each([
+    ['with a warning', 'warn', 'Ready, with warnings'],
+    ['with a failure', 'fail', 'A run cannot start yet'],
+  ] as const)('uses at most three text sizes %s', async (_name, status, title) => {
+    load(manyRuns());
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [{ id: 'docker', status, line: 'docker is not running', action: 'start Docker' }],
+      checkedAt: null,
+    });
+    renderPage();
+    await screen.findByText('Title of done-0');
+    await screen.findByText(title);
+    expect(textSizes()).toEqual(['0.75rem', '0.875rem', '40px']);
+  });
+
+  it('reads the runs once per live change for all three parts', async () => {
+    const rows = [questionRun('ask-0'), workingRun('work-0'), mergedRun('done-0')];
+    const served: string[] = [];
+    vi.mocked(listRuns).mockImplementation((query) => {
+      if (query.cursor === undefined) {
+        served.push(query.part);
+      }
+      return listRunsFrom(rows)(query);
+    });
+    renderPage();
+    await screen.findByText('Title of done-0');
+    const count = (part: string): number => served.filter((name) => name === part).length;
+    const before = { active: count('active'), done: count('done') };
+
+    const changed = rows.map((row) =>
+      row.key === 'work-0' ? { ...row, title: 'Changed work', status: 'done' as const } : row,
+    );
+    act(() => receive('runs', runsPage(changed, { part: 'active' })));
+
+    await vi.waitFor(() => expect(count('done')).toBe(before.done + 1));
+    expect(count('active')).toBe(before.active + 1);
+    expect(served).toHaveLength(before.active + before.done + 2);
+  });
+
+  it('keeps the rows the parts showed when the read after a live change fails', async () => {
+    load(manyRuns());
+    renderPage();
+    await screen.findByText('Title of done-0');
+    vi.mocked(listRuns).mockRejectedValue(new Error('down'));
+    // The query cache tells its components through a timer, so the failed read settles under fake time.
+    vi.useFakeTimers();
+    try {
+      act(() => receive('runs', runsPage([workingRun('work-0', { status: 'done' })], { part: 'active' })));
+      await act(() => vi.advanceTimersByTimeAsync(10));
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(screen.queryByText('Could not load what got done.')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Title of done-0').length).toBeGreaterThan(0);
   });
 });

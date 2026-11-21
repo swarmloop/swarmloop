@@ -66,6 +66,12 @@ describe('NowSection', () => {
     expect(screen.queryByText('Title of held-1')).not.toBeInTheDocument();
   });
 
+  it('shows a working backlog run outside a milestone', async () => {
+    load([workingRun('loose', { backlog: { name: 'shop', milestone: null } })]);
+    render(<NowSection />, { wrapper: PartsWrapper });
+    expect((await screen.findByText('Title of loose')).closest('a')).toHaveAttribute('href', '/runs/loose');
+  });
+
   it('links to the run list and says nothing runs when nothing works', async () => {
     load([questionRun('ask-1')]);
     render(<NowSection />, { wrapper: PartsWrapper });

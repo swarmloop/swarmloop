@@ -31,18 +31,21 @@ function runCard(run: RunSummary, button: string): Card {
   return { id: run.key, title: run.title, detail: runWord(run).word, button, href: runHref(run.key) };
 }
 
-/** What waits for a person: questions first, then failures, then milestones that ask to run. */
+/**
+ * What waits for a person: questions first, then runs that wait for a person in another way or failed or blocked
+ * (Resume), then milestones that ask to run. A run makes one card.
+ */
 export function NeedsYou(): ReactElement | null {
   const runs = useOverviewRuns();
   const { backlogs, loaded, error } = useBacklogs();
   const state = sectionState(runs, { loaded, failed: error !== null });
   const { tops } = nested(runs.active);
-  const isQuestion = (run: RunSummary): boolean =>
-    needsPerson(run.state, run.stateReason) && run.stateReason?.code === NEEDS_ANSWERS;
+  const waits = (run: RunSummary): boolean => needsPerson(run.state, run.stateReason);
+  const isQuestion = (run: RunSummary): boolean => waits(run) && run.stateReason?.code === NEEDS_ANSWERS;
   const cards: Card[] = [
     ...tops.filter(isQuestion).map((run) => runCard(run, 'Answer')),
     ...tops
-      .filter((run) => !isQuestion(run) && (run.state === 'failed' || run.state === 'blocked'))
+      .filter((run) => !isQuestion(run) && (waits(run) || run.state === 'failed' || run.state === 'blocked'))
       .map((run) => runCard(run, 'Resume')),
     ...backlogs.flatMap((backlog) =>
       backlog.milestones
@@ -76,7 +79,7 @@ export function NeedsYou(): ReactElement | null {
                 border: 1,
                 borderColor: 'divider',
                 borderRadius: 1,
-                p: 1.5,
+                p: 1,
                 display: 'flex',
                 gap: 1,
                 alignItems: 'center',

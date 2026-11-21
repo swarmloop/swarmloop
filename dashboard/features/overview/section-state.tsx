@@ -18,7 +18,7 @@ export function sectionState(...sources: Source[]): SectionState {
   return sources.every((source) => source.loaded) ? 'ready' : 'loading';
 }
 
-export const CARD_GRID_SX = { display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' };
+export const CARD_GRID_SX = { display: 'grid', gap: 1, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' };
 
 /** Grey shapes in the place of the cards or lines that come. */
 export function Placeholders({

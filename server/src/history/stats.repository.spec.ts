@@ -147,6 +147,62 @@ describe('StatsRepository', () => {
     }
   });
 
+  it('reads the latest plan chat of a run created before the range that got a message inside it', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const data = db.app.get(DataSource);
+      const [old] = await data.getRepository(RunEntity).save([run('old', '2026-10-01T00:00:00.000Z')]);
+      await data.getRepository(CommandEntity).save({
+        id: 'chat',
+        runId: old.id,
+        type: 'plan-chat',
+        payload: '{}',
+        actor: 'ada',
+        state: 'done',
+        createdAt: '2026-11-05T00:00:00.000Z',
+        updatedAt: '2026-11-05T00:00:00.000Z',
+      });
+      await data.getRepository(DocumentEntity).save({
+        runId: old.id,
+        stepStatId: 0,
+        kind: 'plan_chat',
+        attempt: 1,
+        body: 'latest',
+        path: 'p',
+        createdAt: '2026-11-05T00:00:00.000Z',
+      });
+
+      const { person } = await db.app.get(StatsRepository).rows('2026-11-01T00:00:00.000Z');
+
+      expect(person.planChats).toEqual(['latest']);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('reads no document of a run that did not change inside the range', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const data = db.app.get(DataSource);
+      const [old] = await data.getRepository(RunEntity).save([run('old', '2026-10-01T00:00:00.000Z')]);
+      await data.getRepository(DocumentEntity).save({
+        runId: old.id,
+        stepStatId: 0,
+        kind: 'plan_chat',
+        attempt: 1,
+        body: 'unread',
+        path: 'p',
+        createdAt: '2026-11-05T00:00:00.000Z',
+      });
+
+      const { person } = await db.app.get(StatsRepository).rows('2026-11-01T00:00:00.000Z');
+
+      expect(person.planChats).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('reads the server stalls from the start of the range, all when there is none, also without runs', async () => {
     const db = await repositoryDatabase();
     try {
