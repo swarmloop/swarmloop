@@ -139,6 +139,7 @@ export async function resetHard(
   hosts: RebaseHosts,
   journal: RebaseJournal,
   target: ResetTarget,
+  tree?: string,
 ): Promise<void> {
   const entry = await journal.entry(repo);
   const rev = entry?.[target];
@@ -158,6 +159,16 @@ export async function resetHard(
     await gitStdin(cwd, repo, hosts, ['update-index', '--no-assume-unchanged', '-z', '--stdin'], raw);
   }
   await gitAt(cwd, repo, ['reset', '--hard', rev], 'rebase failed', hosts);
+  if (tree === undefined) {
+    return;
+  }
+  const head = await gitAt(cwd, repo, ['rev-parse', 'HEAD'], 'rebase failed', hosts);
+  const headTree = await gitAt(cwd, repo, ['rev-parse', 'HEAD^{tree}'], 'rebase failed', hosts);
+  if (head !== rev || headTree !== tree) {
+    throw new SwarmloopError(
+      `${repo} rebase failed: the squash ${rev} is not what the worktree would move to (${head}); the old head is ${entry.oldHead}`,
+    );
+  }
 }
 
 export async function readRebaseState(cwd: string, repo: string): Promise<RebaseState | null> {

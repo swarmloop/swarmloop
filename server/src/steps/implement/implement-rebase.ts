@@ -6,6 +6,7 @@ import type { ModelStepContext } from '../agent-step';
 import { git, gitDetail } from '../../git/git';
 import { type RebaseStop, completeRebase, parkedConflict, rebaseFeatureRepos, unmergedPaths } from '../../git/rebase';
 import { forRepo, type PerRepo } from '../../git/per-repo';
+import { withWorktrees } from '../../git/worktree-lock';
 import { mountsForStep, worktreePath } from '../../git/repo-names';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { runJournal } from '../shared/rebase-journal';
@@ -50,17 +51,16 @@ export async function settleRebase(
     },
   };
   const mounts = mountsForStep(root(deps.config), key, names, ctx.opened.run.targetPath);
-  let outcome: RebaseStop | null = null;
-  for (const repo of names) {
-    const parked = await parkedConflict(worktreePath(root(deps.config), key, repo), repo, ctx.opened.run.prompt);
-    if (parked) {
-      outcome = parked;
-      break;
+  const paths = names.map((repo) => worktreePath(root(deps.config), key, repo));
+  let outcome: RebaseStop = await withWorktrees(paths, async () => {
+    for (const repo of names) {
+      const parked = await parkedConflict(worktreePath(root(deps.config), key, repo), repo, ctx.opened.run.prompt);
+      if (parked) {
+        return parked;
+      }
     }
-  }
-  if (!outcome) {
-    outcome = await rebaseFeatureRepos(input);
-  }
+    return rebaseFeatureRepos(input);
+  });
   const seen = new Set<string>();
   while (outcome.kind === 'conflict') {
     if (!outcome.stderr.trim() && storedStderr) {
@@ -99,22 +99,28 @@ export async function settleRebase(
     });
     await ctx.write(ARTIFACTS.rebaseResolutionResult, resolved.resultValue as RebaseResolutionResult);
     const cwd = worktreePath(root(deps.config), key, outcome.repo);
-    const still = await unmergedPaths(cwd);
-    if (still.length > 0) {
-      try {
-        await git(['-C', cwd, 'add', '--', ...still]);
-      } catch (error) {
-        throw new SwarmloopError(`${outcome.repo} rebase failed: ${gitDetail(error)}`);
+    const { repo } = outcome;
+    outcome = await withWorktrees(paths, async () => {
+      const still = await unmergedPaths(cwd);
+      if (still.length > 0) {
+        try {
+          await git(['-C', cwd, 'add', '--', ...still]);
+        } catch (error) {
+          throw new SwarmloopError(`${repo} rebase failed: ${gitDetail(error)}`);
+        }
       }
-    }
-    outcome = await rebaseFeatureRepos(input);
+      return rebaseFeatureRepos(input);
+    });
   }
-  await deps.environments.refreshAfterRebase(ctx.opened.run, mounts, bases);
-  await completeRebase(input.journal);
+  await withWorktrees(paths, async () => {
+    await deps.environments.refreshAfterRebase(ctx.opened.run, mounts, bases);
+    await completeRebase(input.journal, key);
+  });
   if (marker === 'pending-implement') {
     await ctx.write(ARTIFACTS.rebaseConflict, 'review\n');
     return null;
   }
-  await deps.publisher.publishRebased(key, branch, outcome.leases);
+  const { leases } = outcome;
+  await withWorktrees(paths, () => deps.publisher.publishRebased(key, branch, leases));
   return resolvedResult(deps, ctx, mounts, '- resolved the rebase\n');
 }

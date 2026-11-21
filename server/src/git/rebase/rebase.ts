@@ -17,6 +17,7 @@ import { atOrPast, fingerprintOf, protectRef } from './journal';
 import type { JournalEntry, RebaseJournal } from './journal';
 import { gitAt, gitRawAt, rebaseStderr } from './workflow';
 import { forRepo } from '../per-repo';
+import { withWorktree } from '../worktree-lock';
 
 /** Set while a conflict rebase still has to be resolved, then reviewed on the new diff. */
 export const REBASE_CONFLICT = 'rebase_conflict';
@@ -34,20 +35,23 @@ export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<Rebase
     const entry = stored[repo];
     const branch = forRepo(input.branch, repo);
     const tip = entry ? entry.expectedRemoteTip : await publishedTip(cwd, branch);
-    const outcome = await rebaseFeatureRepo({
-      cwd,
-      repo,
-      branch,
-      prompt: input.prompt,
-      denied: input.denied,
-      message: forRepo(input.message, repo),
-      author: input.author,
-      hosts: input.hosts,
-      journal: input.journal,
-      tip,
-      entry,
-      onBase: input.onBase,
-    });
+    const outcome = await withWorktree(cwd, () =>
+      rebaseFeatureRepo({
+        cwd,
+        repo,
+        key: input.key,
+        branch,
+        prompt: input.prompt,
+        denied: input.denied,
+        message: forRepo(input.message, repo),
+        author: input.author,
+        hosts: input.hosts,
+        journal: input.journal,
+        tip,
+        entry,
+        onBase: input.onBase,
+      }),
+    );
     if (outcome) {
       return outcome;
     }
@@ -79,6 +83,7 @@ export async function parkedConflict(cwd: string, repo: string, prompt: string |
 async function rebaseFeatureRepo(input: {
   cwd: string;
   repo: string;
+  key: string;
   branch: string;
   prompt: string | null;
   denied: string[];

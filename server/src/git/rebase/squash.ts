@@ -2,7 +2,7 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
 import { git, gitDetail, gitMissing, gitStderr, type CommitAuthor, type CommitIdentity } from '../git';
 import type { RebaseHosts, RebaseStop } from './types';
-import type { RebaseJournal } from './journal';
+import { squashRefFor, type RebaseJournal } from './journal';
 import { cloneArgs, cloneAuthor, cloneSource, cloneUnmerged, indexDirty } from './clone-index';
 import { landConflict, resetHard } from './conflict';
 import { gitAt, rebaseStderr } from './workflow';
@@ -11,6 +11,7 @@ export async function squashOffMount(input: {
   cwd: string;
   tmp: string;
   repo: string;
+  key: string;
   branch: string;
   prompt: string | null;
   denied: string[];
@@ -50,16 +51,31 @@ export async function squashOffMount(input: {
   } catch (error) {
     throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(gitStderr(error), input.hosts)}`);
   }
+  const made = await git(cloneArgs(input.tmp, ['rev-parse', 'HEAD']));
+  const madeTree = await git(cloneArgs(input.tmp, ['rev-parse', 'HEAD^{tree}']));
+  const squashRef = squashRefFor(input.key);
+  await gitAt(input.cwd, input.repo, ['update-ref', '-d', squashRef], 'rebase failed', input.hosts);
   await gitAt(
     input.cwd,
     input.repo,
-    ['-c', 'safe.directory=*', 'fetch', input.tmp, 'HEAD'],
+    ['-c', 'safe.directory=*', 'fetch', '--no-write-fetch-head', input.tmp, `HEAD:${squashRef}`],
     'rebase failed',
     input.hosts,
   );
-  const squashSha = await gitAt(input.cwd, input.repo, ['rev-parse', 'FETCH_HEAD'], 'rebase failed', input.hosts);
-  await input.journal.advance(input.repo, 'applying', { squashSha });
-  await resetHard(input.cwd, input.repo, input.hosts, input.journal, 'squashSha');
+  const found = await gitAt(
+    input.cwd,
+    input.repo,
+    ['rev-parse', '--verify', `${squashRef}^{commit}`],
+    'rebase failed',
+    input.hosts,
+  );
+  if (found !== made) {
+    throw new SwarmloopError(
+      `${input.repo} rebase failed: the squash ${made} is not what the worktree would move to (${found})`,
+    );
+  }
+  await input.journal.advance(input.repo, 'applying', { squashSha: made });
+  await resetHard(input.cwd, input.repo, input.hosts, input.journal, 'squashSha', madeTree);
   return null;
 }
 
