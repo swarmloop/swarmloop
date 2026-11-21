@@ -70,7 +70,7 @@ describe('rebase journal', () => {
     await journal.put('demo', await entryFor(tree, branch, { checkpoint: 'applied' }));
     await journal.put('web', await entryFor(tree, branch, { checkpoint: 'conflict' }));
     expect(unfinished(await journal.read())).toBe(true);
-    await completeRebase(journal);
+    await completeRebase(journal, 'run-key');
     const stored = parseJournal(JSON.stringify(await journal.read()));
     expect(stored.demo?.checkpoint).toBe('completed');
     expect(stored.web?.checkpoint).toBe('conflict');

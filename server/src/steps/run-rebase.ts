@@ -12,6 +12,7 @@ import { RunAuthor } from './shared/run-author';
 import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
 import { sameOwnDiff } from '../git/rebase/own-diff';
 import { git } from '../git/git';
+import { withWorktrees } from '../git/worktree-lock';
 import { isSubtask } from '../contract/subtask';
 import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { mountsForStep, repoNames, worktreePath } from '../git/repo-names';
@@ -66,23 +67,26 @@ export class RunRebase {
       await this.runs.bumpGeneration(key);
     }
     const journal = runJournal(this.documents, await this.requireRun(key));
-    let stop: Awaited<ReturnType<typeof rebaseFeatureRepos>>;
     const bases = new Map<string, string>();
-    const heads = status === 'done' ? await this.heads(run) : new Map<string, string>();
-    try {
-      stop = await this.rebaseWorktrees(run, bases, journal);
-      const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
-      await this.environments.refreshAfterRebase(
-        run,
-        mountsForStep(root(this.config), run.key, names, run.targetPath),
-        bases,
-      );
-      await completeRebase(journal);
-    } catch (error) {
-      if (error instanceof HostUnavailable) throw error;
-      const message = error instanceof SwarmloopError ? error.message : 'rebase failed';
-      throw new ConflictException(message);
-    }
+    const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
+    const paths = this.worktreePaths(run, names);
+    const { heads, stop } = await withWorktrees(paths, async () => {
+      const heads = status === 'done' ? await this.heads(run) : new Map<string, string>();
+      try {
+        const stop = await this.rebaseWorktrees(run, bases, journal);
+        await this.environments.refreshAfterRebase(
+          run,
+          mountsForStep(root(this.config), run.key, names, run.targetPath),
+          bases,
+        );
+        await completeRebase(journal, run.key);
+        return { heads, stop };
+      } catch (error) {
+        if (error instanceof HostUnavailable) throw error;
+        const message = error instanceof SwarmloopError ? error.message : 'rebase failed';
+        throw new ConflictException(message);
+      }
+    });
     if (stop.kind === 'conflict') {
       const unfinished = await this.checklistUnfinished(run);
       await this.documents.putDocument(
@@ -98,7 +102,8 @@ export class RunRebase {
     }
     if (status === 'done') {
       await this.documents.putDocument(await this.requireRun(key), ARTIFACTS.rebaseMergeSkip.kind, 'skip\n');
-      return (await this.reviewStands(run, heads, bases)) ? this.startAtChecks(run) : this.startAtReview(key);
+      const stands = await withWorktrees(paths, () => this.reviewStands(run, heads, bases));
+      return stands ? this.startAtChecks(run) : this.startAtReview(key);
     }
     // Every review and CI result of the old generation is stale: a step that reads them goes back through code-review.
     return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
@@ -129,6 +134,10 @@ export class RunRebase {
       (child) => child.status === 'running' || this.runs.held(child),
     );
     if (working) throw new ConflictException(ERROR_CODES.SUBTASKS_RUNNING);
+  }
+
+  private worktreePaths(run: RunEntity, names: string[]): string[] {
+    return names.map((repo) => worktreePath(root(this.config), run.key, repo));
   }
 
   /** The head of every worktree of the run, before a rebase moves it. */

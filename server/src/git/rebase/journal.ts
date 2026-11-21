@@ -60,6 +60,11 @@ export function protectRef(branch: string): string {
   return `refs/swarmloop/pre-rebase/${branch}`;
 }
 
+/** The ref that carries one run's squash from the clone into its worktree. */
+export function squashRefFor(key: string): string {
+  return `refs/swarmloop/squash/${key}`;
+}
+
 export function fingerprintOf(path: string): Promise<string> {
   return worktreeFingerprint([{ hostPath: path, containerPath: '/work' }]);
 }
@@ -115,7 +120,7 @@ export class RebaseJournal {
 }
 
 /** The environment is refreshed: each repo that applied is checked on its branch and completes. A repo in conflict stays. */
-export async function completeRebase(journal: RebaseJournal): Promise<void> {
+export async function completeRebase(journal: RebaseJournal, key: string): Promise<void> {
   for (const [repo, entry] of Object.entries(await journal.read())) {
     if (!atOrPast(entry, 'applied') || entry.checkpoint === 'completed') {
       continue;
@@ -126,5 +131,7 @@ export async function completeRebase(journal: RebaseJournal): Promise<void> {
     }
     await journal.advance(repo, 'verified');
     await journal.advance(repo, 'completed');
+    // A missing ref is fine: `update-ref -d` succeeds when there is none.
+    await git(['-C', entry.path, 'update-ref', '-d', squashRefFor(key)]);
   }
 }
