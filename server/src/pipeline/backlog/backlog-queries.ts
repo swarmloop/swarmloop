@@ -45,19 +45,39 @@ export class BacklogQueries {
         milestone: numberOf(requirement.milestoneId) as number,
         text: requirement.text,
         status: requirement.status,
+        closedBy: this.closedBy(requirement, tasks),
       })),
       tasks: tasks.map((task) => ({
         slug: task.slug,
         title: task.title,
+        description: task.description,
+        covers: task.covers,
+        depends: task.depends,
         milestone: numberOf(task.milestoneId),
         status: task.status,
         note: task.note,
         runKey: task.runKey,
+        waitsForOk:
+          task.runKey !== null &&
+          task.status === 'green' &&
+          !task.mergeOk &&
+          (backlog.mergeMode === 'ok' || task.manual),
         repositories: task.repositories,
         merged: task.merged,
       })),
       decisions: decisions.map(({ text, who, createdAt }) => ({ text, who, at: createdAt })),
       events: events.map(({ kind, facts, createdAt }) => ({ kind, facts: shownFacts(facts), at: createdAt })),
     };
+  }
+
+  /** The merged tasks that cover a closed requirement, in task order; a hand close has none. */
+  private closedBy(
+    requirement: { ref: string; status: string },
+    tasks: { slug: string; status: string; covers: string[] }[],
+  ): string[] {
+    if (requirement.status !== 'closed') return [];
+    return tasks
+      .filter((task) => task.status === 'merged' && task.covers.includes(requirement.ref))
+      .map((task) => task.slug);
   }
 }

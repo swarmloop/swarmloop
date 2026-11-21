@@ -8,6 +8,8 @@ import { backlogPlanAgents } from '../../../config/agents';
 import { AppConfig } from '../../../config/env';
 import { effortFields } from '../../../contract/effort';
 import { RuntimeLimit, SwarmloopError } from '../../../core/swarmloop-error';
+import { AttachmentStore } from '../../../history/attachment-store';
+import { backlogMessageKey } from '../../../history/backlog-message-key';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import type { BacklogRecord, BacklogTurnRecord } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
@@ -73,6 +75,7 @@ export class BacklogTurnRunner {
     private readonly actions: PlannerTurnActions,
     private readonly config: AppConfig,
     private readonly runStop: RunStop,
+    private readonly attachments: AttachmentStore,
   ) {}
 
   /** A launch that ends on a usage limit of every agent is not a failure: the outcome says when to try again. */
@@ -83,6 +86,7 @@ export class BacklogTurnRunner {
     this.runStop.clear(turnKey);
     const space = await this.workspace.open(backlog, turnKey);
     try {
+      await this.copyFiles(backlog.id as number, turnKey);
       const prompt = await this.prompt.build(backlogName, turnKey, space.mounts, space.names);
       const value = await this.launch(backlog, turnKey, prompt, space);
       await this.actions.apply(backlogName, turnKey, value);
@@ -100,6 +104,13 @@ export class BacklogTurnRunner {
         );
       });
     }
+  }
+
+  /** The files of the person's messages this turn took, copied into the turn's own folder so the planner finds them read only. */
+  private async copyFiles(backlogId: number, turnKey: string): Promise<void> {
+    const { messages } = await this.chat.itemsOfTurn(turnKey);
+    const names = new Set(messages.flatMap((message) => message.attachments.map((file) => file.name)));
+    if (names.size > 0) await this.attachments.copy(backlogMessageKey(backlogId), turnKey, [...names]);
   }
 
   private async launch(

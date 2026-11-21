@@ -1,6 +1,10 @@
 import 'reflect-metadata';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { attachmentsMount } from '../agent/agent-args';
+import { AppConfig } from '../config/env';
+import { AttachmentStore } from '../history/attachment-store';
+import { attachmentsDir } from '../history/run-paths';
 import { BacklogChatService } from '../api/backlog-chat.service';
 import { BacklogChatRepository } from '../history/backlog-chat.repository';
 import { BacklogRepository } from '../history/backlog.repository';
@@ -41,18 +45,33 @@ const TASKS = [
 describe('a backlog of two repositories is planned, run and accepted through the planner', () => {
   let flow: Awaited<ReturnType<typeof createFlowHarness>>;
   let project: string;
+  /** What each planner turn was launched with: its prompt, and the files mount its sandbox gets. */
+  let launches: { prompt: string; mount: ReturnType<typeof attachmentsMount> }[];
 
   beforeEach(async () => {
+    launches = [];
+    const blocks = scriptedBacklogTurns({
+      title: 'Ship the shop',
+      goal: 'Customers can order.',
+      requirements: ['Orders can be placed', 'Orders can be listed'],
+      tasks: TASKS,
+    });
+    const scripted = blocks.run.bind(blocks);
+    blocks.run = (input) => {
+      if (input.step === 'backlog-plan') {
+        const config = flow.app.app.get(AppConfig);
+        launches.push({
+          prompt: input.prompt ?? '',
+          mount: attachmentsMount(attachmentsDir(config, input.runKey ?? '')),
+        });
+      }
+      return scripted(input);
+    };
     flow = await createFlowHarness(KEY, {
       env: { CHECKOUTS_ROOT: '.', ...FAKE_MODEL_KEY },
       realImplement: false,
       realReview: false,
-      blocks: scriptedBacklogTurns({
-        title: 'Ship the shop',
-        goal: 'Customers can order.',
-        requirements: ['Orders can be placed', 'Orders can be listed'],
-        tasks: TASKS,
-      }),
+      blocks,
     });
     // The two checkouts share one origin, which the fake host reads and merges in.
     const url = `file://${join(flow.app.root, 'demo.git')}`;
@@ -155,5 +174,22 @@ describe('a backlog of two repositories is planned, run and accepted through the
     expect(accepted?.via).toBe('the planner');
     expect(records.filter((facts) => facts.via === 'the planner').map((facts) => facts.action)).toContain('add tasks');
     expect(await flow.app.app.get(BacklogChatRepository).turnsByStatus(['failed'])).toEqual([]);
+  });
+
+  it('gives a file sent with a message to the next planner turn, read only', async () => {
+    const { actions } = flow.backlog();
+    await actions.createBacklog(OWNER, { name: BACKLOG, repositories: REPOSITORIES, mergeMode: 'green' });
+    const file = await flow.app.app.get(AttachmentStore).stage('mockup.png', Buffer.from('png'));
+    const chat = flow.app.app.get(BacklogChatService);
+
+    const sent = await chat.post(OWNER, BACKLOG, 'Plan the shop like this mockup.', 'with-file', [file.id]);
+    await flow.app.app.get(BacklogPlanner).whenIdle();
+
+    expect(sent.messages[0].attachments).toEqual([file]);
+    expect((await chat.chat(BACKLOG)).messages[0].attachments).toEqual([file]);
+    expect(launches).toHaveLength(1);
+    expect(launches[0].prompt).toContain('Attachments:');
+    expect(launches[0].prompt).toContain('mockup.png');
+    expect(launches[0].mount).toMatchObject({ containerPath: '/work/brief/attachments', readonly: true });
   });
 });

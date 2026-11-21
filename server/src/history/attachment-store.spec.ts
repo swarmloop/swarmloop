@@ -20,6 +20,21 @@ function setup() {
 }
 
 describe('AttachmentStore', () => {
+  it('copies named files into another key with the same names, replaces an earlier copy and keeps the source', async () => {
+    const { store, config } = setup();
+    const one = await store.stage('a.txt', Buffer.from('one'));
+    await store.stage('b.txt', Buffer.from('other'));
+    await store.claim('messages', [one.id]);
+    await store.copy('messages', 'turn-1', ['a.txt']);
+    const target = attachmentsDir(config, 'turn-1');
+    expect(store.names('turn-1')).toEqual(['a.txt']);
+    expect(statSync(join(target, 'a.txt')).mode & 0o777).toBe(0o644);
+    expect(readFileSync(join(target, 'a.txt'), 'utf8')).toBe('one');
+    await store.copy('messages', 'turn-1', ['a.txt']);
+    expect(store.names('turn-1')).toEqual(['a.txt']);
+    expect(store.names('messages')).toEqual(['a.txt']);
+  });
+
   it('stages a file under a clean name and answers its id, name and size', async () => {
     const { store, config } = setup();
     const ref = await store.stage('my notes (1).txt', Buffer.from('hello'));

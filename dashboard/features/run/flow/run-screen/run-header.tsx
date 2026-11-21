@@ -14,6 +14,7 @@ import Chip from '@mui/material/Chip';
 import MuiLink from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import { BacklogLabel } from '../../../../components/ui/backlog-label';
 import { ConfirmDialog } from '../../../shell';
 import { etaText } from '../../../../lib/eta-words';
 import { duration, money, tokens, when } from '../../../../lib/format';
@@ -128,6 +129,7 @@ export function RunHeader({
             <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: 13 }} color="text.secondary">
               {flow.key}
             </Typography>
+            {flow.backlog ? <BacklogLabel label={flow.backlog} /> : null}
             {flow.startedBy ? (
               <Typography variant="body2" color="text.secondary">
                 Started by {personLabel(flow.startedBy)}

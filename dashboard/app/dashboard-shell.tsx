@@ -6,17 +6,20 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import AddIcon from '@mui/icons-material/Add';
+import MenuIcon from '@mui/icons-material/Menu';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
+import IconButton from '@mui/material/IconButton';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
+import { BacklogList, usePhone } from '../features/backlogs';
 import { NewRunDialog } from '../features/new-run';
 import { ReadinessStatus, useReadiness } from '../features/readiness';
 import { RemoveRunDialog, RunColumn, useRuns } from '../features/runs';
-import { Account, PauseBanner, Shell, useNewRun } from '../features/shell';
+import { Account, MainNav, PauseBanner, Shell, useNewRun } from '../features/shell';
 import { hostOf } from './login/hosts';
 
 const DrawerWidth = 280;
@@ -36,6 +39,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }): Rea
   );
 }
 
+function decodePart(part: string): string {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
+}
+
 function DashboardFrame({
   children,
   open,
@@ -53,12 +64,13 @@ function DashboardFrame({
   const { blocker } = useReadiness();
   const [pendingRemove, setPendingRemove] = useState<{ run: RunSummary; search: string } | null>(null);
   const matched = pathname.match(/^\/runs\/([^/]+)/)?.[1] ?? '';
-  let selected = matched;
-  try {
-    selected = decodeURIComponent(matched);
-  } catch {
-    selected = matched;
-  }
+  const selected = decodePart(matched);
+
+  const onBacklogs = /^\/backlogs(\/|$)/.test(pathname);
+  // The phone layout applies on the backlogs paths only; the runs pages keep their drawer at every width.
+  const phone = usePhone() && onBacklogs;
+  const [listOpen, setListOpen] = useState(false);
+  const backlogSelected = decodePart(pathname.match(/^\/backlogs\/([^/]+)/)?.[1] ?? '');
 
   async function confirmRemove(): Promise<void> {
     if (!pendingRemove) {
@@ -83,7 +95,12 @@ function DashboardFrame({
         }}
       >
         <Toolbar>
-          <Box sx={{ flexGrow: 1 }}>
+          {phone ? (
+            <IconButton edge="start" aria-label="Open the list of backlogs" onClick={() => setListOpen(true)}>
+              <MenuIcon />
+            </IconButton>
+          ) : null}
+          <Box>
             <Box
               component={Link}
               href="/"
@@ -104,6 +121,8 @@ function DashboardFrame({
               </Typography>
             </Box>
           </Box>
+          <MainNav />
+          <Box sx={{ flexGrow: 1 }} />
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mr: 2 }}>
             <Box
               component="span"
@@ -128,7 +147,9 @@ function DashboardFrame({
         </Toolbar>
       </AppBar>
       <Drawer
-        variant="permanent"
+        variant={phone ? 'temporary' : 'permanent'}
+        open={phone ? listOpen : undefined}
+        onClose={() => setListOpen(false)}
         sx={{
           width: DrawerWidth,
           flexShrink: 0,
@@ -145,29 +166,33 @@ function DashboardFrame({
       >
         <Toolbar />
         <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <Suspense fallback={null}>
-            <RunColumn
-              runs={runs}
-              counts={counts}
-              otherMatches={otherMatches}
-              next={next}
-              onLoadMore={loadMore}
-              listing={listing}
-              selected={selected}
-              now={now}
-              loaded={loaded}
-              error={error}
-              onRetry={retry}
-              onOpen={(key, search) => router.push(`/runs/${key}${search}` as Route)}
-              onRemove={(run, search) => setPendingRemove({ run, search })}
-            />
-          </Suspense>
+          {onBacklogs ? (
+            <BacklogList selected={backlogSelected} onPick={() => setListOpen(false)} />
+          ) : (
+            <Suspense fallback={null}>
+              <RunColumn
+                runs={runs}
+                counts={counts}
+                otherMatches={otherMatches}
+                next={next}
+                onLoadMore={loadMore}
+                listing={listing}
+                selected={selected}
+                now={now}
+                loaded={loaded}
+                error={error}
+                onRetry={retry}
+                onOpen={(key, search) => router.push(`/runs/${key}${search}` as Route)}
+                onRemove={(run, search) => setPendingRemove({ run, search })}
+              />
+            </Suspense>
+          )}
         </Box>
         <Box sx={{ borderTop: 1, borderColor: 'divider' }}>
           <Account hostOf={hostOf} needsAttention={blocker !== null} />
         </Box>
       </Drawer>
-      <Box component="main" sx={{ ml: `${DrawerWidth}px`, minHeight: '100vh', minWidth: 0 }}>
+      <Box component="main" sx={{ ml: phone ? 0 : `${DrawerWidth}px`, minHeight: '100vh', minWidth: 0 }}>
         <Toolbar />
         <PauseBanner />
         <Box sx={{ px: { xs: 2, md: 4 }, py: 3, maxWidth: 1180, minWidth: 0 }}>{children}</Box>

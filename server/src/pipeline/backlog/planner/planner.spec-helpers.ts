@@ -24,7 +24,7 @@ export async function plannerDatabase() {
       return saved.id as number;
     },
     async addMessage(backlogId: number, text: string, key = `message:${text}`): Promise<boolean> {
-      return (await chat.addPersonMessage(backlogId, text, key)) !== null;
+      return (await chat.addPersonMessage(backlogId, text, key, [])) !== null;
     },
     addEvent(
       backlogId: number,

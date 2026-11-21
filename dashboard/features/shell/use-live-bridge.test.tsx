@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { emitted, fakeSocket, receive } from '../../test/fake-socket';
 import { flowView, runSummary } from '../../test/fixtures';
 import { runsPage } from '../../test/runs-page';
-import { LiveBridgeProvider, useLiveActions, useLiveBridge } from './use-live-bridge';
+import { LiveBridgeProvider, useBacklogStamp, useLiveActions, useLiveBridge } from './use-live-bridge';
 import type { RunSummary } from '@contract/api';
 
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
@@ -13,7 +13,10 @@ let watch: (key: string | null) => void = () => undefined;
 let setList: (runs: RunSummary[]) => void = () => undefined;
 
 function Probe() {
-  const { runs, loaded, flow, logs, events, connected, paused, statusStamp } = useLiveBridge((snapshot) => snapshot);
+  const { runs, loaded, flow, logs, events, connected, paused, statusStamp, backlogStamps } = useLiveBridge(
+    (snapshot) => snapshot,
+  );
+  const shopStamp = useBacklogStamp('shop');
   const { watchRun, setRuns } = useLiveActions();
   useEffect(() => {
     watch = watchRun;
@@ -24,6 +27,8 @@ function Probe() {
       <p>{connected ? 'live' : 'offline'}</p>
       <p>{paused ? 'paused' : 'running'}</p>
       <p>stamp {statusStamp}</p>
+      <p>backlogs {JSON.stringify(backlogStamps)}</p>
+      <p>shop stamp {shopStamp}</p>
       <p>{loaded ? 'loaded' : 'not loaded'}</p>
       {runs.map((run) => (
         <p key={run.key}>{run.name}</p>
@@ -129,7 +134,7 @@ describe('useLiveBridge', () => {
 
     unmount();
 
-    for (const event of ['connect', 'disconnect', 'runs', 'run', 'flow', 'log']) {
+    for (const event of ['connect', 'disconnect', 'runs', 'run', 'flow', 'log', 'backlog']) {
       expect(fakeSocket.listenerCount(event)).toBe(0);
     }
   });
@@ -191,5 +196,29 @@ describe('useLiveBridge', () => {
 
     act(() => receive('events', { key: 'r1', step: 'implement', seq: 4 }));
     expect(screen.getByText('events 4')).toBeInTheDocument();
+  });
+
+  it('moves the stamp of one backlog on a backlog event and on a run row with its label', () => {
+    const counts = { active: 1, done: 0, all: 1 };
+    const labelled = (name: string) => ({ ...runSummary(), backlog: { name, milestone: 3 } });
+    render(<Probe />, { wrapper: LiveBridgeProvider });
+    expect(screen.getByText('backlogs {}')).toBeInTheDocument();
+
+    act(() => receive('backlog', { backlog: 'shop' }));
+    expect(screen.getByText('backlogs {"shop":1}')).toBeInTheDocument();
+    expect(screen.getByText('shop stamp 1')).toBeInTheDocument();
+
+    act(() => receive('run', { rows: [labelled('api')], removed: [], counts }));
+    expect(screen.getByText('backlogs {"shop":1,"api":1}')).toBeInTheDocument();
+
+    // The same row sent again, as a cost tick does, moves nothing.
+    act(() => receive('run', { rows: [labelled('api')], removed: [], counts }));
+    expect(screen.getByText('backlogs {"shop":1,"api":1}')).toBeInTheDocument();
+
+    act(() => receive('run', { rows: [{ ...labelled('api'), status: 'done' }], removed: [], counts }));
+    expect(screen.getByText('backlogs {"shop":1,"api":2}')).toBeInTheDocument();
+
+    act(() => receive('run', { rows: [runSummary()], removed: [], counts }));
+    expect(screen.getByText('backlogs {"shop":1,"api":2}')).toBeInTheDocument();
   });
 });

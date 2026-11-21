@@ -257,4 +257,17 @@ describe('RunHeader', () => {
 
     expect(screen.getByText('waits for you')).toBeInTheDocument();
   });
+
+  it('shows the backlog label as a link to the backlog, and none without a backlog', () => {
+    const { unmount } = render(
+      <RunHeader {...headerProps()} flow={flowView({ backlog: { name: 'swarmloop', milestone: 3 } })} />,
+    );
+    const link = screen.getByRole('link', { name: 'Open backlog swarmloop' });
+    expect(link).toHaveTextContent('swarmloop · M3');
+    expect(link).toHaveAttribute('href', '/backlogs/swarmloop');
+    unmount();
+
+    render(<RunHeader {...headerProps()} flow={flowView()} />);
+    expect(screen.queryByRole('link', { name: /Open backlog/ })).not.toBeInTheDocument();
+  });
 });
