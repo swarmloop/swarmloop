@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getBacklog, getBacklogChat, listBacklogs } from '../../lib/backlog-endpoints';
+import { getBacklog, getBacklogChat, getRepositoryMain, listBacklogs } from '../../lib/backlog-endpoints';
 import { getSession } from '../../lib/endpoints';
 import { backlogChatView, backlogView } from '../../test/backlog-fixtures';
 import { QueryWrapper } from '../../test/query-wrapper';
@@ -16,6 +16,7 @@ vi.mock('../../lib/backlog-endpoints', () => ({
   getBacklogChat: vi.fn(),
   listBacklogs: vi.fn(),
   createBacklog: vi.fn(),
+  getRepositoryMain: vi.fn(),
 }));
 vi.mock('../../lib/endpoints', () => ({ getSession: vi.fn(), listProjects: vi.fn(), listRemote: vi.fn() }));
 vi.mock('../shell', () => ({ useLiveBridge: () => 0 }));
@@ -23,6 +24,7 @@ vi.mock('../shell', () => ({ useLiveBridge: () => 0 }));
 beforeEach(() => {
   replace.mockReset();
   vi.mocked(getBacklog).mockResolvedValue(backlogView());
+  vi.mocked(getRepositoryMain).mockRejectedValue(new Error('offline'));
   vi.mocked(getBacklogChat).mockResolvedValue(backlogChatView());
   vi.mocked(getSession).mockResolvedValue({ user: 'ada' });
 });
