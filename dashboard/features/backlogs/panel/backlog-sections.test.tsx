@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { taskStateWord } from '@contract/run-state';
+import { localTime } from '../../../lib/format';
 import { runBacklog, runMilestone } from '../../../lib/backlog-endpoints';
 import { backlogChatView, backlogView, milestone, requirement, task } from '../../../test/backlog-fixtures';
 import { BacklogSections } from './backlog-sections';
@@ -28,6 +30,12 @@ const view = backlogView({
 
 function sections(login: string | null, shown = view): void {
   render(<BacklogSections view={shown} chat={backlogChatView()} login={login} onView={vi.fn()} onChat={vi.fn()} />);
+}
+
+async function inProposed(shown: ReturnType<typeof task>): Promise<void> {
+  sections('ada', { ...view, tasks: [shown] });
+  await userEvent.click(screen.getByRole('button', { name: 'Planned milestones (2)' }));
+  await userEvent.click(screen.getByRole('button', { name: 'M4 · Shipping' }));
 }
 
 beforeEach(() => {
@@ -82,6 +90,34 @@ describe('BacklogSections', () => {
     sections('ada', backlogView());
 
     expect(screen.queryByRole('button', { name: 'Run backlog' })).not.toBeInTheDocument();
+  });
+
+  it('marks a task whose run waits for answers with the run word and keeps the link to the run', async () => {
+    const run = { state: 'waiting' as const, stateReason: { code: 'NEEDS_ANSWERS', message: 'Open questions' } };
+    await inProposed(task({ title: 'Asks', milestone: 4, runKey: 'run-1', run }));
+
+    expect(screen.getByText('Waiting for you')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open run Asks' })).toHaveAttribute('href', '/runs/run-1');
+  });
+
+  it("shows the run's own word for a task whose run is blocked", async () => {
+    const run = { state: 'blocked' as const, stateReason: { code: 'loop-limit', message: 'Looped' } };
+    const { word } = taskStateWord({ status: 'running', run }, localTime);
+    const today = taskStateWord({ status: 'running' }, localTime).word;
+    await inProposed(task({ title: 'Stuck', milestone: 4, runKey: 'run-1', run }));
+
+    expect(word).not.toBe(today);
+    expect(screen.getByText(word)).toBeInTheDocument();
+  });
+
+  it("keeps today's word for a task whose run is working", async () => {
+    const run = { state: 'running' as const, stateReason: null };
+    const { word } = taskStateWord({ status: 'running' }, localTime);
+    await inProposed(task({ title: 'Busy', milestone: 4, runKey: 'run-1', run }));
+
+    const row = within(screen.getByText('Busy').closest('li') as HTMLElement);
+    expect(row.getAllByText(word).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Waiting for you')).not.toBeInTheDocument();
   });
 
   it('shows a refusal', async () => {

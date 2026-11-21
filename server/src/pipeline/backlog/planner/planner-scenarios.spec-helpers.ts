@@ -28,9 +28,9 @@ export const turnResult = (say: string, ...actions: BacklogTurnAction[]): Backlo
 /** The planner's apply path over a real database and a fake port that records what it is asked to send. */
 export async function plannerHarness() {
   const db = await plannerDatabase();
-  const queries = new BacklogQueries(db.backlogs);
-  const support = new BacklogActionSupport(db.backlogs, db.clock);
   const runs = db.app.get(RunRepository);
+  const queries = new BacklogQueries(db.backlogs, runs);
+  const support = new BacklogActionSupport(db.backlogs, db.clock);
   const commands = { submit: async () => ({ value: undefined, receipt: {} }) } as unknown as CommandService;
   const taskActions = new BacklogTaskActions(db.backlogs, queries, runs, commands, db.clock, support);
   const config = new AppConfig(testEnv({ SWARMLOOP_ROOT: db.root }));

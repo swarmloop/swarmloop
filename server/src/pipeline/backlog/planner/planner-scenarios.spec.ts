@@ -208,7 +208,7 @@ describe('planner scenarios: scripted turn results', () => {
       await harness.task(backlogId, milestoneId, 'going', { runKey: 'going-1', status: 'running' });
       await harness.run('going-1', { status: 'blocked', facts: { blockCode: 'loop-limit' } });
       await harness.turns.apply('alpha', 'turn-1', turnResult('Trying again.', { action: 'resume', run: 'going-1' }));
-      const shown = (await new BacklogQueries(harness.backlogs).view('alpha')).events;
+      const shown = (await new BacklogQueries(harness.backlogs, harness.runs).view('alpha')).events;
       const resumed = shown.find((event) => event.facts.action === 'resume run');
       expect(resumed?.facts).toEqual({
         action: 'resume run',
