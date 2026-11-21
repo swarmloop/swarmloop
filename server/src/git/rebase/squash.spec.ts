@@ -6,6 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { featureWorktree, git } from '../../testing/runs.spec-helpers';
+import { git as gitAsync } from '../git';
 import { withWorktree } from '../worktree-lock';
 import { rebaseFeatureRepos } from '.';
 import { completeRebase } from './journal';
@@ -149,7 +150,7 @@ describe('squash from the clone', () => {
     expect(git(run.tree, ['for-each-ref', ref])).toBe('');
   });
 
-  it('starts no git in the worktree while another operation holds it', async () => {
+  it('starts no git in the worktree while another operation holds the worktree', async () => {
     const run = await setup('proj-f117-e');
     process.env.SWARMLOOP_ROOT = run.root;
     const real = squash.publishedTip;
@@ -163,19 +164,16 @@ describe('squash from the clone', () => {
       return tip;
     });
     const gitCalls = jest.spyOn(workflow, 'gitAt');
-    let release = (): void => undefined;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
+    let gitStartedWhileHeld = -1;
+    const held = withWorktree(run.tree, async () => {
+      await arrived;
+      for (let step = 0; step < 6; step += 1) {
+        await gitAsync(['-C', run.tree, 'rev-parse', 'HEAD']);
+      }
+      gitStartedWhileHeld = gitCalls.mock.calls.length;
     });
-    const held = withWorktree(run.tree, () => gate);
-    const rebased = run.rebase();
-    await arrived;
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(gitCalls).not.toHaveBeenCalled();
-    release();
-    await held;
-    await rebased;
-    expect(gitCalls).toHaveBeenCalled();
-    expect(git(run.tree, ['rev-parse', 'HEAD^'])).toBe(run.base);
+    await Promise.all([held, run.rebase()]);
+    expect(gitStartedWhileHeld).toBe(0);
+    expect((await run.journal.entry('demo'))?.oldHead).toBe(run.oldHead);
   });
 });
