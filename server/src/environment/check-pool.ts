@@ -8,12 +8,16 @@ import type { CheckCommandEntity } from '../history/entities';
 import type { LiveHub } from '../live/live.hub';
 import type { CheckedRepo, EnvironmentInput } from './environment-types';
 import { CheckSlots } from './check-slots';
+import { CheckCapacity } from './check-capacity';
+import type { CpuSlice } from '../sandbox/sandbox-types';
 import { liveSamples, runShell, type ShellDeps } from './run-shell';
 
 const GB = 1024 ** 3;
 
 interface CheckPoolDeps {
   checksParallel: () => number;
+  /** Reads the cores Docker has, so the places that fit are known before a command takes one. */
+  readCores?: () => Promise<{ cpus: number } | undefined>;
   clock: Clock;
   documents: Pick<DocumentRepository, 'putDocument'>;
   commands: Pick<CheckCommandRepository, 'save'>;
@@ -53,12 +57,13 @@ export async function runOnceMore(
   mount: CheckedRepo['mount'],
   check?: { index: number; file: string; name?: string },
   place?: number,
+  cpuSlice?: CpuSlice | null,
 ): Promise<Awaited<ReturnType<typeof runShell>>> {
-  const first = await runShell(deps, input, launch, command, mount, 'checks', check, undefined, place);
+  const first = await runShell(deps, input, launch, command, mount, 'checks', check, undefined, place, cpuSlice);
   if (first.outOfMemoryBytes === undefined) {
     return first;
   }
-  return runShell(deps, input, launch, command, mount, 'checks', check, undefined, place);
+  return runShell(deps, input, launch, command, mount, 'checks', check, undefined, place, cpuSlice);
 }
 
 /** A Stop took check commands out of the line before they started: the checks did not run. */
@@ -71,9 +76,11 @@ export class ChecksStopped extends SwarmloopError {
 /** Runs the check commands of every repository, and runs a command that ran out of memory once more. */
 export class CheckPool {
   private readonly slots: CheckSlots;
+  private readonly capacity: CheckCapacity;
 
   constructor(private readonly deps: CheckPoolDeps) {
-    this.slots = new CheckSlots(deps.checksParallel, deps.halted);
+    this.capacity = new CheckCapacity(deps.checksParallel, deps.readCores);
+    this.slots = new CheckSlots(() => this.capacity.places(), deps.halted);
   }
 
   /** Takes the waiting commands of a run out of the line, so they never start. */
@@ -85,21 +92,24 @@ export class CheckPool {
   async withPlace<T>(
     input: EnvironmentInput,
     onAhead: (ahead: number) => void,
-    fn: (place: number) => Promise<T>,
+    fn: (place: number, cpuSlice?: CpuSlice | null) => Promise<T>,
   ): Promise<T | null> {
-    const taken = await this.slots.take(input.key, onAhead);
-    if (!taken) {
-      return null;
-    }
     try {
-      return await fn(taken.place);
+      if (this.deps.readCores) await this.capacity.enter();
+      const taken = await this.slots.take(input.key, onAhead);
+      if (!taken) return null;
+      try {
+        return await fn(taken.place, this.capacity.slice(taken.place));
+      } finally {
+        taken.release();
+      }
     } finally {
-      taken.release();
+      if (this.deps.readCores) this.capacity.leave();
     }
   }
 
   /**
-   * Runs the commands of every repository in the one line of CHECKS_PARALLEL places of the whole server. Waits for all
+   * Runs the commands of every repository in the one line of places of the whole server: the checks that fit on the cores, at most CHECKS_PARALLEL. Waits for all
    * of them, then throws the first error, or ChecksStopped when a Stop took a command out of the line.
    */
   async runAll(input: EnvironmentInput, attemptId: string, repos: CheckedRepo[]): Promise<void> {
@@ -137,7 +147,7 @@ export class CheckPool {
     return this.withPlace(
       input,
       (ahead) => this.waiting(input, row, ahead),
-      (place) => this.runInPlace(input, attemptId, repo, row, place),
+      (place, cpuSlice) => this.runInPlace(input, attemptId, repo, row, place, cpuSlice),
     );
   }
 
@@ -157,6 +167,7 @@ export class CheckPool {
     repo: CheckedRepo,
     row: CheckCommandEntity,
     place: number,
+    cpuSlice?: CpuSlice | null,
   ): Promise<CheckResult> {
     const { clock, shell } = this.deps;
     await this.mark(input, row, { status: 'running', startedAt: clock.iso() });
@@ -175,6 +186,7 @@ export class CheckPool {
           file: checkOutputPath(shell().root, input.key, input.step, attemptId, row.commandIndex),
         },
         place,
+        cpuSlice,
       );
     } catch (error) {
       await this.mark(input, row, { status: 'failed', endedAt: clock.iso() });

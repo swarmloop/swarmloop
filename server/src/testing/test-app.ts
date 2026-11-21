@@ -206,6 +206,8 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     })
     .overrideProvider(SandboxService)
     .useValue({
+      machine: () => Promise.resolve(undefined),
+      knownMachine: () => undefined,
       assertReady: () => Promise.resolve(),
       kill: () => Promise.resolve(),
       attemptRunning: () => Promise.resolve(false),

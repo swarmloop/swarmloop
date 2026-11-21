@@ -4,7 +4,6 @@ import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { AppConfig, splitList } from '../config/env';
-import { readDefaultSettings } from '../config/load-env';
 import { rawEnv } from '../config/process-env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { Clock, SystemClock } from '../core/clock';
@@ -13,7 +12,6 @@ import { barrier } from '../core/barrier';
 import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
-import type { CpuSlice } from './sandbox-types';
 import {
   emptyEnvFile,
   EnvMask,
@@ -33,12 +31,10 @@ import { withEgress } from './egress-launch';
 import { projectGitMount } from './project-git';
 import { collectEnvMasks, ensureMaskFile } from './env-masks';
 import { defaultDocker } from './default-docker';
-import { readDockerMachine } from './docker-machine';
 import type { DockerMachine } from './docker-machine';
 import { RunningWork } from './running-work';
 import { ContainerStats } from './container-stats';
-import { memoryCapOf } from './memory-cap';
-import { CoreTurns } from './core-slices';
+import { MachineLimits } from './machine-limits';
 import { ContainerGate } from './container-gate';
 import { MetadataRemoval } from './metadata-removal';
 import { OwnMounts } from './own-mounts';
@@ -61,8 +57,7 @@ export class SandboxService implements OnModuleDestroy {
   private readonly ownMounts = new OwnMounts(() => this.docker);
   private ownership = new SandboxOwnership();
   private egressProxy: Egress | null = null;
-  private machineInfo: DockerMachine | undefined;
-  private readonly coreTurns = new CoreTurns();
+  private readonly limits: MachineLimits;
 
   readonly gate: ContainerGate;
   readonly work: RunningWork;
@@ -77,6 +72,7 @@ export class SandboxService implements OnModuleDestroy {
   ) {
     this.gate = gate ?? new ContainerGate(config);
     this.work = work ?? new RunningWork();
+    this.limits = new MachineLimits(() => this.docker, config);
     this.containerStats = new ContainerStats((args) => this.docker(args), this.work, clock ?? new SystemClock());
   }
 
@@ -87,7 +83,7 @@ export class SandboxService implements OnModuleDestroy {
   useDocker(docker: DockerRunner): void {
     this.docker = docker;
     this.egressProxy = null;
-    this.machineInfo = undefined;
+    this.limits.forget();
   }
 
   /** Replaces the hand-over of a mounted tree to the sandbox user. */
@@ -101,28 +97,13 @@ export class SandboxService implements OnModuleDestroy {
   }
 
   /** Docker's CPUs and memory. Only an answer is kept, so an outage is tried again. */
-  async machine(): Promise<DockerMachine | undefined> {
-    this.machineInfo ??= await readDockerMachine((args, timeoutMs) => this.docker(args, timeoutMs));
-    return this.machineInfo;
+  machine(): Promise<DockerMachine | undefined> {
+    return this.limits.machine();
   }
 
   /** The kept answer of `machine()`; no docker call. */
   knownMachine(): DockerMachine | undefined {
-    return this.machineInfo;
-  }
-
-  /** Docker's memory less the reserve, the same for every container. */
-  private async containerCap(): Promise<number | undefined> {
-    return memoryCapOf(
-      await this.machine(),
-      (this.config?.env.RESERVE_MEMORY_GB ?? Number(readDefaultSettings().RESERVE_MEMORY_GB)) * 1024 ** 3,
-    );
-  }
-
-  /** The cores a project container may use, from the cores Docker has and the places of the checks. */
-  private coreSlice(given: Pick<SandboxLaunch, 'project' | 'checkPlace'>): CpuSlice | undefined {
-    const places = this.config?.env.CHECKS_PARALLEL ?? Number(readDefaultSettings().CHECKS_PARALLEL);
-    return this.coreTurns.sliceFor(this.knownMachine(), places, given);
+    return this.limits.knownMachine();
   }
 
   /** The egress proxy all sandboxes go out through. SANDBOX_EGRESS=open turns it off. */
@@ -182,7 +163,7 @@ export class SandboxService implements OnModuleDestroy {
       this.metadataRemoval.remove(metadata.map((mount) => mount.hostPath));
     };
     try {
-      const memoryCapBytes = await this.containerCap();
+      const memoryCapBytes = await this.limits.containerCap();
       if (given.project && given.statePath) {
         prepareStateDir(given.statePath, given.userId);
         const directory = join(dirname(given.statePath), 'git-metadata');
@@ -191,7 +172,7 @@ export class SandboxService implements OnModuleDestroy {
           metadata.push(...(await projectGitMount(mount, directory)));
         }
       }
-      const cpuSlice = this.coreSlice(given);
+      const cpuSlice = given.cpuSlice !== undefined ? (given.cpuSlice ?? undefined) : this.limits.coreSlice(given);
       const prepared = { ...given, mounts: [...given.mounts, ...metadata], memoryCapBytes, cpuSlice };
       const acquired = egress ? await withEgress(egress, prepared) : { launch: prepared, release: () => undefined };
       release = acquired.release;

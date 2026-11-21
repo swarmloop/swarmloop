@@ -1,3 +1,4 @@
+import { checksAtOnce } from '../sandbox/core-slices';
 import { CheckSlots } from './check-slots';
 
 describe('CheckSlots', () => {
@@ -26,6 +27,17 @@ describe('CheckSlots', () => {
     taken[1]?.release();
     taken[1]?.release();
     expect((await waiting)?.place).toBe(1);
+  });
+
+  it('with 8 cores and CHECKS_PARALLEL 3 a third check waits and gets the place a finished one gave back', async () => {
+    const slots = new CheckSlots(() => checksAtOnce(8, 3));
+    const first = await slots.take('r', () => undefined);
+    const second = await slots.take('r', () => undefined);
+    const ahead: number[] = [];
+    const third = slots.take('r', (count) => ahead.push(count));
+    second?.release();
+    expect([first?.place, second?.place, (await third)?.place]).toEqual([0, 1, 1]);
+    expect(ahead).toEqual([0]);
   });
 
   it('never holds more places than the limit', async () => {

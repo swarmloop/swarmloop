@@ -52,8 +52,8 @@ export interface SandboxLaunch {
   memoryCapBytes?: number;
   /** The number of the check place the command runs in. Set by the check pool. */
   checkPlace?: number;
-  /** The cores the container may use. Set by the service from the cores Docker has. */
-  cpuSlice?: CpuSlice;
+  /** The cores at check admission, or set by the service for other launches. Null keeps unknown cores. */
+  cpuSlice?: CpuSlice | null;
 }
 
 /** One share of the cores: slice `index` of `places` equal shares of `cores`. */

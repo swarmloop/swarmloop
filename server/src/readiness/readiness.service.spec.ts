@@ -142,16 +142,25 @@ describe('ReadinessService', () => {
   it("shows Docker's CPUs and memory once docker has answered with them", async () => {
     const service = setup();
     docker.mockImplementation(async (args: string[]) => (args.includes('--format') ? '8 16750372454\n' : ''));
-    expect((await itemOf(service, 'docker')).line).toBe('8 CPUs · 15.6 GB · 3 checks × 2 cores');
+    expect((await itemOf(service, 'docker')).line).toBe(
+      '8 CPUs · 15.6 GB · 2 checks × 4 cores (CHECKS_PARALLEL 3; 2 fit with 4 cores each)',
+    );
   });
 
   it('names the checks and their cores in the docker line', async () => {
     const service = setup({ CHECKS_PARALLEL: 3 });
     docker.mockImplementation(async (args: string[]) => (args.includes('--format') ? '8 25125558681\n' : ''));
-    expect((await itemOf(service, 'docker')).line).toBe('8 CPUs · 23.4 GB · 3 checks × 2 cores');
+    expect((await itemOf(service, 'docker')).line).toBe(
+      '8 CPUs · 23.4 GB · 2 checks × 4 cores (CHECKS_PARALLEL 3; 2 fit with 4 cores each)',
+    );
+    const two = setup({ CHECKS_PARALLEL: 2 });
+    docker.mockImplementation(async (args: string[]) => (args.includes('--format') ? '8 25125558681\n' : ''));
+    expect((await itemOf(two, 'docker')).line).toBe('8 CPUs · 23.4 GB · 2 checks × 4 cores');
     const small = setup({ CHECKS_PARALLEL: 3 });
     docker.mockImplementation(async (args: string[]) => (args.includes('--format') ? '2 25125558681\n' : ''));
-    expect((await itemOf(small, 'docker')).line).toMatch(/· 3 checks × 1 core$/);
+    expect((await itemOf(small, 'docker')).line).toMatch(
+      /· 1 check × 2 cores \(CHECKS_PARALLEL 3; 1 fits with 4 cores each\)$/,
+    );
   });
 
   it('says only that docker answers when no reading is kept', async () => {

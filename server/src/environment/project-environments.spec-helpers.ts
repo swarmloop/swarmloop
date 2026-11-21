@@ -43,6 +43,8 @@ export function setup(
     failingBuild?: Error;
     /** The runtime of the server's agent lists. An agent's own runtime never comes from it. */
     RUNTIME?: 'claude' | 'codex';
+    /** The cores and memory Docker answers with. Unknown by default. */
+    machine?: { cpus: number; memoryBytes: number };
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-env-root-'));
@@ -116,6 +118,8 @@ export function setup(
   };
   const sandbox = {
     run,
+    machine: jest.fn(() => Promise.resolve(options.machine)),
+    knownMachine: jest.fn(() => options.machine),
     stats: jest.fn().mockResolvedValue({ cpuPercent: 5, rssBytes: 1024 }),
     stateDaemonPath: jest.fn((path: string) => Promise.resolve(path)),
     kill: jest.fn().mockResolvedValue(undefined),

@@ -33,6 +33,7 @@ function setup(options: {
   samples?: SampleDraft[];
   /** Wraps the fake spawn the way the real sandbox holds a container while the gate is paused. */
   gate?: ContainerGate;
+  readCores?: () => Promise<{ cpus: number } | undefined>;
 }) {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-pool-'));
   const spawned: SandboxLaunch[] = [];
@@ -88,6 +89,7 @@ function setup(options: {
   };
   const pool = new CheckPool({
     checksParallel: () => limit.value,
+    readCores: options.readCores,
     halted: options.stopped,
     clock,
     documents,
@@ -129,6 +131,30 @@ const killedFirst = (name: string) => (command: string, _launch: SandboxLaunch, 
   command === name && attempt === 1 ? 137 : 0;
 
 describe('CheckPool', () => {
+  it('keeps queued checks on their admission reading and adopts recovered cores after they drain', async () => {
+    let machine: { cpus: number } | undefined;
+    const { pool, input, repoOf, spawned, alive } = setup({
+      limit: { value: 3 },
+      readCores: async () => machine,
+      exits: () => {
+        machine = { cpus: 8 };
+        return 0;
+      },
+    });
+    await pool.runAll(input, 'a1', [repoOf(['a', 'b', 'c', 'd', 'e', 'f'])]);
+    expect(spawned.map((launch) => launch.cpuSlice)).toEqual(Array(6).fill(null));
+    expect(alive.max).toBe(3);
+    spawned.length = 0;
+    alive.max = 0;
+    await pool.runAll(input, 'a2', [repoOf(['g', 'h', 'i'])]);
+    expect(alive.max).toBe(2);
+    expect(spawned.map((launch) => launch.cpuSlice)).toEqual([
+      { cores: 8, places: 2, index: 0 },
+      { cores: 8, places: 2, index: 1 },
+      { cores: 8, places: 2, index: 0 },
+    ]);
+  });
+
   it('starts no check command while the server is paused, says so, and starts them in line order after', async () => {
     const gate = new ContainerGate();
     gate.pause();

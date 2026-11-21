@@ -8,6 +8,8 @@ import { ContainerDropped, ContainerGate } from './container-gate';
 import { SandboxService } from './sandbox.service';
 import type { SandboxChild } from './sandbox.service';
 import type { SandboxLaunch } from './sandbox-types';
+import { CheckPool } from '../environment/check-pool';
+import { FakeClock } from '../core/fake-clock.spec-helpers';
 
 const GB = 1024 ** 3;
 
@@ -110,17 +112,76 @@ describe('SandboxService memory cap', () => {
       args.includes('--cpuset-cpus') ? args[args.indexOf('--cpuset-cpus') + 1] : undefined;
     const eight = () => `8 ${3 * GB}`;
 
+    it('keeps unknown-core check admission through recovery and uses isolated slices after the line drains', async () => {
+      let recovered = false;
+      const sandbox = service(() => (recovered ? eight() : ''));
+      const pool = new CheckPool({
+        checksParallel: () => 3,
+        readCores: () => sandbox.machine(),
+        clock: new FakeClock(),
+        documents: { putDocument: async () => undefined },
+        commands: { save: async (row) => row },
+        shell: () => {
+          throw new Error('unused shell');
+        },
+      });
+      const input = { key: 'k' } as Parameters<CheckPool['withPlace']>[0];
+      const start = (index: number) =>
+        pool.withPlace(
+          input,
+          () => undefined,
+          async (place, cpuSlice) => {
+            recovered = true;
+            return sandbox.spawn(
+              launch(`checks-${index}`, {
+                command: [],
+                project: projectLaunch,
+                checkPlace: place,
+                cpuSlice,
+              }),
+            );
+          },
+        );
+      await Promise.all([start(0), start(1), start(2)]);
+      expect(runs.map(cores)).toEqual([undefined, undefined, undefined]);
+      expect(runs.map((args) => args[args.indexOf('--cpu-shares') + 1])).toEqual(['256', '256', '256']);
+      const recoveredSlices: (string | undefined)[] = [];
+      await Promise.all(
+        [3, 4].map((index) =>
+          pool.withPlace(
+            input,
+            () => undefined,
+            async (place, cpuSlice) => {
+              const child = await sandbox.spawn(
+                launch(`checks-${index}`, {
+                  command: [],
+                  project: projectLaunch,
+                  checkPlace: place,
+                  cpuSlice,
+                }),
+              );
+              recoveredSlices.push(
+                cores(runs.find((args) => args[args.indexOf('--name') + 1] === child.containerName) ?? []),
+              );
+              return child;
+            },
+          ),
+        ),
+      );
+      expect(recoveredSlices.sort()).toEqual(['0-3', '4-7']);
+    });
+
     it('gives a check in a project image the cores of its place', async () => {
       const sandbox = service(eight);
       await sandbox.spawn(launch('checks-0', { command: [], project: projectLaunch, checkPlace: 1 }));
-      expect(cores(runs[0] ?? [])).toBe('2-3');
+      expect(cores(runs[0] ?? [])).toBe('4-7');
     });
 
     it('gives agents in a project image a slice each, in turns over all the cores', async () => {
       const sandbox = service(eight);
       await sandbox.spawn(launch('plan', { project: { ...projectLaunch, shell: undefined } }));
       await sandbox.spawn(launch('implement', { project: { ...projectLaunch, shell: undefined } }));
-      expect(runs.map(cores)).toEqual(['0-1', '2-3']);
+      expect(runs.map(cores)).toEqual(['0-3', '4-7']);
     });
 
     it('leaves an agent outside a project image and unknown cores as they are', async () => {
@@ -167,6 +228,22 @@ describe('SandboxService memory cap', () => {
     await sandbox.machine();
     const child = await sandbox.spawn(launch('plan'));
     expect(child.memoryCapBytes).toBe(15 * GB);
+  });
+
+  it('shares an unfinished machine reading and retries after an unknown answer', async () => {
+    let finish!: (answer: string) => void;
+    let first = true;
+    const sandbox = service(() => {
+      if (!first) return `8 ${16 * GB}`;
+      first = false;
+      return new Promise<string>((resolve) => {
+        finish = resolve;
+      });
+    });
+    const readings = [sandbox.machine(), sandbox.machine(), sandbox.machine()];
+    finish('');
+    expect(await Promise.all(readings)).toEqual([undefined, undefined, undefined]);
+    expect(await sandbox.machine()).toEqual({ cpus: 8, memoryBytes: 16 * GB });
   });
 
   it('counts the work that runs and its last sample until it closes', async () => {
