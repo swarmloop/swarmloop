@@ -55,6 +55,23 @@ describe('RunStateRefresh', () => {
     }
   });
 
+  it('waits for a paste at requirements until the pending one is saved', async () => {
+    const { db, hub, refresh, run, documents, set, read } = await setup();
+    try {
+      const url = 'https://example.test/paste';
+      await documents.putDocument(run, 'pending', JSON.stringify({ url }));
+      await set({ currentStep: 'requirements' });
+      expect(await read()).toEqual({ state: 'waiting', code: 'NEEDS_ANSWERS' });
+      await db.app.get(CheckoutRepository).savePaste(run.key, url, 'pasted body');
+      hub.changed(run.key);
+      await refresh.settled();
+      expect(await read()).toEqual({ state: 'idle', code: null });
+      await refresh.onModuleDestroy();
+    } finally {
+      await db.close();
+    }
+  });
+
   it('clears the wait when the questions are gone', async () => {
     const { db, refresh, run, documents, set, read } = await setup();
     try {
