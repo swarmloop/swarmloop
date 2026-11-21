@@ -303,6 +303,21 @@ describe('CommandService', () => {
     }
   });
 
+  it('stores the person of a submit and null for a submit without one', async () => {
+    const testApp = await app('actor');
+    try {
+      await save(testApp.get(RunRepository), 'proj-1', 'implement', 'waiting');
+      const commands = testApp.get(CommandService);
+      commands.register('answer', async () => started);
+      const byPerson = await commands.submit('answer', 'proj-1', { answers: [] }, { actor: 'ann' });
+      const byPlanner = await commands.submit('answer', 'proj-1', { answers: [] });
+      expect((await testApp.get(CommandRepository).find(byPerson.receipt.commandId))?.actor).toBe('ann');
+      expect((await testApp.get(CommandRepository).find(byPlanner.receipt.commandId))?.actor).toBeNull();
+    } finally {
+      await testApp.close();
+    }
+  });
+
   it('supersedes the commands waiting for a run when a Stop is accepted', async () => {
     const testApp = await app('stop');
     try {

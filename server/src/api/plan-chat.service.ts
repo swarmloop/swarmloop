@@ -66,7 +66,7 @@ export class PlanChatService {
       ...(author ? { author } : {}),
       ...(refs.length > 0 ? { attachments: refs } : {}),
     };
-    const options = { idempotencyKey: idempotencyKey?.trim() || undefined };
+    const options = { idempotencyKey: idempotencyKey?.trim() || undefined, actor: author };
     if (turn === 'answer') {
       const sent = await this.commands.submit<FlowView>('answer', key, payload, options);
       await this.store.appendEntry(key, this.entry(sent.receipt.commandId, payload, 'taken'));
