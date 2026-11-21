@@ -1,3 +1,4 @@
+import { backlogMessageKey } from '../../../history/backlog-message-key';
 import { plannerTurnsHarness } from './planner-turns.spec-helpers';
 import { turnResult } from './planner-scenarios.spec-helpers';
 
@@ -8,7 +9,7 @@ async function withTurn(body: (harness: Harness, id: number) => Promise<void>, e
   try {
     harness.setMain('web');
     const id = (await harness.seedBacklog('one')).id as number;
-    await harness.chat.addPersonMessage(id, 'plan it', 'm1');
+    await harness.chat.addPersonMessage(id, 'plan it', 'm1', []);
     await harness.openTurn(id, 'turn-a');
     await body(harness, id);
   } finally {
@@ -36,6 +37,22 @@ describe('BacklogTurnRunner', () => {
       expect(turn?.transcript).toMatch(/turn-a-backlog-plan-output\.txt$/);
       expect(h.workspace.opened).toEqual(['turn-a']);
       expect(h.workspace.closed).toEqual(['turn-a']);
+    }));
+
+  it('launches a turn whose messages have no files with no attachments', () =>
+    withTurn(async (h) => {
+      await h.runner.run('one', 'turn-a');
+      expect(h.attachments.names('turn-a')).toEqual([]);
+    }));
+
+  it('copies the files of the turn messages into the turn folder before the launch', () =>
+    withTurn(async (h, id) => {
+      const file = await h.attachments.stage('shot.png', Buffer.from('png'));
+      const refs = await h.attachments.claim(backlogMessageKey(id), [file.id]);
+      await h.chat.addPersonMessage(id, 'see', 'm2', refs);
+      await h.chat.takeInto(id, 'turn-a');
+      await h.runner.run('one', 'turn-a');
+      expect(h.attachments.names('turn-a')).toEqual(['shot.png']);
     }));
 
   it('names a refused action once in a follow-up and applies the corrected answer', () =>

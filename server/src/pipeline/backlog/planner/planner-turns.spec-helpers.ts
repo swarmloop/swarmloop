@@ -7,6 +7,7 @@ import { RunStop } from '../../../agent/run-stop';
 import { AppConfig } from '../../../config/env';
 import { testEnv } from '../../../config/env.spec-helpers';
 import type { LiveBacklog } from '../../../contract/backlog-chat';
+import { AttachmentStore } from '../../../history/attachment-store';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import { RuntimeCooldownRepository } from '../../../history/runtime-cooldown.repository';
 import { VisitRepository } from '../../../history/visit.repository';
@@ -117,6 +118,7 @@ export async function plannerTurnsHarness(
   };
   const prompt = { build: async (name: string, key: string) => `plan ${name} in ${key}` };
   const chat = db.app.get(BacklogChatRepository);
+  const attachments = new AttachmentStore(config, db.clock);
   const runner = new BacklogTurnRunner(
     h.backlogs,
     chat,
@@ -127,6 +129,7 @@ export async function plannerTurnsHarness(
     turns,
     config,
     runStop,
+    attachments,
   );
   const live = new LiveHub();
   const shown: LiveBacklog[] = [];
@@ -138,6 +141,7 @@ export async function plannerTurnsHarness(
     ...h,
     chat,
     runner,
+    attachments,
     planner: started,
     agent,
     runStop,
@@ -146,7 +150,7 @@ export async function plannerTurnsHarness(
     shown,
     /** A person's message and the wake the chat route gives it. */
     async say(backlogId: number, text: string): Promise<void> {
-      await chat.addPersonMessage(backlogId, text, `message:${text}`);
+      await chat.addPersonMessage(backlogId, text, `message:${text}`, []);
       harness.planner.wake(backlogId);
     },
     /** The next command the planner sends to a run fails with this error. */

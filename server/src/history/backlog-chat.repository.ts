@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource } from 'typeorm';
 import { In, IsNull, Not } from 'typeorm';
+import type { AttachmentRef } from '../contract/attachments';
 import { Clock } from '../core/clock';
 import type { TurnStatus } from '../contract/backlog-chat';
 import { BacklogEventEntity } from './backlog.entities';
@@ -41,7 +42,12 @@ export class BacklogChatRepository {
   ) {}
 
   /** Writes a person's message once per key; null when the key was written before. */
-  async addPersonMessage(backlogId: number, text: string, key: string): Promise<BacklogMessageRecord | null> {
+  async addPersonMessage(
+    backlogId: number,
+    text: string,
+    key: string,
+    attachments: AttachmentRef[],
+  ): Promise<BacklogMessageRecord | null> {
     const manager = this.dataSource.manager;
     const stored = await writersOn(manager, this.clock).addMessage({
       backlogId,
@@ -51,6 +57,7 @@ export class BacklogChatRepository {
       text,
       proposes: null,
       turn: null,
+      attachments,
       createdAt: this.clock.iso(),
     });
     if (!stored) return null;

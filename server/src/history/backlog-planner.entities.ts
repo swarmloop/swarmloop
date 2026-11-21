@@ -28,6 +28,9 @@ export class BacklogMessageEntity {
   @Column({ type: 'text', nullable: true })
   turn!: string | null;
 
+  @Column({ type: 'text', default: '[]' })
+  attachments!: string;
+
   @Column({ name: 'created_at', type: 'text' })
   createdAt!: string;
 }

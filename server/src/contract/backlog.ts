@@ -41,16 +41,26 @@ interface BacklogRequirementView {
   milestone: number;
   text: string;
   status: RequirementStatus;
+  /** The slugs of the merged tasks that closed it; empty for a requirement that is not closed or was closed by hand. */
+  closedBy: string[];
 }
 
 interface BacklogTaskView {
   slug: string;
   title: string;
+  /** What the task is to do, as markdown. */
+  description: string;
+  /** The refs of the requirements it covers. */
+  covers: string[];
+  /** The slugs of the tasks it waits for. */
+  depends: string[];
   milestone: number | null;
   status: SubtaskStatus;
   /** What the task waits for, in words. */
   note: string;
   runKey: string | null;
+  /** True while the task is green and waits for the owner's OK to merge. */
+  waitsForOk: boolean;
   repositories: string[];
   /** The merged commit of each repository that is merged. */
   merged: Record<string, string>;
