@@ -45,6 +45,8 @@ export abstract class SubtaskOps {
   abstract deliveredNote(run: RunEntity): Promise<string | null>;
   /** The merge requests of a subtask run, in the order of its repositories. None until the run opened them. */
   abstract mergeRequests(run: RunEntity): Promise<SubtaskMergeRequest[]>;
+  /** Closes the open merge requests of a subtask run. A merged request stays as it is, and a close that fails is logged. */
+  abstract closeMergeRequests(parent: RunEntity, run: RunEntity): Promise<void>;
   /** The branch of a subtask run. */
   abstract branchOf(run: RunEntity): Promise<string>;
   /**

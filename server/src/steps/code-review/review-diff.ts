@@ -10,6 +10,8 @@ import { gitMissing, gitRaw } from '../../git/git';
 
 export const REVIEW_DIFF_PATH = '/work/brief/diff.md';
 
+const EMPTY_DIFF = 'The diff is empty: this branch has no change against its base.';
+
 /** The change reviewers read. Git stays outside the sandbox, which cannot write a read-only checkout. */
 export async function reviewDiffSection(
   mounts: SandboxMount[],
@@ -109,6 +111,9 @@ async function wholeChange(
   const text = [log.trim(), patch.trimEnd(), await untrackedBodies(cwd, allowedUntracked)]
     .filter((part) => part.length > 0)
     .join('\n\n');
+  if (tracked.length === 0 && allowedUntracked.length === 0 && patch.trim().length === 0) {
+    return { list: block(name, status, EMPTY_DIFF), patch: block(name, status, EMPTY_DIFF) };
+  }
   return {
     list: block(name, status, fileList([...tracked, ...allowedUntracked])),
     patch: block(name, status, text),

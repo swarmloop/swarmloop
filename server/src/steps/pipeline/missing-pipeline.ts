@@ -6,6 +6,7 @@ import type { RunRebase } from '../run-rebase';
 import type { StepContext } from '../base-step';
 import { git } from '../../git/git';
 import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
+import { withWorktree } from '../../git/worktree-lock';
 import { originProject, type Seen } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
 import { automaticRebase } from './pipeline-rebase';
@@ -86,14 +87,17 @@ async function changedWorktree(
   const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
   for (const repo of names) {
     const cwd = worktreePath(root, key, repo);
-    const project = await originProject(cwd);
-    const ref = refs.find((ref) => ref.project === project);
-    const [head, branch, dirty] = await Promise.all([
-      git(['-C', cwd, 'rev-parse', 'HEAD']),
-      git(['-C', cwd, 'branch', '--show-current']),
-      git(['-C', cwd, 'status', '--porcelain']),
-    ]);
-    if (!ref?.sha || ref.sha !== head || ref.ref !== branch || dirty) {
+    const unchanged = await withWorktree(cwd, async () => {
+      const project = await originProject(cwd);
+      const ref = refs.find((ref) => ref.project === project);
+      const [head, branch, dirty] = await Promise.all([
+        git(['-C', cwd, 'rev-parse', 'HEAD']),
+        git(['-C', cwd, 'branch', '--show-current']),
+        git(['-C', cwd, 'status', '--porcelain']),
+      ]);
+      return Boolean(ref?.sha && ref.sha === head && ref.ref === branch && !dirty);
+    });
+    if (!unchanged) {
       return `${repo}: published SHA, local branch or working files changed; automatic rebase was blocked`;
     }
   }
@@ -118,7 +122,7 @@ export async function missingRuns(ctx: StepContext, root: string, seen: Seen[]):
     if (!hasCi(dir)) {
       continue;
     }
-    const project = await originProject(dir);
+    const project = await withWorktree(dir, () => originProject(dir));
     const run = project ? seen.find((item) => item.project === project) : undefined;
     if (!run || run.runs.length === 0) {
       missing.push(name);

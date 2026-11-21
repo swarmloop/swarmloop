@@ -1,11 +1,15 @@
 import { parseSubtasks, type Subtask } from '../../contract/subtask';
+import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
+import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import type { CodeHost } from '../../integrations/code-host/code-host';
+import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { deriveState, writeRunState } from '../../history/run-state';
 import { CommandService } from '../../pipeline/command.service';
 import { createTestApp, type TestApp } from '../../testing/test-app';
 import { SubtaskOps } from '../shared/subtask-ops';
-import { save } from '../../testing/runs.spec-helpers';
+import { featureWorktree, git, save } from '../../testing/runs.spec-helpers';
 
 export const KEY = 'PROJ-300';
 
@@ -102,4 +106,101 @@ export async function finish(app: TestApp, id: string): Promise<void> {
 
 export async function parentState(app: TestApp) {
   return deriveState((await app.app.get(RunRepository).findRun(KEY))!);
+}
+
+export const FEATURE = 'feature/PROJ-300-ship-the-field';
+
+/** A code host whose merge adds one commit to the feature branch of a real origin. */
+export class FakeHost {
+  readonly merges: number[] = [];
+  readonly closed: number[] = [];
+  readonly deleted: string[] = [];
+  readonly targets = new Map<number, string>();
+  readonly merged = new Map<number, string>();
+  readonly conflicts = new Set<number>();
+  crashOn: number | null = null;
+  refusal: string | null = null;
+  failClose = false;
+
+  constructor(private readonly clone: string) {}
+
+  readMergeRequest(_project: string, iid: number) {
+    const sha = this.merged.get(iid) ?? null;
+    return Promise.resolve({ state: sha ? 'merged' : 'open', sha, conflicts: this.conflicts.has(iid), httpCalls: [] });
+  }
+
+  readMergeMethods() {
+    return Promise.resolve({ methods: ['squash'], httpCalls: [] });
+  }
+
+  mergeMergeRequest(_project: string, iid: number) {
+    if (this.targets.get(iid) !== FEATURE) return Promise.reject(new Error(`!${iid} does not target ${FEATURE}`));
+    if (iid === this.crashOn) return Promise.reject(new Error('crash'));
+    if (this.refusal) return Promise.reject(new FetchFailed(this.refusal));
+    if (this.conflicts.has(iid)) return Promise.reject(new MergeConflict('Pull Request is not mergeable'));
+    git(this.clone, ['fetch', 'origin']);
+    const tip = git(this.clone, ['rev-parse', `origin/${FEATURE}`]);
+    const tree = git(this.clone, ['rev-parse', `${tip}^{tree}`]);
+    const sha = git(this.clone, ['commit-tree', tree, '-p', tip, '-m', `squash !${iid}`]);
+    git(this.clone, ['push', 'origin', `${sha}:refs/heads/${FEATURE}`]);
+    this.merged.set(iid, sha);
+    this.merges.push(iid);
+    return Promise.resolve({ sha, httpCalls: [] });
+  }
+
+  closeMergeRequest(_project: string, iid: number) {
+    if (this.failClose) return Promise.reject(new Error('close refused'));
+    this.closed.push(iid);
+    return Promise.resolve({ httpCalls: [] });
+  }
+
+  deleteBranch(_project: string, branch: string) {
+    this.deleted.push(branch);
+    return Promise.resolve({ httpCalls: [] });
+  }
+}
+
+/** The origin and the parent worktree on the feature branch, and a host that merges into that origin. */
+export async function mergeWorld() {
+  const built = await world();
+  const { tree, clone } = featureWorktree(built.app.root, KEY);
+  git(tree, ['push', 'origin', FEATURE]);
+  const host = new FakeHost(clone);
+  const registry = built.app.app.get(CodeHostRegistry);
+  jest.spyOn(registry, 'byName').mockReturnValue(host as unknown as CodeHost);
+  const rebased: string[] = [];
+  const commands = built.app.app.get(CommandService);
+  const accept = commands.accept.bind(commands);
+  jest.spyOn(commands, 'accept').mockImplementation((type, key, payload, options) => {
+    if (type !== 'rebase') return accept(type, key, payload, options);
+    rebased.push(key);
+    return Promise.resolve({}) as ReturnType<typeof accept>;
+  });
+  return { ...built, tree, host, rebased };
+}
+
+/** The merge requests a subtask run opened, one per repository, as `repo: iid`. */
+export async function opened(app: TestApp, host: FakeHost, id: string, requests: Record<string, number>) {
+  const run = await child(app, id);
+  const documents = app.app.get(DocumentRepository);
+  await documents.putDocument(run, 'requirements', requirements);
+  await documents.putDocument(run, 'repos', `${Object.keys(requests).join('\n')}\n`);
+  const records = Object.entries(requests).map(([repo, iid]) => ({
+    project: repo,
+    iid,
+    url: `https://code.example/${repo}/${iid}`,
+    draft: false,
+    summary: '',
+  }));
+  await documents.putDocument(run, 'merge_request', renderMergeRequest(records));
+  records.forEach((record) => host.targets.set(record.iid, FEATURE));
+}
+
+export async function seedMergeParent(app: TestApp, tasks: Subtask[]) {
+  const parent = await seedParent(app, tasks);
+  parent.codeHost = 'github';
+  await app.app.get(RunRepository).saveRun(parent);
+  await app.app.get(DocumentRepository).putDocument(parent, 'repos', 'demo\n');
+  await pass(app);
+  return parent;
 }

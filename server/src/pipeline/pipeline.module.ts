@@ -11,6 +11,7 @@ import { GitRefusal } from '../steps/shared/git-refusal';
 import { BranchCheckout } from '../steps/shared/branch-checkout';
 import { RunNames } from '../steps/shared/run-names';
 import { RunAuthor } from '../steps/shared/run-author';
+import { SubtaskRequestCloser } from '../steps/shared/subtask-requests-close';
 import { GitRulesWriter } from '../steps/shared/git-rules-writer';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
@@ -103,6 +104,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BranchCheckout,
     RunNames,
     RunAuthor,
+    SubtaskRequestCloser,
     GitRulesWriter,
     WorkspaceGuard,
     RunRetention,

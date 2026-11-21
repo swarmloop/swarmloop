@@ -9,6 +9,7 @@ import { git } from '../../git/git';
 import { fetchBranch } from '../../git/rebase';
 import type { RebaseHosts } from '../../git/rebase/types';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
+import { withWorktree } from '../../git/worktree-lock';
 import { HostUnavailable } from '../../core/swarmloop-error';
 import { automaticRebase } from './pipeline-rebase';
 import { originProject, type Failure } from './pipeline-report';
@@ -87,19 +88,9 @@ export async function defaultBranchTests(
   const history = JSON.parse((await ctx.reread(ARTIFACTS.pipelineRebases)) ?? '[]') as string[];
   for (const repo of await worktreeNames(ctx)) {
     const cwd = worktreePath(deps.root, run.key, repo);
-    const project = await originProject(cwd);
-    const paths = failures.filter((item) => item.project === project).flatMap((item) => testPaths(item.trace));
-    if (!project || paths.length === 0) continue;
-    const base = await fetchDefaultSafely(deps, run, cwd, repo);
-    if (!base) continue;
-    const source = `default@${await git(['-C', cwd, 'rev-parse', base])}`;
-    if (history.includes(source)) continue;
-    const missing: string[] = [];
-    for (const path of paths) {
-      const found = await onlyOnDefault(cwd, base, path);
-      if (found && !missing.includes(found)) missing.push(found);
-    }
-    if (missing.length === 0) continue;
+    const found = await withWorktree(cwd, () => missingOnBranch({ deps, run, cwd, repo, failures, history }));
+    if (!found) continue;
+    const { project, base, source, missing } = found;
     const notes = [
       `project: ${project}`,
       `default branch: ${base}`,
@@ -117,6 +108,31 @@ export async function defaultBranchTests(
     };
   }
   return null;
+}
+
+/** What the default branch has that the worktree lacks: the project, the base ref, its source tag and the missing test files. Null when nothing is. */
+async function missingOnBranch(input: {
+  deps: DefaultBranchDeps;
+  run: RunEntity;
+  cwd: string;
+  repo: string;
+  failures: Failure[];
+  history: string[];
+}): Promise<{ project: string; base: string; source: string; missing: string[] } | null> {
+  const { deps, run, cwd, repo, failures, history } = input;
+  const project = await originProject(cwd);
+  const paths = failures.filter((item) => item.project === project).flatMap((item) => testPaths(item.trace));
+  if (!project || paths.length === 0) return null;
+  const base = await fetchDefaultSafely(deps, run, cwd, repo);
+  if (!base) return null;
+  const source = `default@${await git(['-C', cwd, 'rev-parse', base])}`;
+  if (history.includes(source)) return null;
+  const missing: string[] = [];
+  for (const path of paths) {
+    const found = await onlyOnDefault(cwd, base, path);
+    if (found && !missing.includes(found)) missing.push(found);
+  }
+  return missing.length === 0 ? null : { project, base, source, missing };
 }
 
 /** The repos of the run; none when the list is missing or invalid. */

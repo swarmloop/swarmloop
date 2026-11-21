@@ -223,7 +223,12 @@ function useDisk(harness: FlowHarness, bytes: number): void {
 
 function wire(harness: FlowHarness, key: string, taskWorktrees = false): void {
   if (!taskWorktrees) jest.spyOn(harness.app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
-  jest.spyOn(harness.app.app.get(CodeHostRegistry), 'byName').mockReturnValue(harness.host as unknown as CodeHost);
+  const registry = harness.app.app.get(CodeHostRegistry);
+  jest.spyOn(registry, 'byName').mockReturnValue(harness.host as unknown as CodeHost);
+  // A fetch of the server names the url with the token, which `useGitlabOrigin` maps to the local bare repository.
+  jest
+    .spyOn(registry, 'tokensFor')
+    .mockResolvedValue({ GITLAB_BASE_URL: 'https://gitlab.example', GITLAB_TOKEN: 'token' });
   holdDetachedStarts(harness.app.pipeline, key, harness.launched);
 }
 

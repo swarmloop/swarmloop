@@ -1,5 +1,6 @@
 import type { FlowRepository } from '../../history/flow.repository';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
+import { withWorktrees } from '../../git/worktree-lock';
 import type { StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { StepResult } from '../contract/step-contract';
@@ -14,7 +15,8 @@ export async function staleGates(ctx: StepContext, root: string, phases: readonl
     return false;
   }
   const names = checkedRepoNames(lines);
-  const fingerprint = await worktreesFingerprint(names.map((name) => worktreePath(root, run.key, name)));
+  const paths = names.map((name) => worktreePath(root, run.key, name));
+  const fingerprint = await withWorktrees(paths, () => worktreesFingerprint(paths));
   if (!(await ctx.gate(ARTIFACTS.pipelineRef, fingerprint))) {
     return true;
   }

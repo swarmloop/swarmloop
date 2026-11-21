@@ -3,6 +3,7 @@ import type { AppConfig } from '../../config/env';
 import { SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { worktreePath } from '../../git/repo-names';
+import { withWorktree } from '../../git/worktree-lock';
 import type { RunEntity } from '../../history/entities';
 import { root } from '../../history/run-paths';
 import type { CodeHost, MergeRequestRecord } from '../../integrations/code-host/code-host';
@@ -48,26 +49,29 @@ export async function mergeRequestTrees(
     if (!existsSync(path) || !statSync(path).isDirectory()) {
       throw new SwarmloopError(`${repo} is not a worktree`);
     }
-    const current = await gitAt(repo, path, ['branch', '--show-current'], 'branch failed');
-    if (current === 'main' || current === 'master') {
-      throw new SwarmloopError(`${repo} branch is protected`);
-    }
-    if (current !== branch) {
-      throw new SwarmloopError(`${repo} branch is missing`);
-    }
-    const remote = await ref(repo, path, `refs/remotes/origin/${branch}`);
-    const head = await gitAt(repo, path, ['rev-parse', 'HEAD'], 'branch failed');
-    if (!remote || remote !== head) {
-      throw new SwarmloopError(`${repo} branch is not pushed`);
-    }
-    const origin = remoteProject(await gitAt(repo, path, ['remote', 'get-url', 'origin'], 'origin failed'));
-    if (origin.host.toLowerCase() !== host) {
-      throw new SwarmloopError(`${repo} origin is not ${selected.baseKey}`);
-    }
-    const aimed = await target(repo, path, base, deps.names.target(run, repo));
-    if (aimed === branch) {
-      throw new SwarmloopError(`${repo} target branch is the feature branch`);
-    }
+    const { origin, aimed } = await withWorktree(path, async () => {
+      const current = await gitAt(repo, path, ['branch', '--show-current'], 'branch failed');
+      if (current === 'main' || current === 'master') {
+        throw new SwarmloopError(`${repo} branch is protected`);
+      }
+      if (current !== branch) {
+        throw new SwarmloopError(`${repo} branch is missing`);
+      }
+      const remote = await ref(repo, path, `refs/remotes/origin/${branch}`);
+      const head = await gitAt(repo, path, ['rev-parse', 'HEAD'], 'branch failed');
+      if (!remote || remote !== head) {
+        throw new SwarmloopError(`${repo} branch is not pushed`);
+      }
+      const project = remoteProject(await gitAt(repo, path, ['remote', 'get-url', 'origin'], 'origin failed'));
+      if (project.host.toLowerCase() !== host) {
+        throw new SwarmloopError(`${repo} origin is not ${selected.baseKey}`);
+      }
+      const to = await target(repo, path, base, deps.names.target(run, repo));
+      if (to === branch) {
+        throw new SwarmloopError(`${repo} target branch is the feature branch`);
+      }
+      return { origin: project, aimed: to };
+    });
     const found = await client.findMergeRequest({ project: origin.project, source: branch });
     calls.push(...found.httpCalls);
     trees.push({ repo, path, project: origin.project, branch, target: aimed, existing: found.record, summary: '' });

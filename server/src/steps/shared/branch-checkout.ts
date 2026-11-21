@@ -4,6 +4,7 @@ import { root } from '../../history/run-paths';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { worktreePath } from '../../git/repo-names';
+import { withWorktree } from '../../git/worktree-lock';
 import type { RunEntity } from '../../history/run.entity';
 import { StepKernel } from '../step-kernel';
 import { RunNames } from './run-names';
@@ -32,6 +33,10 @@ export class BranchCheckout {
     if (!existsSync(worktree) || !statSync(worktree).isDirectory()) {
       throw new SwarmloopError(`${repo} is not a worktree`);
     }
+    await withWorktree(worktree, () => this.switchTo(worktree, repo, branch, committed));
+  }
+
+  private async switchTo(worktree: string, repo: string, branch: string, committed: boolean): Promise<void> {
     const current = await git(['-C', worktree, 'branch', '--show-current']);
     if (current === branch) {
       return;

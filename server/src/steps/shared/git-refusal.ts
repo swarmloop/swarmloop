@@ -6,10 +6,11 @@ import { GitRulesError } from '../../core/swarmloop-error';
 import { SWARMLOOP_FILE } from '../../environment/environment-config';
 import { gitRefusal } from '../../agent-result/definitions/git-refusal';
 import { commitIdentity } from '../../git/git';
+import { withWorktree } from '../../git/worktree-lock';
 import { mountsForStep, worktreePath } from '../../git/repo-names';
 import type { RunEntity } from '../../history/entities';
 import { root } from '../../history/run-paths';
-import { gitAt } from '../commit/commit-git';
+import { gitAt, type Tree } from '../commit/commit-git';
 import { ARTIFACTS } from '../contract/artifacts';
 import { StepKernel } from '../step-kernel';
 import { formatRefusal, refusalKey, type RefusalAnswer, type RefusedKind } from './git-refusal-answer';
@@ -134,7 +135,8 @@ export class GitRefusal {
     }
     for (const name of await this.names.sharing(run, repo)) {
       const tree = { repo: name, path: worktreePath(root(this.kernel.config), run.key, name) };
-      await gitAt(tree, ['branch', '-m', await this.names.branch(run, name), next], 'branch failed');
+      const from = await this.names.branch(run, name);
+      await withWorktree(tree.path, () => gitAt(tree, ['branch', '-m', from, next], 'branch failed'));
     }
     await this.names.rename(run, repo, next);
   }
@@ -142,6 +144,10 @@ export class GitRefusal {
   /** The head commit, while it is not pushed, takes the message the format gives now and the rule files learned. */
   private async amendCommit({ run, repo }: RefusalScope): Promise<void> {
     const [tree] = this.publisher.trees(run.key, [repo]);
+    await withWorktree(tree.path, () => this.amendHeld(run, repo, tree));
+  }
+
+  private async amendHeld(run: RunEntity, repo: string, tree: Tree): Promise<void> {
     const branch = await this.names.branch(run, repo);
     const head = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
     if ((await this.publisher.optionalRev(tree, `refs/remotes/origin/${branch}`)) === head) {

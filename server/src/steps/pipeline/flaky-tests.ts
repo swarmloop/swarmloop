@@ -3,6 +3,7 @@ import type { FlakyTestRepository } from '../../history/flaky-test.repository';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { git } from '../../git/git';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
+import { withWorktree } from '../../git/worktree-lock';
 import type { StepContext } from '../base-step';
 import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -78,18 +79,23 @@ async function sameCode(
   let matched = false;
   for (const name of names) {
     const cwd = worktreePath(deps.root, ctx.opened.run.key, name);
-    if ((await originProject(cwd)) !== job.project) {
-      continue;
-    }
-    try {
-      const changed = (await git(['-C', cwd, 'diff', '--name-only', failedSha, passedSha])).split('\n').filter(Boolean);
-      if (!changed.every((path) => job.text.includes(path))) {
-        return false;
+    const verdict = await withWorktree(cwd, async () => {
+      if ((await originProject(cwd)) !== job.project) {
+        return 'other' as const;
       }
-      matched = true;
-    } catch {
+      try {
+        const changed = (await git(['-C', cwd, 'diff', '--name-only', failedSha, passedSha]))
+          .split('\n')
+          .filter(Boolean);
+        return changed.every((path) => job.text.includes(path)) ? ('same' as const) : ('differs' as const);
+      } catch {
+        return 'differs' as const;
+      }
+    });
+    if (verdict === 'differs') {
       return false;
     }
+    matched ||= verdict === 'same';
   }
   return matched;
 }

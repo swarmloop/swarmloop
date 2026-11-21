@@ -5,6 +5,9 @@ import { join, resolve } from 'path';
 import type { AppConfig } from '../config/env';
 import type { Clock } from '../core/clock';
 import type { RunEntity } from '../history/entities';
+import * as fetchModule from '../git/rebase/fetch';
+import { git as runGit } from '../git/git';
+import { withWorktree } from '../git/worktree-lock';
 import { featureWorktree, git } from '../testing/runs.spec-helpers';
 import { SubtaskWorktrees } from './subtask-worktrees';
 
@@ -154,5 +157,44 @@ describe('committing the own edits of the parent before it is brought to the fea
     expect(git(tree, ['diff', '--name-only', '--diff-filter=U'])).toBe('src/shared.ts');
     expect(git(tree, ['rev-parse', 'HEAD'])).toBe(tip);
     expect(git(tree, ['rev-parse', 'refs/remotes/origin/feature/proj-93-ship-the-field'])).toBe(tip);
+  });
+});
+
+describe('asking a subtask worktree for the tip while another operation holds it', () => {
+  const branch = 'feature/proj-94-ship-the-field';
+  const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
+
+  it('starts the fetch only after the holder ends, and then finds the worktree on top', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-behind-tip-'));
+    const { tree } = featureWorktree(root, 'proj-94');
+    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
+    writeFileSync(join(tree, 'src', 'a.ts'), 'a\n');
+    git(tree, ['add', '.']);
+    git(tree, ['commit', '-m', 'a']);
+    git(tree, ['push', 'origin', branch]);
+    const tip = git(tree, ['rev-parse', 'HEAD']);
+    git(tree, ['reset', '--hard', 'HEAD~1']);
+    const order: string[] = [];
+    const fetched = fetchModule.fetchBranch.bind(fetchModule);
+    jest.spyOn(fetchModule, 'fetchBranch').mockImplementation((...args) => {
+      order.push('fetch-start');
+      return fetched(...args);
+    });
+    const run = { key: 'proj-94' } as RunEntity;
+    let entered: () => void = () => undefined;
+    const inside = new Promise<void>((resolve) => (entered = resolve));
+
+    // The hold stands in for a rebase; the caller is another async context, so it must wait.
+    const hold = withWorktree(tree, async () => {
+      entered();
+      await runGit(['-C', tree, 'reset', '--hard', tip]);
+      order.push('rebase-end');
+    });
+    await inside;
+    const behind = new SubtaskWorktrees(config, clock).behindTip(run, run, ['demo'], branch);
+    await hold;
+
+    expect(await behind).toBeNull();
+    expect(order).toEqual(['rebase-end', 'fetch-start']);
   });
 });
