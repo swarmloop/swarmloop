@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BacklogView } from '@contract/backlog';
@@ -26,7 +28,7 @@ export function useBacklogs(): BacklogsState {
   }, [client, stamp]);
   return {
     backlogs: query.data ?? [],
-    loaded: query.isSuccess,
+    loaded: query.data !== undefined,
     error: query.error ? query.error.message : null,
   };
 }

@@ -146,6 +146,17 @@ describe('RunsController', () => {
     expect(response.status).toHaveBeenCalledWith(200);
   });
 
+  it('passes the signed-in person to the command of an answer', async () => {
+    const commands = answering({ key: 'proj-4' });
+    await controllerWith({}, commands).answers('proj-4', { answers: [] }, undefined, 'ann');
+    expect(commands.submit).toHaveBeenCalledWith(
+      'answer',
+      'proj-4',
+      { answers: [] },
+      expect.objectContaining({ actor: 'ann' }),
+    );
+  });
+
   it("marks the Resume of the route as a person's and keeps the answer", async () => {
     const commands = answering({ key: 'proj-3', status: 'started' });
     const response = { status: jest.fn() };

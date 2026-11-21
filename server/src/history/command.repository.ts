@@ -18,6 +18,8 @@ interface AcceptInput {
   payload: Record<string, unknown>;
   idempotencyKey?: string;
   expectedRevision?: number;
+  /** The login of the person who sent it. */
+  actor?: string | null;
   /** Creates the run in the same transaction when it does not exist. */
   create?: { targetPath: string | null; startedBy?: string | null; agents?: StoredAgents | null };
   /** A person who takes over a run still recorded as `machine`, with the run's subtasks that are too. */
@@ -88,6 +90,7 @@ export class CommandRepository {
         payload: JSON.stringify(created ? { ...input.payload, created } : input.payload),
         idempotencyKey: input.idempotencyKey ?? null,
         expectedRevision: input.expectedRevision,
+        actor: input.actor,
         now,
       });
       await runTable.update({ id: run.id }, { revision: () => 'revision + 1' });

@@ -1,11 +1,14 @@
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import type { StatsView } from '../contract/api';
+import { reviewKinds } from '../agent-result/stored-review';
 import { Clock } from '../core/clock';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { StatsRepository } from '../history/stats.repository';
+import { ARTIFACTS } from '../steps/contract/artifacts';
 import { requirementBodies } from './run-view/run-title';
 import { buildStats, rangeStart, type StatsRange } from './stats';
+import { countedRunsOf } from './stats-units';
 
 const MAX_DAYS = 3650;
 const MAX_TZ_OFFSET = 14 * 60;
@@ -42,6 +45,11 @@ export class StatsController {
     const requirements = await requirementBodies(this.documents, rows.runs);
     // Only the runs in the range are summed, so only their steps are read.
     const durations = await this.runs.durationByRun(range.days > 0 ? rows.runs.map((run) => run.id) : undefined);
-    return buildStats(rows, durations, now, range, requirements);
+    const merged = countedRunsOf(rows.runs).filter(({ run }) => run.state === 'merged');
+    const mergedDocuments = await this.documents.latestDocuments(
+      merged.map(({ run }) => run.id),
+      [ARTIFACTS.requirementList.kind, ...reviewKinds('requirements')],
+    );
+    return buildStats(rows, durations, now, range, requirements, mergedDocuments);
   }
 }

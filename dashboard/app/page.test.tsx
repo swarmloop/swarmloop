@@ -3,20 +3,25 @@ import { useRouter } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadinessProvider } from '../features/readiness';
 import { Shell } from '../features/shell';
-import { getReadiness, getStats } from '../lib/endpoints';
+import { listBacklogs } from '../lib/backlog-endpoints';
+import { getFlow, getReadiness, getStats, listRuns } from '../lib/endpoints';
 import { receive } from '../test/fake-socket';
 import { runSummary, statsView } from '../test/fixtures';
-import { runsPage } from '../test/runs-page';
+import { listRunsFrom, runsPage } from '../test/runs-page';
 import { QueryWrapper } from '../test/query-wrapper';
 import HomePage from './page';
 
-vi.mock('../lib/endpoints', () => ({ getReadiness: vi.fn(), getStats: vi.fn() }));
+vi.mock('../lib/endpoints', () => ({ getReadiness: vi.fn(), getStats: vi.fn(), listRuns: vi.fn(), getFlow: vi.fn() }));
+vi.mock('../lib/backlog-endpoints', () => ({ listBacklogs: vi.fn() }));
 vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLive());
 vi.mock('next/navigation', () => ({ useRouter: vi.fn() }));
 
 beforeEach(() => {
   vi.mocked(useRouter).mockReturnValue({ push: vi.fn() } as unknown as ReturnType<typeof useRouter>);
   vi.mocked(getStats).mockResolvedValue(statsView());
+  vi.mocked(listRuns).mockImplementation(listRunsFrom([]));
+  vi.mocked(getFlow).mockReset();
+  vi.mocked(listBacklogs).mockResolvedValue([]);
 });
 
 function renderPage(): void {
@@ -56,15 +61,6 @@ describe('HomePage', () => {
     renderPage();
     expect(await screen.findByText(/boom/)).toBeInTheDocument();
   });
-
-  it('shows the statistics under the checks', async () => {
-    vi.mocked(getReadiness).mockResolvedValue({ items: [], checkedAt: null });
-    renderPage();
-    act(() => receive('runs', runsPage([], { part: 'active' })));
-    expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
-    expect(screen.getByText(/No runs yet/)).toBeInTheDocument();
-    expect(await screen.findByLabelText('Runs: 4')).toBeInTheDocument();
-  });
 });
 
 describe('HomePage run line', () => {
@@ -75,10 +71,10 @@ describe('HomePage run line', () => {
   it('shows a skeleton and no empty text or connect button until the runs are loaded', async () => {
     renderPage();
 
-    expect(screen.getByLabelText('Loading runs')).toBeInTheDocument();
+    expect(screen.getAllByTestId('number-placeholder')).not.toHaveLength(0);
     expect(screen.queryByText(/No runs yet/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /^Connect/ })).not.toBeInTheDocument();
-    await screen.findByLabelText('Runs: 4');
+    expect(screen.queryByRole('link', { name: /^Connect / })).not.toBeInTheDocument();
+    await screen.findByText('Merged');
   });
 
   it('counts runs the way the list does: a subtask is never counted on its own', async () => {
@@ -98,10 +94,11 @@ describe('HomePage run line', () => {
       run('epic', { state: 'merged', status: 'done' }),
       run('epic-task', { state: 'waiting', status: 'waiting', parentKey: 'epic' }),
     ];
+    vi.mocked(listRuns).mockImplementation(listRunsFrom(runs));
     renderPage();
     act(() => receive('runs', runsPage(runs, { part: 'active' })));
 
-    expect(screen.getByText('4 active · 191 done · 195 runs')).toBeInTheDocument();
-    await screen.findByLabelText('Runs: 4');
+    expect(await screen.findByText('working')).toBeInTheDocument();
+    expect(screen.queryByText('epic-task')).not.toBeInTheDocument();
   });
 });

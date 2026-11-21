@@ -10,13 +10,14 @@ interface AcceptedCommandInput {
   payload: string;
   idempotencyKey: string | null;
   expectedRevision?: number;
+  actor?: string | null;
   now: string;
 }
 
 /** The command stored under this run and key, or a new `accepted` row. Runs inside the caller's transaction. */
 export async function insertAcceptedCommand(
   manager: EntityManager,
-  { runId, type, payload, idempotencyKey, expectedRevision, now }: AcceptedCommandInput,
+  { runId, type, payload, idempotencyKey, expectedRevision, actor, now }: AcceptedCommandInput,
 ): Promise<CommandEntity> {
   const commands = manager.getRepository(CommandEntity);
   const stored = idempotencyKey ? await commands.findOneBy({ runId, idempotencyKey }) : null;
@@ -29,6 +30,7 @@ export async function insertAcceptedCommand(
       payload,
       idempotencyKey,
       expectedRevision: expectedRevision ?? null,
+      actor: actor ?? null,
       state: 'accepted',
       result: null,
       createdAt: now,

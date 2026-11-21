@@ -8,9 +8,9 @@ interface StoredDocument {
   body: string;
 }
 
-/** The kind of the rendered review a reviewer's documents hold next to its result. */
-function reviewKindOf(name: string): string {
-  return `review_${name}`;
+/** The document kinds a reviewer's review is read from: the rendered review, and the stored result. */
+export function reviewKinds(name: string): string[] {
+  return [`review_${name}`, reviewDefinition(name).kind];
 }
 
 /** The latest review of a reviewer: its stored result, or for a run from before results the rendered document. */
@@ -19,7 +19,8 @@ export function storedReview(name: string, documents: StoredDocument[]): ReviewR
   if (result) {
     return result;
   }
-  const rendered = [...documents].reverse().find((document) => document.kind === reviewKindOf(name));
+  const [renderedKind] = reviewKinds(name);
+  const rendered = [...documents].reverse().find((document) => document.kind === renderedKind);
   const legacy = name === 'requirements' ? legacyRequirementsReview : legacyReview;
   return rendered ? legacy(rendered.body) : null;
 }
@@ -31,7 +32,7 @@ export async function latestReview(
   name: string,
 ): Promise<ReviewResult | null> {
   const stored: StoredDocument[] = [];
-  for (const kind of [reviewKindOf(name), reviewDefinition(name).kind]) {
+  for (const kind of reviewKinds(name)) {
     const body = await documents.latestBody(key, kind);
     if (body) {
       stored.push({ kind, body });

@@ -71,3 +71,24 @@ export function chatMessage(overrides: Partial<BacklogMessageView> = {}): Backlo
 export function backlogChatView(overrides: Partial<BacklogChatView> = {}): BacklogChatView {
   return { messages: [chatMessage()], older: 0, turns: [], ...overrides };
 }
+
+/** A backlog whose milestone M3 asks to run: it waits for a person to open it. */
+export function proposedMilestoneBacklog(name = 'shop'): BacklogView {
+  return backlogView({ name, milestones: [milestone({ status: 'proposed' })], tasks: [] });
+}
+
+/** A backlog whose active milestone M3 has 6 tasks, 4 of them merged. */
+export function activeMilestoneBacklog(name = 'shop'): BacklogView {
+  const tasks = Array.from({ length: 6 }, (_, index) =>
+    task({ slug: `task-${index + 1}`, title: `Task ${index + 1}`, status: index < 4 ? 'merged' : 'running' }),
+  );
+  return backlogView({ name, milestones: [milestone({ status: 'active', title: 'Checkout' })], tasks });
+}
+
+/** A backlog whose accepted milestone M3 was built by one task run for each of the given keys. */
+export function acceptedMilestoneBacklog(name: string, runKeys: string[]): BacklogView {
+  const tasks = runKeys.map((runKey, index) =>
+    task({ slug: `task-${index + 1}`, title: `Task ${index + 1}`, status: 'merged', runKey }),
+  );
+  return backlogView({ name, milestones: [milestone({ status: 'accepted', title: 'Checkout' })], tasks });
+}

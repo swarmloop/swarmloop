@@ -36,7 +36,7 @@ export const NAMES: Record<ReadinessItem['id'], string> = {
 /** The text of an alert's link, by the start of its target. */
 const LINK_TEXTS: [string, string][] = [
   ['/connections', 'Open Connections'],
-  ['/#statistics', 'Open Statistics'],
+  ['/stats#statistics', 'Open Statistics'],
 ];
 
 function linkText(link: string): string {

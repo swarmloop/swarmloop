@@ -96,6 +96,7 @@ export class CommandService {
       idempotencyKey: options.idempotencyKey,
       expectedRevision: options.expectedRevision,
       create: options.create,
+      actor: options.actor,
       takeOver: await this.takeOverOf(type, options.actor),
       admit: (run) => this.admit(type, key, run, options.run ? null : code),
     });

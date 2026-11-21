@@ -33,7 +33,11 @@
       "medianDoneMs": 4486430,
       "merged": 39,
       "closed": 0,
-      "medianToMergeMs": 3600000
+      "medianToMergeMs": 3600000,
+      "requirementsMet": 0,
+      "requirementsTotal": 0,
+      "caughtAndFixed": 17,
+      "personMessages": 0
     },
     "days": [
       {
@@ -6633,7 +6637,11 @@
       "medianDoneMs": 4475183,
       "merged": 22,
       "closed": 0,
-      "medianToMergeMs": 3600000
+      "medianToMergeMs": 3600000,
+      "requirementsMet": 0,
+      "requirementsTotal": 0,
+      "caughtAndFixed": 9,
+      "personMessages": 0
     },
     "days": [
       {

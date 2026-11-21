@@ -75,7 +75,7 @@ describe('ReadinessPanel', () => {
           status: 'warn',
           line: 'The server stalled 2 times in the last hour, 32 s in all (server blocked)',
           action: 'give Docker more CPUs or memory',
-          link: '/#statistics',
+          link: '/stats#statistics',
         },
       ],
       checkedAt: CHECKED_AT,
@@ -84,7 +84,7 @@ describe('ReadinessPanel', () => {
     expect(
       await screen.findByText(/The server stalled 2 times in the last hour, 32 s in all \(server blocked\)/),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open Statistics' })).toHaveAttribute('href', '/#statistics');
+    expect(screen.getByRole('link', { name: 'Open Statistics' })).toHaveAttribute('href', '/stats#statistics');
   });
 
   it('shows no stall alert without the item', async () => {

@@ -1,52 +1,73 @@
 'use client';
 
-import { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import Skeleton from '@mui/material/Skeleton';
+import { type Theme, ThemeProvider, createTheme } from '@mui/material/styles';
 import Link from 'next/link';
-import { ReadinessPanel } from '../features/readiness';
+import { DoneLately, NeedsYou, NowSection, OverviewFooter, OverviewNumbers } from '../features/overview';
+import { ReadinessLine } from '../features/readiness';
 import { useLiveBridge } from '../features/shell';
-import { StatsSection } from '../features/stats';
 import { HOSTS } from './login/hosts';
 
+/** The app bar (64 px) and the main area's vertical padding (24 px twice). */
+const CHROME = '112px';
+
+const BODY = '0.875rem';
+
+/** The page reads in three sizes: the figure (40 px), body and caption, so the default text and the small buttons are body. */
+const pageTheme = (outer: Theme): Theme =>
+  createTheme(outer, {
+    typography: { body1: { fontSize: BODY } },
+    components: {
+      MuiButton: { styleOverrides: { sizeSmall: { fontSize: BODY } } },
+      MuiToggleButton: { styleOverrides: { sizeSmall: { fontSize: BODY } } },
+    },
+  });
+
 export default function HomePage(): React.ReactElement {
-  const runs = useLiveBridge((snapshot) => snapshot.runs);
   const loaded = useLiveBridge((snapshot) => snapshot.loaded);
   // The same counts as the run list's switch, so a subtask is never counted on its own.
-  const { active, done, all } = useLiveBridge((snapshot) => snapshot.counts);
-  // The statistics reload when a run appears, goes, changes status or changes part (held by the list or not), not on every live tick.
-  const stamp = useLiveBridge((snapshot) => snapshot.statusStamp);
-  const version = useMemo(
-    () => `${runs.map((run) => `${run.key}:${run.status}`).join(',')}|${active}/${done}/${all}|${stamp}`,
-    [runs, active, done, all, stamp],
-  );
+  const all = useLiveBridge((snapshot) => snapshot.counts.all);
   const empty = loaded && all === 0;
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 1480 }}>
-      <Box>
-        <Typography variant="h5" component="h1">
+    <ThemeProvider theme={pageTheme}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1.5,
+          // The root grows with its content, so nothing is clipped or scrolls inside; short content fills the viewport.
+          minHeight: `calc(100vh - ${CHROME})`,
+          typography: 'body2',
+        }}
+      >
+        <Typography variant="body2" component="h1" sx={{ fontWeight: 600 }}>
           Overview
         </Typography>
-        {loaded ? (
-          <Typography color="text.secondary">
-            {empty ? 'No runs yet. New run, top right, starts one.' : `${active} active · ${done} done · ${all} runs`}
-          </Typography>
-        ) : (
-          <Skeleton width={240} aria-label="Loading runs" />
-        )}
+        <NeedsYou />
+        <OverviewNumbers />
+        <NowSection />
         {empty ? (
-          <Button component={Link} href="/connections" variant="outlined" size="small" sx={{ mt: 1.5 }}>
-            {`Connect ${Object.values(HOSTS)
-              .map((host) => host.label)
-              .join(' or ')}`}
-          </Button>
+          <Box>
+            <Typography variant="body2" color="text.secondary">
+              No runs yet. New run, top right, starts one.
+            </Typography>
+            <Button component={Link} href="/connections" variant="outlined" size="small" sx={{ mt: 1 }}>
+              {`Connect ${Object.values(HOSTS)
+                .map((host) => host.label)
+                .join(' or ')}`}
+            </Button>
+          </Box>
         ) : null}
+        <DoneLately />
+        <Box sx={{ mt: 'auto' }}>
+          <OverviewFooter>
+            <ReadinessLine />
+          </OverviewFooter>
+        </Box>
       </Box>
-      <ReadinessPanel />
-      <StatsSection version={version} />
-    </Box>
+    </ThemeProvider>
   );
 }

@@ -5,6 +5,7 @@ import { StatsController } from './stats.controller';
 
 const NOW = Date.parse('2026-11-10T12:00:00.000Z');
 const WARSAW = -60;
+const NO_PERSON: StatsRows['person'] = { answers: [], planChats: [], backlogMessages: [] };
 
 function step(runId: number, name: string, usd: number, finishedAt: string, extra: Partial<StatsStepRow> = {}) {
   return {
@@ -69,6 +70,7 @@ function rows(): StatsRows {
       { runId: 3, counter: 'review', reason: 'review_quality', createdAt: '2026-11-10T08:40:00.000Z' },
     ],
     stalls: [],
+    person: NO_PERSON,
   };
 }
 
@@ -107,6 +109,10 @@ describe('buildStats', () => {
       merged: 0,
       closed: 0,
       medianToMergeMs: null,
+      requirementsMet: 0,
+      requirementsTotal: 0,
+      caughtAndFixed: 0,
+      personMessages: 0,
     });
   });
 
@@ -289,10 +295,15 @@ describe('buildStats', () => {
   it('starts no earlier than the first run of all, and has one day and no median without runs', () => {
     expect(buildStats(rows(), durations, NOW, { days: 0, tzOffset: 0 }).from).toBe('2026-11-01');
     expect(buildStats(rows(), durations, NOW, { days: 30, tzOffset: 0 }).from).toBe('2026-11-01');
-    const empty = buildStats({ firstRunAt: null, runs: [], steps: [], loops: [], stalls: [] }, new Map(), NOW, {
-      days: 0,
-      tzOffset: 0,
-    });
+    const empty = buildStats(
+      { firstRunAt: null, runs: [], steps: [], loops: [], stalls: [], person: NO_PERSON },
+      new Map(),
+      NOW,
+      {
+        days: 0,
+        tzOffset: 0,
+      },
+    );
     expect(empty.days).toHaveLength(1);
     expect(empty.totals.medianDoneMs).toBeNull();
     expect(empty.runs).toEqual([]);
@@ -319,7 +330,9 @@ describe('stats range', () => {
 
   it('refuses a range that is not a whole number of days', async () => {
     const controller = new StatsController(
-      { rows: async () => ({ firstRunAt: null, runs: [], steps: [], loops: [], stalls: [] }) } as never,
+      {
+        rows: async () => ({ firstRunAt: null, runs: [], steps: [], loops: [], stalls: [], person: NO_PERSON }),
+      } as never,
       { durationByRun: async () => new Map() } as never,
       { latestDocuments: async () => [] } as never,
       { now: () => NOW, iso: () => new Date(NOW).toISOString() },
@@ -341,7 +354,14 @@ describe('stats range', () => {
       ...extra,
     });
     const stats = buildStats(
-      { firstRunAt: at, runs: [row(1, { title: 'Stored title' }), row(2)], steps: [], loops: [], stalls: [] },
+      {
+        firstRunAt: at,
+        runs: [row(1, { title: 'Stored title' }), row(2)],
+        steps: [],
+        loops: [],
+        stalls: [],
+        person: NO_PERSON,
+      },
       new Map(),
       NOW,
       { days: 7, tzOffset: WARSAW },
@@ -362,7 +382,10 @@ describe('stats range', () => {
       ...extra,
     });
     const view = (loops: StatsRows['loops'], runs = [run(1)], steps: StatsRows['steps'] = []) =>
-      buildStats({ firstRunAt: at, runs, steps, loops, stalls: [] }, new Map(), NOW, { days: 7, tzOffset: WARSAW });
+      buildStats({ firstRunAt: at, runs, steps, loops, stalls: [], person: NO_PERSON }, new Map(), NOW, {
+        days: 7,
+        tzOffset: WARSAW,
+      });
 
     it('counts each loop counter as its own kind and old checks returns as checks', () => {
       const stats = view([
@@ -497,6 +520,101 @@ describe('stats range', () => {
       expect(stats.runs).toHaveLength(2);
       expect(stats.runs.find((entry) => entry.key === 'run-1')).toMatchObject({ usd: 6, returns: 1 });
       expect(stats.agents.map(({ name, count }) => [name, count])).toEqual([['claude', 5]]);
+    });
+  });
+
+  describe('quality and person totals', () => {
+    const range = { days: 7, tzOffset: 0 };
+    const durations = new Map<number, number>();
+    const merged = { state: 'merged' as const };
+    const doc = (runId: number, kind: string, body: unknown) => ({ runId, kind, body: JSON.stringify(body) });
+    const list = (runId: number, count: number) =>
+      doc(
+        runId,
+        'requirement_list',
+        Array.from({ length: count }, (_, index) => ({ id: `R${index + 1}`, text: 't' })),
+      );
+    const marks = (runId: number, ...statuses: string[]) =>
+      doc(runId, 'review_requirements_result', {
+        decision: 'ok',
+        review: 'r',
+        summary: ['s'],
+        requirements: statuses.map((status, index) => ({ id: `R${index + 1}`, status, note: 'n' })),
+      });
+    const chat = (...entries: object[]) => JSON.stringify({ entries, revisions: [] });
+    const entry = (key: string, extra: object = {}) => ({
+      key,
+      role: 'person',
+      author: 'ada',
+      text: 't',
+      at: '2026-11-09T10:00:00.000Z',
+      state: 'taken',
+      ...extra,
+    });
+
+    it('sums the requirements of merged runs from the last round, and a run without statuses or a closed run adds nothing', () => {
+      const data = rows();
+      Object.assign(data.runs[0], merged);
+      Object.assign(data.runs[3], merged);
+      Object.assign(data.runs[1], { state: 'closed' });
+      const stats = buildStats(data, durations, NOW, range, new Map(), [
+        list(1, 3),
+        marks(1, 'met', 'partial', 'met'),
+        list(4, 2),
+        list(2, 5),
+        marks(2, 'met', 'met', 'met', 'met', 'met'),
+      ]);
+      expect(stats.totals).toMatchObject({ requirementsMet: 2, requirementsTotal: 3 });
+    });
+
+    it('counts the last requirements round, and a last round with no per-id statuses adds nothing', () => {
+      const data = rows();
+      Object.assign(data.runs[0], merged);
+      Object.assign(data.runs[3], merged);
+      const empty = doc(4, 'review_requirements_result', {
+        decision: 'ok',
+        review: 'r',
+        summary: ['s'],
+        requirements: [],
+      });
+      const stats = buildStats(data, durations, NOW, range, new Map(), [
+        list(1, 3),
+        marks(1, 'partial', 'partial', 'partial'),
+        marks(1, 'met', 'met', 'partial'),
+        list(4, 2),
+        empty,
+      ]);
+      expect(stats.totals).toMatchObject({ requirementsMet: 2, requirementsTotal: 3 });
+    });
+
+    it('counts the returns of merged runs, subtasks included, and no others', () => {
+      const data = rows();
+      Object.assign(data.runs[0], merged);
+      expect(buildStats(data, durations, NOW, range).totals.caughtAndFixed).toBe(2);
+      Object.assign(data.runs[0], { state: 'closed' });
+      expect(buildStats(data, durations, NOW, range).totals.caughtAndFixed).toBe(0);
+    });
+
+    it('counts what people wrote once, and leaves out the planner, machine runs and answers without a person', () => {
+      const data = rows();
+      Object.assign(data.runs[0], { startedBy: 'ada' });
+      Object.assign(data.runs[1], { startedBy: 'machine' });
+      data.person = {
+        answers: [{ id: 'c1', createdAt: '2026-11-09T10:00:00.000Z' }],
+        planChats: [
+          chat(
+            entry('message-c1'),
+            entry('message-c2'),
+            entry('message-c3', { at: '2026-10-01T10:00:00.000Z' }),
+            entry('planner-1', { role: 'planner' }),
+            entry('q-1', { kind: 'question' }),
+          ),
+        ],
+        backlogMessages: [{ createdAt: '2026-11-09T11:00:00.000Z' }],
+      };
+      const stats = buildStats(data, durations, NOW, range);
+      // run a prompt, the answer, the plan chat message c2, the backlog message
+      expect(stats.totals.personMessages).toBe(4);
     });
   });
 });

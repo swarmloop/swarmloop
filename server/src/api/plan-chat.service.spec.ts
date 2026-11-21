@@ -6,6 +6,7 @@ import { join } from 'path';
 import { Clock } from '../core/clock';
 import { AttachmentStore } from '../history/attachment-store';
 import { CheckoutRepository } from '../history/checkout.repository';
+import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
@@ -140,6 +141,17 @@ describe('PlanChatService', () => {
       expect(log.entries).toEqual([
         expect.objectContaining({ key: `message-${sent.commandId}`, text: 'use three, in memory', state: 'taken' }),
       ]);
+    });
+  });
+
+  it('stores the author of a message that answers the questions on the answer command', async () => {
+    await withPlanChat(async ({ app, chat }) => {
+      const run = await save(app.get(RunRepository), 'proj-3', 'research', 'waiting');
+      await app.get(DocumentRepository).putDocument(run, 'questions', '- which limit\n');
+      const sent = await chat.send('proj-3', 'three', 'ann');
+      const stored = await app.get(CommandRepository).find(sent.commandId);
+      expect(stored?.type).toBe('answer');
+      expect(stored?.actor).toBe('ann');
     });
   });
 

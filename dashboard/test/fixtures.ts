@@ -169,6 +169,10 @@ export function statsView(overrides: Partial<StatsView> = {}): StatsView {
       merged: 1,
       closed: 1,
       medianToMergeMs: 7_200_000,
+      requirementsMet: 0,
+      requirementsTotal: 0,
+      caughtAndFixed: 0,
+      personMessages: 0,
     },
     days: [
       day('2026-11-08', { done: 1, usd: 3, returns: 2, merged: 1, medianToMergeMs: 7_200_000 }),

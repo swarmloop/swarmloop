@@ -318,6 +318,10 @@ export class CommandEntity {
   @Column({ name: 'expected_revision', type: 'integer', nullable: true })
   expectedRevision!: number | null;
 
+  /** The login of the person whose submit named one; null for the server's own commands. */
+  @Column({ type: 'text', nullable: true })
+  actor!: string | null;
+
   @Column()
   state!: string;
 
