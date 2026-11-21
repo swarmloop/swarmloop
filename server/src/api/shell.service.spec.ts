@@ -12,6 +12,7 @@ import type { VisitRepository } from '../history/visit.repository';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
+import { REASON } from '../contract/run-state';
 import type { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { ShellService } from './shell.service';
 
@@ -261,5 +262,53 @@ describe('shell view', () => {
     expect(view.mounts).toEqual([{ hostPath: demo, containerPath: '/work', volume: 'wt', volumeSubpath: 'r1/demo' }]);
     expect(view.envMasks).toEqual([{ hostFile: join(demo, '.env'), containerFile: '/work/.env' }]);
     expect(view.workRoots).toEqual(expect.arrayContaining([demo, other]));
+  });
+});
+
+describe('shell hold of a stopped run', () => {
+  it('locks with the stored reason and unlocks back to the same status and reason', async () => {
+    const stopped = { code: REASON.stopped, message: 'stopped by a person' };
+    const run = {
+      id: 1,
+      key: 'proj-1',
+      status: 'blocked',
+      currentStep: 'plan',
+      targetPath: demo,
+      state: 'stopped',
+      stateReason: JSON.stringify(stopped),
+    } as RunEntity;
+    const bodies = new Map<string, string>();
+    const released: unknown[] = [];
+    const runRepository = {
+      findRun: async () => run,
+      claim: async () => ({ ...run, status: 'running' }),
+      release: async (value: RunEntity, change: unknown) => {
+        released.push(change);
+        return value;
+      },
+    };
+    const documentRepository = {
+      latestBody: async (_key: string, kind: string) => bodies.get(kind) ?? null,
+      putDocument: async (_run: RunEntity, kind: string, body: string) => {
+        bodies.set(kind, body);
+      },
+      listDocuments: async () => [],
+    };
+    const service = new ShellService(
+      runRepository as unknown as RunRepository,
+      documentRepository as unknown as DocumentRepository,
+      { latestChatId: async () => null } as unknown as VisitRepository,
+      {} as FlowRepository,
+      config,
+      Object.assign(new SandboxService(), { withDaemonPaths: async (mounts: SandboxMount[]) => mounts }),
+      new FakeClock(),
+      { ensureForRequest: async () => undefined } as unknown as WorkspaceGuard,
+    );
+
+    await service.lock('proj-1', 'proj-1-shell');
+    await service.unlock('proj-1');
+
+    expect(released).toEqual([{ status: 'blocked', reason: stopped }]);
+    expect(bodies.get('chat_lock')).toBe('clear\n');
   });
 });
