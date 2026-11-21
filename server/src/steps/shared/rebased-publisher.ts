@@ -9,6 +9,7 @@ import { GitRulesError, SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail, gitMissing, originUrl } from '../../git/git';
 import { withGitHostRetries } from '../../git/host-retry';
 import { worktreePath } from '../../git/repo-names';
+import { withWorktree, withWorktrees } from '../../git/worktree-lock';
 import { gitAt, Tree } from '../commit/commit-git';
 import { remoteProject } from '../merge-request/merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -45,15 +46,17 @@ export class RebasedPublisher {
     });
   }
 
-  async optionalRev(tree: Tree, ref: string): Promise<string | null> {
-    try {
-      return await git(['-C', tree.path, 'rev-parse', '--verify', '--quiet', ref], undefined, { answers: [1] });
-    } catch (error) {
-      if (gitMissing(error)) {
-        return null;
+  optionalRev(tree: Tree, ref: string): Promise<string | null> {
+    return withWorktree(tree.path, async () => {
+      try {
+        return await git(['-C', tree.path, 'rev-parse', '--verify', '--quiet', ref], undefined, { answers: [1] });
+      } catch (error) {
+        if (gitMissing(error)) {
+          return null;
+        }
+        throw new SwarmloopError(`${tree.repo} branch failed: ${gitDetail(error)}`);
       }
-      throw new SwarmloopError(`${tree.repo} branch failed: ${gitDetail(error)}`);
-    }
+    });
   }
 
   /** Push a rewritten branch with the tip captured before the base fetch. Does not stage or commit. */
@@ -71,8 +74,7 @@ export class RebasedPublisher {
       leases.map((lease) => lease.repo),
     );
     for (const tree of trees) {
-      const cwd = tree.path;
-      const origin = await originUrl(cwd, tree.repo, 'origin failed');
+      const origin = await withWorktree(tree.path, () => originUrl(tree.path, tree.repo, 'origin failed'));
       if (!origin) {
         continue;
       }
@@ -87,7 +89,8 @@ export class RebasedPublisher {
 
   /** Ties the published SHAs, and so the CI result read next to them, to this generation and these files. */
   async stampRefs(run: RunEntity, trees: Tree[]): Promise<void> {
-    const fingerprint = await worktreesFingerprint(trees.map((tree) => tree.path));
+    const paths = trees.map((tree) => tree.path);
+    const fingerprint = await withWorktrees(paths, () => worktreesFingerprint(paths));
     await stampGate(this.kernel.documents, run, ARTIFACTS.pipelineRef.kind, fingerprint);
   }
 
@@ -100,11 +103,11 @@ export class RebasedPublisher {
     kind: 'branch' | 'commit',
   ): Promise<boolean> {
     const registry = await this.registry.forRun(run.startedBy, run.codeHost);
-    const pushed = await this.pushChecked(tree, branch, published, run.codeHost, origin, registry).catch(
-      async (error: unknown) => {
+    const pushed = await withWorktree(tree.path, () =>
+      this.pushChecked(tree, branch, published, run.codeHost, origin, registry).catch(async (error: unknown) => {
         await this.assertNotRuleRefusal(error, tree, branch, kind);
         throw error;
-      },
+      }),
     );
     await barrier('after-push');
     return pushed;
@@ -251,19 +254,21 @@ export class RebasedPublisher {
   async rememberRefs(trees: Tree[], branch: PerRepo<string>, write: (body: string) => Promise<void>): Promise<boolean> {
     const blocks: string[] = [];
     for (const tree of trees) {
-      const cwd = tree.path;
-      const url = await originUrl(cwd, tree.repo, 'origin failed');
-      if (!url) {
-        continue;
-      }
-      let project = '';
-      try {
-        project = remoteProject(url).project;
-      } catch {
-        continue;
-      }
-      const sha = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
-      blocks.push(`project: ${project}\nref: ${forRepo(branch, tree.repo)}\nsha: ${sha}`);
+      const block = await withWorktree(tree.path, async () => {
+        const url = await originUrl(tree.path, tree.repo, 'origin failed');
+        if (!url) {
+          return null;
+        }
+        let project = '';
+        try {
+          project = remoteProject(url).project;
+        } catch {
+          return null;
+        }
+        const sha = await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed');
+        return `project: ${project}\nref: ${forRepo(branch, tree.repo)}\nsha: ${sha}`;
+      });
+      if (block) blocks.push(block);
     }
     if (blocks.length === 0) {
       return false;
