@@ -144,7 +144,8 @@ describe('checks that passed on the same files', () => {
 
   describe('a change outside every paths list', () => {
     it.each([
-      ['a changed manifest', { '.swarmloop.json': '{}\n' }],
+      ['a changed manifest', { '.swarmloop.json': `${JSON.stringify({ ...manifest, cache: [] })}\n` }],
+      ['a changed Dockerfile', { '.swarmloop/Dockerfile': 'FROM node:22\n' }],
       ['a new root lockfile', { 'package-lock.json': '{}\n' }],
     ])('runs every command in a first visit: %s', async (_label, files) => {
       const made = setup({ writes: true, config: { ...manifest, checks: entries } });
@@ -154,7 +155,8 @@ describe('checks that passed on the same files', () => {
     });
 
     it.each([
-      ['a changed manifest', { '.swarmloop.json': '{}\n' }],
+      ['a changed manifest', { '.swarmloop.json': `${JSON.stringify({ ...manifest, cache: [] })}\n` }],
+      ['a changed Dockerfile', { '.swarmloop/Dockerfile': 'FROM node:22\n' }],
       ['a new root lockfile', { 'package-lock.json': '{}\n' }],
     ])('runs every command in a later visit: %s', async (_label, files) => {
       const run = await afterFirstVisit();

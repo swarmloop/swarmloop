@@ -6,7 +6,7 @@ import type { DockerRunner } from '../sandbox/sandbox.service';
 import { commitFiles, makeRepo, runGit } from '../git/git-repo.spec-helpers';
 import { clearGitFaults, distrustGit } from '../testing/git-fault.spec-helpers';
 import type { EnvironmentConfig } from './environment-config';
-import { DEFAULT_PATH, imagePath, resolveProjectImage } from './project-image';
+import { DEFAULT_PATH, ImageBuildFailed, imagePath, resolveProjectImage } from './project-image';
 
 import type * as GitFault from '../testing/git-fault.spec-helpers';
 
@@ -109,6 +109,17 @@ describe('resolveProjectImage', () => {
 
   it('says when the Dockerfile is not committed', async () => {
     await expect(resolveProjectImage(fakeDocker().docker, makeRepo(), 'demo', own)).rejects.toThrow(SwarmloopError);
+  });
+});
+
+describe('a failing build', () => {
+  it('rejects with ImageBuildFailed and the build error', async () => {
+    const repo = makeRepo({ '.swarmloop/Dockerfile': 'FROM node:22\n' });
+    const failing: DockerRunner = (args) =>
+      args[0] === 'build' ? Promise.reject(new Error('step 2 failed')) : Promise.reject(new Error('No such image'));
+    const failure = await resolveProjectImage(failing, repo, 'demo', own).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ImageBuildFailed);
+    expect((failure as Error).message).toBe('image build from .swarmloop/Dockerfile failed: step 2 failed');
   });
 });
 

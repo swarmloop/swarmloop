@@ -26,6 +26,7 @@ export function rebaseConflictPrompt(input: {
     files,
     'Requirements:',
     input.requirements.trim(),
+    "A conflict in a lockfile or another file the package manager writes is not merged by hand: keep the new base's version of it, then run the package manager again for this branch's changes to its manifest.",
     'Do not run git.',
     'Do not push. Do not create a branch.',
     resultPromptFor(rebaseResolution, null),

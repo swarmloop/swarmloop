@@ -92,6 +92,8 @@ export async function createFlowHarness(
     blocks?: BlockAgentRunner;
     /** The agent process of every real step's launch. */
     runner?: FakeAgentRunner;
+    /** Calls of the fake sandbox on top of its own, for a spec whose project has an image. */
+    sandboxCalls?: Record<string, (...args: never[]) => Promise<unknown>>;
   } = {},
 ): Promise<FlowHarness> {
   const sandbox = new FakeSandbox();
@@ -105,7 +107,7 @@ export async function createFlowHarness(
     blocks: options.blocks,
     runner: options.runner,
     env,
-    sandbox: sandbox.calls,
+    sandbox: { ...sandbox.calls, ...options.sandboxCalls },
   });
   const { tree, clone } = featureWorktree(first.root, key, REPO);
   git(tree, ['push', 'origin', feature]);

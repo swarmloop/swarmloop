@@ -24,6 +24,14 @@ function imageRepository(project: string): string {
   return `swarmloop-env-${projectSlug(project)}`;
 }
 
+/** The Dockerfile of a project image did not build. */
+export class ImageBuildFailed extends SwarmloopError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ImageBuildFailed';
+  }
+}
+
 /** The image the agent works in: pulled once, or built from the committed Dockerfile and reused until it changes. */
 export async function resolveProjectImage(
   docker: DockerRunner,
@@ -55,7 +63,7 @@ export async function resolveProjectImage(
     const paths = context === '.' ? ['.'] : [context, dockerfile];
     await unrecordedGit(
       repoPath,
-      ['archive', '--format=tar', '-o', archive, ref, ...paths],
+      ['archive', '--format=tar', '-o', archive, ref, '--', ...paths],
       undefined,
       GIT_LIMITS.default,
     );
@@ -63,7 +71,7 @@ export async function resolveProjectImage(
     try {
       await docker(['build', '-t', tag, '-f', join(dir, dockerfile), join(dir, context)], IMAGE_TIMEOUT_MS);
     } catch (error) {
-      throw new SwarmloopError(`image build from ${dockerfile} failed: ${errorText(error)}`);
+      throw new ImageBuildFailed(`image build from ${dockerfile} failed: ${errorText(error)}`);
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

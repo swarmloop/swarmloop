@@ -100,7 +100,11 @@ const gitSchema = Joi.object({
 
 const swarmloopKeys = {
   version: Joi.number().valid(1).required(),
-  image: Joi.string().min(1),
+  image: Joi.string()
+    .min(1)
+    .custom((value: string, helpers) =>
+      value.startsWith('-') ? helpers.message({ custom: '"image" must not start with "-"' }) : value,
+    ),
   dockerfile: dockerfilePath,
   setup: Joi.string().min(1),
   checks: Joi.array().items(checkEntry),
@@ -240,7 +244,7 @@ export function fromDevcontainer(text: string, file: string): EnvironmentConfig 
     const relative = typeof build.context === 'string' ? build.context : ((raw.context as string | undefined) ?? '.');
     context = inside(posix.join(base, relative), fail);
   } else if (typeof raw.image === 'string' && raw.image !== '') {
-    image = raw.image;
+    image = imageName(raw.image, fail);
   } else {
     fail('give "image" or "build.dockerfile"');
   }
@@ -284,10 +288,18 @@ function projectHosts(
   return { ...(setup.length > 0 ? { setup } : {}), ...(agent.length > 0 ? { agent } : {}) };
 }
 
+/** A name that starts with "-" would be read by docker as an option. */
+function imageName(name: string, fail: (message: string) => never): string {
+  return name.startsWith('-') ? fail('"image" must not start with "-"') : name;
+}
+
 function inside(path: string, fail: (message: string) => never): string {
   const normal = posix.normalize(path);
   if (normal === '..' || normal.startsWith('../') || posix.isAbsolute(normal)) {
     return fail(`${path} is outside the repository`);
+  }
+  if (normal.startsWith('-')) {
+    return fail(`${path} must not start with "-"`);
   }
   return normal;
 }

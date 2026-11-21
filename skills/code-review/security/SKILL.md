@@ -6,6 +6,8 @@ Follow the data. First list every value this diff takes from outside the server'
 
 When CI configuration or scripts change, check whether workflow triggers, token permissions, secret access, or runner selection allow unreviewed code to run with privileged access. Report concrete exposure in the diff, not hypothetical findings.
 
+Every package the diff adds or swaps in, and every change to the environment definition (base image, hosts, setup commands), is a security change: name each, and read the package's registry facts (age, maintainers, downloads, a deprecated flag, install scripts). A name one or two letters from a popular package, or a package with no history, is a return.
+
 Do not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.
 
 Give a `summary` list and the decision. `summary` says what you checked and lists every outside value and where it goes; a return names the first unchecked use and the summary names the rest, so implement fixes them in one pass. On `decision: return`, name one broken behavior in this diff. Order of authority: the input says what must be true, the plan says how, implement's account says why it was done this way. A plan or an account never makes a requirement of the input go away. On a later pass, check again every finding you returned before and everything the new changes touch. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. "Nothing changed since my last decision" is never the reason on its own. "The plan said to stop" and "the plan asks nothing more" are never a reason. Do not ask for a new subsystem.

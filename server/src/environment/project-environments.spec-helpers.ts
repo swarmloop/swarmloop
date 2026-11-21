@@ -34,6 +34,13 @@ export function setup(
     config?: unknown;
     onCheck?: (repo: string) => void;
     imageId?: () => string;
+    /** The image id of an image, by its name. Others answer as before. */
+    imageIds?: Record<string, string>;
+    /** Extra files of the repository. */
+    files?: Record<string, string>;
+    /** No image is local until a pull or a build names it; a build of `failingBuild` fails. */
+    fresh?: boolean;
+    failingBuild?: Error;
     /** The runtime of the server's agent lists. An agent's own runtime never comes from it. */
     RUNTIME?: 'claude' | 'codex';
   } = {},
@@ -41,7 +48,9 @@ export function setup(
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-env-root-'));
   const repo = (options.writes ? copiedRepo : sharedRepo)({
     '.swarmloop.json': JSON.stringify(options.config ?? manifest),
+    ...options.files,
   });
+  const pulled = new Set<string>();
   const stored: { kind: string; body: string }[] = [];
   const documents = {
     putDocument: jest.fn((_run: RunEntity, kind: string, body: string) => {
@@ -56,9 +65,22 @@ export function setup(
   const alive = { now: 0, max: 0 };
   const run = jest.fn((args: string[]) => {
     const [first, second] = args;
+    if (first === 'pull') {
+      pulled.add(args[1] ?? '');
+    }
+    if (first === 'build') {
+      if (options.failingBuild) {
+        return Promise.reject(options.failingBuild);
+      }
+      pulled.add(args[2] ?? '');
+    }
+    if (first === 'image' && second === 'inspect' && args.length === 3 && options.fresh && !pulled.has(args[2] ?? '')) {
+      return Promise.reject(new Error('no such image'));
+    }
     if (first === 'image' && second === 'inspect' && args.includes('{{.Id}}')) {
       return Promise.resolve(
-        (args.at(-1) === manifest.image ? options.imageId?.() : undefined) ??
+        options.imageIds?.[args.at(-1) ?? ''] ??
+          (args.at(-1) === manifest.image ? options.imageId?.() : undefined) ??
           'sha256:0123456789abcdef0123456789abcdef\n',
       );
     }

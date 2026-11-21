@@ -135,6 +135,20 @@ describe('the git section of the manifest', () => {
   });
 });
 
+describe('a value that git or docker would read as an option', () => {
+  it.each([
+    ['a devcontainer Dockerfile', '{"build":{"dockerfile":"--output=/tmp/x"}}'],
+    ['a devcontainer context', '{"build":{"dockerfile":"Dockerfile","context":"--remote=/tmp/x"}}'],
+    ['a devcontainer image', '{"image":"--help"}'],
+  ])('is refused in %s', (_label, text) => {
+    expect(() => fromDevcontainer(text, '.devcontainer.json')).toThrow('must not start with "-"');
+  });
+
+  it('is refused as the image of the manifest', () => {
+    expect(() => fromSwarmloop('{"version":1,"image":"--help"}')).toThrow('must not start with "-"');
+  });
+});
+
 describe('fromDevcontainer', () => {
   const file = '.devcontainer/devcontainer.json';
 
