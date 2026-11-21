@@ -46,18 +46,18 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 You need Docker. No `.env`, no Jira, no CI. Install the latest release, which pulls the images:
 
 ```sh
-mkdir swarmloop && cd swarmloop && curl -fsSLO https://github.com/swarmloop/swarmloop/releases/latest/download/compose.yml && docker compose up -d
+mkdir swarmloop && cd swarmloop && curl -fsSLO https://github.com/swarmloop/swarmloop/releases/latest/download/compose.yml && docker compose up -d --wait && echo "swarmloop is ready: $(docker compose exec -T dashboard node -p process.env.SWARMLOOP_PUBLIC_URL)"
 ```
 
 Or build from source:
 
 ```sh
-git clone https://github.com/swarmloop/swarmloop && cd swarmloop && docker compose up -d
+git clone https://github.com/swarmloop/swarmloop && cd swarmloop && docker compose up -d --wait && echo "swarmloop is ready: $(docker compose exec -T dashboard node -p process.env.SWARMLOOP_PUBLIC_URL)"
 ```
 
 What the machine needs: these are the numbers of swarmloop's own repository, the 90th percentile of the peak per agent visit and per check command since 15.11. One agent visit takes 1.7 GB and up to 3 cores, and up to 6 GB when the agent runs the full server test suite itself. One check command takes 3.3 GB and up to 3.7 cores; the heaviest, `npm test --prefix server`, takes 6 GB and 5 cores, and the others stay under 2 GB. The defaults run 4 agents (`AGENTS_PARALLEL`) and 3 check commands (`CHECKS_PARALLEL`) at once, about 19 GB, plus 2 GB for the server and the dashboard. Give Docker Desktop every CPU but two (macOS and its file sharing need them) and memory of 2 GB + 2 GB per agent + 3 GB per check command, about 20 GB for the defaults. On a smaller machine, lower `AGENTS_PARALLEL` and `CHECKS_PARALLEL`. Your project's own tests decide what its check commands take. **Readiness** shows the server's stalls when the machine is short.
 
-Then open [http://127.0.0.1:3921](http://127.0.0.1:3921) and, in the browser:
+The commands print the dashboard's address once the stack is ready, [http://127.0.0.1:3921](http://127.0.0.1:3921) by default; open it and, in the browser:
 
 1. **Connect GitHub** (or **Connect GitLab**).
 2. Go to **Settings → Connections** and connect a model for the runtime your `AGENTS_*` name (Claude by default): sign in with your Claude account or paste an API key. Codex signs in with ChatGPT or takes an API key; Cursor takes an API key. Each connection is tested before it is saved and belongs to the person who made it. The server starts without a key, and **Readiness** shows which runtime still needs one. To use Cursor or Codex, switch `AGENTS_PLAN`, `AGENTS_IMPLEMENT` and `AGENTS_REVIEW` to `cursor:<model>` or `codex:<model>`. A subscription login is for your own use on your own server, not one plan shared by a team. Scripts, CI and servers without a browser: see [Headless setup](#-headless-setup).
@@ -69,7 +69,7 @@ To change a setting, copy its line from [`defaults.env`](https://github.com/swar
 
 The repository list is every clone in the `swarmloop-checkouts` volume, or only the ones named in `SWARMLOOP_REPOS`. The server only resolves, fetches and works in those; a run that names another repository is refused. `POST /runs/shell` and a run `path` must lie inside one of those clones or inside the worktrees. `sloop` and the IDE agent, started from a clone on your host, use swarmloop's clone with the same origin. The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
 
-**Update:** from a release folder, `docker compose pull && docker compose up -d`; from a clone, `git pull && docker compose up -d --build`. To stay on one release, set `SWARMLOOP_VERSION` in `.env`, for example `0.2.0`. `SWARMLOOP_HOME`, `UID` and `COMPOSE_FILE` are Compose controls, not server settings. **If your `.env` still has a `COMPOSE_FILE=compose.yml:compose.build.yml` line, delete it:** that file is gone, and Compose refuses to start while the line is there. Before it migrates the database, the server copies it to `data/backups/` (the last 3 are kept). An older version refuses a database a newer one migrated and names the backup. To go back: `docker compose down`, restore that backup from `data/backups/` over `data/swarmloop.sqlite` (`gunzip -c` for a `.gz` backup; a copy of the database is always a backup from `data/backups/` and never the live `data/swarmloop.sqlite`, whose latest commits may still be in its WAL), delete `data/swarmloop.sqlite-wal` and `-shm`, copy the session files from its `.sessions` folder into `data/`, set the older `SWARMLOOP_VERSION` and `docker compose up -d`.
+**Update:** from a release folder, `docker compose pull && docker compose up -d --wait && echo "swarmloop is ready: $(docker compose exec -T dashboard node -p process.env.SWARMLOOP_PUBLIC_URL)"`; from a clone, `git pull && docker compose up -d --build --wait && echo "swarmloop is ready: $(docker compose exec -T dashboard node -p process.env.SWARMLOOP_PUBLIC_URL)"`. To stay on one release, set `SWARMLOOP_VERSION` in `.env`, for example `0.2.0`. `SWARMLOOP_HOME`, `UID` and `COMPOSE_FILE` are Compose controls, not server settings. **If your `.env` still has a `COMPOSE_FILE=compose.yml:compose.build.yml` line, delete it:** that file is gone, and Compose refuses to start while the line is there. Before it migrates the database, the server copies it to `data/backups/` (the last 3 are kept). An older version refuses a database a newer one migrated and names the backup. To go back: `docker compose down`, restore that backup from `data/backups/` over `data/swarmloop.sqlite` (`gunzip -c` for a `.gz` backup; a copy of the database is always a backup from `data/backups/` and never the live `data/swarmloop.sqlite`, whose latest commits may still be in its WAL), delete `data/swarmloop.sqlite-wal` and `-shm`, copy the session files from its `.sessions` folder into `data/`, set the older `SWARMLOOP_VERSION` and `docker compose up -d`.
 
 ### 🚢 Commit, merge request, and CI
 
