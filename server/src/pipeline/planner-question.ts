@@ -19,7 +19,7 @@ interface QuestionDeps {
 }
 
 /** A visit of the plan step that no step holds: the run waits, so the visit is its own and starts now. */
-function openedFor(run: RunEntity, clock: Clock): OpenedStep {
+export function openedFor(run: RunEntity, clock: Clock): OpenedStep {
   return {
     run: { ...run, stepStartedAt: null },
     attemptId: '',

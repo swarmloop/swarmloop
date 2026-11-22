@@ -129,6 +129,23 @@ export class DocumentRepository {
     return found.map((item) => item.body);
   }
 
+  /** The time the latest document of `kind` was written. Null when the run has none. */
+  async latestCreatedAt(key: string, kind: string): Promise<string | null> {
+    const run = await this.runs.findOne({ where: { key } });
+    const latest = run && (await this.documents.findOne({ where: { runId: run.id, kind }, order: { id: 'DESC' } }));
+    return latest ? latest.createdAt : null;
+  }
+
+  /** The body and the time of every document of `kind` the run has, oldest first. */
+  async revisionsOfKind(runId: number, kind: string): Promise<{ body: string; createdAt: string }[]> {
+    const found = await this.documents.find({
+      select: { body: true, createdAt: true },
+      where: { runId, kind },
+      order: { id: 'ASC' },
+    });
+    return found.map(({ body, createdAt }) => ({ body, createdAt }));
+  }
+
   async listDocuments(runId: number): Promise<DocumentEntity[]> {
     return this.documents.find({ where: { runId }, order: { id: 'ASC' } });
   }

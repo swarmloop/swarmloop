@@ -1,5 +1,11 @@
 import type { BacklogEventKind } from '../../contract/backlog';
+import { DocumentRepository } from '../../history/document.repository';
 import { PlanChatStore } from '../../history/plan-chat.store';
+import { RunRepository } from '../../history/run.repository';
+import { readStoredQuestions } from '../../steps/shared/question-parts';
+import type { PlanConversation } from '../../steps/shared/plan-conversation';
+import { PlannerChain } from '../planner-chain';
+import { SubtaskPlannerAnswer } from '../subtask-planner-answer';
 import { backlogHarness } from './backlog.spec-helpers';
 
 type Harness = Awaited<ReturnType<typeof backlogHarness>>;
@@ -259,6 +265,47 @@ describe('BacklogEvents', () => {
 
       expect((await events(h, id, 'run-chat')).map((event) => event.facts)).toEqual([
         { slug: 'a', runKey: 'a-1', message: 'Maksym → b: use a cursor', reply: 'Done, a cursor.' },
+      ]);
+    }));
+
+  it('writes run-needs-person on the epic, with the question, when a subtask question reaches the starter', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      const id = (await h.seedBacklog('one')).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1' });
+      await h.seedDoneRun('a-1', []);
+      await h.moveRun('a-1', { status: 'waiting', reason: { code: 'SUBTASK_WAITING', message: 'waiting' } });
+      const runs = h.db.app.get(RunRepository);
+      const documents = h.db.app.get(DocumentRepository);
+      const epic = (await runs.findRun('a-1'))!;
+      const child = await runs.openSubtask('a-1-b', epic.id, 'b');
+      const conversation = { chat: h.db.app.get(PlanChatStore), clock: h.db.clock } as unknown as PlanConversation;
+      const planner = new SubtaskPlannerAnswer(
+        documents,
+        undefined as never,
+        undefined as never,
+        conversation,
+        undefined as never,
+      );
+      const chain = new PlannerChain(
+        {
+          askAbout: () => Promise.resolve(null),
+          handUp: (parent, taskId, text) => planner.handUp(parent, taskId, text),
+        },
+        conversation,
+        documents,
+        runs,
+      );
+
+      const asked = await chain.askUp(child, { from: 'implement', text: 'b needs c: which retry policy wins' }, 1);
+      await h.tick();
+      await h.tick();
+
+      expect(asked.asked).toBe('starter');
+      const stored = readStoredQuestions((await documents.latestBody('a-1', 'question_parts')) ?? '');
+      expect(stored.map(({ parts }) => parts.decide)).toEqual(['b needs c: which retry policy wins']);
+      expect(await events(h, id, 'run-needs-person')).toMatchObject([
+        { facts: { slug: 'a', runKey: 'a-1', state: 'waiting', reason: 'waiting for a person' } },
       ]);
     }));
 });
