@@ -15,6 +15,7 @@ import { FlakyTestEntity } from './flaky-test.entity';
 import { ServerStallEntity, SlowRequestEntity } from './server-stall.entities';
 import { SessionEntity } from './session.entity';
 import { RunWaitEntity } from './run-wait.entity';
+import { VisitStartEntity } from './visit-start.entity';
 import { StepStatEntity } from './step-stat.entity';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
@@ -369,4 +370,5 @@ export const entities = [
   ServerStallEntity,
   RunWaitEntity,
   SlowRequestEntity,
+  VisitStartEntity,
 ];

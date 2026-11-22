@@ -4,6 +4,7 @@ import { REASON, type StateReason } from '../contract/run-state';
 import { StepStatEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
+import { VisitStartRepository } from '../history/visit-start.repository';
 import { writeRunState } from '../history/run-state';
 import { assertInvariants } from './flow-invariants';
 import { save } from './runs.spec-helpers';
@@ -85,5 +86,54 @@ describe('assertInvariants', () => {
 
     if (item.broken) await expect(check).rejects.toThrow(run.key);
     else await expect(check).resolves.toBeUndefined();
+  });
+
+  describe('the starts of a run', () => {
+    let attempt = 0;
+    const seed = async (rows: { by?: string; digest?: string | null; reason?: string | null; rerun?: boolean }[]) => {
+      const run = await save(app.app.get(RunRepository), 'PROJ-901', 'implement', 'done');
+      for (const row of rows) {
+        attempt += 1;
+        await app.app.get(VisitStartRepository).note({
+          runId: run.id,
+          step: 'implement',
+          attemptId: `attempt-${attempt}`,
+          startedBy: row.by ?? 'machine',
+          level: null,
+          inputDigest: row.digest === undefined ? 'd1' : row.digest,
+          startReason: row.reason ?? null,
+          rerunUnfinished: row.rerun ?? false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      return run;
+    };
+
+    it('passes for a run with no starts', async () => {
+      await seed([]);
+      await expect(assertInvariants(app)).resolves.toBeUndefined();
+    });
+
+    it.each([
+      ['person starts on one input', [{ by: 'person' }, { by: 'person' }]],
+      ['machine starts with no digest', [{ digest: null }, { digest: null }]],
+      ['a machine start on another input', [{}, { digest: 'd2' }]],
+      ['a rerun of an unfinished visit', [{}, { rerun: true }]],
+    ])('passes for %s', async (_name, rows) => {
+      await seed(rows);
+      await expect(assertInvariants(app)).resolves.toBeUndefined();
+    });
+
+    it('throws for two machine or planner starts on one input', async () => {
+      const run = await seed([{ by: 'planner' }, {}]);
+      await expect(assertInvariants(app)).rejects.toThrow(`${run.key} implement was started again on the same input`);
+    });
+
+    it('throws for a machine start of a stopped run', async () => {
+      const run = await seed([{ reason: 'STOPPED', digest: null }]);
+      await expect(assertInvariants(app)).rejects.toThrow(
+        `${run.key} implement was started by the machine on a stopped run`,
+      );
+    });
   });
 });

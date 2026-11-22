@@ -128,6 +128,7 @@ export const AUTO_RETRY_CODES: readonly string[] = [
   ERROR_CODES.SUBTASK_WAITING,
   REASON.agentPlace,
   REASON.asksPlanner,
+  REASON.sameInput,
 ];
 
 /** The waiting codes whose next try is timed: a person may try now. */
@@ -138,6 +139,24 @@ export const TIMED_RETRY_CODES: readonly string[] = [
   ERROR_CODES.RUNTIME_LIMIT,
 ];
 
+/** The actions of a waiting run: a stored reason the server ends by itself keeps Stop, the others ask for an answer. */
+function waitingActions(reasonCode: string | null): RunAction[] {
+  if (
+    reasonCode === ERROR_CODES.RUNTIME_LIMIT ||
+    reasonCode === ERROR_CODES.GIT_AUTH ||
+    reasonCode === REASON.stalled
+  ) {
+    return ['resume', 'replay', 'rebase'];
+  }
+  if (reasonCode && TIMED_RETRY_CODES.includes(reasonCode)) return ['stop', 'resume', 'replay', 'rebase'];
+  return reasonCode &&
+    (reasonCode === REASON.asksPlanner ||
+      reasonCode === REASON.sameInput ||
+      SUBTASK_WAIT_CODES.includes(reasonCode as ErrorCode))
+    ? ['stop', 'resume', 'replay', 'rebase']
+    : ['answer', 'replay', 'rebase'];
+}
+
 /** The one place that says which actions a state allows. Availability follows what the dashboard offered before. */
 export function actionsFor(state: RunState, reasonCode: string | null = null): RunAction[] {
   switch (state) {
@@ -146,17 +165,7 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
     case 'stopped':
       return ['resume', 'replay', 'rebase'];
     case 'waiting':
-      if (
-        reasonCode === ERROR_CODES.RUNTIME_LIMIT ||
-        reasonCode === ERROR_CODES.GIT_AUTH ||
-        reasonCode === REASON.stalled
-      ) {
-        return ['resume', 'replay', 'rebase'];
-      }
-      if (reasonCode && TIMED_RETRY_CODES.includes(reasonCode)) return ['stop', 'resume', 'replay', 'rebase'];
-      return reasonCode && (reasonCode === REASON.asksPlanner || SUBTASK_WAIT_CODES.includes(reasonCode as ErrorCode))
-        ? ['stop', 'resume', 'replay', 'rebase']
-        : ['answer', 'replay', 'rebase'];
+      return waitingActions(reasonCode);
     case 'running':
       return ['stop', 'replay'];
     case 'stopping':

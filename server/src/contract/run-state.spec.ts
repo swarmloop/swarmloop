@@ -28,6 +28,18 @@ describe('actionsFor a block that a person can fix', () => {
   });
 });
 
+describe('SAME_INPUT, a refused start that a planner is asked about', () => {
+  it('has the actions, the list placement and the working planner word of ASKS_PLANNER, and needs no person', () => {
+    expect(actionsFor('waiting', REASON.sameInput)).toEqual(actionsFor('waiting', REASON.asksPlanner));
+    expect(AUTO_RETRY_CODES).toContain(REASON.sameInput);
+    expect(Object.keys(NEEDS_PERSON)).not.toContain(REASON.sameInput);
+    expect(needsPerson('waiting', { code: REASON.sameInput, message: 'x' })).toBe(false);
+    expect(stateWord('waiting', { code: REASON.sameInput, message: 'x' }, {}, String)).toEqual(
+      stateWord('waiting', { code: REASON.asksPlanner, message: 'x' }, {}, String),
+    );
+  });
+});
+
 describe('actionsFor a parent whose own edits conflict with a merged task', () => {
   it('offers Resume after PARENT_TREE_CONFLICT', () => {
     expect(actionsFor('blocked', ERROR_CODES.PARENT_TREE_CONFLICT)).toEqual(['resume', 'replay']);

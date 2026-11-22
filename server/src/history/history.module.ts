@@ -31,6 +31,7 @@ import { PlanChatStore } from './plan-chat.store';
 import { AttachmentStore } from './attachment-store';
 import { WalCheckpoint } from './wal-checkpoint';
 import { RunWaitLog } from './run-wait.log';
+import { VisitStartRepository } from './visit-start.repository';
 import { RunFactsRepository } from './run-facts.repository';
 import { EtaHistoryRepository } from './eta-history.repository';
 
@@ -101,6 +102,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     RunWaitLog,
     RunFactsRepository,
     EtaHistoryRepository,
+    VisitStartRepository,
   ],
   exports: [
     RunRepository,
@@ -127,6 +129,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     RunWaitLog,
     RunFactsRepository,
     EtaHistoryRepository,
+    VisitStartRepository,
     TypeOrmModule,
   ],
 })
