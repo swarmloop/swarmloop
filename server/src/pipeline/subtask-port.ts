@@ -109,7 +109,7 @@ export class SubtaskPort extends SubtaskOps {
       reportRefresh,
       this.logger,
     );
-    this.wakes = new SubtaskWakes(runs, commands, gate, visits, this.logger);
+    this.wakes = new SubtaskWakes(runs, commands, gate, visits, documents, this.logger);
     this.rebases = new SubtaskRebases(
       runs,
       documents,
