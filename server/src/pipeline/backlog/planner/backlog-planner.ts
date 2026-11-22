@@ -11,6 +11,8 @@ import { BacklogScheduler } from '../backlog-scheduler';
 import { PlannerTurnActions } from './planner-actions';
 import { messageView, turnView } from './planner-views';
 import { BacklogTurnRunner } from './turn-runner';
+import { waitOf } from './turn-wait';
+import type { TurnOutcome } from './turn-wait';
 
 /** The backlog has no failed turn for Resume to run again. */
 export class NoFailedTurn extends SwarmloopError {}
@@ -33,7 +35,7 @@ export class BacklogPlanner implements OnModuleDestroy {
   private readonly running = new Map<number, Promise<void>>();
   /** The backlogs that were woken while a turn ran or waited. */
   private readonly woken = new Set<number>();
-  /** The timers of the turns that wait for a usage limit to end. */
+  /** The timers of the turns that wait for a usage limit or a code host outage to end. */
   private readonly timers = new Map<number, NodeJS.Timeout>();
   private unsubscribe: (() => void) | null = null;
   private closed = false;
@@ -63,12 +65,12 @@ export class BacklogPlanner implements OnModuleDestroy {
     await this.whenIdle();
   }
 
-  /** Resolves when no turn of any backlog runs. A turn that waits for a usage limit is not running. */
+  /** Resolves when no turn of any backlog runs. A turn that waits for a usage limit or a code host is not running. */
   async whenIdle(): Promise<void> {
     while (this.running.size > 0) await Promise.allSettled([...this.running.values()]);
   }
 
-  /** A person's message: a turn takes what waits. During a turn, or while one waits for a limit, one next turn follows it. */
+  /** A person's message: a turn takes what waits. During a turn, or while one waits for a limit or a code host, one next turn follows it. */
   wake(backlogId: number): void {
     if (this.closed) return;
     this.woken.add(backlogId);
@@ -153,12 +155,15 @@ export class BacklogPlanner implements OnModuleDestroy {
     await this.execute(backlog, turnKey);
   }
 
-  /** Runs a turn that exists: an applied one is only sent again; any other launches. Its end is written and shown. */
+  /** Runs a turn that exists: an applied one is only sent again; any other launches. Its end is written and shown; a usage limit or a code host outage ends in a wait. */
   private async execute(backlog: BacklogRecord, turnKey: string): Promise<void> {
     const turn = (await this.chat.findTurn(turnKey)) as BacklogTurnRecord;
     try {
       if (turn.status === 'applied') {
-        await this.actions.apply(backlog.name, turnKey, { say: '', actions: [] });
+        // A next try that has come is spent: a new wait sets it again, a failure must not show it.
+        await this.mark(turn, { reason: '', nextTryAt: null });
+        const outcome = await this.resend(backlog, turnKey);
+        if (outcome.status === 'waiting') await this.waitFor(backlog, turnKey, outcome);
       } else {
         await this.mark(turn, { status: 'running', reason: '', nextTryAt: null });
         await this.publishTurn(backlog, turnKey);
@@ -167,16 +172,40 @@ export class BacklogPlanner implements OnModuleDestroy {
           await this.mark(turn, { status: 'done' });
         } else {
           const outcome = await this.runner.run(backlog.name, turnKey);
-          if (outcome.status === 'waiting') {
-            await this.mark(turn, { status: 'waiting', reason: outcome.reason, nextTryAt: outcome.resumesAt });
-            this.arm(backlog, turnKey, outcome.resumesAt);
-          }
+          if (outcome.status === 'waiting') await this.waitFor(backlog, turnKey, outcome);
         }
       }
     } catch (error) {
       await this.fail(backlog, turnKey, error);
     }
     await this.publish(backlog, turnKey);
+  }
+
+  /** Sends again what an applied turn recorded. A code host outage is a wait; any other error is thrown. */
+  private async resend(backlog: BacklogRecord, turnKey: string): Promise<TurnOutcome> {
+    try {
+      await this.actions.apply(backlog.name, turnKey, { say: '', actions: [] });
+      return { status: 'done' };
+    } catch (error) {
+      const wait = waitOf(error);
+      if (wait) return wait;
+      throw error;
+    }
+  }
+
+  /** The one waiting path of a usage limit and a code host outage: the turn shows its next try and runs again then. An applied turn keeps 'applied'. */
+  private async waitFor(
+    backlog: BacklogRecord,
+    turnKey: string,
+    outcome: Extract<TurnOutcome, { status: 'waiting' }>,
+  ): Promise<void> {
+    const turn = (await this.chat.findTurn(turnKey)) as BacklogTurnRecord;
+    await this.mark(turn, {
+      status: turn.status === 'applied' ? 'applied' : 'waiting',
+      reason: outcome.reason,
+      nextTryAt: outcome.resumesAt,
+    });
+    this.arm(backlog, turnKey, outcome.resumesAt);
   }
 
   /** A failed turn keeps its items waiting and says why in the chat. An applied turn keeps its status: its actions are written and are never made twice. */

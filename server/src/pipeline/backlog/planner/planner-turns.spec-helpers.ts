@@ -99,11 +99,17 @@ export async function plannerTurnsHarness(
   );
   const runStop = new RunStop();
   const launcher = new AgentLauncher(agent as never, db.app.get(VisitRepository), runStop, failover, config);
+  const failingOpen = { next: null as Error | null };
   const workspace = {
     opened: [] as string[],
     closed: [] as string[],
     open: async (_backlog: unknown, key: string) => {
       workspace.opened.push(key);
+      if (failingOpen.next) {
+        const error = failingOpen.next;
+        failingOpen.next = null;
+        throw error;
+      }
       const folder = join(db.root, 'worktrees', key);
       mkdirSync(join(folder, 'web'), { recursive: true });
       return {
@@ -156,6 +162,10 @@ export async function plannerTurnsHarness(
     /** The next command the planner sends to a run fails with this error. */
     failNextSend(error: Error) {
       failing.next = error;
+    },
+    /** The next opening of the turn's worktrees fails with this error. */
+    failNextOpen(error: Error) {
+      failingOpen.next = error;
     },
     /** The server stops and starts again: a new planner over the same database. */
     async restart(): Promise<void> {

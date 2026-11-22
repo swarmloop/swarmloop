@@ -1,4 +1,5 @@
 import type { BacklogTurnAction } from '../../../agent-result/definitions/backlog-turn';
+import { HostUnavailable } from '../../../core/swarmloop-error';
 import { plannerTurnsHarness } from './planner-turns.spec-helpers';
 import { turnResult } from './planner-scenarios.spec-helpers';
 
@@ -223,6 +224,111 @@ describe('BacklogPlanner', () => {
       },
       { AGENTS_BACKLOG_PLAN: 'claude:m-claude,codex:m-codex' },
     ));
+
+  it('waits for the next try of a code host that does not answer when the worktrees are fetched, and runs the same turn then, after a restart too', () =>
+    withTurns(async (h) => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+      const id = await backlogOf(h);
+      const fiveMinutes = 5 * 60_000;
+      const first = new HostUnavailable(
+        'github.com',
+        'Could not resolve host: github.com',
+        new Date(h.db.clock.now() + fiveMinutes).toISOString(),
+      );
+      h.failNextOpen(first);
+      await h.say(id, 'plan something');
+      await h.planner.whenIdle();
+
+      const [waiting] = await h.turnsOf(id);
+      expect(waiting).toMatchObject({ status: 'waiting', nextTryAt: first.retryAt, reason: first.message });
+      expect(h.shown.at(-1)?.turn).toMatchObject({ status: 'waiting', nextTryAt: first.retryAt });
+      expect(await h.lines(id)).toEqual(['person: plan something']);
+      expect((await h.chat.lastMessages(id, 10)).messages.map((message) => message.kind)).toEqual(['message']);
+      expect(h.agent.launches).toEqual([]);
+
+      const second = new HostUnavailable(
+        'github.com',
+        'Could not resolve host: github.com',
+        new Date(h.db.clock.now() + 2 * fiveMinutes).toISOString(),
+      );
+      h.failNextOpen(second);
+      h.db.clock.advance(fiveMinutes);
+      await jest.advanceTimersByTimeAsync(fiveMinutes);
+      await h.planner.whenIdle();
+      expect(await h.turnsOf(id)).toMatchObject([
+        { turnKey: waiting.turnKey, status: 'waiting', nextTryAt: second.retryAt, reason: second.message },
+      ]);
+
+      await h.restart();
+      h.agent.script = [turnResult('Back at it.')];
+      h.db.clock.advance(fiveMinutes);
+      await jest.advanceTimersByTimeAsync(fiveMinutes);
+      await h.planner.whenIdle();
+
+      expect((await h.turnsOf(id)).map((turn) => [turn.turnKey, turn.status])).toEqual([[waiting.turnKey, 'done']]);
+      expect((await h.chat.itemsOfTurn(waiting.turnKey)).messages.map((message) => message.text)).toEqual([
+        'plan something',
+      ]);
+      expect(h.agent.launches).toHaveLength(1);
+      expect((await h.lines(id)).at(-1)).toBe('planner: Back at it.');
+    }));
+
+  it('keeps an applied turn applied when the code host does not answer while its commands go out, and sends each command once at the next try', () =>
+    withTurns(async (h) => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+      const id = await backlogOf(h);
+      const milestone = await h.seedMilestone(id, 1);
+      await h.seedTask(id, 'going', { milestoneId: milestone.id, runKey: 'going-1', status: 'running' });
+      h.agent.script = [
+        turnResult('On it.', addTask('extra', { milestone: 1 }), { action: 'planChat', run: 'going-1', message: 'hi' }),
+      ];
+      const fiveMinutes = 5 * 60_000;
+      const retryAt = new Date(h.db.clock.now() + fiveMinutes).toISOString();
+      h.failNextSend(new HostUnavailable('github.com', 'HTTP 503', retryAt));
+      await h.say(id, 'tell going to say hi');
+      await h.planner.whenIdle();
+
+      const [applied] = await h.turnsOf(id);
+      expect(applied).toMatchObject({ status: 'applied', nextTryAt: retryAt });
+      expect(h.sent).toEqual([]);
+      expect((await h.chat.lastMessages(id, 10)).messages.map((message) => message.kind)).not.toContain('failed');
+      expect((await h.backlogs.tasks(id)).map((task) => task.slug)).toEqual(['going', 'extra']);
+
+      h.db.clock.advance(fiveMinutes);
+      await jest.advanceTimersByTimeAsync(fiveMinutes);
+      await h.planner.whenIdle();
+
+      expect((await h.turnsOf(id)).map((turn) => turn.status)).toEqual(['done']);
+      expect(h.sent).toEqual([
+        { command: expect.objectContaining({ type: 'planChat', run: 'going-1' }), key: `${applied.turnKey}-action-1` },
+      ]);
+      expect((await h.backlogs.tasks(id)).map((task) => task.slug)).toEqual(['going', 'extra']);
+      expect(h.agent.launches).toHaveLength(1);
+    }));
+
+  it('shows no next try for an applied turn whose try after a host outage fails for another reason', () =>
+    withTurns(async (h) => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+      const id = await backlogOf(h);
+      const milestone = await h.seedMilestone(id, 1);
+      await h.seedTask(id, 'going', { milestoneId: milestone.id, runKey: 'going-1', status: 'running' });
+      h.agent.script = [turnResult('On it.', { action: 'planChat', run: 'going-1', message: 'hi' })];
+      const fiveMinutes = 5 * 60_000;
+      const retryAt = new Date(h.db.clock.now() + fiveMinutes).toISOString();
+      h.failNextSend(new HostUnavailable('github.com', 'HTTP 503', retryAt));
+      await h.say(id, 'tell going to say hi');
+      await h.planner.whenIdle();
+      expect((await h.turnsOf(id))[0]).toMatchObject({ status: 'applied', nextTryAt: retryAt });
+
+      h.failNextSend(new Error('socket closed'));
+      h.db.clock.advance(fiveMinutes);
+      await jest.advanceTimersByTimeAsync(fiveMinutes);
+      await h.planner.whenIdle();
+
+      expect((await h.turnsOf(id))[0]).toMatchObject({ status: 'applied', nextTryAt: null });
+      expect((await h.chat.lastMessages(id, 10)).messages.map((message) => message.kind)).toContain('failed');
+      expect(h.shown.at(-1)?.turn).toMatchObject({ status: 'applied', nextTryAt: null });
+    }));
 
   it("answers a run's question from a person's reply in the chat at the next turn", () =>
     withTurns(async (h) => {

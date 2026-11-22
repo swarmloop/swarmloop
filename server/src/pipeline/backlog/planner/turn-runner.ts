@@ -7,7 +7,7 @@ import { StepStopped } from '../../../agent/step-stopped';
 import { backlogPlanAgents } from '../../../config/agents';
 import { AppConfig } from '../../../config/env';
 import { effortFields } from '../../../contract/effort';
-import { RuntimeLimit, SwarmloopError } from '../../../core/swarmloop-error';
+import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AttachmentStore } from '../../../history/attachment-store';
 import { backlogMessageKey } from '../../../history/backlog-message-key';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
@@ -22,13 +22,12 @@ import type { LaunchOwner } from '../../../steps/shared/agent-launch-request';
 import { agentFailure } from '../../../steps/shared/agent-result';
 import { PlannerTurnActions } from './planner-actions';
 import { BacklogTurnPrompt } from './turn-prompt';
+import { waitOf } from './turn-wait';
+import type { TurnOutcome } from './turn-wait';
 import { BacklogTurnWorkspace } from './turn-workspace';
 
 /** The step name of a planner turn's launch, for its chat, output file and agent role. */
 const TURN_STEP = 'backlog-plan';
-
-/** How a turn ended: its actions are applied, or every agent is at a usage limit and the turn tries again at `resumesAt`. */
-type TurnOutcome = { status: 'done' } | { status: 'waiting'; reason: string; resumesAt: string };
 
 /** Adds what a launch used to the turn's row. The agent that ran is the last one that took over. */
 function withSpend(
@@ -78,23 +77,22 @@ export class BacklogTurnRunner {
     private readonly attachments: AttachmentStore,
   ) {}
 
-  /** A launch that ends on a usage limit of every agent is not a failure: the outcome says when to try again. */
+  /** A usage limit of every agent and a code host outage are not failures: the outcome says when to try again. */
   async run(backlogName: string, turnKey: string): Promise<TurnOutcome> {
     const backlog = await this.backlogs.findBacklog(backlogName);
     if (backlog === null) throw new SwarmloopError(`no backlog ${backlogName}`);
     // A launch that halted this key (a missing credential) must not keep the turn from running again on Resume.
     this.runStop.clear(turnKey);
-    const space = await this.workspace.open(backlog, turnKey);
     try {
+      const space = await this.workspace.open(backlog, turnKey);
       await this.copyFiles(backlog.id as number, turnKey);
       const prompt = await this.prompt.build(backlogName, turnKey, space.mounts, space.names);
       const value = await this.launch(backlog, turnKey, prompt, space);
       await this.actions.apply(backlogName, turnKey, value);
       return { status: 'done' };
     } catch (error) {
-      if (error instanceof RuntimeLimit) {
-        return { status: 'waiting', reason: error.message, resumesAt: error.resumesAt };
-      }
+      const wait = waitOf(error);
+      if (wait) return wait;
       if (error instanceof StepStopped) throw new SwarmloopError(error.message);
       throw error;
     } finally {
