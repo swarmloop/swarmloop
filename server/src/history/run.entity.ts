@@ -67,7 +67,7 @@ export class RunEntity {
   @Column({ name: 'owner_instance', type: 'text', nullable: true })
   ownerInstance!: string | null;
 
-  /** The honest state of the run. Null on a row written before it existed; `deriveState` reads those. */
+  /** The honest state of the run. Null on a row written before it existed; the row-only derivation in run-state.ts reads those. */
   @Column({ type: 'text', nullable: true })
   state!: string | null;
 

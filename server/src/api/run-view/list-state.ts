@@ -1,7 +1,8 @@
 import type { RunEntity } from '../../history/entities';
 import type { RunSummary } from '../../contract/api';
 import { parseSubtasks, shownTaskState, SUBTASKS_KIND, type Subtask, type SubtaskStatus } from '../../contract/subtask';
-import type { OwnState, StateSources } from './own-state';
+import type { DocumentRepository } from '../../history/document.repository';
+import type { OwnState } from './own-state';
 
 type ListState = Pick<RunSummary, 'state' | 'stateReason' | 'task' | 'taskCounts'>;
 
@@ -17,7 +18,7 @@ interface ListFacts {
 
 /** The tasks of the latest plan of every run that can hold one: each parent and each run that is not done, by run key. */
 export async function listPlans(
-  documents: StateSources['documents'],
+  documents: Pick<DocumentRepository, 'latestDocuments'>,
   runs: RunEntity[],
   childrenOf: Map<number, RunEntity[]>,
 ): Promise<Map<string, Subtask[]>> {

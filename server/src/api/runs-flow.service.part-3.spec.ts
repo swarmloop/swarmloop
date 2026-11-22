@@ -1,3 +1,5 @@
+import { writeRunState } from '../history/run-state';
+import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import 'reflect-metadata';
 
 import { mkdtemp } from 'fs/promises';
@@ -98,8 +100,7 @@ describe('runs api', () => {
       await documents.putDocument(parent, 'contract', 'decisions:\n- subtask a: store UTC\n');
       const child = await runs.openSubtask('proj-split-a', parent.id, 'a');
       child.spentUsd = 2.5;
-      child.currentStep = 'ci';
-      child.status = 'done';
+      writeRunState(child, { status: 'done', currentStep: 'ci' });
       await runs.saveRun(child);
 
       const flow = await app.get(RunQueriesService).flow('proj-split');
@@ -230,8 +231,7 @@ describe('runs api', () => {
       const stored = { id: 'b', title: 'B', description: '', depends: [], files: [], proof: '', status: 'blocked' };
       await documents.putDocument(parent, 'subtasks', JSON.stringify([stored]));
       const child = await runs.openSubtask('proj-resumed-b', parent.id, 'b');
-      child.status = 'running';
-      child.currentStep = 'implement';
+      writeRunState(child, { status: 'running', currentStep: 'implement' });
       await runs.saveRun(child);
 
       const queries = app.get(RunQueriesService);
@@ -308,14 +308,14 @@ describe('runs api', () => {
       });
       await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a'), task('b')]));
       const working = await runs.openSubtask('proj-ask-a', parent.id, 'a');
-      working.status = 'running';
-      working.currentStep = 'implement';
+      writeRunState(working, { status: 'running', currentStep: 'implement' });
       await runs.saveRun(working);
       const asking = await runs.openSubtask('proj-ask-b', parent.id, 'b');
-      asking.status = 'waiting';
-      asking.currentStep = 'research';
+      writeRunState(asking, { status: 'waiting', currentStep: 'research' });
       await runs.saveRun(asking);
       await documents.putDocument(asking, 'questions', '- Which branch?\n');
+      runs.notify('proj-ask-b');
+      await app.get(RunStateRefresh).settled();
 
       const queries = app.get(RunQueriesService);
       const shown = (await queries.flow('proj-ask')).tasks ?? [];

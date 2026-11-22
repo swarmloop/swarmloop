@@ -7,7 +7,7 @@ import {
   type StateReason,
 } from '../contract/run-state';
 import type { StepStatEntity } from '../history/entities';
-import { deriveState } from '../history/run-state';
+import { liveState } from '../history/run-state';
 import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -25,7 +25,7 @@ export async function assertInvariants(app: TestApp): Promise<void> {
   const broken: string[] = [];
   for (const run of await runs.listRuns()) {
     const queued = (await commands.pending(run.id)).some((command) => command.type !== 'stop');
-    const { state, reason } = deriveState(run, { queued });
+    const { state, reason } = liveState(run, { queued });
     broken.push(
       ...stateRules(run.key, state, reason),
       ...visitRules(run.key, state, reason, await visits.listStats(run.id)),

@@ -9,7 +9,7 @@ import { storedBranch } from '../git/naming/stored-branch';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND, withStatuses, type Subtask } from '../contract/subtask';
 import { SubtaskOps, type OwnEdits, type RebaseEvent, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
@@ -107,7 +107,7 @@ export class SubtaskPort extends SubtaskOps {
 
   override async waitFor(run: RunEntity, message: string): Promise<void> {
     const reason = { code: ERROR_CODES.SUBTASK_WAITING, message };
-    if (run.status !== 'waiting' || JSON.stringify(deriveState(run).reason) === JSON.stringify(reason)) return;
+    if (run.status !== 'waiting' || JSON.stringify(storedState(run).reason) === JSON.stringify(reason)) return;
     writeRunState(run, { status: 'waiting', reason });
     await this.runs.saveRun(run);
   }
@@ -295,7 +295,7 @@ export class SubtaskPort extends SubtaskOps {
   /** Stops every subtask of the parent. A subtask that is not running stays as it is. */
   async stopAll(parent: RunEntity): Promise<void> {
     for (const child of await this.runs.children(parent)) {
-      if (deriveState(child).state === 'skipped') continue;
+      if (storedState(child).state === 'skipped') continue;
       await this.stop(child);
     }
   }
@@ -323,7 +323,7 @@ export class SubtaskPort extends SubtaskOps {
   /** The key of the wake-up for a subtask that is `blocked` or `failed` and is about to leave that state; null for any other run. */
   async leavingKey(key: string): Promise<string | null> {
     const run = await this.runs.findRun(key);
-    if (!run || !isSubtask(run) || !['blocked', 'failed'].includes(deriveState(run).state)) return null;
+    if (!run || !isSubtask(run) || !['blocked', 'failed'].includes(storedState(run).state)) return null;
     return `subtask-left-${run.key}-${(await this.visits.listStats(run.id)).length}`;
   }
 
@@ -357,7 +357,7 @@ export class SubtaskPort extends SubtaskOps {
 
   /** Between passes: the parent waits for its subtasks, or a blocked subtask stopped it. */
   passDue(parent: RunEntity): boolean {
-    const { state, reason } = deriveState(parent);
+    const { state, reason } = storedState(parent);
     const code = reason?.code ?? '';
     return (
       parent.currentStep === 'implement' &&

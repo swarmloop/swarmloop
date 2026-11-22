@@ -17,20 +17,20 @@ import type { RunEntity, StepStatEntity } from '../history/entities';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { VisitRepository } from '../history/visit.repository';
 import { RuntimeCooldownRepository } from '../history/runtime-cooldown.repository';
 import { DiskGuard } from './disk-guard';
 import { dockerWait } from '../steps/step-error-end';
 import { cooldownKeys } from '../steps/shared/limit-failover';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { CHAT_LOCK, chatResume, readChatLock } from './chat-lock';
+import { CHAT_LOCK, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { RunSettler, relaunchKey, type RelaunchDecision } from './run-settler';
 import { StallWatch } from './stall-watch';
 import { SubtaskPort } from './subtask-port';
-import { settleShell } from './shell-lock';
+import { settleChat, settleShell } from './shell-lock';
 
 export { silentMessage } from './run-settler';
 
@@ -167,7 +167,7 @@ export class Reconciler implements OnModuleDestroy {
    */
   async resumeLimited(): Promise<void> {
     for (const run of await this.runs.listRuns()) {
-      if (run.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.RUNTIME_LIMIT) continue;
+      if (run.status !== 'waiting' || storedState(run).reason?.code !== ERROR_CODES.RUNTIME_LIMIT) continue;
       try {
         const runtimes = agentsFor(this.config.env, run, run.currentStep).map((agent) => agent.runtime);
         const keys = await cooldownKeys(run, runtimes, this.runs, this.credentials);
@@ -191,7 +191,7 @@ export class Reconciler implements OnModuleDestroy {
 
   private async resumeTimed(code: string, prefix: 'host' | 'ci'): Promise<void> {
     for (const run of await this.withReason('waiting', code)) {
-      const retryAt = Date.parse(deriveState(run).reason?.retryAt ?? '');
+      const retryAt = Date.parse(storedState(run).reason?.retryAt ?? '');
       if (Number.isFinite(retryAt) && this.clock.now() < retryAt) continue;
       await this.resumeOnce(run, await this.outageKey(prefix, run), () => Promise.resolve(true));
     }
@@ -232,13 +232,13 @@ export class Reconciler implements OnModuleDestroy {
   private async outageKey(prefix: 'host' | 'ci' | 'docker' | 'disk', run: RunEntity): Promise<string> {
     const stats = await this.visits.listStats(run.id);
     const attempt = stats[stats.length - 1]?.attemptId ?? 'none';
-    const reason = deriveState(run).reason;
+    const reason = storedState(run).reason;
     return `${prefix}-${attempt}-${(prefix === 'disk' ? reason?.message : reason?.retryAt) ?? ''}`;
   }
 
   private async withReason(status: string, code: string): Promise<RunEntity[]> {
     return (await this.runs.listRuns()).filter(
-      (run) => run.status === status && deriveState(run).reason?.code === code,
+      (run) => run.status === status && storedState(run).reason?.code === code,
     );
   }
 
@@ -284,7 +284,7 @@ export class Reconciler implements OnModuleDestroy {
   /** Docker is still silent: the next try moves forward. The run is read again, and only a run that still waits is written. */
   private async refreshDockerWait(key: string): Promise<void> {
     const run = await this.runs.findRun(key);
-    if (run?.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
+    if (run?.status !== 'waiting' || storedState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
     const { code, message, retryAt } = dockerWait(this.clock, this.config.env);
     writeRunState(run, { status: 'waiting', ownerPid: null, reason: { code, message, retryAt } });
     await this.runs.saveRun(run);
@@ -293,7 +293,7 @@ export class Reconciler implements OnModuleDestroy {
   /** Docker answered: the run goes back to settling, as if its process had just died. */
   private async settleAnswered(key: string): Promise<void> {
     const run = await this.runs.findRun(key);
-    if (run?.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
+    if (run?.status !== 'waiting' || storedState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
     writeRunState(run, { status: 'running', ownerPid: null });
     await this.runs.saveRun(run);
     await this.reconcile(run);
@@ -302,7 +302,7 @@ export class Reconciler implements OnModuleDestroy {
   /** A run that waits for a person to reconnect goes on by itself, once, when their connection is ok again. */
   async resumeGitAuth(): Promise<void> {
     for (const run of await this.runs.listRuns()) {
-      if (run.status !== 'waiting' || deriveState(run).reason?.code !== ERROR_CODES.GIT_AUTH) continue;
+      if (run.status !== 'waiting' || storedState(run).reason?.code !== ERROR_CODES.GIT_AUTH) continue;
       try {
         if (!run.startedBy || !(await this.connections?.isHealthy(run.startedBy))) continue;
         await this.commands.accept('resume', run.key, {}, { idempotencyKey: `git-auth-${run.revision}` });
@@ -363,12 +363,7 @@ export class Reconciler implements OnModuleDestroy {
       return;
     }
     if (this.ownedHere(run, lock?.pid)) return;
-    const resume = chatResume(body, run.ownerPid);
-    if (resume) {
-      await this.runs.release(run, { status: resume });
-      await this.documents.putDocument(run, CHAT_LOCK, 'clear\n');
-      return;
-    }
+    if (await settleChat(this.runs, this.documents, run, body)) return;
     if (await this.settler.settleRebase(run)) return;
     const deadAttempt = run.activeAttempt;
     const decision = await this.settler.settleAttempt(run, this.slept, () => this.relaunchDecision(run, deadAttempt));

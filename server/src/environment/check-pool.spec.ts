@@ -34,6 +34,8 @@ function setup(options: {
   /** Wraps the fake spawn the way the real sandbox holds a container while the gate is paused. */
   gate?: ContainerGate;
   readCores?: () => Promise<{ cpus: number } | undefined>;
+  /** Keeps a command running until it resolves, so a spec orders which place frees first. */
+  holdClose?: (launch: SandboxLaunch) => Promise<void> | undefined;
 }) {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-pool-'));
   const spawned: SandboxLaunch[] = [];
@@ -58,9 +60,11 @@ function setup(options: {
       setImmediate(() => {
         child.stdout.write(`output of ${command} #${attempt}\n`);
         setImmediate(() => {
-          alive.now -= 1;
-          clock.advance(options.tick ?? 0);
-          child.emit('close', options.exits(command, launch, attempt));
+          void Promise.resolve(options.holdClose?.(launch)).then(() => {
+            alive.now -= 1;
+            clock.advance(options.tick ?? 0);
+            child.emit('close', options.exits(command, launch, attempt));
+          });
         });
       });
       return Promise.resolve(child);
@@ -133,9 +137,18 @@ const killedFirst = (name: string) => (command: string, _launch: SandboxLaunch, 
 describe('CheckPool', () => {
   it('keeps queued checks on their admission reading and adopts recovered cores after they drain', async () => {
     let machine: { cpus: number } | undefined;
+    let ordered = false;
     const { pool, input, repoOf, spawned, alive } = setup({
       limit: { value: 3 },
       readCores: async () => machine,
+      // In the second run the command in place 1 ends only after the third has started, so place 0 frees first.
+      holdClose: (launch) =>
+        ordered && launch.checkPlace === 1
+          ? new Promise<void>((resolve) => {
+              const wait = () => (spawned.length >= 3 ? resolve() : void setImmediate(wait));
+              wait();
+            })
+          : undefined,
       exits: () => {
         machine = { cpus: 8 };
         return 0;
@@ -146,13 +159,15 @@ describe('CheckPool', () => {
     expect(alive.max).toBe(3);
     spawned.length = 0;
     alive.max = 0;
+    ordered = true;
     await pool.runAll(input, 'a2', [repoOf(['g', 'h', 'i'])]);
     expect(alive.max).toBe(2);
-    expect(spawned.map((launch) => launch.cpuSlice)).toEqual([
+    const slices = spawned.map((launch) => launch.cpuSlice);
+    expect(slices.slice(0, 2)).toEqual([
       { cores: 8, places: 2, index: 0 },
       { cores: 8, places: 2, index: 1 },
-      { cores: 8, places: 2, index: 0 },
     ]);
+    expect(slices[2]).toEqual({ cores: 8, places: 2, index: 0 });
   });
 
   it('starts no check command while the server is paused, says so, and starts them in line order after', async () => {

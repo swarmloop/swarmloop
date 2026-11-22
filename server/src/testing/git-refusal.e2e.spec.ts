@@ -5,7 +5,7 @@ import { actionsFor, NEEDS_PERSON, stateWord } from '../contract/run-state';
 import { ERROR_CODES } from '../contract/error-codes';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { installOriginHook, type FakeHostSettings, type FakeOriginRules } from './fake-host-rules';
 import { createFlowHarness } from './flow-harness';
@@ -128,7 +128,7 @@ describe('a host refusal of a name', () => {
     await start({}, { commit: COMMIT_RULE }, [answerWith({})]);
     await commitOne();
     const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
-    const { state, reason } = deriveState(run);
+    const { state, reason } = storedState(run);
     expect(state).toBe('blocked');
     expect(reason?.code).toBe(ERROR_CODES.GIT_RULES);
     expect(reason?.message).toMatch(
@@ -169,7 +169,7 @@ describe('a host refusal of a name', () => {
     await removeFeatureFromOrigin();
     await commitOne();
     const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
-    expect(deriveState(run).reason?.code).toBe(ERROR_CODES.GIT_RULES);
+    expect(storedState(run).reason?.code).toBe(ERROR_CODES.GIT_RULES);
     writeFileSync(join(flow.tree, FILE), JSON.stringify({ version: 1, git: { branch: 'work/{slug}' } }));
     await flow.app.pipeline.step('commit', KEY);
     expect(asked()).toBe(1);

@@ -3,7 +3,7 @@ import type { PipelineResult } from '../core/pipeline-result';
 import { DocumentRepository } from '../history/document.repository';
 import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { RunRepository } from '../history/run.repository';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import type { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
@@ -70,7 +70,7 @@ describe('RunReopen', () => {
       const result = await reopen.reopen(KEY, start);
       const run = (await runs.findRun(KEY))!;
       expect([run.status, run.currentStep]).toEqual(['waiting', 'plan-improve']);
-      expect(deriveState(run).reason).toMatchObject({ code: 'HOST_UNAVAILABLE', retryAt: '2026-01-01T00:05:00.000Z' });
+      expect(storedState(run).reason).toMatchObject({ code: 'HOST_UNAVAILABLE', retryAt: '2026-01-01T00:05:00.000Z' });
       expect(result.exitCode).toBe(1);
       expect(started).toEqual([]);
     } finally {
@@ -89,7 +89,7 @@ describe('RunReopen', () => {
     try {
       await reopen.reopen(KEY, start);
       const run = (await runs.findRun(KEY))!;
-      expect(deriveState(run).state).toBe('merged');
+      expect(storedState(run).state).toBe('merged');
       expect(run.currentStep).toBe('done');
       expect(await documents.latestBody(KEY, 'merge_request')).toContain('draft: false');
       expect(started).toEqual([]);

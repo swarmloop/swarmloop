@@ -13,7 +13,7 @@ import type { StepRegistry } from '../steps/step.registry';
 import type { RunStop } from '../agent/run-stop';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { assertKey, isStep } from '../core/pipeline-result';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON, STOP_NOTE, TIMED_RETRY_CODES } from '../contract/run-state';
 import { reportFailure } from '../steps/shared/step-failure';
@@ -184,7 +184,7 @@ export class RunLifecycle implements OnApplicationBootstrap {
 
   /** A run that waits for a host or for docker is stopped for good: no automatic try starts it until Resume. */
   private waitsOnOutage(run: RunEntity): boolean {
-    const code = run.status === 'waiting' ? deriveState(run).reason?.code : undefined;
+    const code = run.status === 'waiting' ? storedState(run).reason?.code : undefined;
     return !!code && TIMED_RETRY_CODES.includes(code) && !this.inflight.has(run.key);
   }
 
@@ -216,6 +216,8 @@ export class RunLifecycle implements OnApplicationBootstrap {
     const waiters = this.idleWaiters.get(key);
     this.idleWaiters.delete(key);
     waiters?.forEach((resolve) => resolve());
+    // The run list shows a held run as running: when the hold ends, what the row says shows again.
+    this.runs.notify(key);
   }
 
   async stopRunning(key: string, run: RunEntity): Promise<PipelineResult | null> {

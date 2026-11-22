@@ -5,7 +5,7 @@ import { ERROR_CODES } from '../contract/error-codes';
 import { checkRun, fromSwarmloop } from '../environment/environment-config';
 import { EnvironmentService } from '../environment/environment.service';
 import { DocumentRepository } from '../history/document.repository';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { BlockAgentRunner } from './result-answer';
 import { createFlowHarness } from './flow-harness';
@@ -64,7 +64,7 @@ describe('a new repository gets its base, CI runs, and a later run gets the mani
       await flow.app.pipeline.whenIdle(KEY);
       await assertInvariants(flow.app);
       const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
-      codes.push(deriveState(run).reason?.code);
+      codes.push(storedState(run).reason?.code);
     }
     return codes;
   }
@@ -108,7 +108,7 @@ describe('a new repository gets its base, CI runs, and a later run gets the mani
     expect(codes).not.toContain(ERROR_CODES.CI_NOT_RUN);
     expect(flow.host.nudged).toEqual([]);
     const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
-    expect(deriveState(run).state).toBe('done');
+    expect(storedState(run).state).toBe('done');
     expect(await documents().latestBody(KEY, 'pipeline_log')).toContain('result: pass');
     expect(flow.host.ci.snapshot(readmeSha, FEATURE)).toBeNull();
 

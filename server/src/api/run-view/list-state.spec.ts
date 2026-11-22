@@ -1,12 +1,19 @@
-import type { DocumentEntity, PasteEntity, RunEntity } from '../../history/entities';
+import type { DocumentEntity, RunEntity } from '../../history/entities';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { SUBTASKS_KIND } from '../../contract/subtask';
+import { factColumns } from '../../history/run-state';
 import { listPlans, listStates } from './list-state';
 import { ownStates } from './own-state';
 import { childrenByParent } from './status';
 
 function run(id: number, key: string, extra: Partial<RunEntity> = {}): RunEntity {
   return { id, key, status: 'waiting', currentStep: 'implement', stateReason: null, ...extra } as RunEntity;
+}
+
+/** A waiting run as the refresh stores it when its documents hold an open question or an unsaved paste. */
+function asking(id: number, key: string, extra: Partial<RunEntity> = {}): RunEntity {
+  const row = run(id, key, extra);
+  return { ...row, ...factColumns(row, { needsAnswers: true }) };
 }
 
 function reason(code: string, extra: object = {}): string {
@@ -21,9 +28,6 @@ interface Setup {
   runs: RunEntity[];
   /** The latest plan of each run, by run key. */
   plans?: Record<string, string>;
-  /** Documents of run 1, unless they name their run. */
-  documents?: Partial<DocumentEntity>[];
-  pasteUrls?: string[];
   claimed?: string[];
   /** The run ids with a command that is accepted or executing and is not a stop. */
   queued?: number[];
@@ -32,12 +36,11 @@ interface Setup {
 }
 
 /** The documents repository as the list reads it: the latest document of each asked kind of each asked run. */
-function storedDocuments(runs: RunEntity[], plans: Record<string, string>, documents: Partial<DocumentEntity>[]) {
+function storedDocuments(runs: RunEntity[], plans: Record<string, string>) {
   const stored = [
     ...runs.flatMap((item) =>
       plans[item.key] ? [{ runId: item.id, kind: SUBTASKS_KIND, body: plans[item.key] }] : [],
     ),
-    ...documents.map((document) => ({ runId: 1, ...document })),
   ] as DocumentEntity[];
   return {
     latestDocuments: async (runIds: number[], kinds: string[]) =>
@@ -45,21 +48,12 @@ function storedDocuments(runs: RunEntity[], plans: Record<string, string>, docum
   };
 }
 
-async function states({
-  runs,
-  plans = {},
-  documents = [],
-  pasteUrls = [],
-  claimed = [],
-  queued = [],
-  places = {},
-}: Setup) {
+async function states({ runs, plans = {}, claimed = [], queued = [], places = {} }: Setup) {
   const keys = new Map(runs.map((item) => [item.id, item.key]));
   const childrenOf = childrenByParent(runs);
-  const stored = storedDocuments(runs, plans, documents);
+  const stored = storedDocuments(runs, plans);
   const sources = {
     documents: stored,
-    checkouts: { listPastes: async () => pasteUrls.map((url) => ({ url }) as PasteEntity) },
     commands: { queuedRunIds: async (runIds: number[]) => new Set(runIds.filter((id) => queued.includes(id))) },
   };
   return listStates(
@@ -77,26 +71,22 @@ async function states({
 describe('listStates', () => {
   it('reads a waiting run with an open question as waiting for answers', async () => {
     const result = await states({
-      runs: [run(1, 'A-1', { currentStep: 'research' })],
-      documents: [{ kind: 'questions', body: '- Which branch?\n' }],
+      runs: [asking(1, 'A-1', { currentStep: 'research' })],
     });
     expect(result['A-1']).toMatchObject({ state: 'waiting', stateReason: { code: 'NEEDS_ANSWERS' } });
   });
 
   it('keeps the open questions of one run from reaching another run', async () => {
     const result = await states({
-      runs: [run(1, 'A-1', { currentStep: 'research' }), run(2, 'A-2', { currentStep: 'research' })],
-      documents: [{ kind: 'questions', body: '- Which branch?\n' }],
+      runs: [asking(1, 'A-1', { currentStep: 'research' }), run(2, 'A-2', { currentStep: 'research' })],
     });
     expect(result['A-1']?.stateReason?.code).toBe('NEEDS_ANSWERS');
     expect(result['A-2']?.stateReason?.code).not.toBe('NEEDS_ANSWERS');
   });
 
   it('waits for a paste at requirements until the pending one is saved', async () => {
-    const pending = { kind: 'pending', body: JSON.stringify({ url: 'https://paste.example/1' }) };
-    const runs = [run(1, 'A-1', { currentStep: 'requirements' })];
-    const asked = await states({ runs, documents: [pending] });
-    const saved = await states({ runs, documents: [pending], pasteUrls: ['https://paste.example/1'] });
+    const asked = await states({ runs: [asking(1, 'A-1', { currentStep: 'requirements' })] });
+    const saved = await states({ runs: [run(1, 'A-1', { currentStep: 'requirements' })] });
     expect(asked['A-1']?.stateReason?.code).toBe('NEEDS_ANSWERS');
     expect(saved['A-1']?.stateReason?.code).not.toBe('NEEDS_ANSWERS');
   });

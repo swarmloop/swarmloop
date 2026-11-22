@@ -86,7 +86,10 @@ function keptCode(stored: StateReason | null): string | null {
 }
 
 function blockedState(stored: StateReason | null, facts: StateFacts): { state: RunState; reason: StateReason } {
-  const code = keptCode(stored) ?? facts.blockCode ?? stored?.code ?? REASON.blocked;
+  // The error text gives a code of its own; the step alone gives only the loop limit or the plain BLOCKED.
+  const fromText = facts.blockCode !== REASON.blocked && facts.blockCode !== REASON.loopLimit ? facts.blockCode : null;
+  const written = stored && stored.code !== REASON.blocked ? stored.code : null;
+  const code = keptCode(stored) ?? fromText ?? written ?? facts.blockCode ?? REASON.blocked;
   return {
     state: code === REASON.stopped ? 'stopped' : 'blocked',
     reason: reasonOf(code, stored?.message ?? 'blocked'),
@@ -116,7 +119,7 @@ function unfinishedState(
 }
 
 /** Today's facts to the honest state. The only place that maps `status` and the facts to a state. */
-export function deriveState(run: StateRow, facts: StateFacts = {}): { state: RunState; reason: StateReason | null } {
+function deriveState(run: StateRow, facts: StateFacts = {}): { state: RunState; reason: StateReason | null } {
   const stored = readReason(run.stateReason);
   if (stored?.code === REASON.skipped) return { state: 'skipped', reason: stored };
   switch (run.status) {
@@ -140,6 +143,46 @@ export function deriveState(run: StateRow, facts: StateFacts = {}): { state: Run
     default:
       return unfinishedState(stored, facts);
   }
+}
+
+type StoredRow = StateRow & Partial<Pick<RunEntity, 'state'>>;
+
+/** The state of the run as its row stores it. A row with no state column is read from the row alone; the refresh fills it. */
+export function storedState(run: StoredRow): { state: RunState; reason: StateReason | null } {
+  return run.state ? { state: run.state as RunState, reason: readReason(run.stateReason) } : deriveState(run);
+}
+
+/** What a run view knows beyond the row: a request in flight and the words of an agent that waits for a place. */
+export interface LiveFacts {
+  queued?: boolean;
+  stopping?: boolean;
+  agentPlace?: string;
+}
+
+/**
+ * The stored state with the live facts a request or the process adds. Without any, it is the stored state, except that
+ * a run which waits for the container of a dead owner shows as running, as the run page and the list always showed it.
+ */
+export function liveState(run: StoredRow, live: LiveFacts): { state: RunState; reason: StateReason | null } {
+  const held = storedState(run);
+  const stored = held.state === 'recovering' ? { state: 'running' as const, reason: null } : held;
+  if (live.queued && (stored.state === 'idle' || stored.state === 'waiting')) return { state: 'queued', reason: null };
+  if (stored.state !== 'running') return stored;
+  if (live.stopping) return { state: 'stopping', reason: null };
+  return live.agentPlace ? { state: 'running', reason: { code: REASON.agentPlace, message: live.agentPlace } } : stored;
+}
+
+/**
+ * The state columns the refresh writes from the facts of a run's documents. A blocked row keeps a code from the kept
+ * list; otherwise the code read from the last error text wins over any stored code, and a stored code other than the
+ * plain BLOCKED stays over the step's own fallback.
+ */
+export function factColumns(
+  run: StateRow,
+  facts: Pick<StateFacts, 'needsAnswers' | 'returned' | 'blockCode'>,
+): Pick<RunEntity, 'state' | 'stateReason'> {
+  const derived = deriveState(run, facts);
+  return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };
 }
 
 export interface RunStateChange {

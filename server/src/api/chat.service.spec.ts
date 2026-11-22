@@ -8,6 +8,8 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { REASON } from '../contract/run-state';
+import { stateColumns, storedState } from '../history/run-state';
 import { ChatService } from './chat.service';
 
 describe('chat', () => {
@@ -104,6 +106,56 @@ describe('chat', () => {
     const planned = agent.mock.calls[1][0].prompt;
     expect(planned).toContain('Use the tool.');
     expect(planned).not.toMatch(/\[(no )?plan tool\]/);
+  });
+
+  it('puts a stopped run back stopped with Resume after a chat', async () => {
+    const stopped = { code: REASON.stopped, message: 'stopped by a person' };
+    const run = {
+      id: 5,
+      key: 'PROJ-2',
+      status: 'blocked',
+      currentStep: 'plan',
+      ownerPid: null,
+      ownerInstance: null,
+      activeAttempt: null,
+      targetPath: null,
+      state: 'stopped',
+      stateReason: JSON.stringify(stopped),
+    };
+    const before = storedState(run);
+    expect(before.reason?.code).toBe(REASON.stopped);
+    const runRepository = {
+      findRun: async () => run,
+      held: () => false,
+      claim: async () => {
+        Object.assign(run, stateColumns(run, { status: 'running', ownerPid: process.pid }));
+        return run;
+      },
+      release: async (value: typeof run, change: Parameters<typeof stateColumns>[1]) => {
+        Object.assign(value, stateColumns(value, { ...change, activeAttempt: null }));
+        return value;
+      },
+    };
+    const root = await mkdtemp(join(tmpdir(), 'sloop-chat-'));
+    const project = join(root, 'project');
+    await mkdir(project, { recursive: true });
+    const chat = new ChatService(
+      runRepository as never,
+      { latestBody: async () => null, putDocument: async () => undefined } as never,
+      config(root),
+      new FakeClock(),
+      { assertReady: async () => undefined } as never,
+      new AgentLauncher(
+        { run: async (input: AgentRunInput) => result(input.prompt) } as never,
+        { tokenTotal: async () => 1 } as never,
+        new RunStop(),
+      ),
+      { block: async () => '' } as never,
+      { ensureForRequest: async () => undefined } as never,
+    );
+    await chat.speak('PROJ-2', { prompt: 'look at it', cwd: project });
+    expect(run.status).toBe('blocked');
+    expect(storedState(run)).toEqual(before);
   });
 
   it('refuses a chat while the feature is running', async () => {

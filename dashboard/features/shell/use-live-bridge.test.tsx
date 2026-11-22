@@ -58,6 +58,22 @@ describe('useLiveBridge', () => {
     expect(emitted).toHaveBeenNthCalledWith(3, 'watch', 'r1');
   });
 
+  it('counts every connect in the snapshot', () => {
+    function Connects() {
+      return <p>connects {useLiveBridge((snapshot) => snapshot.connects)}</p>;
+    }
+    render(<Connects />, { wrapper: LiveBridgeProvider });
+    expect(screen.getByText('connects 0')).toBeInTheDocument();
+
+    act(() => {
+      receive('connect');
+      receive('disconnect');
+      receive('connect');
+    });
+
+    expect(screen.getByText('connects 2')).toBeInTheDocument();
+  });
+
   it('sends nothing on connect once no run is watched', () => {
     render(<Probe />, { wrapper: LiveBridgeProvider });
     act(() => watch('r1'));

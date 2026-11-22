@@ -9,7 +9,7 @@ import { parseSubtasks, SUBTASKS_KIND, type Subtask } from '../contract/subtask'
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { storedProjects } from '../config/checkout-path';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { REASON, SKIPPED_NOTE } from '../contract/run-state';
 import { RunRef } from '../contract/api';
 import { subtaskPromptOf } from './subtask-prompt';
@@ -82,7 +82,7 @@ export class RunSubtaskCommandsService {
 
   /** Stops the run of a skipped task and closes it for good. `blocked` keeps a restart from relaunching it. */
   private async close(child: RunEntity): Promise<void> {
-    if (deriveState(child).state === 'skipped') return;
+    if (storedState(child).state === 'skipped') return;
     await this.subtasks.stop(child);
     const stopped = (await this.runs.findRun(child.key)) ?? child;
     writeRunState(stopped, { status: 'blocked', reason: { code: REASON.skipped, message: SKIPPED_NOTE } });

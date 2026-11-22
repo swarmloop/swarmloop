@@ -6,6 +6,11 @@
   },
   "forbidOutside": [
     {
+      "include": "server/src/",
+      "allowFiles": ["server/src/history/run-state.ts", "server/src/history/run-state.spec.ts"],
+      "pattern": "\\bderiveState\\b"
+    },
+    {
       "include": "dashboard/",
       "exclude": "\\.test\\.tsx?$|^dashboard/test/",
       "allowFiles": ["dashboard/features/run/run-state-word.tsx"],

@@ -1,6 +1,6 @@
 import { ERROR_CODES } from '../../contract/error-codes';
 import { HOST_RETRY_MS } from '../../integrations/http';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
 import type { AppConfig } from '../../config/env';
 import type { Clock } from '../../core/clock';
@@ -218,7 +218,7 @@ export class SplitPass {
     const notes: string[] = [];
     for (const task of tasks.filter((item) => item.status === 'running')) {
       const child = await this.deps.subtasks.find(parent, task.id);
-      const { state, reason } = child ? deriveState(child) : { state: 'running' as const, reason: null };
+      const { state, reason } = child ? storedState(child) : { state: 'running' as const, reason: null };
       const note = runWaitNote(task, { state, stateReason: reason });
       if (note) notes.push(note);
     }
@@ -254,7 +254,7 @@ export class SplitPass {
 
   private async follow(parent: RunEntity, task: Subtask): Promise<Subtask> {
     const child = await this.deps.subtasks.open(parent, task);
-    const { state, reason } = deriveState(child);
+    const { state, reason } = storedState(child);
     if (state === 'stopped') {
       // A Stop of the parent stopped this run. Resume goes on where it stopped.
       await this.deps.subtasks.resume(child);

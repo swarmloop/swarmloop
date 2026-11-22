@@ -4,8 +4,9 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
+import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { FlowRepository } from '../history/flow.repository';
@@ -105,6 +106,8 @@ describe('runs api', () => {
       const documents = app.get(DocumentRepository);
       const run = await save(runRepository, 'proj-3', 'research', 'waiting');
       await documents.putDocument(run, 'questions', '- which limit\n');
+      runRepository.notify('proj-3');
+      await app.get(RunStateRefresh).settled();
       const runs = app.get(RunCommandsService);
       await expect(runs.resume('proj-3')).rejects.toBeInstanceOf(BadRequestException);
       const answered = await app.get(RunAnswersService).answers('proj-3', {
@@ -244,6 +247,7 @@ describe('runs api', () => {
     const app = await seededBoot(root, pipeline);
     try {
       await save(app.get(RunRepository), 'proj-loop', 'code-review', 'blocked');
+      await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-loop');
       expect(flow.resume).toBe('ready');
       await app.get(RunCommandsService).resume('proj-loop');
@@ -265,6 +269,8 @@ describe('runs api', () => {
       const documents = app.get(DocumentRepository);
       const run = await save(runs, 'proj-fit', 'code-review', 'blocked');
       await documents.putDocument(run, 'error', 'code-review does not fit\n');
+      await save(runs, 'proj-fit', 'code-review', 'blocked');
+      await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-fit');
       expect(flow.resume).toBe('ready');
       expect(flow.sentence).toContain('agent-call budget');
@@ -288,6 +294,8 @@ describe('runs api', () => {
       const run = await save(runs, 'proj-check', 'implement-improve', 'blocked');
       await documents.putDocument(run, 'issues', '- the unit test for the field fails\n');
       await documents.putDocument(run, 'error', 'repo: npm test failed again on unchanged files after a relaunch\n');
+      runs.notify('proj-check');
+      await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-check');
       expect(flow.resume).toBe('ready');
       expect(flow.state).toBe('blocked');
@@ -667,7 +675,7 @@ describe('runs api', () => {
         app.get(CommandService).register('stop', async (key) => ({ key, status: 'stopped' }));
         await app.get(RunSubtaskCommandsService).skipTask('proj-skip', 'a');
 
-        expect(deriveState((await runs.findRun('proj-skip-a'))!).state).toBe('skipped');
+        expect(storedState((await runs.findRun('proj-skip-a'))!).state).toBe('skipped');
         const commands = app.get(CommandService);
         for (const type of ['resume', 'replay', 'rebase'] as const) {
           await expect(commands.submit(type, 'proj-skip-a', { step: 'implement', prompt: 'x' })).rejects.toThrow(

@@ -1,3 +1,4 @@
+import type { RunState, StateReason } from './run-state';
 import type { SubtaskStatus } from './subtask';
 
 /** `green` merges a task on green; `ok` waits for the owner. */
@@ -45,7 +46,7 @@ interface BacklogRequirementView {
   closedBy: string[];
 }
 
-interface BacklogTaskView {
+export interface BacklogTaskView {
   slug: string;
   title: string;
   /** What the task is to do, as markdown. */
@@ -59,6 +60,8 @@ interface BacklogTaskView {
   /** What the task waits for, in words. */
   note: string;
   runKey: string | null;
+  /** The run's own state from its row; null when the task has no run or the server does not know its key. */
+  run: { state: RunState; stateReason: StateReason | null } | null;
   /** True while the task is green and waits for the owner's OK to merge. */
   waitsForOk: boolean;
   repositories: string[];

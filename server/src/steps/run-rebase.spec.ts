@@ -1,7 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { RunRebase } from './run-rebase';
 import { actionsFor, REASON, type RunState } from '../contract/run-state';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import type { RunEntity } from '../history/entities';
 
@@ -80,7 +80,7 @@ describe('run rebase', () => {
 
   it.each(ROWS)('follows what actionsFor offers for $status run in state $state', async (row) => {
     const run = runOf(row);
-    const { state, reason } = deriveState(run);
+    const { state, reason } = storedState(run);
     expect(state).toBe(row.state);
     const offered = actionsFor(state, reason?.code ?? null).includes('rebase');
     const rebase = rebaseOf(run).rebase('f36-1');

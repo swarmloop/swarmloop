@@ -1,10 +1,9 @@
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
-import { blockCode, deriveState, isReturned } from '../../history/run-state';
+import { blockCode, isReturned, liveState, storedState, type LiveFacts } from '../../history/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../../contract/error-codes';
 import { actionsFor, REASON } from '../../contract/run-state';
 import { parseSubtasks, statusLine, SUBTASKS_KIND } from '../../contract/subtask';
-import type { StateFacts } from '../../history/run-state';
 import type { RunAction, RunState, StateReason } from '../../contract/run-state';
 import type { FlowItem, FlowView } from '../../contract/api';
 import { latest } from './status';
@@ -12,21 +11,14 @@ import { latest } from './status';
 /** The honest state of the run and what the server allows in it. */
 export function stateView(
   run: RunEntity,
-  open: FlowItem[],
-  documents: DocumentEntity[],
-  facts: StateFacts = {},
+  live: LiveFacts,
 ): { state: RunState; reason: StateReason | null; actions: RunAction[] } {
-  const { state, reason } = deriveState(run, {
-    ...facts,
-    needsAnswers: open.length > 0,
-    returned: isReturned(run),
-    blockCode: run.status === 'blocked' ? blockCode(run.currentStep, latest(documents, 'error')) : undefined,
-  });
+  const { state, reason } = liveState(run, live);
   return { state, reason, actions: actionsFor(state, reason?.code ?? null) };
 }
 
-export function resumeState(run: RunEntity, open: FlowItem[], documents: DocumentEntity[]): FlowView['resume'] {
-  const { state, actions } = stateView(run, open, documents);
+export function resumeState(run: RunEntity, open: FlowItem[]): FlowView['resume'] {
+  const { state, actions } = stateView(run, {});
   if (state === 'done') {
     return 'done';
   }
@@ -51,7 +43,7 @@ export function withSkip(said: string, step: string, skip: string | null): strin
 }
 
 function doneSentence(run: RunEntity): string {
-  const { state } = deriveState(run);
+  const { state } = storedState(run);
   if (state === 'merged') return 'This run is merged: its merge request is in the target branch.';
   if (state === 'closed')
     return 'This run is closed: its merge request was closed without a merge. Replay starts it again.';
@@ -66,7 +58,7 @@ const OUTAGE_NAMES: Record<string, string> = {
 
 /** What happens next for the codes that carry their own next step, or null for any other. */
 function codeSentence(run: RunEntity, maxReturns: number): string | null {
-  const { state, reason } = deriveState(run);
+  const { state, reason } = storedState(run);
   if (state === 'waiting' && reason && reason.code in OUTAGE_NAMES) {
     const when = reason.retryAt ? ` at ${reason.retryAt}` : '';
     return `${OUTAGE_NAMES[reason.code]} The step is tried again by itself${when}. Resume tries now.`;
@@ -158,7 +150,7 @@ export function sentence(
 
 /** What a split run that waits for its subtasks says: their counts. Null for any other run. */
 function subtaskSentence(run: RunEntity, documents: DocumentEntity[]): string | null {
-  const code = deriveState(run).reason?.code;
+  const code = storedState(run).reason?.code;
   if (run.status !== 'waiting' || !code || !SUBTASK_WAIT_CODES.some((wait) => wait === code)) {
     return null;
   }

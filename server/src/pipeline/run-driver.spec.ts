@@ -1,7 +1,7 @@
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRebase } from '../steps/run-rebase';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import {
   child,
   KEY as PARENT,
@@ -160,7 +160,7 @@ describe('run driver and the parent of a subtask', () => {
       });
       await app.app.get(RunRepository).saveRun(blocked);
       await pass(app);
-      expect(deriveState((await app.app.get(RunRepository).findRun(PARENT))!).state).toBe('blocked');
+      expect(storedState((await app.app.get(RunRepository).findRun(PARENT))!).state).toBe('blocked');
 
       let parentDuringVisit: string | null = null;
       installScripts(
@@ -169,7 +169,7 @@ describe('run driver and the parent of a subtask', () => {
           research: async () => {
             await app.app.get(CommandService).idle();
             await app.pipeline.whenIdle(PARENT);
-            parentDuringVisit = deriveState((await app.app.get(RunRepository).findRun(PARENT))!).state;
+            parentDuringVisit = storedState((await app.app.get(RunRepository).findRun(PARENT))!).state;
             return { outcome: 'waiting', exitCode: 0 };
           },
         },

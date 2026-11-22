@@ -9,7 +9,7 @@ import { RunRebaseService } from '../api/run-rebase.service';
 import { FlowRepository } from '../history/flow.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { CommandService } from '../pipeline/command.service';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { branchName, summaryForBranch } from '../git/naming/git-names';
@@ -247,7 +247,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
     await pass();
 
     expect([...flow.host.merged.keys()]).toEqual([first.iid]);
-    const { state, reason } = deriveState((await runs().findRun(KEY))!);
+    const { state, reason } = storedState((await runs().findRun(KEY))!);
     expect(state).toBe('waiting');
     expect(reason?.code).toBe(ERROR_CODES.HOST_UNAVAILABLE);
     expect(reason?.retryAt).toBeDefined();

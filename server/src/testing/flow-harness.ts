@@ -7,6 +7,7 @@ import { DiskGuard } from '../pipeline/disk-guard';
 import { CommandService } from '../pipeline/command.service';
 import * as delays from '../core/delay';
 import { Reconciler } from '../pipeline/reconciler';
+import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import type { CodeHost } from '../integrations/code-host/code-host';
 import { DocumentRepository } from '../history/document.repository';
@@ -166,6 +167,7 @@ export async function createFlowHarness(
       await reconciler.resumeSubtaskParents();
       await reconciler.watchMerges();
       await reconciler.reconcileCommands();
+      await harness.app.app.get(RunStateRefresh).settled();
       await harness.app.app.get(BacklogPlanner).whenIdle();
     },
     backlog: () => {

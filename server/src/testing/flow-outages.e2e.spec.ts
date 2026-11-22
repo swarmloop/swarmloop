@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { ERROR_CODES } from '../contract/error-codes';
 import { DocumentRepository } from '../history/document.repository';
-import { deriveState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { HOST_RETRY_MS } from '../integrations/http';
 import { createFlowHarness } from './flow-harness';
@@ -24,7 +24,7 @@ describe('a code host that fails for a while is waited for, and the real merge-r
   });
 
   const find = async () => (await flow.app.app.get(RunRepository).findRun(KEY))!;
-  const stateNow = async () => deriveState(await find());
+  const stateNow = async () => storedState(await find());
   const head = () => git(flow.tree, ['rev-parse', 'HEAD']);
 
   /** Ticks until the fake clock is `minutes` ahead; the invariants hold after every tick, and a resumed run finishes its hops. */

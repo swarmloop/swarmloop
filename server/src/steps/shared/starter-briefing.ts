@@ -2,7 +2,7 @@ import { CONTRACT_KIND, isSubtask, parseSubtasks, SUBTASKS_KIND, type Subtask } 
 import type { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import type { RunRepository } from '../../history/run.repository';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { ARTIFACTS } from '../contract/artifacts';
 import { BriefingRecords, type BriefingRecord } from './briefing-record';
 import { briefingState, recordOf, renderDelta, renderFull, type BriefingState } from './briefing-state';
@@ -88,7 +88,7 @@ export class StarterBriefing {
     const changed: Record<string, string[]> = {};
     for (const child of children) {
       if (!child.taskId) continue;
-      runs[child.taskId] = { state: deriveState(child).state, currentStep: child.currentStep };
+      runs[child.taskId] = { state: storedState(child).state, currentStep: child.currentStep };
       if (!task.depends.includes(child.taskId)) continue;
       const summary = await mergeSummaryOf(this.documents, child.key);
       if (summary) summaries[child.taskId] = summary;

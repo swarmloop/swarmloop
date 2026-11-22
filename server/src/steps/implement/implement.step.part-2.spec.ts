@@ -34,7 +34,7 @@ import { memoryJournal } from '../../git/rebase/journal.spec-helpers';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { sessionFileName, sessionHome } from '../../history/session-group';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 
 import {
@@ -589,7 +589,7 @@ describe('implement step', () => {
 
       const waiting = await runs.findRun('PROJ-150-t1');
       expect(waiting).toMatchObject({ currentStep: 'implement', status: 'waiting' });
-      expect(deriveState(waiting!).reason).toMatchObject({ code: 'ASKS_PLANNER' });
+      expect(storedState(waiting!).reason).toMatchObject({ code: 'ASKS_PLANNER' });
       const chat = app.get(PlanChatStore);
       expect((await chat.pendingQuestions('PROJ-150-t1')).map((entry) => entry.text)).toEqual([
         'Cursor or page number?',

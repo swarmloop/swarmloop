@@ -7,13 +7,14 @@ import { DocumentRepository } from '../history/document.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
+import { storedState } from '../history/run-state';
 import { VisitRepository } from '../history/visit.repository';
 import { AppConfig } from '../config/env';
 import { assertWorkPath } from './work-path';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { assertKey } from '../core/pipeline-result';
 import { PHASES } from '../contract/steps';
-import { CHAT_LOCK, containerLockBody, readChatLock } from '../pipeline/chat-lock';
+import { CHAT_LOCK, containerLockBody, lockRelease, readChatLock } from '../pipeline/chat-lock';
 import { settleShell } from '../pipeline/shell-lock';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { collectEnvMasks } from '../sandbox/env-masks';
@@ -139,7 +140,11 @@ export class ShellService {
     if (!/^(waiting|blocked|failed|done)$/.test(run.status)) {
       throw new ConflictException(`${key} is already running`);
     }
-    await this.documents.putDocument(run, CHAT_LOCK, containerLockBody(run.status, name, this.clock.now()));
+    await this.documents.putDocument(
+      run,
+      CHAT_LOCK,
+      containerLockBody(run.status, name, this.clock.now(), storedState(run).reason),
+    );
     try {
       await this.runs.claim(key, run.currentStep);
     } catch (error) {
@@ -161,7 +166,7 @@ export class ShellService {
       run.currentStep,
       '',
     );
-    const released = await this.runs.release(run, { status: lock.status });
+    const released = await this.runs.release(run, lockRelease(lock));
     await this.documents.putDocument(released, CHAT_LOCK, 'clear\n');
     return { status: released.status };
   }

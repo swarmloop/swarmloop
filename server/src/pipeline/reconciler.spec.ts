@@ -8,7 +8,7 @@ import type { StepEvent } from '../contract/step-events';
 import { AppConfig } from '../config/env';
 import { attemptOutputPath } from '../core/attempt-output';
 import { StepRegistry } from '../steps/step.registry';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { RunStop } from '../agent/run-stop';
 import { CommandRepository } from '../history/command.repository';
 import { interruptionSentence, readInterruption } from '../contract/interruption';
@@ -109,7 +109,7 @@ describe('reconciler waits and automatic tries', () => {
     return runs.saveRun(run);
   }
 
-  const reasonOf = async (world: TestApp) => deriveState((await world.app.get(RunRepository).findRun(KEY))!).reason;
+  const reasonOf = async (world: TestApp) => storedState((await world.app.get(RunRepository).findRun(KEY))!).reason;
 
   describe('resumeHostUnavailable', () => {
     it('resumes once the next try has passed and not before', async () => {
@@ -243,7 +243,7 @@ describe('reconciler waits and automatic tries', () => {
       const waiting = await world.app.get(RunRepository).findRun(KEY);
       await world.app.get(Reconciler).resumeDocker();
       expect(accepted).toEqual([
-        ['resume', KEY, {}, { idempotencyKey: `docker-none-${deriveState(waiting!).reason?.retryAt}` }],
+        ['resume', KEY, {}, { idempotencyKey: `docker-none-${storedState(waiting!).reason?.retryAt}` }],
       ]);
     });
 

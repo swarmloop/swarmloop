@@ -48,6 +48,25 @@ describe('BacklogEvents', () => {
       ]);
     }));
 
+  it('writes run-needs-person once for a blocked run', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      const id = (await h.seedBacklog('one')).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1' });
+      await h.seedDoneRun('a-1', []);
+      await h.moveRun('a-1', {
+        status: 'blocked',
+        reason: { code: 'GIT_RULES', message: 'the branch name was refused' },
+      });
+
+      await h.tick();
+      await h.tick();
+
+      expect(await events(h, id, 'run-needs-person')).toMatchObject([
+        { facts: { slug: 'a', runKey: 'a-1', state: 'blocked', reason: 'the branch name was refused' } },
+      ]);
+    }));
+
   it('writes run-done-without-request once for a done run with no merge request', () =>
     withHarness(async (h) => {
       h.setMain('web');

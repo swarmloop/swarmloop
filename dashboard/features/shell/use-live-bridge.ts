@@ -20,6 +20,8 @@ interface LiveSnapshot {
   /** True once the runs list has come from the API or the socket. */
   loaded: boolean;
   connected: boolean;
+  /** How many times the socket has connected; it moves on every connect, even one that follows a disconnect in the same render batch. */
+  connects: number;
   /** The counts of the three parts, from the server. */
   counts: PartCounts;
   /** The part and the filter text the list shows. */
@@ -69,6 +71,7 @@ function createStore(): LiveStore {
     runs: [],
     loaded: false,
     connected: false,
+    connects: 0,
     counts: { active: 0, done: 0, all: 0 },
     view: { part: 'active', q: '' },
     next: null,
@@ -152,7 +155,7 @@ function createStore(): LiveStore {
     attach() {
       const socket = liveSocket();
       const onConnect = (): void => {
-        update({ connected: true });
+        update({ connected: true, connects: snapshot.connects + 1 });
         if (watched !== null) {
           socket.emit('watch', watched);
         }
@@ -211,7 +214,7 @@ function createStore(): LiveStore {
       socket.on('backlog', onBacklog);
       socket.on('server', onServer);
       if (socket.connected) {
-        update({ connected: true });
+        update({ connected: true, connects: snapshot.connects + 1 });
       }
       return () => {
         socket.off('connect', onConnect);

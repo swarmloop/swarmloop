@@ -1,6 +1,7 @@
 import type { DocumentEntity, RunEntity } from '../../history/entities';
 import { renderQuestions } from '../../steps/research/research-record';
-import { resumeState, stateView } from './flow-waiting';
+import { factColumns, storedState } from '../../history/run-state';
+import { resumeState } from './flow-waiting';
 import { openItems } from '../../steps/shared/open-items';
 
 describe('open questions of the run view', () => {
@@ -59,12 +60,14 @@ describe('open questions of the run view', () => {
     const items = openItems(waiting, [asked], []);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ kind: 'question', answer: '' });
-    expect(stateView(waiting, items, [asked]).reason?.code).toBe('NEEDS_ANSWERS');
-    expect(resumeState(waiting, items, [asked])).toBe('need-answers');
+    expect(storedState({ ...waiting, ...factColumns(waiting, { needsAnswers: items.length > 0 }) }).reason?.code).toBe(
+      'NEEDS_ANSWERS',
+    );
+    expect(resumeState(waiting, items)).toBe('need-answers');
     const answers = doc('answers', `question: ${items[0].id}\nanswer: keep it\n`);
     const answered = openItems(waiting, [asked, answers], []);
     expect(answered[0].answer).toBe('keep it');
-    expect(resumeState(waiting, answered, [asked, answers])).toBe('ready');
+    expect(resumeState(waiting, answered)).toBe('ready');
     expect(openItems(waiting, [asked, doc('review_questions', '')], [])).toEqual([]);
   });
 

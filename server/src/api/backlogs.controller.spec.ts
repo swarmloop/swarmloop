@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import type { BacklogActions } from '../pipeline/backlog/backlog-actions';
+import type { RunRepository } from '../history/run.repository';
 import type { BacklogRepository } from '../history/backlog.repository';
 import { BacklogQueries } from '../pipeline/backlog/backlog-queries';
 import { BacklogsController } from './backlogs.controller';
@@ -81,7 +82,12 @@ describe('BacklogsController', () => {
 
 type Row = Record<string, unknown>;
 
-function queriesOver(mergeMode: 'green' | 'ok', requirements: Row[], tasks: Row[]): BacklogQueries {
+function queriesOver(
+  mergeMode: 'green' | 'ok',
+  requirements: Row[],
+  tasks: Row[],
+  runRows: Record<string, Row> = {},
+): BacklogQueries {
   const backlog = { id: 1, name: 'shop', owner: 'ada', repositories: ['r'], mergeMode, paused: false };
   const repository = {
     listBacklogs: async () => [backlog],
@@ -92,7 +98,8 @@ function queriesOver(mergeMode: 'green' | 'ok', requirements: Row[], tasks: Row[
     decisions: async () => [],
     events: async () => [],
   };
-  return new BacklogQueries(repository as unknown as BacklogRepository);
+  const runs = { findRun: async (key: string) => runRows[key] ?? null };
+  return new BacklogQueries(repository as unknown as BacklogRepository, runs as unknown as RunRepository);
 }
 
 const requirement = (ref: string, status: string): Row => ({ ref, milestoneId: 10, text: ref, status });
@@ -118,6 +125,23 @@ describe('BacklogQueries view', () => {
     const queries = queriesOver('green', [], [task('a', { covers: ['M3.R1'], depends: ['b'] })]);
     const [view] = (await queries.view('shop')).tasks;
     expect(view).toMatchObject({ description: 'about a', covers: ['M3.R1'], depends: ['b'] });
+  });
+
+  it("shows a task's run from its stored row, and null for a run the server does not know or no run", async () => {
+    const waiting = {
+      state: 'waiting',
+      stateReason: JSON.stringify({ code: 'NEEDS_ANSWERS', message: 'Open questions' }),
+    };
+    const queries = queriesOver(
+      'green',
+      [],
+      [task('asks', { runKey: 'run-1' }), task('lost', { runKey: 'run-gone' }), task('none', { runKey: null })],
+      { 'run-1': waiting },
+    );
+    const runs = Object.fromEntries((await queries.view('shop')).tasks.map((item) => [item.slug, item.run]));
+    expect(runs.asks).toMatchObject({ state: 'waiting', stateReason: { code: 'NEEDS_ANSWERS' } });
+    expect(runs.lost).toBeNull();
+    expect(runs.none).toBeNull();
   });
 
   it('says a task waits for OK only when it started, is green, has no OK and the mode or the task asks for it', async () => {

@@ -1,17 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { Clock } from '../core/clock';
 import type { StateReason } from '../contract/run-state';
-import { CheckoutRepository } from '../history/checkout.repository';
 import { CommandRepository } from '../history/command.repository';
-import { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
 import { EventRepository } from '../history/event.repository';
 import { STALL_COUNTER } from '../history/loop-detail';
 import { RunRepository } from '../history/run.repository';
-import { deriveState, isReturned, writeRunState } from '../history/run-state';
+import { writeRunState } from '../history/run-state';
 import { VisitRepository } from '../history/visit.repository';
 import { ContainerGate } from '../sandbox/container-gate';
-import { OPEN_ITEM_KINDS, openItems } from '../steps/shared/open-items';
+import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { stallDecision, type StallDecision } from './stall-decision';
 
 type Try = Extract<StallDecision, { kind: 'try' }>;
@@ -24,8 +22,7 @@ export class StallWatch {
     private readonly visits: VisitRepository,
     private readonly commands: CommandRepository,
     private readonly events: EventRepository,
-    private readonly documents: DocumentRepository,
-    private readonly checkouts: CheckoutRepository,
+    private readonly refresh: RunStateRefresh,
     private readonly gate: ContainerGate,
     private readonly clock: Clock,
   ) {}
@@ -33,6 +30,7 @@ export class StallWatch {
   /** The runs to act on now. Nothing while the server is paused, so a rebuild never cuts a run just resumed. */
   async decisions(claimed: (key: string) => boolean): Promise<{ run: RunEntity; decision: StallDecision }[]> {
     if (this.gate.paused()) return [];
+    await this.refresh.settled();
     const due: { run: RunEntity; decision: StallDecision }[] = [];
     for (const run of await this.runs.listRuns({ state: 'idle' })) {
       if (run.stateReason !== null || claimed(run.key)) continue;
@@ -47,32 +45,7 @@ export class StallWatch {
       });
       if (decision) due.push({ run, decision });
     }
-    return this.withoutDerivedReason(due);
-  }
-
-  /**
-   * Drops the runs that show a reason in the run view: open questions, a paste that is asked for, or a return to
-   * implement. Only the latest documents the open items read are loaded, for all due runs at once.
-   */
-  private async withoutDerivedReason<T extends { run: RunEntity }>(due: T[]): Promise<T[]> {
-    const found = await this.documents.latestDocuments(
-      due.map(({ run }) => run.id),
-      OPEN_ITEM_KINDS,
-    );
-    const kept: T[] = [];
-    for (const item of due) {
-      const documents = found.filter((document) => document.runId === item.run.id);
-      const asksPaste = item.run.currentStep === 'requirements' && documents.some(({ kind }) => kind === 'pending');
-      const pastes = asksPaste ? await this.checkouts.listPastes(item.run.key) : [];
-      const open = openItems(
-        item.run,
-        documents,
-        pastes.map((paste) => paste.url),
-      );
-      const { reason } = deriveState(item.run, { needsAnswers: open.length > 0, returned: isReturned(item.run) });
-      if (reason === null) kept.push(item);
-    }
-    return kept;
+    return due;
   }
 
   /** The run goes to its owner with `reason`, unless it moved since it was read. */

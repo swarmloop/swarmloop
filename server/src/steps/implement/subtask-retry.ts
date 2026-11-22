@@ -1,6 +1,6 @@
 import { ERROR_CODES } from '../../contract/error-codes';
 import type { RunEntity } from '../../history/entities';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 
 const RETRY_CODES: readonly string[] = [
   ERROR_CODES.HOST_UNAVAILABLE,
@@ -10,7 +10,7 @@ const RETRY_CODES: readonly string[] = [
 
 /** When a subtask run that waits on a host or docker outage tries again; null for any other run. */
 function retryAtOf(child: RunEntity): string | null {
-  const { state, reason } = deriveState(child);
+  const { state, reason } = storedState(child);
   return state === 'waiting' && reason?.retryAt && RETRY_CODES.includes(reason.code) ? reason.retryAt : null;
 }
 

@@ -8,6 +8,7 @@ import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
+import { storedState } from '../history/run-state';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { agentFor } from '../config/agents';
 import { CHAT_LOCK, chatLockBody } from '../pipeline/chat-lock';
@@ -60,11 +61,12 @@ export class ChatService {
     const mounts = this.mounts(key, body.cwd, run.targetPath);
     const servers = readMcpServers(body.mcpServers);
     const restore = installMcp(mounts[0].hostPath, servers);
-    const previous = { status: run.status, ownerPid: run.ownerPid, stepStartedAt: run.stepStartedAt };
+    const { reason } = storedState(run);
+    const previous = { status: run.status, reason, ownerPid: run.ownerPid, stepStartedAt: run.stepStartedAt };
     let locked = false;
     try {
       if (/^(waiting|blocked|failed|done)$/.test(previous.status)) {
-        await this.documents.putDocument(run, CHAT_LOCK, chatLockBody(previous.status, process.pid));
+        await this.documents.putDocument(run, CHAT_LOCK, chatLockBody(previous.status, process.pid, reason));
       }
       locked = true;
       run = await this.take(run);

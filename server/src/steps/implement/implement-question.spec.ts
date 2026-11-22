@@ -9,7 +9,7 @@ import type { RunEntity } from '../../history/entities';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
-import { deriveState } from '../../history/run-state';
+import { storedState } from '../../history/run-state';
 import {
   answerFollowUp,
   answerSection,
@@ -50,7 +50,7 @@ describe('a step that asks the planner', () => {
       expect(questions).toMatchObject([{ key: 'ask-implement-attempt-1', from: 'implement', text: QUESTION }]);
       expect(await chat.pending(run.key)).toEqual([]);
       const stateReason = JSON.stringify({ code: 'ASKS_PLANNER', message: 'implement is waiting for the planner' });
-      expect(deriveState({ ...run, status: 'waiting', stateReason })).toMatchObject({
+      expect(storedState({ ...run, status: 'waiting', state: 'waiting', stateReason })).toMatchObject({
         state: 'waiting',
         reason: { code: 'ASKS_PLANNER' },
       });

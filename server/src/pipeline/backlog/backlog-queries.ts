@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { BacklogView } from '../../contract/backlog';
+import type { BacklogTaskView, BacklogView } from '../../contract/backlog';
 import { BacklogRepository } from '../../history/backlog.repository';
+import { RunRepository } from '../../history/run.repository';
+import { storedState } from '../../history/run-state';
 import { shownFacts } from './planner/planner-record-facts';
 
 const EVENT_LIMIT = 50;
@@ -8,7 +10,10 @@ const EVENT_LIMIT = 50;
 /** What the routes answer about backlogs. It only reads. */
 @Injectable()
 export class BacklogQueries {
-  constructor(private readonly backlogs: BacklogRepository) {}
+  constructor(
+    private readonly backlogs: BacklogRepository,
+    private readonly runs: RunRepository,
+  ) {}
 
   async list(): Promise<BacklogView[]> {
     return Promise.all((await this.backlogs.listBacklogs()).map((backlog) => this.build(backlog)));
@@ -31,6 +36,7 @@ export class BacklogQueries {
       this.backlogs.decisions(id),
       this.backlogs.events(id, EVENT_LIMIT),
     ]);
+    const runStates = await this.runStates(tasks);
     const numbers = new Map(milestones.map((milestone) => [milestone.id as number, milestone.number]));
     const numberOf = (milestoneId: number | null) => (milestoneId === null ? null : (numbers.get(milestoneId) ?? null));
     return {
@@ -57,6 +63,7 @@ export class BacklogQueries {
         status: task.status,
         note: task.note,
         runKey: task.runKey,
+        run: task.runKey === null ? null : (runStates.get(task.runKey) ?? null),
         waitsForOk:
           task.runKey !== null &&
           task.status === 'green' &&
@@ -68,6 +75,21 @@ export class BacklogQueries {
       decisions: decisions.map(({ text, who, createdAt }) => ({ text, who, at: createdAt })),
       events: events.map(({ kind, facts, createdAt }) => ({ kind, facts: shownFacts(facts), at: createdAt })),
     };
+  }
+
+  /** The stored state of each task's run, read from the run's own row; a key the server does not know has none. */
+  private async runStates(tasks: { runKey: string | null }[]): Promise<Map<string, BacklogTaskView['run']>> {
+    const keys = [...new Set(tasks.flatMap((task) => (task.runKey === null ? [] : [task.runKey])))];
+    const states = new Map<string, BacklogTaskView['run']>();
+    await Promise.all(
+      keys.map(async (key) => {
+        const row = await this.runs.findRun(key);
+        if (row === null) return;
+        const { state, reason } = storedState(row);
+        states.set(key, { state, stateReason: reason });
+      }),
+    );
+    return states;
   }
 
   /** The merged tasks that cover a closed requirement, in task order; a hand close has none. */

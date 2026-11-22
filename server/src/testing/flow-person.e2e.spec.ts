@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, NEEDS_PERSON, REASON } from '../contract/run-state';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { CommandService } from '../pipeline/command.service';
 import { DocumentRepository } from '../history/document.repository';
 import { RunQueriesService } from '../api/run-queries.service';
@@ -27,7 +27,7 @@ describe('a run that needs a person ends in a state the person clears', () => {
   });
 
   const find = async () => (await flow.app.app.get(RunRepository).findRun(KEY))!;
-  const stateNow = async () => deriveState(await find());
+  const stateNow = async () => storedState(await find());
   const head = () => git(flow.tree, ['rev-parse', 'HEAD']);
 
   /** One reconciler pass, the hops it starts, and the invariants. */

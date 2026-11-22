@@ -37,6 +37,7 @@ import { belongsToVisit, documentView, interruptionOf, taskView, withReturnNotes
 import { mergeRequestViews } from './run-view/merge-requests';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { taskRuns } from './run-view/task-runs';
+import { shownRun } from './run-view/own-state';
 import { ReviewerSteps } from './run-view/reviewer-steps';
 import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit } from './run-view/live';
@@ -125,8 +126,8 @@ export class RunQueriesService {
       documents,
       pastes.map((paste) => paste.url),
     );
-    const shown = this.pipeline.claimed(run.key) && run.status !== 'done' ? { ...run, status: 'running' } : run;
-    const state = await runState(this.commands, shown, open, documents, runPlace(this.gate.agentWait(run.key)));
+    const shown = shownRun(run, (held) => this.pipeline.claimed(held));
+    const state = await runState(this.commands, shown, open, runPlace(this.gate.agentWait(run.key)));
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
     const children = await this.runs.children(run);
@@ -206,7 +207,7 @@ export class RunQueriesService {
     await this.waitLog.settled();
     const table = await this.etaSummary.table();
     const waits = await this.waitLog.waitsOf([run.id, ...children.map((child) => child.id)]);
-    const sources = { documents: this.documents, checkouts: this.checkouts, commands: this.commands };
+    const sources = { documents: this.documents, commands: this.commands };
     const { runs, lives } = await taskRuns(
       this.runs,
       this.visits,

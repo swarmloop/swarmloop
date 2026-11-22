@@ -5,7 +5,7 @@ import { CommandRepository } from '../history/command.repository';
 import { StepStatEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { EventRepository } from '../history/event.repository';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState, type RunStateChange } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { ContainerGate } from '../sandbox/container-gate';
@@ -89,7 +89,7 @@ describe('a run that stopped moving with no reason', () => {
     (await app.app.get(EventRepository).listLoops((await find()).id))
       .filter((loop) => loop.counter === 'stall')
       .map((loop) => loop.reason);
-  const reasonOf = async () => deriveState(await find()).reason;
+  const reasonOf = async () => storedState(await find()).reason;
 
   async function personResumes(): Promise<void> {
     app.clock.advance(MINUTE);
@@ -254,11 +254,15 @@ describe('a run that stopped moving with no reason', () => {
     ['a host', { status: 'waiting', reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: 'host' } }],
     ['CI', { status: 'waiting', reason: { code: ERROR_CODES.CI_NOT_STARTED, message: 'ci' } }],
     ['a stop', { status: 'blocked', reason: { code: 'STOPPED', message: 'stopped' } }],
-  ])('is never resumed by this when it waits for %s', async (_name, change) => {
+  ] as [string, RunStateChange][])('is never resumed by this when it waits for %s', async (_name, change) => {
     await stalledAt('implement');
     const run = await find();
-    writeRunState(run, change);
+    writeRunState(run, { ...change, ...(change.facts?.needsAnswers ? { currentStep: 'plan' } : {}) });
     await app.app.get(RunRepository).saveRun(run);
+    if (change.facts?.needsAnswers) {
+      await app.app.get(DocumentRepository).putDocument(run, 'questions', '- which?\n');
+      app.app.get(RunRepository).notify(KEY);
+    }
 
     await after(2 * HOUR);
 
@@ -273,7 +277,7 @@ describe('a run that stopped moving with no reason', () => {
     await after(2 * HOUR);
 
     expect(await tries()).toHaveLength(0);
-    expect(await reasonOf()).toBeNull();
+    expect(await reasonOf()).toMatchObject({ code: 'NEEDS_ANSWERS' });
   });
 
   it('gets one try only when the server restarts after the try was stored', async () => {

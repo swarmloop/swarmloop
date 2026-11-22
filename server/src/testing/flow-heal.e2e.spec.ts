@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { RunQueriesService } from '../api/run-queries.service';
 import { restartWaitSentence } from '../contract/restart-wait';
 import { ERROR_CODES } from '../contract/error-codes';
-import { deriveState, writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { CheckCommandRepository } from '../history/check-command.repository';
 import { CommandRepository } from '../history/command.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -76,10 +76,10 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
 
     await flow.tick();
     await assertInvariants(flow.app);
-    expect(deriveState(await find()).reason?.code).toBe(ERROR_CODES.DOCKER_UNAVAILABLE);
+    expect(storedState(await find()).reason?.code).toBe(ERROR_CODES.DOCKER_UNAVAILABLE);
 
     await tickFor(5);
-    expect(deriveState(await find()).reason?.code).toBe(ERROR_CODES.DOCKER_UNAVAILABLE);
+    expect(storedState(await find()).reason?.code).toBe(ERROR_CODES.DOCKER_UNAVAILABLE);
     expect(accept).not.toHaveBeenCalled();
 
     // Once docker answers the cut step is settled and relaunched; the held relaunch leaves the run as the cut left it.
