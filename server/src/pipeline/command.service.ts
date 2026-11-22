@@ -6,9 +6,8 @@ import type { StoredAgents } from '../contract/api';
 import type { CommandEntity, RunEntity } from '../history/entities';
 import { CommandRepository, conflict } from '../history/command.repository';
 import { UserSettingRepository } from '../history/user-setting.repository';
-import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { blockCode, factColumns, storedState } from '../history/run-state';
+import { factColumns, storedState } from '../history/run-state';
 import { actionsFor, SKIPPED_NOTE } from '../contract/run-state';
 import type { CommandReceipt, CommandType } from '../contract/command';
 import { barrier } from '../core/barrier';
@@ -65,7 +64,6 @@ export class CommandService {
   constructor(
     private readonly commands: CommandRepository,
     private readonly runs: RunRepository,
-    private readonly documents: DocumentRepository,
     private readonly runStop: RunStop,
     private readonly config: AppConfig,
     private readonly credentials: PersonalCredentials,
@@ -87,8 +85,6 @@ export class CommandService {
     if (!current && options.create) {
       await this.assertCredentials(options.create);
     }
-    const error = current?.status === 'blocked' ? await this.documents.latestBody(key, 'error') : null;
-    const code = current?.status === 'blocked' ? blockCode(current.currentStep, error) : null;
     const accepted = await this.commands.accept({
       type,
       key,
@@ -98,7 +94,7 @@ export class CommandService {
       create: options.create,
       actor: options.actor,
       takeOver: await this.takeOverOf(type, options.actor),
-      admit: (run) => this.admit(type, key, run, options.run ? null : code),
+      admit: (run) => this.admit(type, key, run, !options.run),
     });
     this.runs.notify(key);
     await barrier('after-accept');
@@ -219,8 +215,8 @@ export class CommandService {
     if (key) this.runs.notify(key);
   }
 
-  /** `code` is the block reason an HTTP Resume is checked against. The CLI passes null: its run never refused a block. */
-  private admit(type: CommandType, key: string, run: RunEntity | null, code: string | null): void {
+  /** `checked` is true for an HTTP command: its Resume is checked against the block's stored code. The CLI's run never refused a block. */
+  private admit(type: CommandType, key: string, run: RunEntity | null, checked: boolean): void {
     if (!run) return;
     const held = this.runs.held(run);
     if (type !== 'remove' && storedState(run).state === 'skipped') {
@@ -232,11 +228,11 @@ export class CommandService {
     const status = run.status === 'running' && !held ? 'failed' : run.status;
     const state = storedState({
       ...run,
-      ...factColumns({ status, stateReason: run.stateReason }, { blockCode: code ?? undefined }),
+      ...factColumns({ status, stateReason: run.stateReason }, {}),
     });
     if (
       type === 'resume' &&
-      code !== null &&
+      checked &&
       state.state === 'blocked' &&
       !actionsFor(state.state, state.reason?.code ?? null).includes('resume')
     ) {

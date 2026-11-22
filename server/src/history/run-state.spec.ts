@@ -4,16 +4,7 @@ import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, REASON } from '../contract/run-state';
 import type { RunAction, RunState } from '../contract/run-state';
-import {
-  blockCode,
-  clearEpic,
-  factColumns,
-  liveState,
-  markEpic,
-  stateColumns,
-  storedState,
-  writeRunState,
-} from './run-state';
+import { clearEpic, factColumns, liveState, markEpic, stateColumns, storedState, writeRunState } from './run-state';
 
 const GOLDEN_DIR = join(__dirname, '..', 'testing', 'golden');
 
@@ -118,28 +109,6 @@ describe('deriveState', () => {
       state: 'stopping',
       reason: null,
     });
-  });
-
-  it('gives a block its code', () => {
-    expect(withFacts({ status: 'blocked' }, { blockCode: REASON.checkFailed }).reason?.code).toBe('CHECK_FAILED');
-    expect(storedState({ status: 'blocked' }).reason?.code).toBe('BLOCKED');
-  });
-});
-
-describe('blockCode', () => {
-  it('tells a repeated check, a budget that does not fit, a loop step and any other block apart', () => {
-    expect(blockCode('implement-improve', 'repo: npm test failed again on unchanged files after a relaunch')).toBe(
-      REASON.checkFailed,
-    );
-    expect(blockCode('code-review', 'code-review does not fit')).toBe(REASON.didNotFit);
-    expect(blockCode('pipeline', null)).toBe(REASON.loopLimit);
-    expect(blockCode('prepare', 'x')).toBe(REASON.blocked);
-    expect(blockCode('pipeline', 'CI_LOG_UNAVAILABLE: a failed job has no readable log')).toBe(REASON.ciLogUnavailable);
-    expect(blockCode('pipeline', 'CI_NOT_RUN: CI did not run lint')).toBe(REASON.ciNotRun);
-    expect(blockCode('pipeline', 'CI_TIMEOUT: lint timed out')).toBe(REASON.ciTimeout);
-    const flaky = 'TEST_FLAKY: a test failed and passed on the same code twice; fix the race, not the test';
-    expect(blockCode('pipeline', flaky)).toBe(ERROR_CODES.TEST_FLAKY);
-    expect(blockCode('prepare', flaky)).toBe(ERROR_CODES.TEST_FLAKY);
   });
 });
 
@@ -252,18 +221,17 @@ describe('deriveState of a split run between passes', () => {
   });
 
   it('keeps SUBTASK_BLOCKED for a blocked run', () => {
-    expect(
-      withFacts({ status: 'blocked', stateReason: reason(ERROR_CODES.SUBTASK_BLOCKED) }, { blockCode: REASON.blocked }),
-    ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.SUBTASK_BLOCKED } });
+    expect(withFacts({ status: 'blocked', stateReason: reason(ERROR_CODES.SUBTASK_BLOCKED) }, {})).toMatchObject({
+      state: 'blocked',
+      reason: { code: ERROR_CODES.SUBTASK_BLOCKED },
+    });
   });
 
   it('keeps PARENT_TREE_CONFLICT for a blocked run', () => {
-    expect(
-      withFacts(
-        { status: 'blocked', stateReason: reason(ERROR_CODES.PARENT_TREE_CONFLICT) },
-        { blockCode: REASON.blocked },
-      ),
-    ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.PARENT_TREE_CONFLICT } });
+    expect(withFacts({ status: 'blocked', stateReason: reason(ERROR_CODES.PARENT_TREE_CONFLICT) }, {})).toMatchObject({
+      state: 'blocked',
+      reason: { code: ERROR_CODES.PARENT_TREE_CONFLICT },
+    });
   });
 });
 
@@ -302,19 +270,17 @@ describe('deriveState of a block that a person must clear', () => {
   const stored = (code: string) => JSON.stringify({ code, message: 'stopped' });
 
   it.each([REASON.loopLimit, ERROR_CODES.SPEND_LIMIT, ERROR_CODES.PIPELINE_UNFIXED])('keeps the stored %s', (code) => {
-    expect(withFacts({ status: 'blocked', stateReason: stored(code) }, { blockCode: REASON.blocked })).toMatchObject({
+    expect(withFacts({ status: 'blocked', stateReason: stored(code) }, {})).toMatchObject({
       state: 'blocked',
       reason: { code },
     });
   });
 
   it('keeps a stored RESOURCE_UNKNOWN and reads a blocked DOCKER_UNAVAILABLE as before', () => {
-    expect(
-      withFacts(
-        { status: 'blocked', stateReason: stored(ERROR_CODES.RESOURCE_UNKNOWN) },
-        { blockCode: REASON.blocked },
-      ),
-    ).toMatchObject({ state: 'blocked', reason: { code: ERROR_CODES.RESOURCE_UNKNOWN } });
+    expect(withFacts({ status: 'blocked', stateReason: stored(ERROR_CODES.RESOURCE_UNKNOWN) }, {})).toMatchObject({
+      state: 'blocked',
+      reason: { code: ERROR_CODES.RESOURCE_UNKNOWN },
+    });
     expect(withFacts({ status: 'blocked', stateReason: stored(ERROR_CODES.DOCKER_UNAVAILABLE) }, {})).toMatchObject({
       state: 'blocked',
       reason: { code: ERROR_CODES.DOCKER_UNAVAILABLE },
@@ -383,7 +349,7 @@ describe('liveState', () => {
 });
 
 describe('factColumns', () => {
-  const facts = { needsAnswers: false, returned: false, blockCode: undefined };
+  const facts = { needsAnswers: false, returned: false };
 
   it('says waiting for a person on a run with open questions', () => {
     expect(read(factColumns({ status: 'waiting' }, { ...facts, needsAnswers: true }))).toEqual({
@@ -414,7 +380,7 @@ describe('factColumns', () => {
 
   it('keeps the code a blocked row stores', () => {
     const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.GIT_RULES) };
-    expect(read(factColumns(run, { ...facts, blockCode: REASON.blocked }))).toEqual({
+    expect(read(factColumns(run, facts))).toEqual({
       state: 'blocked',
       code: ERROR_CODES.GIT_RULES,
     });
@@ -422,38 +388,23 @@ describe('factColumns', () => {
 
   it('keeps a stored code that is not on the kept list over the loop limit a step gives alone', () => {
     const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.DISK_LOW) };
-    expect(read(factColumns(run, { ...facts, blockCode: REASON.loopLimit }))).toEqual({
+    expect(read(factColumns(run, facts))).toEqual({
       state: 'blocked',
       code: ERROR_CODES.DISK_LOW,
     });
   });
 
-  it('gives the code read from the error text over a stored code that is not on the kept list', () => {
-    const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.GIT_RULES) };
-    expect(read(factColumns(run, { ...facts, blockCode: REASON.didNotFit }))).toEqual({
-      state: 'blocked',
-      code: REASON.didNotFit,
-    });
-  });
-
   it('keeps a stored code on the kept list over the code of the error text', () => {
     const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.SPEND_LIMIT) };
-    expect(read(factColumns(run, { ...facts, blockCode: REASON.didNotFit }))).toEqual({
+    expect(read(factColumns(run, facts))).toEqual({
       state: 'blocked',
       code: ERROR_CODES.SPEND_LIMIT,
     });
   });
 
-  it('gives a blocked row with no code the code of its error', () => {
-    expect(read(factColumns({ status: 'blocked' }, { ...facts, blockCode: REASON.didNotFit }))).toEqual({
-      state: 'blocked',
-      code: REASON.didNotFit,
-    });
-  });
-
   it('keeps a stored stopped reason', () => {
     const run = { status: 'blocked', stateReason: reasonOf(REASON.stopped) };
-    expect(read(factColumns(run, { ...facts, blockCode: REASON.blocked }))).toEqual({
+    expect(read(factColumns(run, facts))).toEqual({
       state: 'stopped',
       code: REASON.stopped,
     });
@@ -461,9 +412,9 @@ describe('factColumns', () => {
 
   describe('blocked code precedence', () => {
     const blocked = (code?: string) => ({ status: 'blocked', stateReason: code ? reasonOf(code) : null });
-    const stored = (code: string | undefined, blockCode: string) => {
+    const stored = (code: string | undefined) => {
       const row = blocked(code);
-      const { state, reason } = storedState({ ...row, ...factColumns(row, { ...facts, blockCode }) });
+      const { state, reason } = storedState({ ...row, ...factColumns(row, facts) });
       return { state, code: reason?.code };
     };
 
@@ -476,26 +427,11 @@ describe('factColumns', () => {
       [REASON.loopLimit, 'blocked'],
       [ERROR_CODES.PIPELINE_UNFIXED, 'blocked'],
     ])('keeps a stored %s over the code of the error text', (code, state) => {
-      expect(stored(code, REASON.didNotFit)).toEqual({ state, code });
-    });
-
-    it.each([REASON.didNotFit, REASON.checkFailed])('gives %s from the error text over a stored BLOCKED', (code) => {
-      expect(stored(REASON.blocked, code)).toEqual({ state: 'blocked', code });
+      expect(stored(code)).toEqual({ state, code });
     });
 
     it('reads plain BLOCKED with no stored code and no code in the error text', () => {
-      expect(stored(undefined, REASON.blocked)).toEqual({ state: 'blocked', code: REASON.blocked });
-    });
-
-    it('gives the code of the error text over a stored REBASE_CONFLICT', () => {
-      expect(stored(ERROR_CODES.REBASE_CONFLICT, REASON.didNotFit)).toEqual({
-        state: 'blocked',
-        code: REASON.didNotFit,
-      });
-    });
-
-    it('fills in the loop limit of a step over a stored BLOCKED', () => {
-      expect(stored(REASON.blocked, REASON.loopLimit)).toEqual({ state: 'blocked', code: REASON.loopLimit });
+      expect(stored(undefined)).toEqual({ state: 'blocked', code: REASON.blocked });
     });
   });
 });
