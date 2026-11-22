@@ -16,6 +16,10 @@ import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
 import { AttachmentStore } from '../../history/attachment-store';
 import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
+import { ChatUsageRepository } from '../../history/chat-usage.repository';
+import type { ChatUsage } from '../../history/chat-usage.repository';
+import { NO_USAGE, plusUsage } from '../../agent/since-recorded';
+import { AttemptChatUsage } from './attempt-chat-usage';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
 import { withAttachments } from './attachments-section';
@@ -43,6 +47,8 @@ export class AgentLauncher {
     @Optional() private readonly failover?: LimitFailover,
     @Optional() private readonly config?: AppConfig,
     @Optional() private readonly files?: AttachmentStore,
+    @Optional() private readonly chatUsage?: ChatUsageRepository,
+    @Optional() private readonly attemptUsage?: AttemptChatUsage,
   ) {}
 
   /**
@@ -146,7 +152,7 @@ export class AgentLauncher {
       spentUsd: request.run.spentUsd,
       tokensInRun: request.run.tokensSoFar ?? (await this.visits.tokenTotal(request.run.id)),
       resumeChatId: chatId,
-      groupUsd: request.resume === false ? 0 : (stored?.usd ?? 0),
+      prior: await this.priorOf(request, chatId),
       runKey: request.key,
       login: request.login,
       step: request.step,
@@ -167,6 +173,9 @@ export class AgentLauncher {
       project: request.project,
     });
     feed.finish().forEach(work);
+    if (result.chatId) {
+      this.attemptUsage?.add(request.key, request.run.activeAttempt ?? '', result.chatId, result);
+    }
     recordStepEvent({
       kind: 'agent.finished',
       ...launch,
@@ -180,6 +189,15 @@ export class AgentLauncher {
     request.run.agentCalls += result.calls;
     request.run.spentUsd += result.usd;
     return result;
+  }
+
+  /** What the chat to resume already cost: its stored visits, and the launches of this attempt that are not stored yet. */
+  private async priorOf(request: AgentLaunchRequest, chatId: string | null): Promise<ChatUsage> {
+    if (chatId === null) {
+      return NO_USAGE;
+    }
+    const stored = (await this.chatUsage?.totalsOf(chatId)) ?? NO_USAGE;
+    return plusUsage(stored, this.attemptUsage?.of(request.key, request.run.activeAttempt ?? '', chatId) ?? NO_USAGE);
   }
 
   /** The answer is complete when its result block is valid. */

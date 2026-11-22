@@ -33,9 +33,6 @@
   "server/src/auth/connections.controller.ts": {
     "Async method 'view'": 25
   },
-  "server/src/contract/run-state.ts": {
-    "Function 'actionsFor'": 25
-  },
   "server/src/environment/environment-config.ts": {
     "Function 'fromDevcontainer'": 25
   },

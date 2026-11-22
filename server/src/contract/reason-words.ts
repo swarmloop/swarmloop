@@ -35,6 +35,7 @@ export const REASON = {
   stalled: 'STALLED',
   agentPlace: 'AGENT_PLACE',
   asksPlanner: 'ASKS_PLANNER',
+  sameInput: 'SAME_INPUT',
 } as const;
 
 /** The reason code of a run that waits for answers. */
@@ -120,6 +121,7 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
   [REASON.stalled]: 'state',
   [REASON.agentPlace]: 'place',
   [REASON.asksPlanner]: 'planner',
+  [REASON.sameInput]: 'planner',
   [NEEDS_ANSWERS]: 'state',
 };
 

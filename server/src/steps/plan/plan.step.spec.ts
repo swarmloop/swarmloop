@@ -164,7 +164,7 @@ describe('plan step', () => {
       expect(input.resumeChatId).toBe('chat-1');
       expect(input.prompt).toContain('Do not copy these stage-local limits into the implementation checklist');
       expect(input.prompt).not.toContain('Tests run only in the GitLab or GitHub pipeline');
-      expect(input.groupUsd).toBe(2);
+      expect(input.prior).toEqual({ usd: 0.01, tokensIn: 10, tokensOut: 4 });
       expect(input.prompt).toContain('The requirements in this message are the whole task');
       expect(input.prompt).not.toContain('# Plan');
       expect(input.prompt).not.toContain('ship the field');

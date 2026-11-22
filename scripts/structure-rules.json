@@ -11,6 +11,18 @@
       "pattern": "\\bderiveState\\b"
     },
     {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
+        "server/src/pipeline/start-gate.ts",
+        "server/src/api/",
+        "server/src/cli/",
+        "server/src/pipeline/pipeline.service.ts",
+        "server/src/pipeline/run-lifecycle.ts"
+      ],
+      "pattern": "\\b(accept|submit)\\(\\s*'resume'|\\bstartDetached\\("
+    },
+    {
       "include": "dashboard/",
       "exclude": "\\.test\\.tsx?$|^dashboard/test/",
       "allowFiles": ["dashboard/features/run/run-state-word.tsx"],
@@ -124,7 +136,8 @@
         "server/src/api/run-view/chips.ts",
         "server/src/api/run-view/reviewer-steps.ts",
         "server/src/api/chat.service.ts",
-        "server/src/pipeline/run-settler.ts"
+        "server/src/pipeline/run-settler.ts",
+        "server/src/pipeline/start-gate.ts"
       ],
       "pattern": "\\.responseText\\b|\\bstepOutput\\("
     },

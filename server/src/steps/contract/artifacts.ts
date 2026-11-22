@@ -337,4 +337,7 @@ export const SERVICE_KINDS: Readonly<Record<string, string>> = {
   [REBASE_JOURNAL]: 'git/rebase/journal',
   loop_mark: 'pipeline/run-driver',
   spend: 'pipeline/run-driver',
+  stop_cleanup: 'pipeline/stopped-cleanup',
+  epic_stopped_tasks: 'pipeline/subtask-wakes',
+  question_levels: 'pipeline/planner-chain',
 };

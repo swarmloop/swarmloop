@@ -1,4 +1,5 @@
-import { addGuessedLine, emptyUsageGuess, readStreamLine, takeAnswer, usageFromStream } from './stream';
+import { readStreamLine, takeAnswer, usageFromStream } from './stream';
+import { addGuessedLine, emptyUsageGuess } from './stream-guess';
 
 describe('stream usage', () => {
   it('counts a later model round against the context so far', () => {
@@ -144,5 +145,69 @@ describe('stream usage', () => {
     });
     expect(readStreamLine(JSON.stringify({ type: 'turn.failed', error: { message: 'boom' } }))?.text).toBe('boom');
     expect(readStreamLine(JSON.stringify({ type: 'error', message: 'nope' }))?.text).toBe('nope');
+  });
+});
+
+describe("a visit's own usage", () => {
+  const claudeResult = (extra: Record<string, unknown>): string =>
+    JSON.stringify({
+      type: 'result',
+      total_cost_usd: 6,
+      usage: { input_tokens: 40, cache_read_input_tokens: 300, output_tokens: 90 },
+      ...extra,
+    });
+
+  it('sums the usage since the last result over the models of the line', () => {
+    const piece = readStreamLine(
+      claudeResult({
+        model_usage_since_last_result: {
+          big: { inputTokens: 1, outputTokens: 2, cacheReadInputTokens: 3, cacheCreationInputTokens: 4, costUSD: 0.5 },
+          small: {
+            inputTokens: 10,
+            outputTokens: 20,
+            cacheReadInputTokens: 30,
+            cacheCreationInputTokens: 40,
+            costUSD: 0.25,
+          },
+        },
+      }),
+    );
+    expect(piece?.own).toEqual({ input: 11, output: 22, cacheRead: 33, cacheWrite: 44, usd: 0.75 });
+  });
+
+  it('has no own usage when the line does not carry it', () => {
+    expect(readStreamLine(claudeResult({}))?.own).toBeNull();
+    expect(readStreamLine(claudeResult({ model_usage_since_last_result: {} }))?.own).toBeNull();
+  });
+
+  it('counts the own usage of each visit and not the session totals', () => {
+    const own = {
+      m: { inputTokens: 5, outputTokens: 7, cacheReadInputTokens: 11, cacheCreationInputTokens: 0, costUSD: 1.5 },
+    };
+    expect(usageFromStream(claudeResult({ model_usage_since_last_result: own }))).toEqual({
+      input: 5,
+      output: 7,
+      cacheRead: 11,
+      cacheWrite: 0,
+      reportedUsd: 1.5,
+    });
+  });
+
+  it('takes a session total against the recorded total of the chat', () => {
+    const prior = { usd: 4, tokensIn: 200, tokensOut: 50 };
+    const usage = usageFromStream(claudeResult({}), prior);
+    expect((usage?.input ?? 0) + (usage?.cacheRead ?? 0)).toBe(140);
+    expect(usage).toMatchObject({ output: 40, reportedUsd: 2 });
+  });
+
+  it('takes a second result line of one log against the first', () => {
+    const second = JSON.stringify({
+      type: 'result',
+      total_cost_usd: 8,
+      usage: { input_tokens: 50, cache_read_input_tokens: 350, output_tokens: 100 },
+    });
+    const usage = usageFromStream(`${claudeResult({})}\n${second}`);
+    expect((usage?.input ?? 0) + (usage?.cacheRead ?? 0)).toBe(400);
+    expect(usage).toMatchObject({ output: 100, reportedUsd: 8 });
   });
 });

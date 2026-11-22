@@ -5,6 +5,7 @@ import type { StepName } from '../contract/steps';
 import { readDefaultSettings } from '../config/load-env';
 import { DiskGuard } from '../pipeline/disk-guard';
 import { CommandService } from '../pipeline/command.service';
+import { PERSON_RESUME } from '../pipeline/resume-sender';
 import * as delays from '../core/delay';
 import { Reconciler } from '../pipeline/reconciler';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
@@ -189,7 +190,7 @@ export async function createFlowHarness(
       useDisk(harness, bytes);
     },
     person: async (action) => {
-      await harness.app.app.get(CommandService).submit(action, key, {});
+      await harness.app.app.get(CommandService).submit(action, key, { ...PERSON_RESUME });
       await harness.app.pipeline.whenIdle(key);
     },
     setEnv: async (name, value) => {

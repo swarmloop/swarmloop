@@ -4,7 +4,9 @@ import type { VisitRepository } from '../history/visit.repository';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import type { OpenedStep } from '../steps/step-run';
 import type { Subtask } from '../contract/subtask';
+import { createHash } from 'node:crypto';
 import type { CommandService } from './command.service';
+import type { StartGate } from './start-gate';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { mergeHandoff } from '../steps/shared/handoff';
 import { storedNeeds, type Need } from '../steps/shared/needs';
@@ -14,6 +16,7 @@ import type { RunRepository } from '../history/run.repository';
 import type { PlanChatStore } from '../history/plan-chat.store';
 import type { PlanChange, StarterPlan } from '../steps/implement/starter-actions';
 import type { StarterAnswerResult } from '../agent-result/definitions/starter-answer';
+import type { SubtaskStart } from '../steps/shared/subtask-ops';
 import { buildRevision } from '../steps/shared/plan-revision';
 
 /** The asks of subtask runs and the answers they get, as the port hands them to the implement pass. */
@@ -23,12 +26,13 @@ export class SubtaskAsks {
 
   constructor(
     private readonly documents: DocumentRepository,
-    private readonly commands: CommandService,
+    commands: CommandService,
+    private readonly gate: StartGate,
     conversation: PlanConversation,
-    private readonly visits: VisitRepository,
+    visits: VisitRepository,
     private readonly runs: RunRepository,
   ) {
-    this.planner = new SubtaskPlannerAnswer(documents, commands, conversation, visits);
+    this.planner = new SubtaskPlannerAnswer(documents, commands, gate, conversation, visits);
     this.chat = conversation.chat;
   }
 
@@ -80,6 +84,10 @@ export class SubtaskAsks {
     return (await this.planner.askAbout(opened, task, questions, contract))?.decision.trim() ?? null;
   }
 
+  handUp(parent: RunEntity, taskId: string, text: string): Promise<void> {
+    return this.planner.handUp(parent, taskId, text);
+  }
+
   /** The needs a subtask run waits on, with the questions it asked. */
   async needsOf(run: RunEntity): Promise<Need[]> {
     return storedNeeds(
@@ -88,8 +96,13 @@ export class SubtaskAsks {
     );
   }
 
-  /** Hands the answers to the needs back to the run and resumes it; a refused resume puts the needs back. */
-  async rerun(run: RunEntity, lines: string[]): Promise<void> {
+  /**
+   * Hands the answers to the needs back to the run and resumes it, as the start it is given. The event names the needs
+   * and the lines, so the same ask is one start however many visits came between. A run a person stopped is left as
+   * it is; a refused or held-back resume puts the needs and the handoff back.
+   */
+  async rerun(run: RunEntity, lines: string[], start: SubtaskStart = { by: 'machine', level: null }): Promise<void> {
+    if (await this.gate.stopped(run)) return;
     const needs = await this.documents.latestBody(run.key, ARTIFACTS.needs.kind);
     const handoff = await this.documents.latestBody(run.key, ARTIFACTS.handoff.kind);
     await this.documents.putDocument(run, ARTIFACTS.needs.kind, '');
@@ -98,16 +111,22 @@ export class SubtaskAsks {
       ARTIFACTS.handoff.kind,
       mergeHandoff(handoff, run.currentStep, lines.join('\n')),
     );
+    const digest = createHash('sha256')
+      .update(JSON.stringify([needs ?? '', lines]))
+      .digest('hex');
+    const event = `subtask-needs-${run.key}-${digest}`;
+    let resumed: Awaited<ReturnType<StartGate['resume']>>;
     try {
-      await this.commands.accept(
-        'resume',
-        run.key,
-        {},
-        { idempotencyKey: `subtask-needs-${run.key}-${(await this.visits.listStats(run.id)).length}` },
-      );
+      resumed = await this.gate.resume(run, { by: start.by, level: start.level ?? undefined, event });
     } catch (error) {
-      await this.documents.putDocument(run, ARTIFACTS.needs.kind, needs ?? '');
+      await this.restore(run, needs, handoff);
       throw error;
     }
+    if (resumed === 'stopped') await this.restore(run, needs, handoff);
+  }
+
+  private async restore(run: RunEntity, needs: string | null, handoff: string | null): Promise<void> {
+    await this.documents.putDocument(run, ARTIFACTS.needs.kind, needs ?? '');
+    await this.documents.putDocument(run, ARTIFACTS.handoff.kind, handoff ?? '');
   }
 }

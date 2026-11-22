@@ -8,7 +8,6 @@ import {
   priceTokens,
   retryCrash,
   shouldResume,
-  turnUsd,
 } from './limits';
 import { withRetries } from '../integrations/http';
 import { readStreamLine } from './stream';
@@ -137,20 +136,5 @@ describe('limits', () => {
     );
     expect(value).toBe('ok');
     expect(attempts).toBe(3);
-  });
-});
-
-describe('turnUsd', () => {
-  it('charges a fresh turn in full', () => {
-    expect(turnUsd(1.25, 0.4, 0, false)).toBe(1.25);
-    expect(turnUsd(null, 0.4, 3, true)).toBe(0.4);
-  });
-
-  it('subtracts the chat total already recorded when the CLI reports the whole chat', () => {
-    expect(turnUsd(4, 9, 3, true)).toBe(1);
-  });
-
-  it('keeps a smaller number as this turn alone', () => {
-    expect(turnUsd(1, 9, 3, true)).toBe(1);
   });
 });

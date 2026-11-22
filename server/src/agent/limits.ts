@@ -108,19 +108,6 @@ export interface SessionState {
   resultName?: string;
 }
 
-/**
- * A resumed CLI total covers the whole chat. A smaller number is this turn alone.
- */
-export function turnUsd(reported: number | null, priced: number, priorUsd: number, resumed: boolean): number {
-  if (reported === null) {
-    return priced;
-  }
-  if (!resumed || priorUsd <= 0 || reported < priorUsd) {
-    return reported;
-  }
-  return reported - priorUsd;
-}
-
 export function shouldResume(session: SessionState | null, outputEmpty: boolean): boolean {
   if (!session || !outputEmpty || !session.chatId) {
     return false;

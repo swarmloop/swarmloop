@@ -15,6 +15,7 @@ import { FlakyTestEntity } from './flaky-test.entity';
 import { ServerStallEntity, SlowRequestEntity } from './server-stall.entities';
 import { SessionEntity } from './session.entity';
 import { RunWaitEntity } from './run-wait.entity';
+import { VisitStartEntity } from './visit-start.entity';
 import { StepStatEntity } from './step-stat.entity';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
@@ -80,6 +81,7 @@ export class ResourceSampleEntity {
 
 @Entity('agent_exchanges')
 @Index('IDX_agent_exchanges_step_stat_id', ['stepStatId'])
+@Index('IDX_agent_exchanges_chat_id', ['chatId'])
 export class AgentExchangeEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -369,4 +371,5 @@ export const entities = [
   ServerStallEntity,
   RunWaitEntity,
   SlowRequestEntity,
+  VisitStartEntity,
 ];

@@ -370,3 +370,18 @@ describe('implement-improve of a split parent', () => {
     expect(step?.note).toBeUndefined();
   });
 });
+
+describe('a stored spend note on a waiting run', () => {
+  const run = { key: 'r', currentStep: 'research', status: 'waiting' } as RunEntity;
+  const note = [{ kind: 'spend', body: 'r is over the spend limit. research was not started\n' }] as DocumentEntity[];
+  const asked = [{ kind: 'question', answer: '' }] as never[];
+
+  it('holds a run whose step did not start since', () => {
+    expect(sentence(run, [], note, [], 3)).toBe('r is over the spend limit. research was not started');
+  });
+
+  it('gives way to the normal sentence once the step waited after a resume', () => {
+    const stats = [{ id: 1, step: 'research', status: 'waiting' }] as StepStatEntity[];
+    expect(sentence(run, asked, note, stats, 3)).toBe('Answer the open questions before the run continues.');
+  });
+});

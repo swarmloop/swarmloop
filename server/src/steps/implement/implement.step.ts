@@ -6,7 +6,7 @@ import { StepKernel } from '../step-kernel';
 import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
-import { CONTRACT_KIND, isSubtask, settled, withStatuses } from '../../contract/subtask';
+import { CONTRACT_KIND, isSubtask } from '../../contract/subtask';
 import { StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -54,8 +54,7 @@ import { ARTIFACTS } from '../contract/artifacts';
 import type { StepSnapshot } from '../step';
 import type { PipelineResult } from '../../core/pipeline-result';
 import { SplitImplementStep } from './split-implement.step';
-import { gapOf, gapTaken } from './review-gaps';
-import { openQuestions } from '../shared/answers';
+import { implementRunner } from './split-or-fix';
 
 /** The follow-ups a checks return gets in one visit while its failed commands are still red. */
 const MAX_CHECK_FOLLOW_UPS = 2;
@@ -122,20 +121,14 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
    */
   override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
     const run = await this.runs.findRun(key);
-    const tasks = run?.split ? await this.reader.reread(key, ARTIFACTS.subtasks) : null;
-    if (!run || !tasks?.length) {
-      return super.execute(key, options, snapshot);
-    }
-    const marker = ((await this.reader.reread(key, ARTIFACTS.rebaseConflict)) ?? '').trim();
-    const taken = JSON.parse((await this.reader.reread(key, ARTIFACTS.starterTaken)) || '[]') as string[];
-    const gap = await gapOf(this.documents, key, taken);
-    const settledAll = withStatuses(tasks).every(settled);
-    const closed = settledAll && (await gapTaken(this.documents, run, taken));
-    const asking = openQuestions((await this.reader.reread(key, ARTIFACTS.subtaskQuestions)) ?? '', []).length > 0;
-    const fixing =
-      settledAll &&
-      (marker.startsWith('pending') || (!gap && !closed && !asking && !!(await returnedNotes(this.documents, run.id))));
-    return fixing ? super.execute(key, options, snapshot) : this.split.execute(key, options, snapshot);
+    return (await implementRunner(this.reader, this.documents, run)) === 'agent'
+      ? super.execute(key, options, snapshot)
+      : this.split.execute(key, options, snapshot);
+  }
+
+  /** The split pass launches no agent, so it is not an agent start. */
+  async launchesAgent(key: string): Promise<boolean> {
+    return (await implementRunner(this.reader, this.documents, await this.runs.findRun(key))) === 'agent';
   }
 
   override missingInput(key: string): Promise<string | null> {

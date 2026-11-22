@@ -3,7 +3,8 @@ import type { ModelPrice } from './limits';
 import { priceTokens } from './limits';
 import { CODE_REVIEWERS } from '../contract/steps';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
-import { guessFromStream, usageFromStream } from './stream';
+import { readStreamLine, usageFromStream } from './stream';
+import { guessFromStream } from './stream-guess';
 
 export interface Charge {
   tokensIn: number;
@@ -27,7 +28,7 @@ export function chargeStream(model: string, raw: string, table: Record<string, M
       priced: known,
     };
   }
-  const guess = guessFromStream(raw);
+  const guess = guessFromStream(raw, readStreamLine);
   if (!guess) {
     return null;
   }

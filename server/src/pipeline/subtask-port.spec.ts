@@ -17,6 +17,7 @@ import { renderQuestions } from '../steps/research/research-record';
 import { planChangesOf } from '../steps/shared/plan-changes';
 import { ReportRefresh } from '../steps/shared/report-refresh';
 import { RunReport } from '../steps/shared/run-report';
+import { StartGate } from './start-gate';
 import { SubtaskPlannerAnswer } from './subtask-planner-answer';
 import { SubtaskPort } from './subtask-port';
 
@@ -84,6 +85,7 @@ async function asked(
       } as never,
       new AppConfig(testEnv({ SWARMLOOP_ROOT: dir, AGENTS_PLAN: 'claude:m-plan', ...env })),
       new FakeClock(),
+      {} as never,
     );
   let port = createPort();
   const opened = { run: parent, startedAt: '2026-01-01T00:00:00.000Z' } as never;
@@ -210,6 +212,7 @@ describe('SubtaskPort asking', () => {
       {} as never,
       new AppConfig(testEnv({})),
       new FakeClock(),
+      {} as never,
     );
   const run = { key: 'child', status: 'waiting', currentStep: 'research' } as RunEntity;
   const questions = {
@@ -233,6 +236,7 @@ describe('SubtaskPort merge requests', () => {
       {} as never,
       new AppConfig(testEnv({ SWARMLOOP_ROOT: dir })),
       new FakeClock(),
+      {} as never,
     );
   }
 
@@ -380,6 +384,7 @@ describe('SubtaskPort merge requests', () => {
         {} as never,
         new AppConfig(testEnv({ SWARMLOOP_ROOT: dir })),
         clock,
+        {} as never,
         undefined,
         undefined,
         refresh,
@@ -423,18 +428,19 @@ describe('the parent finds what a subtask asks at plan and implement', () => {
       appendEntry: async (_key: string, entry: PlanChatEntry) => void appended.push(entry),
       markTaken: async (_key: string, keys: string[]) => void taken.push(...keys),
     };
-    const accept = jest.fn().mockResolvedValue(undefined);
+    const resume = jest.fn().mockResolvedValue('accepted');
     const documents = {
       latestBody: async (_key: string, kind: string) => stored[kind] ?? null,
       putDocument: async () => undefined,
     };
     const planner = new SubtaskPlannerAnswer(
       documents as never,
-      { accept } as never,
+      {} as never,
+      { resume } as never,
       { chat, clock: new FakeClock() } as never,
       { listStats: async () => [] } as never,
     );
-    return { planner, appended, taken, accept };
+    return { planner, appended, taken, resume };
   }
 
   it("finds a plan's question in the questions of the run", async () => {
@@ -458,14 +464,27 @@ describe('the parent finds what a subtask asks at plan and implement', () => {
 
   it("finds an implement escalation, and closes it when the parent's answer is delivered", async () => {
     const run = { key: 'child', status: 'waiting', currentStep: 'implement' } as RunEntity;
-    const { planner, appended, taken, accept } = answerer({}, [escalation]);
+    const { planner, appended, taken, resume } = answerer({}, [escalation]);
     expect(await planner.asking(run)).toBe(true);
 
     await planner.deliver(run, 'Use a cursor.');
 
     expect(appended).toMatchObject([{ kind: 'answer', from: 'implement', text: 'Use a cursor.' }]);
     expect(taken).toEqual(['escalate-ask-1']);
-    expect(accept).toHaveBeenCalledWith('resume', 'child', {}, expect.anything());
+    expect(resume).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'child' }),
+      expect.objectContaining({ by: 'planner', level: 0 }),
+    );
+  });
+
+  it('keeps the answer recorded when the gate holds the start back for a stopped task', async () => {
+    const run = { key: 'child', status: 'waiting', currentStep: 'implement' } as RunEntity;
+    const { planner, appended, resume } = answerer({}, [escalation]);
+    resume.mockResolvedValue('stopped');
+
+    await planner.deliver(run, 'Use a cursor.');
+
+    expect(appended).toMatchObject([{ kind: 'answer', text: 'Use a cursor.' }]);
   });
 
   it('does not find a question that waits for the own planner of the subtask', async () => {
@@ -500,6 +519,7 @@ describe("the parent's actions on a subtask's question", () => {
       {} as never,
       new AppConfig(testEnv({ SWARMLOOP_ROOT: tmpdir() })),
       new FakeClock(),
+      {} as never,
     );
     return { port, documents };
   }
@@ -537,5 +557,169 @@ describe('an answer of the planner that names tasks to wait for', () => {
     expect(written.needs).toBe('needs:\n- b: the helper\n');
     expect(written.questions).toBe('');
     expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+describe('SubtaskPort rerun', () => {
+  const needs = '- state-source: Decide how the code is read';
+  const lines = ['state-source merged: done'];
+
+  function rerunning(stopped: boolean) {
+    const bodies: Record<string, string> = { needs, handoff: 'earlier note' };
+    const accepted: unknown[][] = [];
+    const submitted: unknown[][] = [];
+    const run = {
+      key: 'child',
+      status: stopped ? 'blocked' : 'waiting',
+      currentStep: 'implement',
+      state: stopped ? 'stopped' : 'waiting',
+      stateReason: stopped ? JSON.stringify({ code: 'STOPPED', message: 'Stopped.' }) : null,
+    } as RunEntity;
+    let reads = 0;
+    const stoppedRun = {
+      ...run,
+      status: 'blocked',
+      state: 'stopped',
+      stateReason: JSON.stringify({ code: 'STOPPED', message: 'Stopped.' }),
+    };
+    /** The first read, before the documents are written, sees the run going; every later read sees it stopped. */
+    let stopAfter = Infinity;
+    const runs = { findRun: async () => (reads++ >= stopAfter ? stoppedRun : run), children: async () => [run] };
+    const commands = {
+      accept: async (...call: unknown[]) => {
+        accepted.push(call);
+        return { replayed: false };
+      },
+      submit: async (...call: unknown[]) => void submitted.push(call),
+    };
+    const documents = {
+      latestBody: async (_key: string, kind: string) => bodies[kind] ?? null,
+      latestDocument: async (_key: string, kind: string) => (kind in bodies ? { id: 7, body: bodies[kind] } : null),
+      putDocument: async (_run: unknown, kind: string, body: string) => void (bodies[kind] = body),
+    };
+    const port = new SubtaskPort(
+      runs as never,
+      documents as never,
+      commands as never,
+      {} as never,
+      {} as never,
+      new AppConfig(testEnv({ SWARMLOOP_ROOT: tmpdir() })),
+      new FakeClock(),
+      new StartGate(
+        commands as never,
+        runs as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      ),
+    );
+    return {
+      port,
+      run,
+      bodies,
+      accepted,
+      submitted,
+      stopBeforeResume: () => void (stopAfter = 1),
+    };
+  }
+
+  it('leaves the needs and the handoff and stores no resume for a run a person stopped', async () => {
+    const { port, run, bodies, accepted } = rerunning(true);
+
+    await port.rerun(run, lines);
+
+    expect(bodies).toEqual({ needs, handoff: 'earlier note' });
+    expect(accepted).toEqual([]);
+  });
+
+  it('puts the needs and the handoff back when a person stops the run while the resume is asked', async () => {
+    const { port, run, bodies, accepted, stopBeforeResume } = rerunning(false);
+    stopBeforeResume();
+
+    await port.rerun(run, lines);
+
+    expect(bodies).toEqual({ needs, handoff: 'earlier note' });
+    expect(accepted).toEqual([]);
+  });
+
+  it('does not resume a stopped task or parent for the machine, and resumes the recorded stopped tasks for a person', async () => {
+    const { port, run, bodies, accepted } = rerunning(true);
+    bodies.epic_stopped_tasks = 'child';
+
+    await port.resume(run);
+    await port.resumeParent(run, 'subtasks-1');
+    expect(accepted).toEqual([]);
+
+    await port.resumeStopped(run);
+    expect(accepted.map((call) => call[2])).toEqual([{ by: 'person', level: null }]);
+  });
+
+  it('names the resume of a recorded task by the task and the record, and clears the record', async () => {
+    const { port, run, bodies, accepted } = rerunning(true);
+    bodies.epic_stopped_tasks = 'child';
+
+    await port.resumeStopped(run);
+
+    const key = (accepted[0][3] as { idempotencyKey: string }).idempotencyKey;
+    expect(key).toBe('epic-resume-child-7');
+    expect(bodies.epic_stopped_tasks).toBe('');
+  });
+
+  it('resumes nothing without a record, for a task not recorded, or for a recorded task no longer stopped', async () => {
+    const without = rerunning(true);
+    await without.port.resumeStopped(without.run);
+    const other = rerunning(true);
+    other.bodies.epic_stopped_tasks = 'someone-else';
+    await other.port.resumeStopped(other.run);
+    const moved = rerunning(false);
+    moved.bodies.epic_stopped_tasks = 'child';
+    await moved.port.resumeStopped(moved.run);
+
+    expect([without.accepted, other.accepted, moved.accepted]).toEqual([[], [], []]);
+  });
+
+  it('records only the tasks a Stop reaches, and keeps what an earlier Stop recorded', async () => {
+    const going = rerunning(false);
+    going.run.state = 'running';
+    await going.port.stopAll(going.run);
+    expect(going.bodies.epic_stopped_tasks).toBe('child');
+    expect(going.submitted.map((call) => call[0])).toEqual(['stop']);
+
+    const outage = rerunning(false);
+    outage.run.stateReason = JSON.stringify({ code: 'HOST_UNAVAILABLE', message: 'Host is down.' });
+    await outage.port.stopAll(outage.run);
+    expect(outage.bodies.epic_stopped_tasks).toBe('child');
+
+    const plain = rerunning(false);
+    await plain.port.stopAll(plain.run);
+    expect(plain.bodies.epic_stopped_tasks).toBeUndefined();
+
+    const stopped = rerunning(true);
+    await stopped.port.stopAll(stopped.run);
+    expect(stopped.bodies.epic_stopped_tasks).toBeUndefined();
+
+    const again = rerunning(true);
+    again.bodies.epic_stopped_tasks = 'first';
+    await again.port.stopAll(again.run);
+    expect(again.bodies.epic_stopped_tasks).toBe('first');
+  });
+
+  it('names the event by the needs and the lines, not by the visits, and resumes as the machine unless told', async () => {
+    const first = rerunning(false);
+    await first.port.rerun(first.run, lines);
+    const again = rerunning(false);
+    await again.port.rerun(again.run, lines);
+    const other = rerunning(false);
+    await other.port.rerun(other.run, ['state-source merged: another'], { by: 'planner', level: 1 });
+
+    const key = (call: unknown[][]) => (call[0][3] as { idempotencyKey: string }).idempotencyKey;
+    expect(key(first.accepted)).toMatch(/^subtask-needs-child-[0-9a-f]{64}$/);
+    expect(key(again.accepted)).toBe(key(first.accepted));
+    expect(key(other.accepted)).not.toBe(key(first.accepted));
+    expect(first.accepted[0][2]).toEqual({ by: 'machine', level: null });
+    expect(other.accepted[0][2]).toEqual({ by: 'planner', level: 1 });
   });
 });

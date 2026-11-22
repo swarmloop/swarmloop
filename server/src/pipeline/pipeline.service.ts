@@ -13,8 +13,9 @@ import { StepRegistry } from '../steps/step.registry';
 import { PipelineResult, isStep, StepOptions } from '../core/pipeline-result';
 import { StepName } from '../contract/steps';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { WorkspaceGuard } from './workspace-guard';
-import { DiskGuard } from './disk-guard';
+import { RunGuards } from './run-guards';
+import { StartGate } from './start-gate';
+import { VisitStartRepository } from '../history/visit-start.repository';
 import { SubtaskPort } from './subtask-port';
 import { RunDriver } from './run-driver';
 import { RunInstructions } from './run-instructions';
@@ -44,8 +45,9 @@ export class PipelineService implements OnApplicationBootstrap {
     private readonly runStop: RunStop,
     projects: ProjectAppendService,
     reconciler: Reconciler,
-    workspace: WorkspaceGuard,
-    disk: DiskGuard,
+    guards: RunGuards,
+    gate: StartGate,
+    starts: VisitStartRepository,
     subtasks: SubtaskPort,
     private readonly drafts: MergeRequestDrafts,
     limits: LimitRelease,
@@ -63,8 +65,9 @@ export class PipelineService implements OnApplicationBootstrap {
       runStop,
       clock,
       projects,
-      workspace,
-      disk,
+      guards,
+      gate,
+      starts,
       subtasks,
       limits,
       reportRefresh,
@@ -83,6 +86,7 @@ export class PipelineService implements OnApplicationBootstrap {
       this.driver,
       this.instructions,
       reconciler,
+      gate,
     );
   }
 

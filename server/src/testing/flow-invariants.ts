@@ -4,12 +4,15 @@ import {
   NEEDS_PERSON,
   TIMED_RETRY_CODES,
   type RunState,
+  REASON,
   type StateReason,
 } from '../contract/run-state';
 import type { StepStatEntity } from '../history/entities';
 import { liveState } from '../history/run-state';
 import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
+import { VisitStartRepository } from '../history/visit-start.repository';
+import type { VisitStartEntity } from '../history/visit-start.entity';
 import { VisitRepository } from '../history/visit.repository';
 import type { TestApp } from './test-app';
 
@@ -22,6 +25,7 @@ export async function assertInvariants(app: TestApp): Promise<void> {
   const runs = app.app.get(RunRepository);
   const visits = app.app.get(VisitRepository);
   const commands = app.app.get(CommandRepository);
+  const starts = app.app.get(VisitStartRepository);
   const broken: string[] = [];
   for (const run of await runs.listRuns()) {
     const queued = (await commands.pending(run.id)).some((command) => command.type !== 'stop');
@@ -29,6 +33,7 @@ export async function assertInvariants(app: TestApp): Promise<void> {
     broken.push(
       ...stateRules(run.key, state, reason),
       ...visitRules(run.key, state, reason, await visits.listStats(run.id)),
+      ...startRules(run.key, await starts.forRun(run.id)),
     );
   }
   if (broken.length > 0) throw new Error(broken.join('\n'));
@@ -53,6 +58,24 @@ function visitRules(key: string, state: RunState, reason: StateReason | null, st
   if (state === 'idle' && !reason && stats.length > 0) broken.push(`${key} started and is idle with no reason`);
   for (const stat of stats) {
     if (!stat.status || !stat.finishedAt) broken.push(`${key} visit ${stat.id} of ${stat.step} has no result`);
+  }
+  return broken;
+}
+
+/** A start the machine or a planner made never repeats the input of an earlier start of the step, unless that visit did not finish, and never resumes a stop. */
+function startRules(key: string, starts: VisitStartEntity[]): string[] {
+  const broken: string[] = [];
+  const digests = new Map<string, number>();
+  for (const start of starts.filter((item) => item.startedBy !== 'person')) {
+    if (start.startReason === REASON.stopped)
+      broken.push(`${key} ${start.step} was started by the machine on a stopped run`);
+    if (!start.inputDigest) continue;
+    const seen = `${start.step}:${start.inputDigest}`;
+    const first = digests.get(seen);
+    if (first !== undefined && !start.rerunUnfinished) {
+      broken.push(`${key} ${start.step} was started again on the same input as start ${first}`);
+    }
+    digests.set(seen, first ?? start.id);
   }
   return broken;
 }

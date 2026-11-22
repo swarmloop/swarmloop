@@ -197,6 +197,7 @@ describe('the agents of an epic parent and of its subtasks', () => {
       { finishVisit: async () => undefined, listStats: async () => [] } as never,
       new AppConfig(env),
       new FakeClock(),
+      {} as never,
     );
 
     await port.answer(

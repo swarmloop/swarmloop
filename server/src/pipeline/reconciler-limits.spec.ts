@@ -4,14 +4,17 @@ import { writeRunState } from '../history/run-state';
 import { RESUME_AFTER_RESET_MS } from '../history/runtime-cooldown.repository';
 import { credentialDatabase } from '../testing/credential-database.spec-helpers';
 import { Reconciler } from './reconciler';
+import { StartGate } from './start-gate';
 
 const MINUTE = 60_000;
+const MACHINE = { by: 'machine', level: null };
 
 async function setup() {
   const fixture = await credentialDatabase();
   const accepted: unknown[][] = [];
   const accept = async (...call: unknown[]) => {
     accepted.push(call);
+    return { replayed: false };
   };
   const reconciler = new Reconciler(
     fixture.runs,
@@ -29,6 +32,16 @@ async function setup() {
     {} as never,
     {} as never,
     {} as never,
+    new StartGate(
+      { accept } as never,
+      fixture.runs,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    ),
     undefined,
     fixture.credentials,
   );
@@ -59,7 +72,7 @@ describe('reconciler and the limits of a credential', () => {
       expect(accepted).toEqual([]);
       db.clock.advance(30 * MINUTE);
       await reconciler.resumeLimited();
-      expect(accepted).toEqual([['resume', run.key, {}, { idempotencyKey: `limit-${run.revision}` }]]);
+      expect(accepted).toEqual([['resume', run.key, MACHINE, { idempotencyKey: `limit-${run.revision}` }]]);
     } finally {
       await db.close();
     }
@@ -78,7 +91,7 @@ describe('reconciler and the limits of a credential', () => {
       expect(accepted).toEqual([]);
       db.clock.advance(30 * MINUTE);
       await reconciler.resumeLimited();
-      expect(accepted).toEqual([['resume', subtask.key, {}, expect.anything()]]);
+      expect(accepted).toEqual([['resume', subtask.key, MACHINE, expect.anything()]]);
     } finally {
       await db.close();
     }

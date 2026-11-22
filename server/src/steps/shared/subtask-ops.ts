@@ -5,6 +5,25 @@ import type { Need } from './needs';
 import type { StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
 import type { PlanChange, StarterPlan } from '../implement/starter-actions';
 
+/** Who starts a step again: a person, a planner of some level, or the machine. */
+export interface SubtaskStart {
+  by: 'person' | 'planner' | 'machine';
+  level: number | null;
+}
+
+/** The question a run puts up the planners' chain: the step it comes from and its text. */
+export interface ChainQuestion {
+  from: string;
+  text: string;
+}
+
+/** Who a question reached, the level of the planner that did, and its answer. No answer means it waits for the person. */
+export interface ChainAsked {
+  asked: 'run-planner' | 'epic-planner' | 'starter';
+  level: number;
+  answer: string | null;
+}
+
 /** One merge request of a subtask: the repository it is for, and where the host has it. */
 export interface SubtaskMergeRequest {
   repo: string;
@@ -105,9 +124,20 @@ export abstract class SubtaskOps {
   abstract catchUp(parent: RunEntity, run: RunEntity): Promise<void>;
   /**
    * Ends the wait of a subtask run that asked for needs: the needs are cleared, the lines go into its handoff, and the
-   * step that asked runs again in its chat.
+   * step that asked runs again in its chat, as the machine's start unless `start` says who asks. A run a person
+   * stopped is left as it is: nothing is written and nothing runs, unless a person (or a planner on a person's
+   * message) asks.
    */
-  abstract rerun(run: RunEntity, lines: string[]): Promise<void>;
+  abstract rerun(run: RunEntity, lines: string[], start?: SubtaskStart): Promise<void>;
   /** Asks the planner of the parent, in the parent's own chat, a question about a task. Null when it gave no usable answer. */
   abstract askAbout(opened: OpenedStep, task: Subtask, question: string, contract: string): Promise<string | null>;
+  /**
+   * Puts a question of a run to the planners above it, from `startLevel` up, one level higher for each answer that
+   * changed nothing. The run is never started: the caller does that, as a planner start of the returned level.
+   */
+  abstract askUp(run: RunEntity, question: ChainQuestion, startLevel: number): Promise<ChainAsked>;
+  /** The ISO time the needs document of a subtask run was written, or null when it has none. */
+  abstract needsWrittenAt(run: RunEntity): Promise<string | null>;
+  /** The ISO time a task of the parent was merged or skipped, or null when it is not settled or the time is not known. */
+  abstract settledAt(parent: RunEntity, taskId: string): Promise<string | null>;
 }

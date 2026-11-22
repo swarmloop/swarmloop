@@ -10,6 +10,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { storedState, writeRunState } from '../../history/run-state';
 import { CommandService } from '../../pipeline/command.service';
+import { PERSON_RESUME } from '../../pipeline/resume-sender';
 import { Reconciler } from '../../pipeline/reconciler';
 import { FAKE_MODEL_KEY } from '../../testing/env.spec-helpers';
 import { createTestApp, type TestApp } from '../../testing/test-app';
@@ -238,7 +239,7 @@ describe('split implement', () => {
     expect(built.launched).toEqual([`${KEY}-a`, `${KEY}-b`]);
     expect((await parentState(app)).state).toBe('stopped');
 
-    await app.app.get(CommandService).submit('resume', KEY, {});
+    await app.app.get(CommandService).submit('resume', KEY, { ...PERSON_RESUME });
     await settle(app);
 
     expect(built.launched).toEqual([`${KEY}-a`, `${KEY}-b`, `${KEY}-a`, `${KEY}-b`]);

@@ -1,5 +1,5 @@
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
-import { continuesSameStep, countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
+import { countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
 import { blockCode, isReturned, liveState, storedState, type LiveFacts } from '../../history/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../../contract/error-codes';
 import { actionsFor, REASON } from '../../contract/run-state';
@@ -158,19 +158,14 @@ function subtaskSentence(run: RunEntity, documents: DocumentEntity[]): string | 
   return tasks.length > 0 ? `Waiting for subtasks: ${statusLine(tasks)}` : null;
 }
 
+/** The spend note holds a waiting run only while its step has not waited, failed or run since: that visit was a later resume. */
 function spendHold(run: RunEntity, documents: DocumentEntity[], stats: StepStatEntity[]): string | null {
   if (run.status !== 'waiting') {
     return null;
   }
   const note = latest(documents, 'spend')?.trim() || null;
-  if (!note) {
-    return null;
-  }
   const last = [...stats].reverse().find((item) => item.step === run.currentStep)?.status ?? null;
-  if (continuesSameStep(run.status, run.currentStep, run.currentStep, last)) {
-    return null;
-  }
-  return note;
+  return last === 'waiting' || last === 'failed' || last === 'running' ? null : note;
 }
 
 export function reason(run: RunEntity, documents: DocumentEntity[], stats: StepStatEntity[]): string | null {

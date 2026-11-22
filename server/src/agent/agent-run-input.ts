@@ -1,3 +1,4 @@
+import type { ChatUsage } from '../history/chat-usage.repository';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { Effort } from '../contract/effort';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
@@ -29,8 +30,8 @@ export interface AgentRunInput {
   timeLimitMs?: number;
   approveMcps?: boolean;
   auto?: boolean;
-  /** Dollars already recorded for this chat. Used only when the CLI total is cumulative. */
-  groupUsd?: number;
+  /** What the chat already cost: its stored visits and the earlier launches of this attempt. A session total is taken against it. */
+  prior?: ChatUsage;
   /**
    * Prompt for another launch after a time or idle kill.
    * Null leaves that kill as the result. Omitted uses the shared default.

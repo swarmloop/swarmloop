@@ -192,7 +192,7 @@ describe('code-review step and a provider limit', () => {
       expect(accept).not.toHaveBeenCalled();
       clock.advance(Date.parse('2026-11-08T21:51:00Z') - START);
       await reconciler.resumeLimited();
-      expect(accept).toHaveBeenCalledWith('resume', 'PROJ-302', {}, expect.anything());
+      expect(accept).toHaveBeenCalledWith('resume', 'PROJ-302', { by: 'machine', level: null }, expect.anything());
     } finally {
       await app.close();
     }

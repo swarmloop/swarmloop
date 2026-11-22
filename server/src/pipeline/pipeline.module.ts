@@ -39,6 +39,7 @@ import { RemoteRepositories } from '../steps/prepare/remote-repositories.service
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { AttemptChatUsage } from '../steps/shared/attempt-chat-usage';
 import { RunReport } from '../steps/shared/run-report';
 import { OpenReviewRounds } from '../steps/shared/open-review-rounds';
 import { StaleReview } from '../steps/shared/stale-review';
@@ -56,6 +57,8 @@ import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
+import { StartGate } from './start-gate';
+import { RunGuards } from './run-guards';
 import { PlannerTurns } from './planner-turns';
 import { RunReopen } from './run-reopen';
 import { BacklogActions } from './backlog/backlog-actions';
@@ -129,6 +132,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     ChecksStep,
     CodeReviewStep,
     AgentLauncher,
+    AttemptChatUsage,
     LimitFailover,
     LimitRelease,
     RunReport,
@@ -139,6 +143,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     StepRegistry,
     PipelineService,
     CommandService,
+    StartGate,
+    RunGuards,
     MergeWatch,
     Reconciler,
     StallWatch,
@@ -175,6 +181,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
   exports: [
     PipelineService,
     CommandService,
+    StartGate,
     Reconciler,
     PlannerTurns,
     BacklogActions,

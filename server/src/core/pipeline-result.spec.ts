@@ -24,12 +24,11 @@ describe('visitStatus', () => {
 });
 
 describe('continuesSameStep', () => {
-  it('lets a failed or paused visit finish and refuses a step that has not started', () => {
-    expect(continuesSameStep('failed', 'implement', 'implement', 'failed')).toBe(true);
-    expect(continuesSameStep('waiting', 'research', 'research', 'waiting')).toBe(true);
-    expect(continuesSameStep('waiting', 'plan', 'plan', null)).toBe(false);
-    expect(continuesSameStep('waiting', 'plan', 'plan', 'done')).toBe(false);
-    expect(continuesSameStep('waiting', 'implement', 'plan', 'waiting')).toBe(false);
+  it('lets only the run recorded running on the same step continue', () => {
+    expect(continuesSameStep('running', 'implement', 'implement')).toBe(true);
+    expect(continuesSameStep('waiting', 'research', 'research')).toBe(false);
+    expect(continuesSameStep('failed', 'implement', 'implement')).toBe(false);
+    expect(continuesSameStep('running', 'implement', 'plan')).toBe(false);
   });
 });
 
