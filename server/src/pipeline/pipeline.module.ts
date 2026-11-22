@@ -56,6 +56,7 @@ import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
+import { StartGate } from './start-gate';
 import { PlannerTurns } from './planner-turns';
 import { RunReopen } from './run-reopen';
 import { BacklogActions } from './backlog/backlog-actions';
@@ -139,6 +140,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     StepRegistry,
     PipelineService,
     CommandService,
+    StartGate,
     MergeWatch,
     Reconciler,
     StallWatch,
@@ -175,6 +177,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
   exports: [
     PipelineService,
     CommandService,
+    StartGate,
     Reconciler,
     PlannerTurns,
     BacklogActions,

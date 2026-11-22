@@ -14,6 +14,7 @@ import { RunRepository } from '../history/run.repository';
 import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
 import { CommandService } from '../pipeline/command.service';
+import { StartGate } from '../pipeline/start-gate';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
@@ -76,6 +77,7 @@ export async function boot(
       RunSubtaskCommandsService,
       SubtaskClose,
       CommandService,
+      StartGate,
       SubtaskPort,
       { provide: AgentLauncher, useValue: {} },
       { provide: CodeHostRegistry, useValue: { tokensFor: () => Promise.resolve({}) } },

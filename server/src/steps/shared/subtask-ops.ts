@@ -5,6 +5,12 @@ import type { Need } from './needs';
 import type { StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
 import type { PlanChange, StarterPlan } from '../implement/starter-actions';
 
+/** Who starts a step again: a person, a planner of some level, or the machine. */
+export interface SubtaskStart {
+  by: 'person' | 'planner' | 'machine';
+  level: number | null;
+}
+
 /** One merge request of a subtask: the repository it is for, and where the host has it. */
 export interface SubtaskMergeRequest {
   repo: string;
@@ -105,9 +111,11 @@ export abstract class SubtaskOps {
   abstract catchUp(parent: RunEntity, run: RunEntity): Promise<void>;
   /**
    * Ends the wait of a subtask run that asked for needs: the needs are cleared, the lines go into its handoff, and the
-   * step that asked runs again in its chat.
+   * step that asked runs again in its chat, as the machine's start unless `start` says who asks. A run a person
+   * stopped is left as it is: nothing is written and nothing runs, unless a person (or a planner on a person's
+   * message) asks.
    */
-  abstract rerun(run: RunEntity, lines: string[]): Promise<void>;
+  abstract rerun(run: RunEntity, lines: string[], start?: SubtaskStart): Promise<void>;
   /** Asks the planner of the parent, in the parent's own chat, a question about a task. Null when it gave no usable answer. */
   abstract askAbout(opened: OpenedStep, task: Subtask, question: string, contract: string): Promise<string | null>;
 }
