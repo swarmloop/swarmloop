@@ -13,7 +13,8 @@ import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
 import { readFailures } from './ci-host';
 import { pipelineReturn } from './ci-only';
-import { finish } from './pipeline-result';
+import { REASON } from '../../contract/run-state';
+import { blockedEnd, finish } from './pipeline-result';
 import { noteSkippedByPaths } from './pipeline-skipped';
 import { defaultBranchTests, type DefaultBranchDeps } from './default-branch-tests';
 import { saveJobTrace } from './job-trace-log';
@@ -44,7 +45,7 @@ export async function red(
   const failures = traces ? await readFailures(seen, calls, host, counted) : [];
   const unreadable = renderUnreadable(failures);
   if (unreadable) {
-    return finish('blocked', report(opened, 'pipeline log unavailable', unreadable), 'blocked', unreadable);
+    return blockedEnd(report(opened, 'pipeline log unavailable', unreadable), REASON.ciLogUnavailable, unreadable);
   }
   failures.forEach((failure, index) => {
     if (!failure.check && failure.trace) {
@@ -67,7 +68,7 @@ export async function red(
   }
   if (opened.run.attemptsPipeline >= env.MAX_PIPELINE_RETURNS) {
     const text = report(opened, 'pipeline return limit reached', body);
-    return finish('blocked', text, 'blocked', body);
+    return blockedEnd(text, REASON.loopLimit, body);
   }
   opened.run.attemptsPipeline += 1;
   const { reason, detail } = await pipelineReturn(failures, seen, ctx, deps.visits, root(deps.config));
@@ -84,7 +85,7 @@ export function mainRef(prompt: string | null | undefined): string {
 /** The end of a step that meets a test that already failed and passed on the same code twice. */
 export function flakyBlock(opened: OpenedStep, test: string): StepResult {
   const body = `${ERROR_CODES.TEST_FLAKY}: ${test} failed and passed on the same code twice; fix the race, not the test\n`;
-  return finish('blocked', report(opened, body.trim()), 'blocked', body);
+  return blockedEnd(report(opened, body.trim()), ERROR_CODES.TEST_FLAKY, body);
 }
 
 async function sameFailure(ctx: StepContext, seen: Seen[]): Promise<boolean> {

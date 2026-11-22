@@ -2,6 +2,7 @@ import type { ArtifactValue, StepResult } from '../contract/step-contract';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { ImplementationResult } from '../../agent-result/definitions/implementation';
 import { legacyImplementation } from '../../agent-result/legacy/implementation';
+import { REASON } from '../../contract/run-state';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { ModelStepContext } from '../agent-step';
 
@@ -39,7 +40,7 @@ export function withReturnNotes(
 /** A check that failed again on unchanged files: the run waits for a person, and the stored return notes stay. */
 export function checkRepeatedBlock(startedAt: string, step: string, error: Error): StepResult {
   return {
-    route: { to: 'block', reason: error.message },
+    route: { to: 'block', reason: error.message, code: REASON.checkFailed },
     summary: `${startedAt} ${step} blocked: ${error.message}`,
     outputs: [],
   };

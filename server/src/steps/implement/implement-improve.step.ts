@@ -8,6 +8,7 @@ import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
 import { CONTRACT_KIND, isSubtask } from '../../contract/subtask';
 import { StepOptions } from '../../core/pipeline-result';
+import { REASON } from '../../contract/run-state';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -102,7 +103,7 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
     if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
       return {
-        route: { to: 'block', reason: 'implement-improve does not fit' },
+        route: { to: 'block', reason: 'implement-improve does not fit', code: REASON.didNotFit },
         summary: `${ctx.opened.startedAt} implement-improve does not fit`,
         outputs: [],
       };

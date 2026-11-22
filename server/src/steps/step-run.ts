@@ -1,13 +1,13 @@
 import type { LimitState } from '../contract/run-state';
 import type { RunEntity } from '../history/entities';
 import type { FlowRepository } from '../history/flow.repository';
-import { blockCode, writeRunState } from '../history/run-state';
+import { writeRunState } from '../history/run-state';
 import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import type { VisitDraft } from '../history/visit';
 import { barrier } from '../core/barrier';
 import type { PipelineResult } from '../core/pipeline-result';
-import { settle } from '../core/pipeline-result';
+import { ownBlockCode, settle } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
 import type { Clock } from '../core/clock';
 import { ARTIFACTS } from './contract/artifacts';
@@ -73,7 +73,6 @@ export async function closeStep(input: {
 }): Promise<PipelineResult> {
   const phases = await input.flows.activePhases(input.run.id);
   const settled = settle(input.previousStep, input.previousStatus, input.step, input.outcome, input.moveTo, phases);
-  let error: string | null = null;
   if (input.outcome === 'failed' || input.outcome === 'blocked') {
     const docs = input.visit.documents ?? (input.visit.document ? [input.visit.document] : []);
     if (!docs.some((document) => document.kind === ARTIFACTS.error.kind)) {
@@ -81,11 +80,10 @@ export async function closeStep(input: {
     }
     input.visit.documents = docs;
     input.visit.document = null;
-    error = docs.find((document) => document.kind === ARTIFACTS.error.kind)?.body ?? null;
   }
   const code =
     settled.status === 'blocked'
-      ? (input.code ?? blockCode(settled.currentStep, error))
+      ? (input.code ?? ownBlockCode(settled.currentStep))
       : settled.status === 'waiting'
         ? input.code
         : null;
@@ -100,7 +98,6 @@ export async function closeStep(input: {
           ...(input.retryAt ? { retryAt: input.retryAt } : {}),
         }
       : undefined,
-    facts: code ? { blockCode: code } : undefined,
   });
   await barrier('before-finalize');
   await input.visits.finalize(input.attemptId, input.run, input.visit);

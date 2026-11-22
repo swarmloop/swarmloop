@@ -8,7 +8,7 @@ import { ARTIFACTS } from '../contract/artifacts';
 import type { StepResult } from '../contract/step-contract';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
 import { CI_INFRA_SOURCE, issueOf } from '../shared/handoff';
-import { finish } from './pipeline-result';
+import { blockedEnd } from './pipeline-result';
 import { report } from './pipeline-red';
 
 /** How long after a look the next one happens. */
@@ -105,7 +105,7 @@ export async function waitForCi(input: {
       `link: ${await linkOf(ctx)}`,
       `tried: looked again every ${minutes(CI_LOOK_MS)} minutes for ${minutes(waited)} minutes${tried.length > 0 ? `; ${tried.join('; ')}` : ''}`,
     ].join('\n');
-    const result = finish('blocked', report(ctx.opened, 'CI did not run', `${body}\n`), 'blocked', `${body}\n`);
+    const result = blockedEnd(report(ctx.opened, 'CI did not run', `${body}\n`), ERROR_CODES.CI_NOT_RUN, `${body}\n`);
     return {
       ...result,
       outputs: [

@@ -37,6 +37,8 @@ export interface GoldenCase {
   agent: jest.Mock;
   options?: StepOptions;
   prepare?: (context: { app: App; root: string; worktree: string }) => Promise<void>;
+  /** Runs once the step has ended, while the app is still open. */
+  after?: (app: App) => Promise<void>;
 }
 
 function gitTrace(repo: string): { refs: string[]; subjects: string[] } {
@@ -99,6 +101,7 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
       result,
       git: { clone: gitTrace(join(root, 'billing-api')), worktree: gitTrace(worktree) },
     });
+    await input.after?.(app);
     return result;
   } finally {
     await app?.close();
