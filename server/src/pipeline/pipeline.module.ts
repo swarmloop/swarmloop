@@ -38,7 +38,9 @@ import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
+import { AgentDoor } from '../steps/shared/agent-door';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { SpendLimit } from '../steps/shared/spend-limit';
 import { AttemptChatUsage } from '../steps/shared/attempt-chat-usage';
 import { RunReport } from '../steps/shared/run-report';
 import { OpenReviewRounds } from '../steps/shared/open-review-rounds';
@@ -132,6 +134,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     ChecksStep,
     CodeReviewStep,
     AgentLauncher,
+    AgentDoor,
+    SpendLimit,
     AttemptChatUsage,
     LimitFailover,
     LimitRelease,
@@ -207,6 +211,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     HistoryModule,
     EnvironmentService,
     AgentLauncher,
+    AgentDoor,
+    SpendLimit,
     RunReport,
     OpenReviewRounds,
     ReportRefresh,

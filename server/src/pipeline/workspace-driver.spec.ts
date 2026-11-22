@@ -17,7 +17,7 @@ import { DiskGuard } from './disk-guard';
 import { RunDriver } from './run-driver';
 import { RunGuards } from './run-guards';
 import { StartGate } from './start-gate';
-import { VisitStartRepository } from '../history/visit-start.repository';
+import { AgentDoor } from '../steps/shared/agent-door';
 import { clean, freshRun, makeWorld, type World } from './workspace.spec-helpers';
 
 describe('RunDriver before a step', () => {
@@ -40,7 +40,7 @@ describe('RunDriver before a step', () => {
       { flush: async () => undefined } as never,
       app.get(RunGuards),
       app.get(StartGate),
-      app.get(VisitStartRepository),
+      app.get(AgentDoor),
     );
   }
 

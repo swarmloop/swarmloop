@@ -1,6 +1,10 @@
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
-/** How an agent visit was started, written when it starts. The visit's `step_stats` row is joined by `attemptId`; a start with no such row is a visit that did not finish. */
+/**
+ * How an agent start was made, written when it starts. A row is a hop's visit of a step, or an outside start (a
+ * planner turn, a reviewer) that is no step's visit. The visit's `step_stats` row is joined by `attemptId`, and by
+ * `statId` once an outside start stored its visit; a start with no such row did not finish.
+ */
 @Entity('visit_starts')
 @Index('IDX_visit_starts_attempt_id', ['attemptId'], { unique: true })
 @Index('IDX_visit_starts_run_id', ['runId'])
@@ -41,6 +45,18 @@ export class VisitStartEntity {
     transformer: { to: (v: boolean) => (v ? 1 : 0), from: (v: number) => v === 1 },
   })
   rerunUnfinished!: boolean;
+
+  /** True when the start is not a step's visit: a planner turn, a reviewer, a chat. */
+  @Column({
+    type: 'integer',
+    default: 0,
+    transformer: { to: (v: boolean) => (v ? 1 : 0), from: (v: number) => v === 1 },
+  })
+  outside!: boolean;
+
+  /** The stored visit (`step_stats` id) this start led to; null until it is stored. */
+  @Column({ name: 'stat_id', type: 'integer', nullable: true })
+  statId!: number | null;
 
   @Column({ name: 'created_at', type: 'text' })
   createdAt!: string;

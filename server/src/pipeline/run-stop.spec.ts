@@ -302,7 +302,7 @@ describe('RunDriver with a Stop', () => {
       { flush: async () => undefined } as never,
       { stopBefore: async () => null, workspaceStop: async () => null } as never,
       { admit: async () => ({ kind: 'admitted', start: { agent: false } }) } as never,
-      {} as never,
+      { takeRefusal: () => null } as never,
     );
   }
 

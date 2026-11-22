@@ -2,10 +2,9 @@ import { existsSync, realpathSync, statSync } from 'fs';
 import type { AppConfig } from '../config/env';
 import type { RunStop } from '../agent/run-stop';
 import type { DocumentRepository } from '../history/document.repository';
-import type { RunEntity } from '../history/entities';
+import type { RunEntity, StepStatEntity } from '../history/entities';
 import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
-import type { VisitStartRepository } from '../history/visit-start.repository';
 import type { Clock } from '../core/clock';
 import type { ProjectAppendService } from '../steps/prepare/project-append.service';
 import type { StepRegistry } from '../steps/step.registry';
@@ -31,7 +30,10 @@ import { flagError } from './flag-error';
 import { snapshotRun } from './worktree-snapshot';
 import { storedState, writeRunState } from '../history/run-state';
 import type { RunGuards } from './run-guards';
-import type { AdmittedStart, StartGate } from './start-gate';
+import type { AgentDoor } from '../steps/shared/agent-door';
+import type { ChainRefusal } from '../steps/shared/start-refused';
+import { HopGate } from './hop-gate';
+import type { StartGate } from './start-gate';
 import type { SubtaskPort } from './subtask-port';
 import type { LimitRelease } from '../steps/shared/limit-release';
 import { storedAnswerErrors } from '../steps/shared/stored-answer-errors';
@@ -44,6 +46,8 @@ const HOP_LIMIT = STEPS.length * 3;
 const FOLLOWING: StepOptions = { auto: true, startBy: 'machine' };
 
 export class RunDriver {
+  private readonly hop: HopGate;
+
   constructor(
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
@@ -54,13 +58,15 @@ export class RunDriver {
     private readonly clock: Clock,
     private readonly projects: ProjectAppendService,
     private readonly guards: RunGuards,
-    private readonly gate: StartGate,
-    private readonly starts: VisitStartRepository,
+    gate: StartGate,
+    private readonly door: AgentDoor,
     private readonly subtasks?: SubtaskPort,
     private readonly limits?: LimitRelease,
     private readonly reportRefresh?: ReportRefresh,
     private readonly turns?: PlannerTurns,
-  ) {}
+  ) {
+    this.hop = new HopGate(gate, guards, runs, door, subtasks);
+  }
 
   async savedStep(
     key: string,
@@ -113,7 +119,7 @@ export class RunDriver {
         step = rebased;
         manual = true;
       }
-      const gate = await this.passGate(key, step, stepOptions);
+      const gate = await this.hop.passGate(key, step, stepOptions);
       if ('message' in gate) {
         return { exitCode: ran ? 0 : 1, message: gate.message };
       }
@@ -130,10 +136,12 @@ export class RunDriver {
         // The question waits for the planner, or for the person it was escalated to: nothing runs.
         return result;
       }
+      this.door.takeRefusal(key);
       result = await this.execute(step, key, {
         ...stepOptions,
-        opened: this.opening(key, step, gate.start, stepOptions),
+        opened: this.hop.opening(key, step, gate.start, stepOptions),
       });
+      const refusal = this.door.takeRefusal(key);
       ran = true;
       if (manual) {
         await this.markLoop(key);
@@ -142,47 +150,77 @@ export class RunDriver {
       if (this.runStop.halted(key)) {
         return result;
       }
-      const run = await this.runs.findRun(key);
-      const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
-      const stats = run ? await this.visits.listStats(run.id) : [];
-      const env = this.config.env;
-      if (run && run.currentStep === step && asksPlanner(run)) {
-        // The next hop takes the question to the planner; the step goes on with its answer.
-        stepOptions = FOLLOWING;
+      const after = await this.nextHop(step, key, result, stepOptions, refusal);
+      if ('end' in after) return after.end;
+      if ('again' in after) {
+        stepOptions = after.again;
         continue;
       }
-      if (result.resume && run?.status === 'waiting' && run.currentStep === step) {
-        stepOptions = FOLLOWING;
-        continue;
-      }
-      if (
-        run?.status === 'failed' &&
-        run.currentStep === step &&
-        step !== 'done' &&
-        failedLaunches(stats, step, mark) < env.MAX_LAUNCHES
-      ) {
-        stepOptions = { ...stepOptions, ...FOLLOWING };
-        continue;
-      }
-      const lastVisit = lastVisitStatus(stats, step);
-      const next = continues(step, run, lastVisit);
-      const visits = next ? countedVisits(stats, next, mark) : 0;
-      const following = autoContinues(step, run, visits, env.MAX_RETURNS, lastVisit);
-      if (!following) {
-        if (next && run) {
-          await this.guards.block(
-            run,
-            next,
-            REASON.loopLimit,
-            `${next} ran ${visits} times (MAX_RETURNS); Resume starts another round`,
-          );
-        }
-        return result;
-      }
-      step = following;
+      step = after.next;
       stepOptions = FOLLOWING;
     }
     return result;
+  }
+
+  /**
+   * What the drive does after a step ran: ask the chain when the door refused a start of the step for the same input,
+   * start the step again, go on to the next step, or end with the step's result.
+   */
+  private async nextHop(
+    step: StepName,
+    key: string,
+    result: PipelineResult,
+    stepOptions: StepOptions,
+    refusal: ChainRefusal | null,
+  ): Promise<{ end: PipelineResult } | { again: StepOptions } | { next: StepName }> {
+    const run = await this.runs.findRun(key);
+    if (refusal && run?.status === 'waiting' && storedState(run).reason?.code === REASON.sameInput) {
+      const asked = await this.hop.askChain(key, refusal);
+      return 'again' in asked ? asked : { end: { exitCode: 0, message: asked.message } };
+    }
+    const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
+    const stats = run ? await this.visits.listStats(run.id) : [];
+    const env = this.config.env;
+    if (run && run.currentStep === step && asksPlanner(run)) {
+      // The next hop takes the question to the planner; the step goes on with its answer.
+      return { again: FOLLOWING };
+    }
+    if (result.resume && run?.status === 'waiting' && run.currentStep === step) {
+      return { again: FOLLOWING };
+    }
+    if (
+      run?.status === 'failed' &&
+      run.currentStep === step &&
+      step !== 'done' &&
+      failedLaunches(stats, step, mark) < env.MAX_LAUNCHES
+    ) {
+      return { again: { ...stepOptions, ...FOLLOWING } };
+    }
+    return this.following(step, run, stats, mark, result);
+  }
+
+  /** The step after a finished one, or the end of the drive; a run that has gone round too often is blocked on it. */
+  private async following(
+    step: StepName,
+    run: RunEntity | null,
+    stats: StepStatEntity[],
+    mark: number,
+    result: PipelineResult,
+  ): Promise<{ end: PipelineResult } | { next: StepName }> {
+    const lastVisit = lastVisitStatus(stats, step);
+    const next = continues(step, run, lastVisit);
+    const visits = next ? countedVisits(stats, next, mark) : 0;
+    const following = autoContinues(step, run, visits, this.config.env.MAX_RETURNS, lastVisit);
+    if (following) return { next: following };
+    if (next && run) {
+      await this.guards.block(
+        run,
+        next,
+        REASON.loopLimit,
+        `${next} ran ${visits} times (MAX_RETURNS); Resume starts another round`,
+      );
+    }
+    return { end: result };
   }
 
   /**
@@ -211,51 +249,6 @@ export class RunDriver {
       }
     }
     return null;
-  }
-
-  /**
-   * The gate's word before a step starts, on every hop: the start the hop goes on with, the options of a start that a
-   * planner's answer made possible, or the message that ends the drive. A refused start asks the chain, and the run
-   * left waiting for the person ends the drive.
-   */
-  private async passGate(
-    key: string,
-    step: StepName,
-    options: StepOptions,
-  ): Promise<{ start: AdmittedStart } | { again: StepOptions } | { message: string }> {
-    const admission = await this.gate.admit(key, step, options);
-    if (admission.kind === 'blocked') return { message: admission.message };
-    if (admission.kind === 'admitted') {
-      const unfit = await this.guards.workspaceStop(key, step);
-      return unfit ? { message: unfit } : { start: admission.start };
-    }
-    const run = await this.runs.findRun(key);
-    const asked = run ? await this.subtasks?.askUp(run, admission.question, admission.startLevel) : undefined;
-    return asked && asked.answer !== null
-      ? { again: { auto: true, startBy: 'planner', level: asked.level } }
-      : { message: admission.message };
-  }
-
-  /** Called once the step is open: records how the visit was started, then wakes the parent as the first hop asked. */
-  private opening(key: string, step: StepName, start: AdmittedStart, options: StepOptions): () => Promise<void> {
-    return async () => {
-      const run = start.agent ? await this.runs.findRun(key) : null;
-      if (run?.activeAttempt) {
-        const by = options.startBy ?? 'person';
-        await this.starts.note({
-          runId: run.id,
-          step,
-          attemptId: run.activeAttempt,
-          startedBy: by,
-          level: by === 'planner' ? (options.level ?? null) : null,
-          inputDigest: start.digest,
-          startReason: start.reason,
-          rerunUnfinished: start.rerunUnfinished,
-          createdAt: this.clock.iso(),
-        });
-      }
-      await options.opened?.();
-    };
   }
 
   async markLoop(key: string): Promise<void> {

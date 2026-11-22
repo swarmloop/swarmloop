@@ -32,16 +32,7 @@ async function setup() {
     {} as never,
     {} as never,
     {} as never,
-    new StartGate(
-      { accept } as never,
-      fixture.runs,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-    ),
+    new StartGate({ accept } as never, fixture.runs, {} as never, {} as never, {} as never),
     undefined,
     fixture.credentials,
   );
