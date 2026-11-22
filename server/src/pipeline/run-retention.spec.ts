@@ -57,6 +57,32 @@ describe('RunRetention', () => {
     expect(existsSync(join(other, 'scratch'))).toBe(true);
   });
 
+  it('frees the workspace of one run now, whatever its age', async () => {
+    world = await makeWorld('PROJ-1');
+    const tmp = join(world.swarm, 'worktrees', '.tmp', 'PROJ-1', 'implement');
+    mkdirSync(tmp, { recursive: true });
+    const files = leaveFiles(world.swarm, 'PROJ-1');
+
+    expect(await world.app.get(RunRetention).free(await freshRun(world))).toBe(true);
+
+    expect(existsSync(world.worktree)).toBe(false);
+    expect(existsSync(files.state)).toBe(false);
+    expect(existsSync(join(world.swarm, 'worktrees', '.tmp', 'PROJ-1'))).toBe(false);
+    expect((await freshRun(world)).workspace).toBe('removed');
+  });
+
+  it('leaves the workspace of a run that works alone when freeing it', async () => {
+    world = await makeWorld('PROJ-1');
+    const run = await freshRun(world);
+    run.status = 'running';
+    run.ownerPid = process.pid;
+
+    expect(await world.app.get(RunRetention).free(run)).toBe(false);
+
+    expect(existsSync(world.worktree)).toBe(true);
+    expect((await freshRun(world)).workspace).not.toBe('removed');
+  });
+
   it('removes the output files of the check commands with the run, and not the files of another run', async () => {
     world = await makeWorld('PROJ-1');
     const mine = checkOutputPath(world.swarm, 'PROJ-1', 'checks', 'attempt1', 3);

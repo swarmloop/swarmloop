@@ -36,6 +36,8 @@ import { RunRebase } from '../steps/run-rebase';
 import { CommandService } from './command.service';
 import { StartGate } from './start-gate';
 import { SubtaskWakes } from './subtask-wakes';
+import { SubtaskEnd } from './subtask-end';
+import { RunRetention } from './run-retention';
 import { SubtaskWorktrees } from './subtask-worktrees';
 import { SubtaskAsks } from './subtask-asks';
 import { PlannerChain } from './planner-chain';
@@ -67,6 +69,7 @@ export class SubtaskPort extends SubtaskOps {
   private readonly mergeRecord: SubtaskMergeRecord;
   private readonly wakes: SubtaskWakes;
   private readonly rebases: SubtaskRebases;
+  private readonly end: SubtaskEnd;
 
   constructor(
     private readonly runs: RunRepository,
@@ -84,6 +87,7 @@ export class SubtaskPort extends SubtaskOps {
     @Optional() private readonly runNames?: RunNames,
     @Optional() private readonly runAuthor?: RunAuthor,
     @Optional() private readonly closer?: SubtaskRequestCloser,
+    @Optional() retention?: RunRetention,
   ) {
     super();
     this.worktrees = new SubtaskWorktrees(config, clock, publisher);
@@ -119,6 +123,7 @@ export class SubtaskPort extends SubtaskOps {
       (run) => this.mergeRequests(run),
       this.logger,
     );
+    this.end = new SubtaskEnd(runs, this, this.logger, retention);
   }
 
   register(starter: SubtaskStarter): void {
@@ -304,8 +309,13 @@ export class SubtaskPort extends SubtaskOps {
     return this.rebases.rebaseOpen(parent);
   }
 
-  override async closeMergeRequests(parent: RunEntity, run: RunEntity): Promise<void> {
+  /** The open merge requests of a subtask run a person skips. */
+  async closeMergeRequests(parent: RunEntity, run: RunEntity): Promise<void> {
     await this.closer?.close(parent, run, () => this.mergeRequests(run), this.logger);
+  }
+
+  override closeSkipped(parent: RunEntity, run: RunEntity, reason: string): Promise<void> {
+    return this.end.close(parent, run, reason);
   }
 
   resumeStopped(parent: RunEntity): Promise<void> {

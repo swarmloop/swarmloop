@@ -56,6 +56,11 @@ export class RunRetention {
     return null;
   }
 
+  /** Frees the workspace of one run now, through the one removal. A held run is left alone: false. */
+  async free(run: RunEntity): Promise<boolean> {
+    return !this.runs.held(run) && (await this.clean(run, false));
+  }
+
   private limit(days: number): number {
     return this.clock.now() - days * DAY_MS;
   }

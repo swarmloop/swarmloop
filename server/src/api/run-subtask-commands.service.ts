@@ -7,10 +7,10 @@ import { FlowRepository } from '../history/flow.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { parseSubtasks, SUBTASKS_KIND, type Subtask } from '../contract/subtask';
 import { ARTIFACTS } from '../steps/contract/artifacts';
+import { skipRun } from '../pipeline/skip-run';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { storedProjects } from '../config/checkout-path';
-import { storedState, writeRunState } from '../history/run-state';
-import { REASON, SKIPPED_NOTE } from '../contract/run-state';
+import { SKIPPED_NOTE } from '../contract/run-state';
 import { RunRef } from '../contract/api';
 import { subtaskPromptOf } from './subtask-prompt';
 import { requireRun } from './run-queries.service';
@@ -83,12 +83,7 @@ export class RunSubtaskCommandsService {
 
   /** Stops the run of a skipped task and closes it for good. `blocked` keeps a restart from relaunching it. */
   private async close(child: RunEntity): Promise<void> {
-    if (storedState(child).state === 'skipped') return;
-    await this.subtasks.stop(child);
-    const stopped = (await this.runs.findRun(child.key)) ?? child;
-    writeRunState(stopped, { status: 'blocked', reason: { code: REASON.skipped, message: SKIPPED_NOTE } });
-    stopped.stepStartedAt = null;
-    await this.runs.saveRun(stopped);
+    await skipRun(this.runs, (run) => this.subtasks.stop(run), child, SKIPPED_NOTE);
   }
 
   /** Marks a task skipped: its dependents treat it as merged. A running subtask of the task is stopped. */

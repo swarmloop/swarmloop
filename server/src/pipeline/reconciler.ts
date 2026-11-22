@@ -20,6 +20,7 @@ import { DiskGuard } from './disk-guard';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CHAT_LOCK, readChatLock } from './chat-lock';
 import { CommandService } from './command.service';
+import { EpicLeftovers } from './epic-leftovers';
 import { MergeWatch } from './merge-watch';
 import { RunSettler, relaunchKey, type RelaunchDecision } from './run-settler';
 import { StallWatch } from './stall-watch';
@@ -40,6 +41,7 @@ export class Reconciler implements OnModuleDestroy {
   private readonly logger = new Logger(Reconciler.name);
   private readonly resumes: ReconcilerResumes;
   private readonly cleanup: StoppedCleanup;
+  private readonly leftovers: EpicLeftovers;
   private claimed: (key: string) => boolean = () => false;
   private timer: NodeJS.Timeout | null = null;
   /** The pass in flight, or the last one queued. */
@@ -74,6 +76,7 @@ export class Reconciler implements OnModuleDestroy {
     @Optional() planChat?: PlanChatStore,
   ) {
     this.cleanup = new StoppedCleanup(runs, documents, sandbox, config);
+    this.leftovers = new EpicLeftovers(runs, documents, subtasks);
     this.resumes = new ReconcilerResumes(
       runs,
       sandbox,
@@ -229,6 +232,7 @@ export class Reconciler implements OnModuleDestroy {
     if (this.watchedAt !== null && now - this.watchedAt < this.config.env.MERGE_WATCH_MIN * 60_000) return;
     this.watchedAt = now;
     await this.mergeWatch.run();
+    await this.leftovers.run();
   }
 
   /** The commands a process left `accepted` or `executing`. */

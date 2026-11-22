@@ -23,6 +23,7 @@ import type { StepContext } from './base-step';
 import { automaticRebase } from './pipeline/pipeline-rebase';
 import { RunLifecycle } from '../pipeline/run-lifecycle';
 import { RunSettler } from '../pipeline/run-settler';
+import { SubtaskEnd } from '../pipeline/subtask-end';
 import { RunDriver } from '../pipeline/run-driver';
 import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunCommandsService } from '../api/run-commands.service';
@@ -276,6 +277,19 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
     },
     REASON.skipped,
   ],
+  [
+    'SubtaskEnd.close',
+    async () => {
+      const child = storedRun('waiting', ERROR_CODES.SUBTASK_WAITING);
+      const logger = { warn: jest.fn() } as never;
+      const port = { stop: jest.fn(), closeMergeRequests: jest.fn() };
+      const end = new SubtaskEnd(releasing(child) as never, port, logger);
+      await end.close({} as RunEntity, child, 'skipped by its epic: x');
+      expect(child.status).toBe('blocked');
+      return storedCode(child);
+    },
+    REASON.skipped,
+  ],
   ...(['done', 'checks'] as const).map((step): [string, () => Promise<string | undefined>, string] => [
     `RunDriver.execute of the step ${step} that has no service`,
     async () => {
@@ -357,6 +371,7 @@ const WRITER_FILES = [
   'pipeline/run-lifecycle.ts',
   'pipeline/run-settler.ts',
   'pipeline/stop-close.ts',
+  'pipeline/skip-run.ts',
   'api/run-commands.service.ts',
   'api/run-subtask-commands.service.ts',
 ];

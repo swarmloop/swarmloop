@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { RunSubtaskCommandsService } from '../../api/run-subtask-commands.service';
+import { actionsFor } from '../../contract/run-state';
 import { DocumentRepository } from '../../history/document.repository';
+import { storedState } from '../../history/run-state';
 import type { TestApp } from '../../testing/test-app';
 import {
   child,
@@ -76,5 +78,22 @@ describe('split implement: a skipped task and its merge request', () => {
 
     expect(await statuses(app)).toEqual({ a: 'skipped' });
     expect(built.host.closed).toEqual([]);
+  });
+
+  it('closes the run of a task that ended already delivered, with the epic words as its reason', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await delivered(built);
+
+    await pass(app);
+
+    const run = await child(app, 'a');
+    const { state, reason } = storedState(run);
+    expect([state, reason?.message, run.workspace]).toEqual([
+      'skipped',
+      'skipped by its epic: already delivered: src/a.ts',
+      'removed',
+    ]);
+    expect(actionsFor(state, reason?.code ?? null)).toEqual([]);
   });
 });

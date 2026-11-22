@@ -4,6 +4,8 @@ import fs, { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LoopEventEntity } from '../../history/entities';
+import { actionsFor } from '../../contract/run-state';
+import { storedState } from '../../history/run-state';
 import { phases, returns } from './flow';
 import { reason, resumeState, sentence } from './flow-waiting';
 
@@ -300,6 +302,14 @@ describe('sentence of a stop with its own next step', () => {
     expect(say(run('blocked', 'pipeline', 'PIPELINE_UNFIXED'))).toContain(
       'failed twice on the same commit and the agent changed nothing',
     );
+  });
+
+  it('says the stored reason of a skipped run, with no older error beside it', () => {
+    const skipped = run('blocked', 'commit', 'SKIPPED', { message: 'skipped by its epic: nothing left to do' });
+    const documents = [{ stepStatId: 1, kind: 'error', body: 'nothing to commit' }] as DocumentEntity[];
+    expect(say(skipped)).toBe('skipped by its epic: nothing left to do');
+    expect(actionsFor(storedState(skipped).state)).toEqual([]);
+    expect(reason(skipped, documents, [{ id: 1, step: 'commit', killReason: null }] as StepStatEntity[])).toBeNull();
   });
 
   it('keeps the sentence of a docker block stored before this change', () => {
