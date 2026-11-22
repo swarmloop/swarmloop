@@ -5,7 +5,7 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { LiveHub } from '../live/live.hub';
 import { ContainerGate } from '../sandbox/container-gate';
 import { LiveGateway } from './live.gateway';
-import { rowsOf, serverOf, usageOf } from './live.gateway.spec-helpers';
+import { clientOf, rowsOf, runsOf, serverOf, usageOf } from './live.gateway.spec-helpers';
 import type { RunListRows } from './run-list-rows';
 import type { RunQueriesService } from './run-queries.service';
 
@@ -87,5 +87,77 @@ describe('what the gateway builds and sends for one change', () => {
     );
     expect(built).toEqual(['run-1']);
     expect(emitted).toContainEqual(['usage', entry]);
+  });
+});
+
+describe('what the gateway sends to the room of an epic', () => {
+  const figures = { tokens: 1, usd: 2, cpuPeak: 3, memPeak: 4 };
+  const page = { key: 'epic', metrics: figures };
+
+  /** An epic page that its room already has, then a change of the given keys. */
+  async function epicScenario(act: (hub: LiveHub) => void, section: object) {
+    jest.useFakeTimers();
+    try {
+      const hub = new LiveHub();
+      const { service, built, tasked } = runsOf({ epic: page }, { epic: section });
+      const rows = rowsOf([{ key: 'sub-1', parentKey: 'epic' }, { key: 'sub-2', parentKey: 'epic' }, { key: 'epic' }]);
+      const gateway = new LiveGateway(
+        hub,
+        service,
+        {} as AuthService,
+        new ContainerGate(),
+        rows as unknown as RunListRows,
+        new FakeClock(),
+        usageOf([{ key: 'epic', ...figures, epic: { usd: 2, durationMs: 5 } }]),
+      );
+      const toRooms: Array<{ room: string; entry: unknown }> = [];
+      const server = serverOf(1, ['run:epic'], toRooms);
+      gateway.server = server;
+      gateway.onModuleInit();
+      await gateway.watch(clientOf(), 'epic');
+      toRooms.length = 0;
+      built.length = 0;
+      act(hub);
+      await jest.advanceTimersByTimeAsync(100);
+      gateway.onModuleDestroy();
+      const emitted = (server as unknown as { emit: jest.Mock }).emit.mock.calls as Array<
+        [string, { rows?: Array<{ key: string }> }]
+      >;
+      return { built, tasked, toRooms, runEvents: emitted.filter(([name]) => name === 'run') };
+    } finally {
+      jest.useRealTimers();
+    }
+  }
+
+  it('sends the row of a subtask in one run event and builds no parent flow', async () => {
+    const { built, tasked, toRooms, runEvents } = await epicScenario((hub) => hub.changed('sub-1'), {
+      taskLine: 'one running',
+    });
+    expect(built).toEqual([]);
+    expect(tasked).toEqual(['epic']);
+    expect(runEvents).toHaveLength(1);
+    expect(runEvents[0][1].rows?.map((row) => row.key)).toContain('sub-1');
+    expect(toRooms).toEqual([{ room: 'run:epic', entry: { ...page, taskLine: 'one running' } }]);
+  });
+
+  it('builds the task section once for two subtasks of one parent that change in one batch', async () => {
+    const { built, tasked, toRooms } = await epicScenario(
+      (hub) => {
+        hub.changed('sub-1');
+        hub.changed('sub-2');
+      },
+      { taskLine: 'two running' },
+    );
+    expect(built).toEqual([]);
+    expect(tasked).toEqual(['epic']);
+    expect(toRooms).toHaveLength(1);
+  });
+
+  it('sends nothing when the view stays equal, for a subtask change and for a change of the parent itself', async () => {
+    const subtask = await epicScenario((hub) => hub.changed('sub-1'), {});
+    expect(subtask.toRooms).toEqual([]);
+    const parent = await epicScenario((hub) => hub.changed('epic'), {});
+    expect(parent.built).toEqual(['epic']);
+    expect(parent.toRooms).toEqual([]);
   });
 });

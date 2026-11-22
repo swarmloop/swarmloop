@@ -8,7 +8,7 @@ import { allowHandshake, LiveGateway } from './live.gateway';
 import type { AuthService } from '../auth/auth.service';
 import { LiveHub } from '../live/live.hub';
 import { ContainerGate } from '../sandbox/container-gate';
-import { noUsage, rowsOf, serverOf, summaryOf } from './live.gateway.spec-helpers';
+import { clientOf, noUsage, rowsOf, runsOf, serverOf, summaryOf, usageOf } from './live.gateway.spec-helpers';
 
 const auth = {} as AuthService;
 
@@ -73,45 +73,65 @@ describe('LiveGateway', () => {
   });
 
   describe('a change to a subtask', () => {
+    const figures = { tokens: 7, usd: 0.7, cpuPeak: 1, memPeak: 2 };
     async function publish(watchedRooms: string[]) {
       jest.useFakeTimers();
       try {
         const hub = new LiveHub();
-        const flows: Record<string, { key: string; parentKey?: string }> = {
-          'run-1-a': { key: 'run-1-a', parentKey: 'run-1' },
-          'run-1': { key: 'run-1' },
-        };
-        const runs = { list: jest.fn(), flow: jest.fn(async (key: string) => flows[key]) };
+        const { service, built, tasked } = runsOf(
+          { 'run-1': { key: 'run-1', metrics: { tokens: 0, usd: 0, cpuPeak: 0, memPeak: 0, status: 'running' } } },
+          { 'run-1': { tasks: [{ key: 'run-1-a' }] } },
+        );
         const rows = rowsOf([{ key: 'run-1-a', parentKey: 'run-1' }, { key: 'run-1' }]);
         const gateway = new LiveGateway(
           hub,
-          runs as unknown as RunQueriesService,
+          service,
           auth,
           new ContainerGate(),
           rows as unknown as RunListRows,
           new FakeClock(),
-          noUsage(),
+          usageOf([
+            { key: 'run-1-a', ...figures },
+            { key: 'run-1', ...figures },
+          ]),
         );
         const sent: Array<{ room: string; entry: unknown }> = [];
         gateway.server = serverOf(1, watchedRooms, sent);
         gateway.onModuleInit();
+        if (watchedRooms.length > 0) {
+          await gateway.watch(clientOf(), 'run-1');
+          sent.length = 0;
+          built.length = 0;
+        }
         hub.changed('run-1-a');
         await jest.advanceTimersByTimeAsync(100);
         gateway.onModuleDestroy();
-        return { sent, flows };
+        return { sent, built, tasked };
       } finally {
         jest.useRealTimers();
       }
     }
 
     it('also publishes the flow of its parent run when someone watches the parent', async () => {
-      const { sent, flows } = await publish(['run:run-1']);
-      expect(sent).toEqual([{ room: 'run:run-1', entry: flows['run-1'] }]);
+      const { sent, built, tasked } = await publish(['run:run-1']);
+      expect(built).toEqual([]);
+      expect(tasked).toEqual(['run-1']);
+      expect(sent).toEqual([
+        {
+          room: 'run:run-1',
+          entry: {
+            key: 'run-1',
+            metrics: { ...figures, status: 'running' },
+            tasks: [{ key: 'run-1-a' }],
+          },
+        },
+      ]);
     });
 
     it('builds no parent flow when nobody watches the parent', async () => {
-      const { sent } = await publish([]);
+      const { sent, tasked } = await publish([]);
       expect(sent).toEqual([]);
+      expect(tasked).toEqual([]);
     });
   });
 
@@ -122,6 +142,7 @@ describe('LiveGateway', () => {
       read?: (clock: FakeClock) => void;
       flow?: (clock: FakeClock) => void;
       parentKey?: string;
+      seeded?: boolean;
     }) {
       jest.useFakeTimers();
       try {
@@ -133,6 +154,7 @@ describe('LiveGateway', () => {
             options.flow?.(clock);
             return { key };
           }),
+          tasks: jest.fn(async () => ({ taskLine: 'line' })),
         };
         const rows = rowsOf([{ key: 'run-1' }], 3);
         rows.read.mockImplementation(async () => {
@@ -146,12 +168,16 @@ describe('LiveGateway', () => {
           new ContainerGate(),
           rows as unknown as RunListRows,
           clock,
-          noUsage(),
+          usageOf([{ key: 'epic', tokens: 1, usd: 2, cpuPeak: 3, memPeak: 4 }]),
         );
         const sent: Array<{ room: string; entry: unknown }> = [];
         const server = serverOf(options.connected, options.watched, sent);
         gateway.server = server;
         gateway.onModuleInit();
+        if (options.seeded) {
+          await gateway.watch(clientOf(), 'epic');
+          sent.length = 0;
+        }
         hub.changed('run-1');
         await jest.advanceTimersByTimeAsync(100);
         gateway.onModuleDestroy();
@@ -215,8 +241,13 @@ describe('LiveGateway', () => {
     });
 
     it('builds only the parent flow when only the parent room is watched', async () => {
-      const { sent } = await publishOf({ connected: 1, watched: ['run:epic'], parentKey: 'epic' });
-      expect(sent).toEqual([{ room: 'run:epic', entry: { key: 'epic' } }]);
+      const { sent } = await publishOf({ connected: 1, watched: ['run:epic'], parentKey: 'epic', seeded: true });
+      expect(sent).toEqual([
+        {
+          room: 'run:epic',
+          entry: { key: 'epic', taskLine: 'line', metrics: { tokens: 1, usd: 2, cpuPeak: 3, memPeak: 4 } },
+        },
+      ]);
     });
   });
 
@@ -233,6 +264,10 @@ describe('LiveGateway', () => {
       );
       const joined: string[] = [];
       const told: Array<[string, unknown]> = [];
+      // The joining socket is in the room, so a page sent to the room reaches it.
+      gateway.server = {
+        to: () => ({ emit: (name: string, entry: unknown) => told.push([name, entry]) }),
+      } as unknown as LiveGateway['server'];
       const client = {
         rooms: new Set<string>(),
         join: async (name: string) => joined.push(name),

@@ -1,5 +1,6 @@
 import type { LiveRunUsage } from '../contract/live';
 import type { LiveGateway } from './live.gateway';
+import type { RunQueriesService } from './run-queries.service';
 import type { RunUsageReader } from './run-usage';
 
 /** A reader that gives no usage entries, for specs that are not about usage. */
@@ -10,6 +11,35 @@ export function noUsage(): RunUsageReader {
 /** A reader that gives the same entries for every key. */
 export function usageOf(entries: LiveRunUsage[]): RunUsageReader {
   return { entries: jest.fn().mockResolvedValue(entries) } as unknown as RunUsageReader;
+}
+
+/**
+ * A runs service whose `flow` gives the page of the key and whose `tasks` gives its task section, each recording
+ * the keys it was asked for.
+ */
+export function runsOf(pages: Record<string, object> = {}, sections: Record<string, object> = {}) {
+  const built: string[] = [];
+  const tasked: string[] = [];
+  const service = {
+    flow: async (key: string) => {
+      built.push(key);
+      return pages[key] ?? { key };
+    },
+    tasks: async (key: string) => {
+      tasked.push(key);
+      return sections[key] ?? {};
+    },
+  } as unknown as RunQueriesService;
+  return { service, built, tasked };
+}
+
+/** A socket that joins any room and keeps what it is sent. */
+export function clientOf(told: Array<[string, unknown]> = []) {
+  return {
+    rooms: new Set<string>(),
+    join: async () => undefined,
+    emit: (name: string, entry: unknown) => told.push([name, entry]),
+  } as never;
 }
 
 /** The run list as the kept rows give it: only the keys and the parent links matter to a publish. */
