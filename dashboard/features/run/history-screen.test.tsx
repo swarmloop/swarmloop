@@ -60,8 +60,9 @@ describe('HistoryScreen', () => {
     vi.mocked(getFlow).mockResolvedValue(flowView({ title: 'An old run' }));
 
     render(<HistoryScreen runKey="run-1" />, { wrapper: LiveBridgeProvider });
+    await act(async () => {});
 
-    expect(await screen.findByRole('heading', { name: 'An old run' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'An old run' })).toBeInTheDocument();
     await waitFor(() => expect(document.title).toBe('An old run · swarmloop'));
     expect(getFlow).toHaveBeenCalledTimes(1);
     expect(getFlow).toHaveBeenCalledWith('run-1');

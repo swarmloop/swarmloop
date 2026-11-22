@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunSummary } from '@contract/api';
@@ -57,21 +57,24 @@ describe('the run list by part and page', () => {
     show('done');
 
     render(<Column />, { wrapper: LiveBridgeProvider });
+    await act(async () => {});
 
-    expect(await screen.findByText('Merged 19')).toBeInTheDocument();
+    expect(screen.getByText('Merged 19')).toBeInTheDocument();
     expect(screen.queryByText('Merged 20')).not.toBeInTheDocument();
     expect(screen.queryByText('Working')).not.toBeInTheDocument();
     expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: '' });
 
     intersection.scrollIntoView();
+    await act(async () => {});
 
-    expect(await screen.findByText('Merged 39')).toBeInTheDocument();
+    expect(screen.getByText('Merged 39')).toBeInTheDocument();
     expect(screen.getByText('Merged 0')).toBeInTheDocument();
     expect(listRuns).toHaveBeenLastCalledWith({ part: 'done', q: '', cursor: '20' });
 
     intersection.scrollIntoView();
+    await act(async () => {});
 
-    expect(await screen.findByText('Merged 44')).toBeInTheDocument();
+    expect(screen.getByText('Merged 44')).toBeInTheDocument();
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
   });
 

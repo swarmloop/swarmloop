@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRepository, createRun, listProjects, listRemote, ticketKeys, uploadFile } from '../../../lib/endpoints';
-import { NewRunDialog } from './index';
+import { NewRunDialog, PREVIEW_DELAY_MS } from './index';
 
 vi.mock('../../../lib/endpoints', () => ({
   listProjects: vi.fn(),
@@ -24,8 +24,12 @@ async function pastePrompt(user: UserEvent, text: string): Promise<void> {
 
 async function pickProject(user: UserEvent, name: string): Promise<void> {
   await user.click(screen.getByRole('combobox', { name: 'Projects' }));
-  await user.click(await screen.findByRole('option', { name }));
+  await user.click(within(await screen.findByRole('listbox')).getByRole('option', { name }));
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop', 'docs'] });
@@ -49,16 +53,20 @@ describe('NewRunDialog', () => {
   });
 
   it('lists the Jira keys that will be fetched, or says there are none', async () => {
-    const user = userEvent.setup({ delay: null });
+    // user-event waits on real timers, which fake time would stall: one change event stands for the paste.
+    vi.useFakeTimers();
     vi.mocked(ticketKeys).mockResolvedValueOnce({ keys: ['PROJ-12', 'PROJ-13'] });
     render(<NewRunDialog open onClose={vi.fn()} />);
 
-    await pastePrompt(user, 'Do PROJ-12 and PROJ-13');
-    expect(await screen.findByText('Jira: PROJ-12, PROJ-13')).toBeInTheDocument();
+    const prompt = screen.getByRole('textbox', { name: /Prompt/ });
+    fireEvent.change(prompt, { target: { value: 'Do PROJ-12 and PROJ-13' } });
+    await act(() => vi.advanceTimersByTimeAsync(PREVIEW_DELAY_MS));
+    expect(screen.getByText('Jira: PROJ-12, PROJ-13')).toBeInTheDocument();
 
     vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
-    await pastePrompt(user, ' now');
-    expect(await screen.findByText('no Jira tickets')).toBeInTheDocument();
+    fireEvent.change(prompt, { target: { value: 'Do PROJ-12 and PROJ-13 now' } });
+    await act(() => vi.advanceTimersByTimeAsync(PREVIEW_DELAY_MS));
+    expect(screen.getByText('no Jira tickets')).toBeInTheDocument();
   });
 
   it('starts with all five phases checked', () => {
@@ -187,7 +195,8 @@ describe('NewRunDialog', () => {
     for (const name of ['first', 'second']) {
       await waitFor(() => expect(screen.getByRole('button', { name: 'New repository' })).toBeEnabled());
       await user.click(screen.getByRole('button', { name: 'New repository' }));
-      await user.type(await screen.findByRole('textbox', { name: 'Name' }), name);
+      await user.click(await screen.findByRole('textbox', { name: 'Name' }));
+      await user.paste(name);
       await user.click(screen.getByRole('button', { name: 'Create' }));
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument());
     }
