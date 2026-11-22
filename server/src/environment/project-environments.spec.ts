@@ -140,7 +140,9 @@ describe('ProjectEnvironments', () => {
       config: { ...manifest, checks: ['php test.php', 'python3 test.py'] },
     });
     await expect(service.check(input)).rejects.toThrow(RequiredCheckFailed);
-    expect(spawned.map((launch) => launch.project?.shell)).toEqual(['npm ci', 'php test.php', 'python3 test.py']);
+    const shells = spawned.map((launch) => launch.project?.shell);
+    expect(shells[0]).toBe('npm ci');
+    expect(shells.slice(1).sort()).toEqual(['php test.php', 'python3 test.py']);
     expect(stored.find((document) => document.kind === 'return')?.body).toContain('php test.php');
   });
 
@@ -151,9 +153,14 @@ describe('ProjectEnvironments', () => {
     });
     const mounts = [...input.mounts, { hostPath: other, containerPath: '/work/other' }];
     await service.check({ ...input, mounts });
-    expect(spawned.map((launch) => launch.project?.shell)).toEqual(['npm ci', 'npm test', 'python3 -m unittest']);
-    expect(spawned[2]?.project?.image).toBe('python:3.12');
-    expect(spawned[2]?.mounts[0]?.hostPath).toBe(other);
+    const shells = spawned.map((launch) => launch.project?.shell);
+    expect(shells[0]).toBe('npm ci');
+    expect(shells.slice(1).sort()).toEqual(['npm test', 'python3 -m unittest']);
+    const byShell = (shell: string) => spawned.find((launch) => launch.project?.shell === shell);
+    expect(byShell('python3 -m unittest')?.project?.image).toBe('python:3.12');
+    expect(byShell('python3 -m unittest')?.mounts[0]?.hostPath).toBe(other);
+    expect(byShell('npm test')?.project?.image).toBe(manifest.image);
+    expect(byShell('npm test')?.mounts[0]?.hostPath).toBe(input.mounts[0]?.hostPath);
     await service.check({ ...input, mounts });
     expect(spawned.filter((launch) => launch.project?.shell === 'npm ci')).toHaveLength(1);
   });
@@ -418,7 +425,7 @@ describe('ProjectEnvironments checks', () => {
   });
 
   it('never has more check containers alive than CHECKS_PARALLEL', async () => {
-    const { service, input, alive } = setup({ config: { ...manifest, checks: twelve }, checkTurns: 5 });
+    const { service, input, alive } = setup({ config: { ...manifest, checks: twelve }, holdChecks: true });
     await service.check(input);
     expect(alive.max).toBe(3);
   });
@@ -426,7 +433,7 @@ describe('ProjectEnvironments checks', () => {
   it('never has more check containers alive than fit with four cores each', async () => {
     const { service, input, alive } = setup({
       config: { ...manifest, checks: twelve },
-      checkTurns: 5,
+      holdChecks: true,
       machine: { cpus: 8, memoryBytes: 16 * 1024 ** 3 },
     });
     await service.check(input);
