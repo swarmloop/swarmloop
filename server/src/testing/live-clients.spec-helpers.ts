@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { FlowView, RunSummary } from '../contract/api';
-import type { LiveEvents, LiveLog } from '../contract/live';
+import type { LiveEvents, LiveLog, LiveRunUsage } from '../contract/live';
 import { filterRuns, type Part, type RunChange, type RunsPage } from '../contract/run-list';
 import type { TestApp } from './test-app';
 
@@ -34,6 +34,13 @@ export class HeldList {
   /** The `runs` event: a page of the Active part with no filter, ignored by any other view. */
   onRuns(page: RunsPage): void {
     if (this.part === 'active' && this.q === '') this.runs = page.runs;
+  }
+
+  /** The `usage` event, by the rule of the dashboard's apply-usage: the row of the run takes the cost, and the epic total when the entry has one. */
+  onUsage(entry: LiveRunUsage): void {
+    this.runs = this.runs.map((run) =>
+      run.key === entry.key ? { ...run, usd: entry.usd, ...(entry.epic ? { epic: entry.epic } : {}) } : run,
+    );
   }
 
   /** The `run` event, by the rule of the dashboard's apply-run-change: changed rows replace or join, removed ones go, the view filters. */
@@ -78,6 +85,27 @@ export class HeldRunPage {
     return this.logs.find((entry) => entry.step === step && entry.command === command);
   }
 
+  /** The `usage` event, by the rule of the dashboard's flow-usage: numbers are replaced on the page's own run and on its task runs, never added. */
+  onUsage(entry: LiveRunUsage): void {
+    const flow = this.flow;
+    if (!flow) return;
+    if (entry.key === flow.key) {
+      const { tokens, usd, cpuPeak, memPeak } = entry;
+      this.flow = {
+        ...flow,
+        metrics: { ...flow.metrics, tokens, usd, cpuPeak, memPeak },
+        ...(entry.epic ? { epic: entry.epic } : {}),
+      };
+    } else if (flow.tasks?.some((task) => task.run?.key === entry.key)) {
+      this.flow = {
+        ...flow,
+        tasks: flow.tasks.map((task) =>
+          task.run?.key === entry.key ? { ...task, run: { ...task.run, usd: entry.usd } } : task,
+        ),
+      };
+    }
+  }
+
   /** Connects a socket with a session; every connect, the first included, asks to watch the run. */
   async open(sockets: Socket[]): Promise<Socket> {
     const socket = await newSocket(this.app, sockets);
@@ -88,6 +116,7 @@ export class HeldRunPage {
       if (entry.key !== this.key) return;
       this.logs = [...this.logs.filter((item) => item.step !== entry.step || item.command !== entry.command), entry];
     });
+    socket.on('usage', (entry: LiveRunUsage) => this.onUsage(entry));
     socket.on('events', (entry: LiveEvents) => {
       if (entry.key === this.key) this.events = entry;
     });
@@ -113,6 +142,7 @@ export async function open(app: TestApp, sockets: Socket[], held: HeldList): Pro
   const socket = await newSocket(app, sockets);
   socket.on('runs', (page: RunsPage) => held.onRuns(page));
   socket.on('run', (change: RunChange) => held.onRun(change));
+  socket.on('usage', (entry: LiveRunUsage) => held.onUsage(entry));
   let connects = 0;
   socket.on('connect', () => {
     connects += 1;

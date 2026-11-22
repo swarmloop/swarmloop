@@ -8,30 +8,9 @@ import { allowHandshake, LiveGateway } from './live.gateway';
 import type { AuthService } from '../auth/auth.service';
 import { LiveHub } from '../live/live.hub';
 import { ContainerGate } from '../sandbox/container-gate';
+import { noUsage, rowsOf, serverOf, summaryOf } from './live.gateway.spec-helpers';
 
 const auth = {} as AuthService;
-
-/** The run list as the kept rows give it: only the keys and the parent links matter to a publish. */
-function rowsOf(runs: Array<{ key: string; parentKey?: string }>, recomputed = 1) {
-  return { read: jest.fn().mockResolvedValue({ view: { runs: runs.map(summaryOf) }, recomputed }) };
-}
-
-/** A run row with the fields the counts read. */
-function summaryOf(row: { key: string; parentKey?: string }) {
-  return { title: '', name: '', state: 'running', createdAt: '2026-01-01T00:00:00Z', ...row };
-}
-
-/** A server with `connected` sockets, and the rooms with a socket in them. */
-function serverOf(connected: number, watchedRooms: string[], sent: Array<{ room: string; entry: unknown }> = []) {
-  return {
-    emit: jest.fn(),
-    sockets: {
-      sockets: new Map(Array.from({ length: connected }, (_, n) => [`socket-${n}`, {}])),
-      adapter: { rooms: new Map(watchedRooms.map((name) => [name, new Set(['socket'])])) },
-    },
-    to: (room: string) => ({ emit: (_name: string, entry: unknown) => sent.push({ room, entry }) }),
-  } as unknown as LiveGateway['server'];
-}
 
 describe('LiveGateway', () => {
   it('logs a live update that fails', async () => {
@@ -48,6 +27,7 @@ describe('LiveGateway', () => {
         new ContainerGate(),
         rows as unknown as RunListRows,
         new FakeClock(),
+        noUsage(),
       );
       gateway.server = serverOf(1, []);
       gateway.onModuleInit();
@@ -71,6 +51,7 @@ describe('LiveGateway', () => {
         new ContainerGate(),
         {} as unknown as RunListRows,
         new FakeClock(),
+        noUsage(),
       );
       const sent: Array<{ room: string; entry: unknown }> = [];
       gateway.server = serverOf(1, watched, sent);
@@ -109,6 +90,7 @@ describe('LiveGateway', () => {
           new ContainerGate(),
           rows as unknown as RunListRows,
           new FakeClock(),
+          noUsage(),
         );
         const sent: Array<{ room: string; entry: unknown }> = [];
         gateway.server = serverOf(1, watchedRooms, sent);
@@ -164,6 +146,7 @@ describe('LiveGateway', () => {
           new ContainerGate(),
           rows as unknown as RunListRows,
           clock,
+          noUsage(),
         );
         const sent: Array<{ room: string; entry: unknown }> = [];
         const server = serverOf(options.connected, options.watched, sent);
@@ -246,6 +229,7 @@ describe('LiveGateway', () => {
         new ContainerGate(),
         {} as RunListRows,
         new FakeClock(),
+        noUsage(),
       );
       const joined: string[] = [];
       const told: Array<[string, unknown]> = [];
@@ -269,6 +253,7 @@ describe('LiveGateway', () => {
       new ContainerGate(),
       {} as RunListRows,
       new FakeClock(),
+      noUsage(),
     );
     const sent: unknown[] = [];
     gateway.server = {
@@ -291,6 +276,7 @@ describe('LiveGateway', () => {
         gate,
         rowsOf([]) as unknown as RunListRows,
         new FakeClock(),
+        noUsage(),
       );
       const sent: unknown[] = [];
       gateway.server = {
@@ -339,6 +325,7 @@ describe('LiveGateway', () => {
         new ContainerGate(),
         rows as unknown as RunListRows,
         new FakeClock(),
+        noUsage(),
       );
       const server = serverOf(connected, []);
       gateway.server = server;
@@ -403,6 +390,7 @@ describe('LiveGateway', () => {
         new ContainerGate(),
         rows as unknown as RunListRows,
         new FakeClock(),
+        noUsage(),
       );
       gateway.server = serverOf(1, []);
       gateway.onModuleInit();
@@ -425,6 +413,7 @@ describe('LiveGateway', () => {
         new ContainerGate(),
         {} as RunListRows,
         new FakeClock(),
+        noUsage(),
       );
       const sent: Array<{ room: string; entry: unknown }> = [];
       gateway.server = {
@@ -507,6 +496,7 @@ describe('LiveGateway', () => {
         new ContainerGate(),
         {} as RunListRows,
         new FakeClock(),
+        noUsage(),
       );
       let middleware!: (socket: unknown, next: (error?: Error) => void) => void;
       gateway.afterInit({ use: (fn: typeof middleware) => (middleware = fn) } as never);

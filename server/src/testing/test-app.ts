@@ -26,6 +26,7 @@ import { RunCommandsService } from '../api/run-commands.service';
 import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunListRows } from '../api/run-list-rows';
+import { RunUsageReader } from '../api/run-usage';
 import { EtaSummary } from '../api/eta-summary';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { ReadinessController } from '../api/readiness.controller';
@@ -188,6 +189,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     providers: [
       RunQueriesService,
       RunListRows,
+      RunUsageReader,
       EtaSummary,
       RunCommandsService,
       RunAnswersService,
