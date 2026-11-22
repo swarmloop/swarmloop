@@ -8,6 +8,16 @@ import { Bubble, BubbleProvider } from '../transcript/bubble';
 
 const PLANNER = { kind: 'agent', name: 'Planner' } as const;
 
+/** The id of the card of the question that came from this plan chat entry. */
+const questionAnchor = (entry: string): string => `question-${entry}`;
+
+/** Scrolls the conversation to the card of a question and puts the focus on it. */
+export function goToQuestion(entry: string): void {
+  const card = document.getElementById(questionAnchor(entry));
+  card?.scrollIntoView({ block: 'center' });
+  card?.focus({ preventScroll: true });
+}
+
 /**
  * An open question, or an open paste request, as the planner's message marked `Question for you` in the accent color.
  * It has no answer field: the person answers by writing in the message box. One that has its answer reads `Answered`
@@ -18,7 +28,12 @@ export function QuestionEntry({ item }: { item: FlowItem }): ReactElement {
   const answered = item.answer.trim() !== '';
   return (
     <BubbleProvider value={{ actor: PLANNER, time: '', grouped: false, problem: null, eventId: '' }}>
-      <Bubble side="left" type="agent" title={answered ? 'Answered' : 'Question for you'}>
+      <Bubble
+        side="left"
+        type="agent"
+        anchor={item.parts?.entry ? questionAnchor(item.parts.entry) : undefined}
+        title={answered ? 'Answered' : 'Question for you'}
+      >
         {answered ? (
           <>
             {presentation.heading ? (

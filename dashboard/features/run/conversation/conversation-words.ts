@@ -18,6 +18,8 @@ export interface AgentTalk {
   answered?: string;
   /** True when the planner could not settle it and passed it on to the person. */
   escalated?: boolean;
+  /** The key of the plan chat entry that passed the question on to the person; the card of that question stores it. */
+  escalation?: string;
 }
 
 /** What the feed shows in order: the person's messages, the planner's replies and talk between agents. */

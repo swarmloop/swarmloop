@@ -18,7 +18,10 @@ export function questionFor(taskId: string, question: string, askedAt: string): 
 
 /** The question of a subtask with its parts, stored next to the text. */
 export function askedQuestion(taskId: string, question: string, askedAt: string): StoredQuestion {
-  return { question: questionFor(taskId, question, askedAt), parts: askedParts(question, askedAt) };
+  return {
+    question: questionFor(taskId, question, askedAt),
+    parts: askedParts(question, askedAt, { asker: `subtask:${taskId}` }),
+  };
 }
 
 /** What the parent run does with the questions it holds for whoever started it: it sends each answer down to its subtask. */

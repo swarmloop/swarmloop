@@ -92,6 +92,10 @@ export interface QuestionParts {
   full: string;
   /** When the question was asked, as an ISO time; the dashboard shows it in local time. */
   askedAt: string;
+  /** The step that asked, as the plan chat names it (`implement`, `code-review-quality`, `subtask:<task id>`); missing on older parts. */
+  asker?: string;
+  /** The key of the plan chat entry the question came from; missing when none. */
+  entry?: string;
 }
 
 export interface FlowItem {

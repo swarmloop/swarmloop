@@ -7,6 +7,9 @@ export interface StoredQuestion {
   parts: QuestionParts;
 }
 
+/** Who asked and the plan chat entry the question came from. */
+type QuestionSource = Pick<QuestionParts, 'asker' | 'entry'>;
+
 const NO_ANSWER = 'Implement did not answer this point';
 
 /** One reviewer's last finding and what implement answered to it. */
@@ -37,6 +40,7 @@ export function reviewParts(
     ],
     full: exchange.finding.trim(),
     askedAt,
+    asker: `code-review-${reviewer}`,
   };
 }
 
@@ -45,12 +49,13 @@ function reasonOf(result: ReviewResult): string {
 }
 
 /** The parts of a subtask question the planner could not answer, and of a refused `needs:`. */
-export function askedParts(question: string, askedAt: string): QuestionParts {
+export function askedParts(question: string, askedAt: string, source: QuestionSource = {}): QuestionParts {
   return {
     decide: question.trim(),
     sides: [{ who: 'planner', text: 'The planner gave no answer.' }],
     full: '',
     askedAt,
+    ...source,
   };
 }
 

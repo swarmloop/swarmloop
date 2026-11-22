@@ -12,6 +12,7 @@ import { QueryWrapper } from '../../../test/query-wrapper';
 import { stepEvent } from '../../../test/step-events';
 import { type AgentTalk, type FeedEntry } from './conversation-words';
 import { ConversationFeed } from './conversation-feed';
+import { feedEntries } from './talk-entries';
 
 vi.mock('../../../lib/endpoints', () => ({ getStepEvents: vi.fn(), resumeRun: vi.fn() }));
 vi.mock('../../../lib/live', async () => (await import('../../../test/fake-socket')).fakeLive());
@@ -109,6 +110,55 @@ describe('ConversationFeed', () => {
     expect(container.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
+  });
+
+  it('names who asks on each question card, and leads each line of talk to its own card', async () => {
+    const user = userEvent.setup({ delay: null });
+    // jsdom has no scrollIntoView, so removing the stub restores the window as it was.
+    Element.prototype.scrollIntoView = () => undefined;
+    try {
+      const asked = (n: number, from: string, text: string): PlanChatEntry[] => [
+        { ...entry(`ask-${n}`, 'planner', `Question ${n}`), kind: 'question', from },
+        { ...entry(`escalate-ask-${n}`, 'planner', text), kind: 'escalation', from },
+      ];
+      const entries = [
+        ...asked(1, 'code-review-quality', 'Keep the helper?'),
+        ...asked(2, 'implement', 'Which store?'),
+        ...asked(3, 'implement', 'Same decision as the open one'),
+      ];
+      const card = (id: string, decide: string, extra: object) => ({
+        kind: 'question' as const,
+        id,
+        label: id,
+        answer: '',
+        parts: { decide, sides: [], full: '', askedAt: '2026-11-15T07:11:43.444Z', ...extra },
+      });
+      feed(
+        flowView({
+          status: 'waiting',
+          items: [
+            card('q1', 'Keep the helper?', { asker: 'code-review-quality', entry: 'escalate-ask-1' }),
+            card('q2', 'Which store?', { asker: 'implement', entry: 'escalate-ask-2' }),
+            card('q3', 'Same decision as the open one', {}),
+          ],
+        }),
+        feedEntries(entries),
+      );
+
+      const cardOf = (asker: string) => screen.getByText(asker).closest('article');
+      expect(cardOf('The quality reviewer asks')).not.toBeNull();
+      expect(cardOf('Implement asks')).not.toBeNull();
+      expect(screen.getAllByText(/ asks$/)).toHaveLength(2);
+      const links = screen.getAllByRole('button', { name: 'Go to the question' });
+      expect(links).toHaveLength(2);
+
+      await user.click(links[0]);
+      expect(cardOf('The quality reviewer asks')).toHaveFocus();
+      await user.click(links[1]);
+      expect(cardOf('Implement asks')).toHaveFocus();
+    } finally {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    }
   });
 
   it('renders the label of a question without parts as markdown, and shows a paste request the same way', () => {

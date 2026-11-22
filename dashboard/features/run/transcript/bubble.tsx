@@ -127,6 +127,11 @@ export function Detail({
   );
 }
 
+/** The id of a card: the anchor a link leads to (the card can then take the focus), else the id of its problem. */
+function frameLink(anchor: string | undefined, problem: string | undefined): { id?: string; tabIndex?: number } {
+  return anchor ? { id: anchor, tabIndex: -1 } : { id: problem };
+}
+
 /**
  * The one frame of every card: a chat bubble of fixed width in the left lane (what the step did) or the right lane
  * (what came in). `children` is the body line, `meta` the footer chips, `detail` stays closed until asked for.
@@ -141,6 +146,7 @@ export function Bubble({
   detail,
   detailLabel = 'details',
   detailLines,
+  anchor,
 }: {
   side: Side;
   title: string;
@@ -151,6 +157,8 @@ export function Bubble({
   detail?: ReactNode;
   detailLabel?: string;
   detailLines?: number;
+  /** The id a link in the page leads to; the card can then take the focus. */
+  anchor?: string;
 }): ReactElement {
   const { actor, time, grouped, problem, eventId } = useContext(BubbleContext) ?? ALONE;
   const { width, ms } = useBubbleLayout();
@@ -162,10 +170,12 @@ export function Bubble({
   return (
     <Box
       component="article"
-      id={problem ? problemId(eventId) : undefined}
+      {...frameLink(anchor, problem ? problemId(eventId) : undefined)}
       aria-label={problem ? `Error: ${problem.cause}` : `${actor.name} ${title}`}
       sx={(theme) => ({
         position: 'relative',
+        // A card never shrinks below its content in a column: the list scrolls instead.
+        flexShrink: 0,
         overflow: 'hidden',
         boxSizing: 'border-box',
         alignSelf: side === 'right' ? 'flex-end' : 'flex-start',
