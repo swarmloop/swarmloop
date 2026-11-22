@@ -162,7 +162,11 @@ describe('a run that changes its toolchain or its dependencies, on the real impl
     for (const folder of folders) {
       expect(folder).toMatch(/\/worktrees\/\.tmp\/PROJ-470\/(setup-[^/]+|checks-[^/]+-\d)$/);
     }
-    expect(new Set(folders).size).toBe(folders.length);
+    // A command that runs again (a rerun, a second setup) reuses its folder; two commands never share one.
+    const commands = new Set(docker.spawned.map((launch) => launch.project?.shell));
+    const pairs = new Set(docker.spawned.map((launch) => `${launch.project?.shell}|${launch.tmp?.hostPath}`));
+    expect(new Set(folders).size).toBe(commands.size);
+    expect(pairs.size).toBe(commands.size);
     expect(docker.spawned.every((launch) => launch.tmp?.containerPath === '/tmp')).toBe(true);
     await assertInvariants(flow.app);
   });
