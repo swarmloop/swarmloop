@@ -2,12 +2,29 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createTheme } from '@mui/material/styles';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { backlogChatView, backlogView, chatMessage } from '../../../test/backlog-fixtures';
+import { flowView } from '../../../test/fixtures';
 import { QueryWrapper } from '../../../test/query-wrapper';
 import { commandEvents, stepEvent } from '../../../test/step-events';
+import { BacklogChat } from '../../backlogs';
+import { LiveBridgeProvider } from '../../shell';
+import { ConversationFeed } from '../conversation/conversation-feed';
 import { BUBBLE_WIDTH } from './tokens';
 import { TranscriptFeed } from './transcript-feed';
 
-vi.mock('../../../lib/endpoints', () => ({ getHistory: vi.fn() }));
+vi.mock('../../../lib/endpoints', () => ({
+  getHistory: vi.fn(),
+  getStepEvents: vi.fn(),
+  resumeRun: vi.fn(),
+  uploadFile: vi.fn(),
+}));
+vi.mock('../../../lib/backlog-endpoints', () => ({
+  sendBacklogMessage: vi.fn(),
+  resumeBacklogTurn: vi.fn(),
+  runMilestone: vi.fn(),
+  runBacklog: vi.fn(),
+}));
+vi.mock('../../../lib/live', async () => (await import('../../../test/fake-socket')).fakeLive());
 
 const original: typeof window.matchMedia = window.matchMedia.bind(window);
 
@@ -48,6 +65,34 @@ describe('Bubble', () => {
     const bubbles = screen.getAllByRole('article');
     expect(bubbles).toHaveLength(4);
     expect(bubbles.map(widthOf)).toEqual(bubbles.map(() => expected));
+  });
+
+  it('never shrinks a card in a list: in a run conversation, the backlog chat and the transcript feed', () => {
+    const shrink = () => getComputedStyle(screen.getByRole('article')).flexShrink;
+    const person = {
+      key: 'm1',
+      role: 'person' as const,
+      text: 'Hello',
+      at: '2026-11-15T07:11:43.444Z',
+      state: 'taken' as const,
+    };
+    render(<ConversationFeed flow={flowView()} entries={[person]} onResume={vi.fn()} />, {
+      wrapper: ({ children }) => (
+        <QueryWrapper>
+          <LiveBridgeProvider>{children}</LiveBridgeProvider>
+        </QueryWrapper>
+      ),
+    });
+    expect(shrink()).toBe('0');
+    cleanup();
+
+    const chat = backlogChatView({ messages: [chatMessage({ id: 1, author: 'planner', text: 'Hi there' })] });
+    render(<BacklogChat view={backlogView()} chat={chat} login="ada" onView={vi.fn()} onChat={vi.fn()} />);
+    expect(shrink()).toBe('0');
+    cleanup();
+
+    feed([input(1, 'plan')]);
+    expect(shrink()).toBe('0');
   });
 
   it('does not change the width of a bubble for a 300-character command', () => {

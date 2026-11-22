@@ -86,4 +86,23 @@ describe('open questions of the run view', () => {
     expect(openItems(split, [subtask, doc('question_parts', JSON.stringify(own))], [])[0].parts).toEqual(parts);
     expect(openItems(split, [subtask, doc('question_parts', 'not json')], [])[0].parts).toBeUndefined();
   });
+
+  it('carries who asked and the plan chat entry of a stored question', () => {
+    const waiting = { currentStep: 'code-review', status: 'waiting' } as RunEntity;
+    const parts = {
+      decide: 'Is it?',
+      sides: [],
+      full: '',
+      askedAt: 't',
+      asker: 'code-review-quality',
+      entry: 'escalate-ask-1',
+    };
+    const asked = doc('review_questions', '- review ask (asked t)\n');
+    const kept = doc('question_parts', JSON.stringify([{ question: 'review ask (asked t)', parts }]));
+
+    const [item] = openItems(waiting, [asked, kept], []);
+
+    expect(item.parts?.asker).toBe('code-review-quality');
+    expect(item.parts?.entry).toBe('escalate-ask-1');
+  });
 });

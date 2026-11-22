@@ -49,6 +49,17 @@ describe('feedEntries', () => {
     );
   });
 
+  it('carries the key of the escalation on a joined line and on a lone escalation, and none without one', () => {
+    const feed = feedEntries([
+      planner('ask-implement-a1', 'Which store?', { kind: 'question', from: 'implement' }),
+      planner('escalate-ask-implement-a1', 'Pick the store.', { kind: 'escalation', from: 'implement' }),
+      planner('escalate-lone', 'Pick the format.', { kind: 'escalation', from: 'implement' }),
+      planner('ask-implement-a2', 'Which name?', { kind: 'question', from: 'implement' }),
+    ]) as AgentTalk[];
+
+    expect(feed.map((talk) => talk.escalation)).toEqual(['escalate-ask-implement-a1', 'escalate-lone', undefined]);
+  });
+
   it('says the parent planner on a subtask page', () => {
     const [talk] = feedEntries(
       [planner('ask-implement-a1', 'Which store?', { kind: 'question', from: 'implement' })],

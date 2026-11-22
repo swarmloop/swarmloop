@@ -22,7 +22,10 @@ export async function escalateToPerson(
   const line = escalationLine(escalation);
   const open = await openLines(documents, run);
   if (open.includes(line)) return;
-  const parts = { question: line, parts: askedParts(escalation.text, escalation.at) };
+  const parts = {
+    question: line,
+    parts: askedParts(escalation.text, escalation.at, { asker: escalation.from, entry: escalation.key }),
+  };
   const stored = readStoredQuestions((await documents.latestBody(run.key, ARTIFACTS.questionParts.kind)) ?? '');
   const lines = [...open, line];
   await documents.putDocument(run, ARTIFACTS.questions.kind, renderQuestions(lines));

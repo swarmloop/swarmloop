@@ -2,7 +2,7 @@ import type { PlanChatEntry } from '@contract/plan-chat';
 import type { FeedEntry } from './conversation-words';
 
 /** A step as it is named in a sentence: `Implement`, `Implement improve`, `The quality reviewer`, `The subtask`. */
-function askerName(from: string | undefined): string {
+export function askerName(from: string | undefined): string {
   if (!from) return 'A step';
   if (from.startsWith('subtask:')) return 'The subtask';
   if (from.startsWith('code-review-')) return `The ${from.slice('code-review-'.length)} reviewer`;
@@ -34,10 +34,18 @@ export function feedEntries(entries: readonly PlanChatEntry[], parentKey?: strin
         to,
         asked: entry.text,
         ...(answer ? { answered: answer.text } : {}),
-        ...(byKey.has(`escalate-${entry.key}`) ? { escalated: true } : {}),
+        ...(byKey.has(`escalate-${entry.key}`) ? { escalated: true, escalation: `escalate-${entry.key}` } : {}),
       });
     } else if (entry.kind === 'escalation') {
-      feed.push({ key: entry.key, role: 'talk', at: entry.at, who: 'The planner', to: 'you', asked: entry.text });
+      feed.push({
+        key: entry.key,
+        role: 'talk',
+        at: entry.at,
+        who: 'The planner',
+        to: 'you',
+        asked: entry.text,
+        escalation: entry.key,
+      });
     } else {
       feed.push(entry);
     }

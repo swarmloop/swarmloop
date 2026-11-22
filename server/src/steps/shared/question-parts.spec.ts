@@ -49,6 +49,15 @@ describe('question parts', () => {
     ]);
   });
 
+  it('says who asked: the task of a handed-up question and the reviewer of a review question', () => {
+    const handedUp = askedQuestion('a', 'Which one?', ASKED_AT).parts;
+    expect(handedUp.asker).toBe('subtask:a');
+    expect(handedUp.entry).toBeUndefined();
+    expect(reviewParts('quality', { finding: 'f', answer: null }, result({}), ASKED_AT).asker).toBe(
+      'code-review-quality',
+    );
+  });
+
   it('gives a subtask question the planner side and no full text', () => {
     const parts = askedParts('Which one?', ASKED_AT);
 

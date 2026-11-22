@@ -4,6 +4,7 @@ import Typography from '@mui/material/Typography';
 import type { FlowItem } from '@contract/api';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
 import { when } from '../../../lib/format';
+import { askerName } from '../conversation/talk-entries';
 
 /** A question for the person: what is decided first, each side on the point in dispute, the whole text folded. */
 export function QuestionCard({ item }: { item: Pick<FlowItem, 'label' | 'parts'> }): ReactElement {
@@ -13,6 +14,11 @@ export function QuestionCard({ item }: { item: Pick<FlowItem, 'label' | 'parts'>
   }
   return (
     <Box sx={{ display: 'grid', gap: 1 }}>
+      {parts.asker ? (
+        <Typography variant="body2" color="text.secondary">
+          {`${askerName(parts.asker)} asks`}
+        </Typography>
+      ) : null}
       <Typography sx={{ fontWeight: 600 }}>{parts.decide}</Typography>
       {parts.sides.map((side) => (
         <Box key={side.who}>

@@ -15,7 +15,7 @@ import { feedTimeline } from './feed-timeline';
 import { InfoLine } from './info-line';
 import { MessageBubble, PLANNER } from './message-bubble';
 import { ProblemEntry } from './problem-entry';
-import { QuestionEntry } from './question-entry';
+import { goToQuestion, QuestionEntry } from './question-entry';
 import { RevisionCard } from './revision-card';
 
 /** The height kept for a reply that streams, so the entries below it do not move while it grows. */
@@ -62,9 +62,13 @@ function StreamingReply({ text }: { text: string }): ReactElement {
   );
 }
 
-function Talk({ talk }: { talk: AgentTalk }): ReactElement {
+function Talk({ talk, cards }: { talk: AgentTalk; cards: ReadonlySet<string> }): ReactElement {
+  const target = talk.escalation;
   return (
     <InfoLine
+      action={
+        target && cards.has(target) ? { text: 'Go to the question', onClick: () => goToQuestion(target) } : undefined
+      }
       sentence={talkSentence({
         ...talk,
         asked: plainText(talk.asked),
@@ -115,6 +119,7 @@ export function ConversationFeed({ flow, entries, onResume }: FeedProps): ReactE
   const [written, setWritten] = useState('');
   const streaming = replying ? written : '';
   const rows = feedTimeline(flow, entries);
+  const cards = new Set(flow.items.flatMap((item) => item.parts?.entry ?? []));
   return (
     <>
       <FeedLog count={rows.length} streaming={streaming}>
@@ -127,7 +132,7 @@ export function ConversationFeed({ flow, entries, onResume }: FeedProps): ReactE
                 <MessageBubble key={row.key} entry={row.entry} />
               );
             case 'talk':
-              return <Talk key={row.key} talk={row.talk} />;
+              return <Talk key={row.key} talk={row.talk} cards={cards} />;
             case 'revision':
               return <RevisionCard key={row.key} revision={row.revision} />;
             case 'question':

@@ -42,6 +42,8 @@ describe('an escalated question for the person', () => {
             sides: [{ who: 'planner', text: 'The planner gave no answer.' }],
             full: '',
             askedAt: escalation.at,
+            asker: 'code-review-quality',
+            entry: 'escalate-ask-1',
           },
         },
       ]);
