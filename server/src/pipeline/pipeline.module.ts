@@ -58,6 +58,7 @@ import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { Reconciler } from './reconciler';
 import { StartGate } from './start-gate';
+import { RunGuards } from './run-guards';
 import { PlannerTurns } from './planner-turns';
 import { RunReopen } from './run-reopen';
 import { BacklogActions } from './backlog/backlog-actions';
@@ -143,6 +144,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PipelineService,
     CommandService,
     StartGate,
+    RunGuards,
     MergeWatch,
     Reconciler,
     StallWatch,

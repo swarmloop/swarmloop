@@ -1,17 +1,16 @@
 import { existsSync, realpathSync, statSync } from 'fs';
 import type { AppConfig } from '../config/env';
-import { overSpend } from '../agent/limits';
 import type { RunStop } from '../agent/run-stop';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
 import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
+import type { VisitStartRepository } from '../history/visit-start.repository';
 import type { Clock } from '../core/clock';
 import type { ProjectAppendService } from '../steps/prepare/project-append.service';
 import type { StepRegistry } from '../steps/step.registry';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import {
-  continuesSameStep,
   autoContinues,
   countedVisits,
   continues,
@@ -21,7 +20,6 @@ import {
   loopMark,
   settle,
 } from '../core/pipeline-result';
-import { ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/run-state';
 import { isSubtask } from '../contract/subtask';
 import type { StepName } from '../contract/steps';
@@ -31,9 +29,8 @@ import { assertInsideWork, workRoots } from '../sandbox/allowed-path';
 import { flagError } from './flag-error';
 import { snapshotRun } from './worktree-snapshot';
 import { storedState, writeRunState } from '../history/run-state';
-import type { WorkspaceGuard } from './workspace-guard';
-import { workspaceBlock } from './workspace-guard';
-import type { DiskGuard } from './disk-guard';
+import type { RunGuards } from './run-guards';
+import type { AdmittedStart, StartGate } from './start-gate';
 import type { SubtaskPort } from './subtask-port';
 import type { LimitRelease } from '../steps/shared/limit-release';
 import { storedAnswerErrors } from '../steps/shared/stored-answer-errors';
@@ -41,6 +38,9 @@ import type { ReportRefresh } from '../steps/shared/report-refresh';
 import type { PlannerTurns } from './planner-turns';
 
 const HOP_LIMIT = STEPS.length * 3;
+
+/** The options of every hop after the first: the driver itself asks for the start. */
+const FOLLOWING: StepOptions = { auto: true, startBy: 'machine' };
 
 export class RunDriver {
   constructor(
@@ -52,8 +52,9 @@ export class RunDriver {
     private readonly runStop: RunStop,
     private readonly clock: Clock,
     private readonly projects: ProjectAppendService,
-    private readonly workspace?: WorkspaceGuard,
-    private readonly disk?: DiskGuard,
+    private readonly guards: RunGuards,
+    private readonly gate: StartGate,
+    private readonly starts: VisitStartRepository,
     private readonly subtasks?: SubtaskPort,
     private readonly limits?: LimitRelease,
     private readonly reportRefresh?: ReportRefresh,
@@ -106,19 +107,27 @@ export class RunDriver {
         return { exitCode: ran ? 0 : 1, message: `${key} stopped` };
       }
       step = ((await this.subtasks?.applyPendingRebase(key)) as StepName | null) ?? step;
-      const blocked = await this.stopBefore(key, step);
-      if (blocked) {
-        return { exitCode: ran ? 0 : 1, message: blocked };
+      const gate = await this.passGate(key, step, stepOptions);
+      if ('message' in gate) {
+        return { exitCode: ran ? 0 : 1, message: gate.message };
+      }
+      if ('again' in gate) {
+        // A planner answered the question of a start that was refused: the step goes on from the answer.
+        stepOptions = gate.again;
+        continue;
       }
       const amended = await this.takeTurn(key, declined);
       if (amended) {
         step = amended;
-        stepOptions = { auto: true };
+        stepOptions = FOLLOWING;
       } else if (await this.waitsOnQuestion(key)) {
         // The question waits for the planner, or for the person it was escalated to: nothing runs.
         return result;
       }
-      result = await this.execute(step, key, stepOptions);
+      result = await this.execute(step, key, {
+        ...stepOptions,
+        opened: this.opening(key, step, gate.start, stepOptions),
+      });
       ran = true;
       if (manual) {
         await this.markLoop(key);
@@ -133,11 +142,11 @@ export class RunDriver {
       const env = this.config.env;
       if (run && run.currentStep === step && asksPlanner(run)) {
         // The next hop takes the question to the planner; the step goes on with its answer.
-        stepOptions = { auto: true };
+        stepOptions = FOLLOWING;
         continue;
       }
       if (result.resume && run?.status === 'waiting' && run.currentStep === step) {
-        stepOptions = { auto: true };
+        stepOptions = FOLLOWING;
         continue;
       }
       if (
@@ -146,7 +155,7 @@ export class RunDriver {
         step !== 'done' &&
         failedLaunches(stats, step, mark) < env.MAX_LAUNCHES
       ) {
-        stepOptions = { ...stepOptions, auto: true };
+        stepOptions = { ...stepOptions, ...FOLLOWING };
         continue;
       }
       const lastVisit = lastVisitStatus(stats, step);
@@ -155,7 +164,7 @@ export class RunDriver {
       const following = autoContinues(step, run, visits, env.MAX_RETURNS, lastVisit);
       if (!following) {
         if (next && run) {
-          await this.block(
+          await this.guards.block(
             run,
             next,
             REASON.loopLimit,
@@ -165,7 +174,7 @@ export class RunDriver {
         return result;
       }
       step = following;
-      stepOptions = { auto: true };
+      stepOptions = FOLLOWING;
     }
     return result;
   }
@@ -198,68 +207,49 @@ export class RunDriver {
     return null;
   }
 
-  async spendStop(key: string, step: StepName): Promise<string | null> {
-    const existing = await this.runs.findRun(key);
-    if (!existing || !overSpend(existing.spentUsd, this.config.env.MAX_RUN_USD)) {
-      return null;
-    }
-    const stats = await this.visits.listStats(existing.id);
-    const last = lastVisitStatus(stats, step);
-    if (continuesSameStep(existing.status, existing.currentStep, step, last)) {
-      return null;
-    }
-    const message = `${key} is over the spend limit. ${step} was not started`;
-    await this.documents.putDocument(existing, 'spend', `${message}\n`);
-    if (existing.status !== 'done') {
-      const spent = existing.spentUsd.toFixed(2);
-      const limit = this.config.env.MAX_RUN_USD.toFixed(2);
-      await this.block(
-        existing,
-        step,
-        ERROR_CODES.SPEND_LIMIT,
-        `spent $${spent} of MAX_RUN_USD $${limit}; raise MAX_RUN_USD, then Resume`,
-      );
-    }
-    return message;
-  }
-
-  /** Releases the run blocked on a step, with the reason a person reads. */
-  private async block(run: RunEntity, step: StepName, code: string, message: string): Promise<void> {
-    await this.runs.release(run, {
-      status: 'blocked',
-      currentStep: step,
-      reason: { code, message },
-      stepStartedAt: null,
-    });
-  }
-
-  /** Why a step may not start: the spend limit first, then a workspace or disk that cannot be made ready. */
-  private async stopBefore(key: string, step: StepName): Promise<string | null> {
-    return (await this.spendStop(key, step)) ?? this.workspaceStop(key, step);
-  }
-
   /**
-   * Brings the worktrees of the run back and checks the disk, before the step mounts anything. A run that cannot
-   * go on is blocked on the step it was about to start, and the message says why.
+   * The gate's word before a step starts, on every hop: the start the hop goes on with, the options of a start that a
+   * planner's answer made possible, or the message that ends the drive. A refused start asks the chain, and the run
+   * left waiting for the person ends the drive.
    */
-  async workspaceStop(key: string, step: StepName): Promise<string | null> {
-    const run = step === 'done' ? null : await this.runs.findRun(key);
-    if (!run) {
-      return null;
+  private async passGate(
+    key: string,
+    step: StepName,
+    options: StepOptions,
+  ): Promise<{ start: AdmittedStart } | { again: StepOptions } | { message: string }> {
+    const admission = await this.gate.admit(key, step, options);
+    if (admission.kind === 'blocked') return { message: admission.message };
+    if (admission.kind === 'admitted') {
+      const unfit = await this.guards.workspaceStop(key, step);
+      return unfit ? { message: unfit } : { start: admission.start };
     }
-    try {
-      await this.workspace?.ensure(run);
-      await this.disk?.check(run, step);
-      return null;
-    } catch (error) {
-      const block = workspaceBlock(error);
-      if (!block) {
-        throw error;
+    const run = await this.runs.findRun(key);
+    const asked = run ? await this.subtasks?.askUp(run, admission.question, admission.startLevel) : undefined;
+    return asked && asked.answer !== null
+      ? { again: { auto: true, startBy: 'planner', level: asked.level } }
+      : { message: admission.message };
+  }
+
+  /** Called once the step is open: records how the visit was started, then wakes the parent as the first hop asked. */
+  private opening(key: string, step: StepName, start: AdmittedStart, options: StepOptions): () => Promise<void> {
+    return async () => {
+      const run = start.agent ? await this.runs.findRun(key) : null;
+      if (run?.activeAttempt) {
+        const by = options.startBy ?? 'person';
+        await this.starts.note({
+          runId: run.id,
+          step,
+          attemptId: run.activeAttempt,
+          startedBy: by,
+          level: by === 'planner' ? (options.level ?? null) : null,
+          inputDigest: start.digest,
+          startReason: start.reason,
+          rerunUnfinished: start.rerunUnfinished,
+          createdAt: this.clock.iso(),
+        });
       }
-      await this.block(run, step, block.code, block.message);
-      await this.documents.putDocument(run, 'error', `${block.message}\n`);
-      return block.message;
-    }
+      await options.opened?.();
+    };
   }
 
   async markLoop(key: string): Promise<void> {
@@ -345,9 +335,7 @@ export class RunDriver {
     const missing = await this.missingInput(name, key, options);
     if (missing) return { exitCode: 1, message: `${missing} is missing` };
     if (await busy(key)) return { exitCode: 1, message: `${key} is already running` };
-    const blocked = await this.spendStop(key, name);
-    if (blocked) return { exitCode: 1, message: blocked };
-    const unfit = await this.workspaceStop(key, name);
+    const unfit = await this.guards.stopBefore(key, name);
     if (unfit) return { exitCode: 1, message: unfit };
     return this.execute(name, key, options);
   }

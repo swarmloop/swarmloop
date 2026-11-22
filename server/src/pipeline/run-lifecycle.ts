@@ -24,6 +24,7 @@ import type { Reconciler } from './reconciler';
 import { silentMessage } from './reconciler';
 import { settleShell, shellHolding } from './shell-lock';
 import type { RunDriver } from './run-driver';
+import type { StartGate } from './start-gate';
 import type { RunInstructions } from './run-instructions';
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
@@ -45,6 +46,7 @@ export class RunLifecycle implements OnApplicationBootstrap {
     private readonly driver: RunDriver,
     private readonly instructions: RunInstructions,
     private readonly reconciler: Reconciler,
+    private readonly gate: StartGate,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -136,7 +138,7 @@ export class RunLifecycle implements OnApplicationBootstrap {
     ) {
       return { exitCode: 1, message: 'prompt is missing' };
     }
-    const blocked = await this.driver.spendStop(key, step);
+    const blocked = await this.gate.limits(key, step);
     if (blocked) return { exitCode: 1, message: blocked };
     if (options.projects?.length && target?.capabilities.projects)
       await this.instructions.pinProjects(key, options.projects);

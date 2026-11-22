@@ -141,7 +141,7 @@ function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock, onRelease: (
   const clock = new FakeClock();
   const runStop = new RunStop();
   const driverGate = deferred();
-  const driver = { missingInput: async () => null, spendStop: async () => null, drive: () => driverGate.promise };
+  const driver = { missingInput: async () => null, drive: () => driverGate.promise };
   const lifecycle = new RunLifecycle(
     runs as never,
     documents as never,
@@ -155,6 +155,7 @@ function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock, onRelease: (
     driver as never,
     {} as never,
     {} as never,
+    { limits: async () => null } as never,
   );
   /** The run is in flight: a started step whose driver waits until `leave`. */
   const claim = () => lifecycle.startDetached(state.key);
@@ -299,6 +300,9 @@ describe('RunDriver with a Stop', () => {
       runStop,
       new FakeClock(),
       { flush: async () => undefined } as never,
+      { stopBefore: async () => null, workspaceStop: async () => null } as never,
+      { admit: async () => ({ kind: 'admitted', start: { agent: false } }) } as never,
+      {} as never,
     );
   }
 

@@ -74,6 +74,7 @@ export class RunSubtaskCommandsService {
       prompt,
       projects: storedProjects(parent.projects),
       phases: phaseNames(),
+      startBy: 'machine',
     });
     if (!result.message.includes('already running')) {
       this.commands.demandStart(result);

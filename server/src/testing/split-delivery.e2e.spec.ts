@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
+import { PERSON_RESUME } from '../pipeline/resume-sender';
 import { Reconciler } from '../pipeline/reconciler';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
@@ -200,7 +201,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     await settle(app);
     expect(built.launched).toEqual([`${KEY}-a`, `${KEY}-b`]);
 
-    await app.app.get(CommandService).submit('resume', KEY, {});
+    await app.app.get(CommandService).submit('resume', KEY, { ...PERSON_RESUME });
     await settle(app);
     expect(built.launched).toEqual([`${KEY}-a`, `${KEY}-b`, `${KEY}-a`, `${KEY}-b`]);
 
@@ -496,7 +497,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     expect(storedState((await parentRun(app))!).reason?.code).toBe('PARENT_TREE_CONFLICT');
 
     writeFileSync(shared, lines('task one', 'own five'));
-    await app.app.get(CommandService).accept('resume', KEY, {});
+    await app.app.get(CommandService).accept('resume', KEY, { ...PERSON_RESUME });
     await settle(app);
     // The Resume pass committed the resolved edits and pushed them; b, still running, is cut from that head and delivered.
     await deliver('b', { 'src/b.ts': 'export const b = 1;\n' });

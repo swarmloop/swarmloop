@@ -136,7 +136,8 @@
         "server/src/api/run-view/chips.ts",
         "server/src/api/run-view/reviewer-steps.ts",
         "server/src/api/chat.service.ts",
-        "server/src/pipeline/run-settler.ts"
+        "server/src/pipeline/run-settler.ts",
+        "server/src/pipeline/start-gate.ts"
       ],
       "pattern": "\\.responseText\\b|\\bstepOutput\\("
     },

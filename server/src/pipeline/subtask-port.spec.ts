@@ -605,7 +605,16 @@ describe('SubtaskPort rerun', () => {
       {} as never,
       new AppConfig(testEnv({ SWARMLOOP_ROOT: tmpdir() })),
       new FakeClock(),
-      new StartGate(commands as never, runs as never),
+      new StartGate(
+        commands as never,
+        runs as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+      ),
     );
     return {
       port,

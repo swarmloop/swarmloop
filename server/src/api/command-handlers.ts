@@ -2,6 +2,7 @@ import { Injectable, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common
 import { AddProjectBody, StartStepBody } from '../contract/api';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
+import { startByOf } from '../pipeline/resume-sender';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { ChatService } from './chat.service';
 import { RunAnswersService } from './run-answers.service';
@@ -56,7 +57,9 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
       await this.files.claim(key, payload.attachments as string[] | undefined);
       return this.runs.startPlanned(payload as unknown as StartPlan);
     });
-    on('resume', (key, payload) => this.runs.resume(key, payload.prompt as string | undefined));
+    on('resume', (key, payload) =>
+      this.runs.resume(key, payload.prompt as string | undefined, startByOf({ payload: JSON.stringify(payload) })),
+    );
     on('answer', (key, payload) =>
       typeof payload.message === 'string'
         ? this.answering.fromMessage(key, payload.message)
