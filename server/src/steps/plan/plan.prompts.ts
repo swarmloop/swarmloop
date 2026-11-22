@@ -27,12 +27,24 @@ export function planFollowUp(answers: string, resultText: string, heading = 'Ans
   return lines.join('\n');
 }
 
+/** The rule every planner answer follows: decide what the run's decisions settle, escalate the rest. */
+function decideWhatYouHold(): string {
+  return skillSection('plan', 'Decide what you hold');
+}
+
+/** The cases that go to whoever started the run, for the planner results that have `escalate`. */
+function escalateWhatYouDoNotHold(): string {
+  return skillSection('plan', 'Escalate what you do not hold');
+}
+
 /** The heading before a person's messages in a planner prompt. */
 export const PERSON_WORDS = "The person's words:";
 
 /** What the planner is told in its own chat when a person wrote to it. */
 export function planChatFollowUp(messages: readonly { text: string }[], resultText: string, subtask = false): string {
-  const guidance = skillSection('plan', 'Answer a person');
+  const guidance = [skillSection('plan', 'Answer a person'), decideWhatYouHold(), escalateWhatYouDoNotHold()].join(
+    '\n\n',
+  );
   const words = messages.map((message) => message.text.trim()).join('\n\n');
   return planFollowUp(words, [guidance, ...(subtask ? [SUBTASK_SCOPE] : []), resultText].join('\n\n'), PERSON_WORDS);
 }
@@ -103,6 +115,8 @@ export function subtaskAsks(
           'Answer each question as a decision the subtask follows, in `decision`. Do not change the task list. Send the decision only.',
         ]),
     '',
+    decideWhatYouHold(),
+    '',
     resultPromptFor(starterAnswer, received),
   ].join('\n');
 }
@@ -115,6 +129,10 @@ export function planAnswersStep(step: string, question: string, resultText: stri
     '',
     'Answer from the brief, the requirements, the plan and the decisions you already hold, as one decision the step follows. Do not change the plan and do not add requirements.',
     'When it is a product decision you cannot settle from them, do not invent one: escalate it, and say what whoever started the run must decide.',
+    '',
+    decideWhatYouHold(),
+    '',
+    escalateWhatYouDoNotHold(),
     '',
     resultText,
   ].join('\n');

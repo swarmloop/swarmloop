@@ -1,7 +1,9 @@
 import type { BacklogTurnAction, BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
 import { AppConfig } from '../../../config/env';
 import { testEnv } from '../../../config/env.spec-helpers';
-import type { BacklogTaskRecord } from '../../../history/backlog.repository';
+import type { Clock } from '../../../core/clock';
+import type { BacklogChatRepository } from '../../../history/backlog-chat.repository';
+import type { BacklogRepository, BacklogTaskRecord } from '../../../history/backlog.repository';
 import { RunRepository } from '../../../history/run.repository';
 import { writeRunState, type RunStateChange } from '../../../history/run-state';
 import type { CommandService } from '../../command.service';
@@ -25,16 +27,35 @@ export interface SentCommand {
 /** The turn's result a fake agent would answer: a message and the actions. */
 export const turnResult = (say: string, ...actions: BacklogTurnAction[]): BacklogTurnResult => ({ say, actions });
 
+/** What the planner's apply path is built from. */
+interface PlannerParts {
+  backlogs: BacklogRepository;
+  chat: BacklogChatRepository;
+  runs: RunRepository;
+  clock: Clock;
+  config: AppConfig;
+  commands: CommandService;
+  port: PlannerRunPort;
+}
+
+/** The planner's apply path and the parts a spec reaches into, built the way the server wires them. */
+export function plannerTurnActions({ backlogs, chat, runs, clock, config, commands, port }: PlannerParts) {
+  const queries = new BacklogQueries(backlogs, runs);
+  const support = new BacklogActionSupport(backlogs, clock);
+  const taskActions = new BacklogTaskActions(backlogs, queries, runs, commands, clock, support);
+  const actions = new BacklogActions(backlogs, queries, clock, config, support, taskActions);
+  const rules = new PlannerRules(backlogs, runs);
+  const calls = new PlannerBacklogCalls(actions, support, backlogs, runs);
+  const turns = new PlannerTurnActions(backlogs, chat, rules, calls, port, clock);
+  return { rules, calls, turns };
+}
+
 /** The planner's apply path over a real database and a fake port that records what it is asked to send. */
 export async function plannerHarness() {
   const db = await plannerDatabase();
   const runs = db.app.get(RunRepository);
-  const queries = new BacklogQueries(db.backlogs, runs);
-  const support = new BacklogActionSupport(db.backlogs, db.clock);
   const commands = { submit: async () => ({ value: undefined, receipt: {} }) } as unknown as CommandService;
-  const taskActions = new BacklogTaskActions(db.backlogs, queries, runs, commands, db.clock, support);
   const config = new AppConfig(testEnv({ SWARMLOOP_ROOT: db.root }));
-  const actions = new BacklogActions(db.backlogs, queries, db.clock, config, support, taskActions);
   const sent: SentCommand[] = [];
   const failing = { next: null as Error | null };
   const port = new PlannerRunPort();
@@ -46,9 +67,15 @@ export async function plannerHarness() {
     }
     sent.push({ command, owner, key });
   });
-  const rules = new PlannerRules(db.backlogs, runs);
-  const calls = new PlannerBacklogCalls(actions, support, db.backlogs, runs);
-  const turns = new PlannerTurnActions(db.backlogs, db.chat, rules, calls, port, db.clock);
+  const { rules, calls, turns } = plannerTurnActions({
+    backlogs: db.backlogs,
+    chat: db.chat,
+    runs,
+    clock: db.clock,
+    config,
+    commands,
+    port,
+  });
 
   let position = 0;
   const harness = {

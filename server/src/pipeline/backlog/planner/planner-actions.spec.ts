@@ -153,4 +153,26 @@ describe('PlannerTurnActions', () => {
       ]);
       expect((await harness.chat.findTurn('turn-1'))?.status).toBe('done');
     }));
+
+  it('shows the reason of a recorded decision as an info line, and writes no line for one without a reason', () =>
+    withPlanner(async (harness) => {
+      const { backlogId } = await harness.seed();
+      await harness.turns.apply(
+        'alpha',
+        'turn-1',
+        turnResult(
+          '',
+          { action: 'recordDecision', text: 'Use the helper', reason: 'the helper already exists' },
+          { action: 'recordDecision', text: 'Keep the names' },
+        ),
+      );
+      expect(await harness.lines(backlogId)).toEqual(['the helper already exists']);
+      expect((await harness.chat.lastMessages(backlogId, 10)).messages.map((message) => message.kind)).toEqual([
+        'info',
+      ]);
+      expect((await harness.backlogs.decisions(backlogId)).map((decision) => decision.text)).toEqual([
+        'Use the helper',
+        'Keep the names',
+      ]);
+    }));
 });

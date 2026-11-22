@@ -28,7 +28,7 @@ describe('PlannerRunCommands', () => {
   it('sends each command the way the person routes do, with the key and the owner', async () => {
     const { port, sent } = wired();
     const commands: PlannerRunCommand[] = [
-      { type: 'answer', run: 'r1', answers: [{ body: 'yes' }] },
+      { type: 'answer', run: 'r1', answers: [{ kind: 'question', id: 'Which?', body: 'yes' }] },
       { type: 'resume', run: 'r1' },
       { type: 'replay', run: 'r1', step: 'implement' },
       { type: 'skipTask', run: 'r1', task: 't1' },
@@ -37,7 +37,13 @@ describe('PlannerRunCommands', () => {
     for (const command of commands) await port.send(command, 'ada', 'turn-action-0');
     const key = { idempotencyKey: 'turn-action-0' };
     expect(sent).toEqual([
-      { service: 'commands', type: 'answer', key: 'r1', payload: { answers: [{ body: 'yes' }] }, options: key },
+      {
+        service: 'commands',
+        type: 'answer',
+        key: 'r1',
+        payload: { answers: [{ kind: 'question', id: 'Which?', body: 'yes' }] },
+        options: key,
+      },
       { service: 'commands', type: 'resume', key: 'r1', payload: { by: 'person' }, options: { ...key, actor: 'ada' } },
       {
         service: 'commands',
@@ -48,6 +54,24 @@ describe('PlannerRunCommands', () => {
       },
       { service: 'commands', type: 'skip', key: 'r1', payload: { taskId: 't1' }, options: key },
       { service: 'commands', type: 'stop', key: 'r1', payload: {}, options: key },
+    ]);
+  });
+
+  it('sends an answer that names no question as a message, which answers every open question', async () => {
+    const { port, sent } = wired();
+    await port.send(
+      { type: 'answer', run: 'r1', answers: [{ body: ' first ' }, { kind: 'question', body: 'second' }] },
+      'ada',
+      'turn-action-1',
+    );
+    expect(sent).toEqual([
+      {
+        service: 'commands',
+        type: 'answer',
+        key: 'r1',
+        payload: { message: 'first\n\nsecond' },
+        options: { idempotencyKey: 'turn-action-1' },
+      },
     ]);
   });
 

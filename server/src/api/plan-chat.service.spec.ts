@@ -1,8 +1,5 @@
 import 'reflect-metadata';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { mkdtemp } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
 import { Clock } from '../core/clock';
 import { AttachmentStore } from '../history/attachment-store';
 import { CheckoutRepository } from '../history/checkout.repository';
@@ -13,58 +10,14 @@ import type { MergeOutcome } from '../contract/run-state';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { CommandService } from '../pipeline/command.service';
-import { PlannerTurns } from '../pipeline/planner-turns';
-import { SubtaskPort } from '../pipeline/subtask-port';
+import type { PlannerTurns } from '../pipeline/planner-turns';
 import { save } from '../testing/runs.spec-helpers';
-import { CommandHandlers } from './command-handlers';
 import { PlanChatService } from './plan-chat.service';
-import { RunAnswersService } from './run-answers.service';
-import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
-import { RunRebaseService } from './run-rebase.service';
-import { RunSubtaskCommandsService } from './run-subtask-commands.service';
-import { seededBoot } from './runs-boot.spec-helpers';
+import { withAnswerRoutes } from './answer-routes.spec-helpers';
+import type { seededBoot } from './runs-boot.spec-helpers';
 
-async function withPlanChat(
-  test: (parts: {
-    app: Awaited<ReturnType<typeof seededBoot>>;
-    chat: PlanChatService;
-    turns: PlannerTurns;
-    started: jest.Mock;
-  }) => Promise<void>,
-): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-chat-'));
-  const started = jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' });
-  const app = await seededBoot(root, { startDetached: started });
-  try {
-    const turns = new PlannerTurns();
-    const chat = new PlanChatService(
-      app.get(RunRepository),
-      app.get(RunQueriesService),
-      app.get(CommandService),
-      app.get(PlanChatStore),
-      turns,
-      app.get(AttachmentStore),
-      app.get(Clock),
-    );
-    new CommandHandlers(
-      app.get(CommandService),
-      { reconcileCommands: jest.fn(), resumeSubtaskParents: jest.fn() } as never,
-      app.get(RunCommandsService),
-      app.get(RunAnswersService),
-      app.get(RunSubtaskCommandsService),
-      app.get(RunRebaseService),
-      {} as never,
-      {} as never,
-      app.get(SubtaskPort),
-      chat,
-      app.get(AttachmentStore),
-    ).onModuleInit();
-    await test({ app, chat, turns, started });
-  } finally {
-    await app.close();
-  }
-}
+const withPlanChat = withAnswerRoutes;
 
 describe('PlanChatService', () => {
   it('refuses an empty message and a run that is missing', async () => {
