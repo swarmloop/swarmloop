@@ -238,7 +238,8 @@ function asked(
     isReplying: () => false,
     visit: (_opened: unknown, prompt: (received: string | null) => string) => {
       prompts.push(prompt(null));
-      return Promise.resolve(reply === null ? null : { value: reply });
+      const refused = typeof reply === 'object' && reply !== null && 'refused' in reply;
+      return Promise.resolve(reply === null ? null : refused ? reply : { value: reply });
     },
   } as unknown as PlanConversation;
   const runs = {
@@ -400,6 +401,16 @@ describe('PlannerTurns answering a step question', () => {
       expect([...declined]).toEqual([]);
     });
 
+    it('keeps the escalation, writes nothing and declines it when the door refuses reading the answer', async () => {
+      const { turns, held } = asked([escalate()], { refused: new Error('same') }, open('Cursor'));
+      const declined = new Set<string>();
+
+      expect(await turns.settle('run-1', declined)).toBe(false);
+
+      expect(held.map((entry) => [entry.key, entry.state])).toEqual([['escalate-ask-1', 'pending']]);
+      expect([...declined]).toEqual(['escalate-ask-1']);
+    });
+
     it('stays when the planner gave no usable reply, and is not asked again in the same drive', async () => {
       const { turns, held } = asked([escalate()], null, open('Cursor'));
       const declined = new Set<string>();
@@ -410,6 +421,17 @@ describe('PlannerTurns answering a step question', () => {
       expect(await turns.hasQuestion('run-1')).toBe(true);
       expect(await turns.next(implementing, declined)).toBeNull();
     });
+  });
+
+  it('keeps the question, writes nothing and declines it when the door refuses the planner turn', async () => {
+    const { turns, held } = asked([question('ask-1', '2026-01-01T00:00:05.000Z')], { refused: new Error('same') });
+    const declined = new Set<string>();
+
+    expect(await turns.answer('run-1', declined)).toBe(false);
+
+    expect(held.map((entry) => [entry.key, entry.state])).toEqual([['ask-1', 'pending']]);
+    expect([...declined]).toEqual(['ask-1']);
+    expect(turns.replying('run-1')).toBe(false);
   });
 
   it('keeps the question when the planner gave no usable answer', async () => {

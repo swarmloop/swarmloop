@@ -254,9 +254,10 @@ export class SubtaskPlannerAnswer {
             ? [...handBackErrors(questions, given), ...applyStarterAnswer(state, given, opened.startedAt).errors]
             : decisionErrors(given, false);
         },
+        [questions],
       ),
     );
-    if (!visit) return null;
+    if (!visit || 'refused' in visit) return null;
     const given = visit.value as StarterAnswerResult;
     await this.documents.putDocument(
       opened.run,

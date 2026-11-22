@@ -29,3 +29,17 @@ export function doorAround(app: Providers, launcher: Pick<AgentLauncher, 'launch
     app.get(Clock),
   );
 }
+
+/** A door that launches every outside start through `launch`, hands out start ids, and records the links of visits. */
+export function launchingDoor(launch: (request: never) => Promise<unknown>, links: [string, number][] = []): AgentDoor {
+  let started = 0;
+  return {
+    outside: async (start: { admitted?: (id: string) => void }, request: never) => {
+      started += 1;
+      start.admitted?.(`start-${started}`);
+      return launch(request);
+    },
+    linkVisit: async (startId: string, statId: number) => void links.push([startId, statId]),
+    takeRefusal: () => null,
+  } as unknown as AgentDoor;
+}

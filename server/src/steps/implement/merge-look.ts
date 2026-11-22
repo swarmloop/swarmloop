@@ -134,9 +134,10 @@ export class MergeLook {
         (received) => mergeLookPrompt({ task, summary, marks }, state.contract, notStarted, received),
         starterAnswer,
         (value) => lookErrors(state, value as StarterAnswerResult, startedAt, source),
+        marks,
       ),
     );
-    if (!visit) return null;
+    if (!visit || 'refused' in visit) return null;
     const applied = applyStarterAnswer(state, visit.value as StarterAnswerResult, startedAt, source);
     await subtasks.recordRevisions(run, applied.changes, startedAt);
     return { contract: applied.contract, tasks: applied.tasks };

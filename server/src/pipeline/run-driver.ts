@@ -33,6 +33,7 @@ import type { RunGuards } from './run-guards';
 import type { AgentDoor } from '../steps/shared/agent-door';
 import type { ChainRefusal } from '../steps/shared/start-refused';
 import { HopGate } from './hop-gate';
+import { PlannerTurnPass } from './planner-turn-pass';
 import type { StartGate } from './start-gate';
 import type { SubtaskPort } from './subtask-port';
 import type { LimitRelease } from '../steps/shared/limit-release';
@@ -47,6 +48,7 @@ const FOLLOWING: StepOptions = { auto: true, startBy: 'machine' };
 
 export class RunDriver {
   private readonly hop: HopGate;
+  private readonly pass: PlannerTurnPass;
 
   constructor(
     private readonly runs: RunRepository,
@@ -66,6 +68,7 @@ export class RunDriver {
     private readonly turns?: PlannerTurns,
   ) {
     this.hop = new HopGate(gate, guards, runs, door, subtasks);
+    this.pass = new PlannerTurnPass(runs, turns, door, this.hop, (key) => this.execute('plan', key, { auto: true }));
   }
 
   async savedStep(
@@ -128,9 +131,17 @@ export class RunDriver {
         stepOptions = gate.again;
         continue;
       }
-      const amended = await this.takeTurn(key, declined);
-      if (amended) {
-        step = amended;
+      const taken = await this.pass.run(key, declined);
+      if (taken && 'message' in taken) {
+        return { exitCode: ran ? 0 : 1, message: taken.message };
+      }
+      if (taken && 'again' in taken) {
+        // A planner answered the question of a turn that was refused: the drive goes on from the answer.
+        stepOptions = taken.again;
+        continue;
+      }
+      if (taken) {
+        step = taken.step;
         stepOptions = FOLLOWING;
       } else if (await this.waitsOnQuestion(key)) {
         // The question waits for the planner, or for the person it was escalated to: nothing runs.
@@ -221,34 +232,6 @@ export class RunDriver {
       );
     }
     return { end: result };
-  }
-
-  /**
-   * Between two steps, the planner takes what waits for it, one turn at a time in the order it came: a person's message,
-   * and the question of a step that waits for the answer. A plan a message changed goes to plan-improve, and the flow
-   * goes on from there as after any return. Otherwise the run goes on as it was.
-   */
-  private async takeTurn(key: string, declined: Set<string>): Promise<StepName | null> {
-    const run = await this.runs.findRun(key);
-    if (!run || !this.turns) return null;
-    for (let next = await this.turns.next(run, declined); next; next = await this.turns.next(run, declined)) {
-      if (next === 'question') {
-        await this.turns.answer(key, declined);
-        continue;
-      }
-      if (next === 'answer') {
-        await this.turns.settle(key, declined);
-        continue;
-      }
-      const outcome = await this.turns.take(key, () => this.execute('plan', key, { auto: true }), declined);
-      if (outcome === 'none') return null;
-      if (outcome === 'changed') {
-        const fresh = await this.runs.findRun(key);
-        if (fresh) await this.runs.release(fresh, { status: 'waiting', currentStep: 'plan-improve' });
-        return 'plan-improve';
-      }
-    }
-    return null;
   }
 
   async markLoop(key: string): Promise<void> {

@@ -18,6 +18,7 @@ import type { RunEntity } from '../history/entities';
 import { sessionFileName, sessionHome } from '../history/session-group';
 import { agentStateDir } from '../sandbox/sandbox-launch';
 import { Reconciler } from './reconciler';
+import { launchingDoor } from '../testing/agent-door.spec-helpers';
 import { SubtaskPort } from './subtask-port';
 
 const KEY = 'PROJ-500';
@@ -190,11 +191,12 @@ describe('the agents of an epic parent and of its subtasks', () => {
       {
         latestBody: async (_key: string, kind: string) =>
           ['research_result', 'plan_result', 'implementation_result'].includes(kind) ? null : 'app\n',
+        latestDocument: async () => null,
         putDocument: async () => undefined,
       } as never,
       { submit: async () => undefined } as never,
-      { launch } as never,
-      { finishVisit: async () => undefined, listStats: async () => [] } as never,
+      launchingDoor(launch),
+      { finishVisit: async () => ({ id: 1 }), listStats: async () => [] } as never,
       new AppConfig(env),
       new FakeClock(),
       {} as never,
