@@ -147,7 +147,7 @@
         "server/src/api/run-view/reviewer-steps.ts",
         "server/src/api/chat.service.ts",
         "server/src/pipeline/run-settler.ts",
-        "server/src/pipeline/start-gate.ts"
+        "server/src/steps/shared/agent-door.ts"
       ],
       "pattern": "\\.responseText\\b|\\bstepOutput\\("
     },

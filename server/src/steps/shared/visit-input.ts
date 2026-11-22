@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/run.entity';
 import { readPlanChat, PLAN_CHAT_KIND } from '../../contract/plan-chat';
+import type { StepName } from '../../contract/steps';
 import { git } from '../../git/worktree-tree';
 import { mountsForRun } from '../../sandbox/sandbox-launch';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -126,4 +128,34 @@ export async function readVisitInput(
     findings: findingsOf(issues),
     instruction,
   });
+}
+
+/** What an agent start that is not a step's visit runs on. */
+export interface StartInputParts {
+  /** The step whose input the start shares, read as a hop reads it. Unset for a start with no step's input. */
+  visitOf?: StepName;
+  /** The instruction the step's input is read with. */
+  prompt?: string;
+  /** The texts the start takes besides: a role, a brief, the entries of a turn. */
+  texts: string[];
+}
+
+/**
+ * The digest of an agent start that is not a step's visit: the digest of the input of `visitOf`, when it is set, then
+ * the normalized text of each text. Null when the input of `visitOf` cannot be read because the run has neither a
+ * target path nor worktrees, so the start is not compared.
+ */
+export async function startInput(
+  deps: VisitInputDeps,
+  run: Pick<RunEntity, 'key' | 'targetPath'>,
+  input: StartInputParts,
+): Promise<string | null> {
+  let base = '';
+  if (input.visitOf) {
+    if (!run.targetPath && !existsSync(deps.worktrees)) return null;
+    base = await readVisitInput(deps, run, input.visitOf, input.prompt ?? '');
+  }
+  return createHash('sha256')
+    .update(`${base}${PART_END}${listOf(input.texts)}`)
+    .digest('hex');
 }

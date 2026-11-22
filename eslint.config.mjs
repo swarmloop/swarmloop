@@ -308,6 +308,8 @@ export default tseslint.config(
       'server/src/steps/shared/git-refusal.ts', // the answer to a host refusal is stored and read outside any visit: it happens inside the push or the open of another step
       'server/src/steps/shared/report-refresh.ts', // a step end refreshes the merge request report of a run with no visit of its own to write through
       'server/src/steps/shared/plan-conversation.ts', // a planner visit outside the plan step reads the repos of the run it mounts
+      'server/src/steps/shared/spend-limit.ts', // a start over a limit is stopped before any visit: the spend document is written with the block
+      'server/src/steps/shared/agent-door.ts', // a start over a limit while a step holds the run writes the spend document, and the same-input digest reads the run's documents
       'server/src/steps/merge-request/merge-request-draft.ts', // a Rebase or Replay turns the merge requests back into drafts with no visit to write through
     ],
     ignores: ['**/*.spec.ts', '**/*.spec-helpers.ts'],

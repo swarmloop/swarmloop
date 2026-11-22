@@ -15,7 +15,7 @@ import { StepName } from '../contract/steps';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { RunGuards } from './run-guards';
 import { StartGate } from './start-gate';
-import { VisitStartRepository } from '../history/visit-start.repository';
+import { AgentDoor } from '../steps/shared/agent-door';
 import { SubtaskPort } from './subtask-port';
 import { RunDriver } from './run-driver';
 import { RunInstructions } from './run-instructions';
@@ -47,7 +47,7 @@ export class PipelineService implements OnApplicationBootstrap {
     reconciler: Reconciler,
     guards: RunGuards,
     gate: StartGate,
-    starts: VisitStartRepository,
+    door: AgentDoor,
     subtasks: SubtaskPort,
     private readonly drafts: MergeRequestDrafts,
     limits: LimitRelease,
@@ -67,7 +67,7 @@ export class PipelineService implements OnApplicationBootstrap {
       projects,
       guards,
       gate,
-      starts,
+      door,
       subtasks,
       limits,
       reportRefresh,

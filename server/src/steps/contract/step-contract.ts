@@ -63,7 +63,13 @@ export type Route =
   | { to: 'next' }
   | { to: 'jump'; step: StepName }
   | { to: 'return'; step: StepName; issues: Issue[] }
-  | { to: 'wait'; reason: string; code?: ErrorCode | typeof REASON.asksPlanner; limit?: LimitState; retryAt?: string }
+  | {
+      to: 'wait';
+      reason: string;
+      code?: ErrorCode | typeof REASON.asksPlanner | typeof REASON.sameInput;
+      limit?: LimitState;
+      retryAt?: string;
+    }
   | { to: 'block'; reason: string; code?: BlockCode }
   | { to: 'fail'; error: StepFailure };
 
