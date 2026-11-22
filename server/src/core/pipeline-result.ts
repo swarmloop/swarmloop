@@ -176,6 +176,9 @@ const RUN_ID = /^[a-z][a-z0-9-]{1,48}$/;
 const SUBTASK_KEY = /^[A-Z][A-Z0-9]+-\d+-[a-z0-9][a-z0-9-]{0,40}$/;
 const SESSION_KEY = /^([A-Z][A-Z0-9]+-\d+|[a-z][a-z0-9-]{1,40})--([1-9]\d*)$/;
 
+/** Who asks for a start: a person, a planner of some level, or the machine. A start that names nobody is a person's. */
+export type StartBy = 'person' | 'planner' | 'machine';
+
 export interface StepOptions {
   prompt?: string;
   promptFile?: string;
@@ -183,6 +186,10 @@ export interface StepOptions {
   projects?: string[];
   phases?: PhaseName[];
   auto?: boolean;
+  /** Who asks for this start. Missing means a person. */
+  startBy?: StartBy;
+  /** The level of the planner that asks. Set only with `startBy: 'planner'`. */
+  level?: number | null;
   reviewer?: string;
   /** The errors of the answer the last visit of this step failed on. The agent is told them on this launch. */
   answerErrors?: string[];
@@ -198,20 +205,9 @@ export function visitStatus(
   return outcome === 'ok' ? 'done' : outcome;
 }
 
-/** A failed or paused visit of this step may finish. A step that has not started may not. */
-export function continuesSameStep(
-  status: string,
-  currentStep: string,
-  step: string,
-  lastVisit: string | null,
-): boolean {
-  if (currentStep !== step) {
-    return false;
-  }
-  if (status === 'failed') {
-    return true;
-  }
-  return status === 'waiting' && (lastVisit === 'waiting' || lastVisit === 'failed' || lastVisit === 'running');
+/** Only the run recorded `running` on this step continues the agent process that outlived a server restart. */
+export function continuesSameStep(status: string, currentStep: string, step: string): boolean {
+  return status === 'running' && currentStep === step;
 }
 
 export function assertKey(key: string): void {

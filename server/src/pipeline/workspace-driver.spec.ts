@@ -15,7 +15,9 @@ import { VisitRepository } from '../history/visit.repository';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { DiskGuard } from './disk-guard';
 import { RunDriver } from './run-driver';
-import { WorkspaceGuard } from './workspace-guard';
+import { RunGuards } from './run-guards';
+import { StartGate } from './start-gate';
+import { VisitStartRepository } from '../history/visit-start.repository';
 import { clean, freshRun, makeWorld, type World } from './workspace.spec-helpers';
 
 describe('RunDriver before a step', () => {
@@ -36,8 +38,9 @@ describe('RunDriver before a step', () => {
       new RunStop(),
       app.get(Clock),
       { flush: async () => undefined } as never,
-      app.get(WorkspaceGuard),
-      app.get(DiskGuard),
+      app.get(RunGuards),
+      app.get(StartGate),
+      app.get(VisitStartRepository),
     );
   }
 

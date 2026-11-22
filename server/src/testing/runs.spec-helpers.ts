@@ -15,6 +15,8 @@ import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
 import { CommandService } from '../pipeline/command.service';
 import { StartGate } from '../pipeline/start-gate';
+import { RunGuards } from '../pipeline/run-guards';
+import { VisitRepository } from '../history/visit.repository';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
@@ -78,6 +80,12 @@ export async function boot(
       SubtaskClose,
       CommandService,
       StartGate,
+      {
+        provide: RunGuards,
+        useFactory: (runs: RunRepository, documents: DocumentRepository, visits: VisitRepository, config: AppConfig) =>
+          new RunGuards(runs, documents, visits, config, {} as never, {} as never),
+        inject: [RunRepository, DocumentRepository, VisitRepository, AppConfig],
+      },
       SubtaskPort,
       { provide: AgentLauncher, useValue: {} },
       { provide: CodeHostRegistry, useValue: { tokensFor: () => Promise.resolve({}) } },
@@ -96,7 +104,13 @@ export async function boot(
       { provide: RunRebaseEnvironment, useExisting: EnvironmentService },
       { provide: EnvironmentService, useValue: { refreshAfterRebase: jest.fn().mockResolvedValue(undefined) } },
       { provide: PipelineService, useValue: { claimed: () => false, ...pipeline } },
-      { provide: StepRegistry, useValue: { describe: () => descriptors } },
+      {
+        provide: StepRegistry,
+        useValue: {
+          describe: () => descriptors,
+          get: (name: string) => (name === 'implement' ? { usesModel: true } : null),
+        },
+      },
       { provide: ProjectAppendService, useValue: { add: jest.fn(), flush: jest.fn() } },
       { provide: PrepareStep, useValue: prepare },
       {

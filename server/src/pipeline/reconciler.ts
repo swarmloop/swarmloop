@@ -160,6 +160,7 @@ export class Reconciler implements OnModuleDestroy {
       await this.resumeSubtaskParents();
       await this.resumeStalled();
       await this.resumeAskingPlanner();
+      await this.resumeSameInput();
       await this.watchMerges();
       await this.reconcileCommands();
     });
@@ -212,6 +213,10 @@ export class Reconciler implements OnModuleDestroy {
 
   resumeAskingPlanner(): Promise<void> {
     return this.resumes.resumeAskingPlanner();
+  }
+
+  resumeSameInput(): Promise<void> {
+    return this.resumes.resumeSameInput();
   }
 
   resumeSubtaskParents(): Promise<void> {

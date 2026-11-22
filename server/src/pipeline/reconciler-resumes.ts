@@ -208,6 +208,18 @@ export class ReconcilerResumes {
   }
 
   /**
+   * A run whose start was refused for its input goes on by itself after a restart: the resume asks the chain again, at
+   * the level the question was at. The key names the open question, so one that nobody answers is not resumed again.
+   */
+  async resumeSameInput(): Promise<void> {
+    for (const run of await this.withReason('waiting', REASON.sameInput)) {
+      const question = await this.subtasks.openQuestion(run);
+      if (!question || this.claimed()(run.key)) continue;
+      await this.resumeOnce(run, `same-input-${question.key}`, () => Promise.resolve(true));
+    }
+  }
+
+  /**
    * A split run waits between its passes. The timer and a restart resume it only when its subtasks changed since
    * the last pass (an event was lost) or when no pass recorded them yet.
    */

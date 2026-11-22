@@ -10,6 +10,7 @@ import { FlowRepository } from '../history/flow.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { assertKey, isStep, nextSessionKey, ticketKey } from '../core/pipeline-result';
 import { SubtaskPort } from '../pipeline/subtask-port';
+import type { SubtaskStart } from '../steps/shared/subtask-ops';
 import { SubtaskClose } from './subtask-close';
 import { storedState, writeRunState } from '../history/run-state';
 import { PhaseName, pipelineStepOf, reviewerOf, STEPS } from '../contract/steps';
@@ -246,7 +247,8 @@ export class RunCommandsService {
     return { key };
   }
 
-  async resume(key: string, prompt?: string): Promise<RunRef> {
+  /** Resumes the run. `start` says who asks; the person's routes give none. */
+  async resume(key: string, prompt?: string, start?: SubtaskStart): Promise<RunRef> {
     const view = await this.queries.flow(key);
     if (view.resume === 'need-answers') {
       throw new BadRequestException('answers are missing');
@@ -266,7 +268,10 @@ export class RunCommandsService {
     }
     const run = await this.runs.findRun(key);
     if (run?.split) await this.subtasks.resumeStopped(run);
-    const result = await this.pipeline.startDetached(key, prompt?.trim() ? { prompt: prompt.trim() } : {});
+    const result = await this.pipeline.startDetached(key, {
+      ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
+      ...(start ? { startBy: start.by, level: start.level } : {}),
+    });
     if (pass && result.message.includes('already running')) {
       return { key, status: 'started' };
     }
