@@ -27,8 +27,8 @@ export function setup(
     checkCode?: number;
     /** The exit code of one check command, by its text. */
     checkExit?: (command: string) => number;
-    /** How many turns of the event loop a check container stays alive. */
-    checkTurns?: number;
+    /** Check containers stay alive until every command that holds a place has its container, so the overlap never depends on disk speed. */
+    holdChecks?: boolean;
     /** The lines a check writes. */
     checkLines?: number;
     config?: unknown;
@@ -147,10 +147,16 @@ export function setup(
         const code = isCheck
           ? (options.checkExit?.(launch.project?.shell ?? '') ?? options.checkCode ?? 0)
           : (options.setupCode ?? 0);
-        // A check container stays alive for a few turns of the event loop, so containers overlap when they may.
-        const close = (turns: number): void => {
-          if (turns > 0) {
-            setImmediate(() => close(turns - 1));
+        // A command marks itself running when it takes a place, before its disk work. A held container stays alive
+        // until every running command has its own container, so containers overlap as far as the places allow.
+        const close = (): void => {
+          const started = new Set(spawned.map((item) => item.project?.shell));
+          if (
+            isCheck &&
+            options.holdChecks &&
+            rows.some((row) => row.status === 'running' && !started.has(row.command))
+          ) {
+            setImmediate(close);
             return;
           }
           if (isCheck) {
@@ -158,7 +164,7 @@ export function setup(
           }
           child.emit('close', code);
         };
-        close(isCheck ? (options.checkTurns ?? 0) : 0);
+        close();
       });
       return Promise.resolve(child);
     }),
