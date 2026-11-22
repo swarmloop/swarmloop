@@ -92,10 +92,10 @@ export function useRuns(): {
     };
   }, [reload]);
 
-  // A socket that connects again may have missed changes: the shown part and filter are read again. The first connect is covered by the read of the mount.
+  // Every connect, the first included, may follow missed changes: the shown part and filter are read again.
   const seenConnects = useRef(connects);
   useEffect(() => {
-    if (connects > 1 && connects > seenConnects.current) {
+    if (connects > seenConnects.current) {
       reload();
     }
     seenConnects.current = connects;

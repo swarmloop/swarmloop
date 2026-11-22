@@ -290,7 +290,10 @@ describe('useRuns on a reconnect', () => {
     vi.mocked(listRuns).mockResolvedValue(runsPage([], { part: 'done' }));
     render(<ShownProbe />, { wrapper: LiveBridgeProvider });
     await waitFor(() => expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: 'nine' }));
+    vi.mocked(listRuns).mockClear();
     act(() => receive('connect'));
+    await waitFor(() => expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: 'nine' }));
+    await act(async () => {});
     vi.mocked(listRuns).mockClear();
   }
 
@@ -316,16 +319,18 @@ describe('useRuns on a reconnect', () => {
     await waitFor(() => expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: 'nine' }));
   });
 
-  it('does not read again on the first connect', async () => {
+  it('reads the shown part and filter again on the first connect', async () => {
     vi.mocked(listRuns).mockReset();
     vi.mocked(listRuns).mockResolvedValue(runsPage([], { part: 'done' }));
     render(<ShownProbe />, { wrapper: LiveBridgeProvider });
-    await waitFor(() => expect(listRuns).toHaveBeenCalled());
+    await waitFor(() => expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: 'nine' }));
+    await act(async () => {});
     vi.mocked(listRuns).mockClear();
+    vi.mocked(listRuns).mockResolvedValue(runsPage([finished], { part: 'done' }));
 
     act(() => receive('connect'));
-    await act(async () => {});
 
-    expect(listRuns).not.toHaveBeenCalled();
+    expect(await screen.findByText('Run nine')).toBeInTheDocument();
+    expect(listRuns).toHaveBeenCalledWith({ part: 'done', q: 'nine' });
   });
 });
