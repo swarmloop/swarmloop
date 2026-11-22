@@ -6,7 +6,9 @@ import { ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/run-state';
 import type { Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
+import { StepStatEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
+import { VisitRepository } from '../history/visit.repository';
 import { storedState, writeRunState } from '../history/run-state';
 import { VisitStartRepository } from '../history/visit-start.repository';
 import { CommandService } from '../pipeline/command.service';
@@ -15,6 +17,7 @@ import { PERSON_RESUME } from '../pipeline/resume-sender';
 import { installScripts } from '../pipeline/run-driver.spec-helpers';
 import { StartGate } from '../pipeline/start-gate';
 import { SubtaskPort } from '../pipeline/subtask-port';
+import { readVisitInput } from '../steps/shared/visit-input';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { renderNeeds } from '../steps/shared/needs';
@@ -203,8 +206,6 @@ describe('a subtask that keeps writing the same need on a merged sibling', () =>
     await settle();
     const before = visits();
     const run = await child();
-    writeRunState(run, { status: 'waiting', reason: null });
-    await runs().saveRun(run);
     const shown: (string | undefined)[] = [];
     const port = flow.app.app.get(SubtaskPort);
     const askUp = port.askUp.bind(port);
@@ -223,6 +224,52 @@ describe('a subtask that keeps writing the same need on a merged sibling', () =>
     expect(asked.items.map((item) => item.label.startsWith(head))).toContain(true);
     expect(asked.items.find((item) => item.label.startsWith(head))?.label).toContain(WORDS);
     expect(storedState(await child()).reason?.code).not.toBe(REASON.stopped);
+    await assertInvariants(flow.app);
+  });
+
+  it("runs the epic's split pass when the machine wakes it blocked SUBTASK_BLOCKED, with no refusal and no question", async () => {
+    await seed();
+    fakeAgent();
+    const parent = (await runs().findRun(KEY))!;
+    const worktrees = join(flow.app.root, 'worktrees', KEY);
+    mkdirSync(worktrees, { recursive: true });
+    // The epic's last visit ended on the input it has now: an agent step would be refused as the same input.
+    const digest = await readVisitInput({ documents: documents(), worktrees }, parent, 'implement', '');
+    const now = new Date().toISOString();
+    await flow.app.app.get(VisitStartRepository).note({
+      runId: parent.id,
+      step: 'implement',
+      attemptId: 'epic-1',
+      startedBy: 'machine',
+      level: null,
+      inputDigest: digest,
+      startReason: null,
+      rerunUnfinished: false,
+      createdAt: now,
+    });
+    await flow.app.app.get(VisitRepository).saveStat(
+      Object.assign(new StepStatEntity(), {
+        runId: parent.id,
+        step: 'implement',
+        attempt: 1,
+        attemptId: 'epic-1',
+        startedAt: now,
+        finishedAt: now,
+        durationMs: 0,
+        status: 'waiting',
+      }),
+    );
+    writeRunState(parent, {
+      status: 'blocked',
+      currentStep: 'implement',
+      reason: { code: ERROR_CODES.SUBTASK_BLOCKED, message: 'a task is blocked' },
+    });
+    await runs().saveRun(parent);
+
+    const seen = await flow.app.app.get(StartGate).admit(KEY, 'implement', { startBy: 'machine' });
+
+    expect(seen).toMatchObject({ kind: 'admitted', start: { agent: false } });
+    expect(storedState((await runs().findRun(KEY))!).reason?.code).not.toBe(REASON.sameInput);
     await assertInvariants(flow.app);
   });
 });

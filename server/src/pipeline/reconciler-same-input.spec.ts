@@ -19,6 +19,7 @@ import { createTestApp } from '../testing/test-app';
 import { CommandService } from './command.service';
 import { Reconciler } from './reconciler';
 import { installScripts } from './run-driver.spec-helpers';
+import { sameInput } from './same-input';
 import { StartGate } from './start-gate';
 import { SubtaskPort } from './subtask-port';
 
@@ -128,4 +129,30 @@ describe('a SAME_INPUT wait that a restart left', () => {
       await app.close();
     }
   });
+});
+
+describe('sameInput', () => {
+  const finished = { id: 1, step: 'implement', attempt: 1, attemptId: 'a1', status: 'waiting', killReason: null };
+  const facts = (reasonCode: string | null, digest = 'd') => ({
+    step: 'implement',
+    digest,
+    stats: [finished],
+    starts: [{ step: 'implement', attemptId: 'a1', inputDigest: 'd' }],
+    reasonCode,
+  });
+
+  it.each(['SUBTASK_WAITING', 'SUBTASKS_RUNNING', 'SAME_INPUT'])(
+    'is the same input for a finished visit while the run waits with %s',
+    (code) => {
+      expect(sameInput(facts(code))).toEqual({ kind: 'same', visit: 1, statId: 1 });
+      expect(sameInput(facts(code, 'other'))).toEqual({ kind: 'new', rerunUnfinished: false });
+    },
+  );
+
+  it.each(['HOST_UNAVAILABLE', 'RUNTIME_LIMIT'])(
+    'reruns the visit while the run waits for an outage or limit: %s',
+    (code) => {
+      expect(sameInput(facts(code))).toEqual({ kind: 'new', rerunUnfinished: true });
+    },
+  );
 });

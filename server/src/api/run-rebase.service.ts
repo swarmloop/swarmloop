@@ -8,6 +8,8 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { RunRebase } from '../steps/run-rebase';
 import { RunCommandsService } from './run-commands.service';
 
+const MACHINE = { by: 'machine', level: null } as const;
+
 @Injectable()
 export class RunRebaseService {
   constructor(
@@ -26,8 +28,12 @@ export class RunRebaseService {
     const next = await this.rebaseOrConflict(key, byParent);
     if (run?.split) await this.subtasks.rebaseOpen(run);
     if (next === 'stay') return { key, status: 'blocked' };
-    if (next === 'resume') return this.commands.resume(key);
-    return this.commands.accepted(key, await this.pipeline.startDetached(key));
+    // A parent's rebase of an idle task is the machine's start; a person's rebase keeps the default.
+    if (next === 'resume') return this.commands.resume(key, undefined, byParent ? MACHINE : undefined);
+    return this.commands.accepted(
+      key,
+      await (byParent ? this.pipeline.startDetached(key, { startBy: MACHINE.by }) : this.pipeline.startDetached(key)),
+    );
   }
 
   /** A person who asks for a Rebase while the host is down gets the plain reason; the automatic callers get the outage itself. */
