@@ -82,6 +82,17 @@ describe('deriveState', () => {
     expect(storedState(run).reason).toEqual({ code: 'STALLED', message: 'Stalled' });
   });
 
+  it('keeps a stored SAME_INPUT reason on a waiting run with its message', () => {
+    const reason = {
+      code: REASON.sameInput,
+      message: 'Not started again: same input as visit 2; asked the planner of this run',
+    };
+    expect(storedState({ status: 'waiting', stateReason: JSON.stringify(reason) })).toEqual({
+      state: 'waiting',
+      reason,
+    });
+  });
+
   it('calls a return to implement idle with the reason RETURNED', () => {
     expect(withFacts({ status: 'waiting' }, { returned: true })).toEqual({
       state: 'idle',
