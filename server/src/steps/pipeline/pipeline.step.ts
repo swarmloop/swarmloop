@@ -46,7 +46,7 @@ import { cancelRunning } from './cancel-running';
 import { loadSeen } from './load-seen';
 import { atBranchHeads } from './branch-heads';
 import { flakyOnPass } from './flaky-tests';
-import { finish } from './pipeline-result';
+import { blockedEnd, finish } from './pipeline-result';
 import { stuckAtStart } from './stuck-start';
 import { hasDraft, markReady } from './pipeline-draft';
 import { red, report, type RedDeps } from './pipeline-red';
@@ -332,10 +332,9 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     const notes = await readNotes(host, unstarted.length > 0 ? unstarted : finished, calls);
     const tried = triedLine(unstarted.length > 0, reruns, notes, env.PIPELINE_START_TIMEOUT_MS);
     const body = `${renderInfra(code, seen, notes)}${tried}${errors.map((error) => `rerun: ${error}\n`).join('')}`;
-    const result = finish(
-      'blocked',
+    const result = blockedEnd(
       report(opened, code === 'CI_TIMEOUT' ? 'CI timed out' : 'CI did not run', body),
-      'blocked',
+      code,
       body,
     );
     const issue = issueOf(CI_INFRA_SOURCE, code, body);

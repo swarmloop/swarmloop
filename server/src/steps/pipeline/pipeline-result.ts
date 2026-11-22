@@ -1,6 +1,6 @@
 import { returnNotes } from '../shared/handoff';
 import { ARTIFACTS } from '../contract/artifacts';
-import type { ArtifactValue, Issue, Route, StepResult } from '../contract/step-contract';
+import type { ArtifactValue, BlockCode, Issue, Route, StepResult } from '../contract/step-contract';
 
 export function finish(
   outcome: 'ok' | 'failed' | 'blocked' | 'waiting',
@@ -31,6 +31,12 @@ export function finish(
     handoff = `- ${head}\n`;
   }
   return { route: routeOf(outcome, line, issues), summary: line, outputs, handoff, visit: { status: visitStatus } };
+}
+
+/** A step end that blocks the run and names why by its code. */
+export function blockedEnd(line: string, code: BlockCode, body?: string): StepResult {
+  const result = finish('blocked', line, 'blocked', body);
+  return { ...result, route: { to: 'block', reason: line, code } };
 }
 
 function routeOf(outcome: 'ok' | 'failed' | 'blocked' | 'waiting', line: string, issues?: Issue[]): Route {

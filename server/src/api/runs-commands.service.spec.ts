@@ -4,6 +4,7 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
+import { REASON } from '../contract/run-state';
 import { storedState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
@@ -676,6 +677,7 @@ describe('runs api', () => {
         await app.get(RunSubtaskCommandsService).skipTask('proj-skip', 'a');
 
         expect(storedState((await runs.findRun('proj-skip-a'))!).state).toBe('skipped');
+        expect(storedState((await runs.findRun('proj-skip-a'))!).reason?.code).toBe(REASON.skipped);
         const commands = app.get(CommandService);
         for (const type of ['resume', 'replay', 'rebase'] as const) {
           await expect(commands.submit(type, 'proj-skip-a', { step: 'implement', prompt: 'x' })).rejects.toThrow(

@@ -1,4 +1,5 @@
 import type { PhaseName, StepName } from '../contract/steps';
+import { REASON } from '../contract/run-state';
 import { PHASES, PHASE_STEPS, STEPS } from '../contract/steps';
 
 export interface PipelineResult {
@@ -72,6 +73,11 @@ const LOOP_STEPS: readonly StepName[] = ['checks', 'code-review', 'pipeline'];
 
 export function isLoopStep(step: string): boolean {
   return LOOP_STEPS.includes(step as StepName);
+}
+
+/** The code of a block that names none: the loop limit at a loop step, else a plain block. */
+export function ownBlockCode(step: string): string {
+  return isLoopStep(step) ? REASON.loopLimit : REASON.blocked;
 }
 
 /** Auto hops skip a looping step once it already used MAX_RETURNS visits. The current visit always finishes. */

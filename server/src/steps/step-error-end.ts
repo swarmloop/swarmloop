@@ -1,6 +1,7 @@
 import type { SwarmloopEnv } from '../config/env';
 import type { Clock } from '../core/clock';
 import { ERROR_CODES, IMAGE_ERROR_CODES } from '../contract/error-codes';
+import { REASON } from '../contract/run-state';
 import { GitAuthError, GitRulesError, HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { ChecksStopped } from '../environment/check-pool';
 import { ContainerDropped } from '../sandbox/container-gate';
@@ -46,8 +47,16 @@ export function errorEnd(
   clock: Clock,
   env: Pick<SwarmloopEnv, 'RECONCILE_MS'>,
 ): ErrorEnd | null {
-  if (error instanceof StepStopped || error instanceof ChecksStopped || error instanceof ContainerDropped) {
-    return { outcome: 'blocked', exitCode: 1, line: `${startedAt} ${error.message}` };
+  if (error instanceof StepStopped) {
+    return {
+      outcome: 'blocked',
+      exitCode: 1,
+      line: `${startedAt} ${error.message}`,
+      code: error.code ?? undefined,
+    };
+  }
+  if (error instanceof ChecksStopped || error instanceof ContainerDropped) {
+    return { outcome: 'blocked', exitCode: 1, line: `${startedAt} ${error.message}`, code: REASON.stopped };
   }
   if (error instanceof GitAuthError) {
     return { outcome: 'waiting', exitCode: 0, line: `${startedAt} ${error.message}`, code: error.code };
