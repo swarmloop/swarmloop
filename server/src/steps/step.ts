@@ -14,6 +14,8 @@ export type StepSnapshot = (run: RunEntity, step: StepName) => Promise<void>;
 export interface Step {
   readonly name: StepName;
   readonly usesModel: boolean;
+  /** Whether a start of the run launches an agent. Without it, `usesModel` says. */
+  launchesAgent?(key: string): Promise<boolean>;
   readonly capabilities: StepCapabilities;
   describe(env: SwarmloopEnv): StepDescriptor;
   /** Prices a run abandoned in this step. Without it, the model stream is priced. */

@@ -94,7 +94,7 @@ export class StartGate {
         message: `${key} is stopped. ${step} was not started; only a person's Resume starts it`,
       };
     }
-    if (!run || this.modules.get(StepRegistry, { strict: false }).get(step)?.usesModel !== true) {
+    if (!run || !(await this.launchesAgent(key, step))) {
       return { kind: 'admitted', start: { agent: false, digest: null, rerunUnfinished: false, reason } };
     }
     const digest = await this.inputOf(run, step, options);
@@ -125,6 +125,13 @@ export class StartGate {
       question: refusalQuestion(step, decision.visit, last?.responseText ?? ''),
       startLevel,
     };
+  }
+
+  /** Whether a start of the step launches an agent: a server pass, such as a split parent's implement, does not. */
+  private async launchesAgent(key: string, step: StepName): Promise<boolean> {
+    const found = this.modules.get(StepRegistry, { strict: false }).get(step);
+    if (!found) return false;
+    return found.launchesAgent ? found.launchesAgent(key) : found.usesModel;
   }
 
   /** The digest of the input the step would start on, or null when the run has no worktrees to read the heads of. */

@@ -16,6 +16,8 @@ import { storedState, writeRunState } from '../history/run-state';
 import { save } from '../testing/runs.spec-helpers';
 import { CommandService } from './command.service';
 import { PERSON_RESUME, startByOf } from './resume-sender';
+import type { Step } from '../steps/step';
+import { StepRegistry } from '../steps/step.registry';
 import { StartGate } from './start-gate';
 
 async function setup() {
@@ -237,7 +239,7 @@ describe('StartGate admit', () => {
     }
   });
 
-  it.each(['HOST_UNAVAILABLE', 'RUNTIME_LIMIT', 'SUBTASK_WAITING'])(
+  it.each(['HOST_UNAVAILABLE', 'RUNTIME_LIMIT'])(
     'admits a machine start on the same input while the run waits with %s',
     async (code) => {
       const { app, digest, visit, admit, run, runs } = await admitting();
@@ -255,6 +257,45 @@ describe('StartGate admit', () => {
       }
     },
   );
+
+  it.each(['SUBTASK_WAITING', 'SUBTASKS_RUNNING', REASON.sameInput])(
+    'refuses a machine start on the same input of a finished visit while the run waits with %s',
+    async (code) => {
+      const { app, digest, visit, admit, run, runs } = await admitting();
+      try {
+        await visit(1, { digest: await digest() });
+        writeRunState(run, { status: 'waiting', reason: { code, message: 'later' } });
+        await runs.saveRun(run);
+
+        expect((await admit({ startBy: 'machine' })).kind).toBe('refused');
+
+        await visit(2, { digest: 'another-input' });
+        writeRunState(run, { status: 'waiting', reason: { code, message: 'later' } });
+        await runs.saveRun(run);
+        expect((await admit({ startBy: 'machine' })).kind).toBe('admitted');
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it('does not compare the server pass of a split parent with a visit, as it launches no agent', async () => {
+    const { app, digest, visit, admit } = await admitting();
+    try {
+      await visit(1, { digest: await digest() });
+      expect((await admit({ startBy: 'machine' })).kind).toBe('refused');
+
+      const registry = app.get(StepRegistry);
+      const scripted = registry.get('implement')!;
+      // A split parent's implement is the server's pass: it uses the model's step shape but launches no agent.
+      const pass = Object.create(scripted, { launchesAgent: { value: async () => false } }) as Step;
+      jest.spyOn(registry, 'get').mockImplementation((name) => (name === 'implement' ? pass : scripted));
+
+      expect(await admit({ startBy: 'machine' })).toMatchObject({ kind: 'admitted', start: { agent: false } });
+    } finally {
+      await app.close();
+    }
+  });
 
   it('does not start a machine or planner start of a run a person stopped, and starts a person', async () => {
     const { app, run, runs, admit } = await admitting();

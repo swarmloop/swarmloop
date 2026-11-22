@@ -1,4 +1,4 @@
-import { AUTO_RETRY_CODES, REASON } from '../contract/run-state';
+import { REASON, TIMED_RETRY_CODES } from '../contract/run-state';
 import type { StepStatEntity } from '../history/entities';
 import type { VisitStartEntity } from '../history/visit-start.entity';
 
@@ -38,13 +38,20 @@ function unfinishedTail(facts: SameInputFacts): boolean {
 }
 
 /**
- * Decides a start the machine or a planner asks for. The step's last finished visit is the one a new start is compared
- * with. A run that waits for a timed or automatic retry has no such visit: the retry runs again a visit that did not
- * finish, on the input it had. A start with no recorded digest to compare is a new input.
+ * Decides a start the machine or a planner asks for. The step's last finished visit is the one a new start is
+ * compared with.
+ * - A run that waits for an outage or a limit has no such visit: the retry runs again a visit that did not finish, on
+ *   the input it had.
+ * - A run that waits for its planner's answer starts the step once the planner has taken its turn, which comes after
+ *   this check, so that start is on the answer.
+ * - Any other wait (a need, running subtasks, a planner asked) leaves the finished visit as the one to compare with;
+ *   only an unfinished tail runs again.
+ * A start with no recorded digest to compare is a new input.
  */
 export function sameInput(facts: SameInputFacts): SameInputDecision {
   const retrying =
-    facts.reasonCode !== null && facts.reasonCode !== REASON.sameInput && AUTO_RETRY_CODES.includes(facts.reasonCode);
+    facts.reasonCode !== null &&
+    (facts.reasonCode === REASON.asksPlanner || TIMED_RETRY_CODES.includes(facts.reasonCode));
   if (retrying || unfinishedTail(facts)) return { kind: 'new', rerunUnfinished: true };
   const last = facts.stats.filter((stat) => stat.step === facts.step).at(-1);
   if (!last) return { kind: 'new', rerunUnfinished: false };
