@@ -127,7 +127,7 @@ export class RunQueriesService {
       pastes.map((paste) => paste.url),
     );
     const shown = shownRun(run, (held) => this.pipeline.claimed(held));
-    const state = await runState(this.commands, shown, open, documents, runPlace(this.gate.agentWait(run.key)));
+    const state = await runState(this.commands, shown, open, runPlace(this.gate.agentWait(run.key)));
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
     const children = await this.runs.children(run);

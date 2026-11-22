@@ -4,7 +4,7 @@ import type { SwarmloopEnv } from '../config/env';
 import type { FlowItem, FlowView, StepView } from '../contract/api';
 import { pipelineStepOf } from '../contract/steps';
 import type { CommandRepository } from '../history/command.repository';
-import type { DocumentEntity, RunEntity } from '../history/entities';
+import type { RunEntity } from '../history/entities';
 import type { StepEventLog } from '../history/step-event.log';
 import type { StepRegistry } from '../steps/step.registry';
 import type { RunRepository } from '../history/run.repository';
@@ -72,7 +72,6 @@ export async function runState(
   commands: CommandRepository,
   run: RunEntity,
   open: FlowItem[],
-  documents: DocumentEntity[],
   agentPlace?: string,
 ): Promise<Pick<FlowView, 'resume' | 'state' | 'stateReason' | 'merge' | 'actions' | 'revision'>> {
   const pending = await commands.pending(run.id);
