@@ -5,10 +5,11 @@ import { createContext, createElement, useContext, useEffect, useState, useSyncE
 import { liveSocket } from '../../lib/live';
 import type { FlowView, RunSummary } from '@contract/api';
 import type { LiveBacklog } from '@contract/backlog-chat';
-import type { LiveEvents, LiveLog } from '@contract/live';
+import type { LiveEvents, LiveLog, LiveRunUsage } from '@contract/live';
 import type { Part, PartCounts, RunChange, RunsPage } from '@contract/run-list';
 import type { ServerState } from '@contract/server-pause';
 import { applyRunChange } from './apply-run-change';
+import { applyUsage } from './apply-usage';
 
 interface ListView {
   part: Part;
@@ -42,6 +43,8 @@ interface LiveSnapshot {
   logs: LiveLog[];
   /** The last events message of the watched run. */
   events: LiveEvents | null;
+  /** The latest usage entry per run key; a new object on each entry. */
+  usage: Record<string, LiveRunUsage>;
   /** True while the server holds new containers for a restart. */
   paused: boolean;
 }
@@ -82,6 +85,7 @@ function createStore(): LiveStore {
     flow: null,
     logs: [],
     events: null,
+    usage: {},
     paused: false,
   };
   let watched: string | null = null;
@@ -201,6 +205,8 @@ function createStore(): LiveStore {
           update({ events: entry });
         }
       };
+      const onUsage = (entry: LiveRunUsage): void =>
+        update({ runs: applyUsage(snapshot.runs, entry), usage: { ...snapshot.usage, [entry.key]: entry } });
       const onBacklog = (entry: LiveBacklog): void =>
         update({ backlogStamps: bumped(snapshot.backlogStamps, [entry.backlog]) });
       const onServer = (state: ServerState): void => update({ paused: state.paused });
@@ -212,6 +218,7 @@ function createStore(): LiveStore {
       socket.on('log', onLog);
       socket.on('events', onEvents);
       socket.on('backlog', onBacklog);
+      socket.on('usage', onUsage);
       socket.on('server', onServer);
       if (socket.connected) {
         update({ connected: true, connects: snapshot.connects + 1 });
@@ -225,6 +232,7 @@ function createStore(): LiveStore {
         socket.off('log', onLog);
         socket.off('events', onEvents);
         socket.off('backlog', onBacklog);
+        socket.off('usage', onUsage);
         socket.off('server', onServer);
       };
     },

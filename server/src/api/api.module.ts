@@ -4,6 +4,7 @@ import { ConnectionCatalogModule } from '../auth/connection-catalog.module';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { HistoryModule } from '../history/history.module';
 import { LiveGateway } from './live.gateway';
+import { RunUsageReader } from './run-usage';
 import { LiveModule } from '../live/live.module';
 import { PipelineModule } from '../pipeline/pipeline.module';
 import { RepositoryOrigins } from '../steps/shared/repository-origins';
@@ -84,6 +85,7 @@ import { RequestTiming } from './request-timing';
     RepositoryOrigins,
     SettingsService,
     CommandHandlers,
+    RunUsageReader,
     LiveGateway,
     RequestTiming,
   ],
