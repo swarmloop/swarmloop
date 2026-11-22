@@ -3,6 +3,9 @@ import type { AppConfig } from '../config/env';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { RunEntity } from '../history/entities';
 import { RunStop } from '../agent/run-stop';
+import { storedState } from '../history/run-state';
+import type { PipelineResult } from '../core/pipeline-result';
+import type { VisitDraft } from '../history/visit';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { StepStopped } from '../agent/step-stopped';
@@ -106,6 +109,8 @@ function deferred<T = void>() {
 function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock, onRelease: () => void = () => undefined) {
   const state = { ...run } as RunEntity;
   const released: { status: string; code?: string }[] = [];
+  const finalized: { attemptId: string | null; status: string; killReason: string | null; code?: string }[] = [];
+  const written: { kind: string; body: string }[] = [];
   const runs = {
     findRun: jest.fn(async () => state),
     held: async () => false,
@@ -116,17 +121,35 @@ function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock, onRelease: (
       return state;
     }),
   };
+  const visits = {
+    finalize: jest.fn(async (attemptId: string | null, closed: RunEntity, visit: VisitDraft) => {
+      finalized.push({
+        attemptId,
+        status: visit.status,
+        killReason: visit.killReason,
+        code: storedState(closed).reason?.code,
+      });
+      return null;
+    }),
+  };
+  const documents = {
+    latestBody: async () => null,
+    putDocument: jest.fn(async (_run: RunEntity, kind: string, body: string) => {
+      written.push({ kind, body });
+    }),
+  };
+  const clock = new FakeClock();
   const runStop = new RunStop();
   const driverGate = deferred();
   const driver = { missingInput: async () => null, spendStop: async () => null, drive: () => driverGate.promise };
   const lifecycle = new RunLifecycle(
     runs as never,
-    { latestBody: async () => null } as never,
+    documents as never,
     { get: () => undefined } as never,
     { env: { STOP_GRACE_S: 10 } } as unknown as AppConfig,
-    {} as never,
+    visits as never,
     runStop,
-    new FakeClock(),
+    clock,
     { stopRun } as never,
     {} as never,
     driver as never,
@@ -140,10 +163,10 @@ function lifecycleWith(run: Partial<RunEntity>, stopRun: jest.Mock, onRelease: (
     driverGate.resolve();
     await new Promise<void>((done) => setImmediate(done));
   };
-  return { lifecycle, runStop, state, released, claim, leave };
+  return { lifecycle, runStop, state, released, finalized, written, clock, claim, leave };
 }
 
-const RUNNING = { key: 'KEY-1', status: 'running', currentStep: 'implement' } as const;
+const RUNNING = { key: 'KEY-1', status: 'running', currentStep: 'implement', activeAttempt: 'a1' } as const;
 
 describe('RunLifecycle.stop', () => {
   it('writes stopped only when no labeled container of the run is listed', async () => {
@@ -169,8 +192,10 @@ describe('RunLifecycle.stop', () => {
 
     const result = await world.lifecycle.stop('KEY-1');
 
-    expect(result.exitCode).toBe(1);
-    expect(world.released).toEqual([{ status: 'blocked', code: 'RESOURCE_UNKNOWN' }]);
+    expect(result).toEqual({ exitCode: 0, message: 'KEY-1 stopped' });
+    expect(world.finalized).toEqual([{ attemptId: 'a1', status: 'killed', killReason: 'stop', code: 'STOPPED' }]);
+    expect(world.written).toEqual([{ kind: 'stop_cleanup', body: 'implement' }]);
+    expect(world.released).toEqual([]);
     expect(world.runStop.halted('KEY-1')).toBe(true);
   });
 
@@ -179,8 +204,31 @@ describe('RunLifecycle.stop', () => {
 
     const result = await world.lifecycle.stop('KEY-1');
 
-    expect(result.exitCode).toBe(1);
-    expect(world.released.map((item) => item.code)).toEqual(['RESOURCE_UNKNOWN']);
+    expect(result.message).toBe('KEY-1 stopped');
+    expect(world.finalized.map((item) => item.code)).toEqual(['STOPPED']);
+    expect(world.written).toEqual([{ kind: 'stop_cleanup', body: 'implement' }]);
+  });
+
+  it('stores STOPPED with no cleanup document when the driver does not leave in time and docker answers', async () => {
+    const world = lifecycleWith(RUNNING, jest.fn().mockResolvedValue('gone'));
+    await world.claim();
+    let result: PipelineResult;
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+    try {
+      const stopping = world.lifecycle.stop('KEY-1');
+      for (let waited = 0; waited <= 20_000; waited += 200) {
+        await jest.advanceTimersByTimeAsync(200);
+        world.clock.advance(200);
+      }
+      result = await stopping;
+    } finally {
+      jest.useRealTimers();
+    }
+
+    expect(result).toEqual({ exitCode: 0, message: 'KEY-1 stopped' });
+    expect(world.finalized).toEqual([{ attemptId: 'a1', status: 'killed', killReason: 'stop', code: 'STOPPED' }]);
+    expect(world.written).toEqual([]);
+    await world.leave();
   });
 
   it('keeps the outcome of a step that finalized while the Stop waited for it', async () => {

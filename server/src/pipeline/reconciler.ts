@@ -23,6 +23,7 @@ import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
 import { RunSettler, relaunchKey, type RelaunchDecision } from './run-settler';
 import { StallWatch } from './stall-watch';
+import { StoppedCleanup } from './stopped-cleanup';
 import { ReconcilerResumes } from './reconciler-resumes';
 import { StartGate } from './start-gate';
 import { SubtaskPort } from './subtask-port';
@@ -38,6 +39,7 @@ export { silentMessage } from './run-settler';
 export class Reconciler implements OnModuleDestroy {
   private readonly logger = new Logger(Reconciler.name);
   private readonly resumes: ReconcilerResumes;
+  private readonly cleanup: StoppedCleanup;
   private claimed: (key: string) => boolean = () => false;
   private timer: NodeJS.Timeout | null = null;
   /** The pass in flight, or the last one queued. */
@@ -71,6 +73,7 @@ export class Reconciler implements OnModuleDestroy {
     @Optional() credentials?: PersonalCredentials,
     @Optional() planChat?: PlanChatStore,
   ) {
+    this.cleanup = new StoppedCleanup(runs, documents, sandbox, config);
     this.resumes = new ReconcilerResumes(
       runs,
       sandbox,
@@ -146,6 +149,7 @@ export class Reconciler implements OnModuleDestroy {
   reconcileAll(): Promise<void> {
     return this.exclusive(async () => {
       await this.reconcileRunsNow();
+      await this.cleanup.run();
       await this.settleEndedRelaunches();
       await this.resumeLimited();
       await this.resumeHostUnavailable();
