@@ -197,6 +197,7 @@ export class SandboxService implements OnModuleDestroy {
     launch: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'> & { envMasks?: EnvMask[] },
   ): Promise<SandboxChild> {
     const mounts = await this.withDaemonPaths(launch.mounts);
+    const tmp = launch.tmp ? (await this.withDaemonPaths([launch.tmp]))[0] : undefined;
     await this.prepareMounts(mounts, launch.userId);
     if (launch.statePath) {
       prepareStateDir(launch.statePath, launch.userId);
@@ -210,7 +211,15 @@ export class SandboxService implements OnModuleDestroy {
       env.CHECKOUTS_ROOT,
       splitList(env.SWARMLOOP_REPOS),
     );
-    const full: SandboxLaunch = { ...launch, mounts, workRoots, stateDaemonPath, envMasks, maskFile };
+    const full: SandboxLaunch = {
+      ...launch,
+      mounts,
+      ...(tmp ? { tmp } : {}),
+      workRoots,
+      stateDaemonPath,
+      envMasks,
+      maskFile,
+    };
     const args = sandboxArgs(full);
     const network = full.egress ? null : sandboxNetworkName(full.allowHosts);
     if (network) {

@@ -16,6 +16,12 @@ import type { CheckedRepo, EnvironmentInput } from './environment-types';
 import { LiveHub } from '../live/live.hub';
 import { RequiredCheckFailed } from './project-environments';
 
+// The folder work is real file I/O, which these specs' counted turns of the event loop do not wait for.
+jest.mock('../sandbox/run-tmp', () => ({
+  runTmpDir: (root: string, key: string, unit: string) => `${root}/worktrees/.tmp/${key}/${unit}`,
+  prepareRunTmp: (path: string) => Promise.resolve({ hostPath: path, containerPath: '/tmp' }),
+}));
+
 const GB = 1024 ** 3;
 
 function setup(options: {

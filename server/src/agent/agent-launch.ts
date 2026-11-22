@@ -85,6 +85,7 @@ export class AgentLaunch {
     const env = this.config.env;
     const credential = await this.credentialOf(input.runKey, runtime.name, input.login);
     const launch = this.launchPrep.prepare(input, runtime, resumed);
+    const tmp = await this.launchPrep.runTmp(input);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime.name, this.clock.now());
     let started = this.clock.now();
     let awake = new AwakeTime(this.clock, SAMPLE_MS);
@@ -119,6 +120,7 @@ export class AgentLaunch {
         unsetEnv: launch.unsetEnv,
         userId: launch.userId,
         ...(input.project ? { project: input.project } : {}),
+        ...tmp,
       },
       { onPaused, agent: { step, onWait } },
     );

@@ -28,12 +28,14 @@ interface ShellLaunchInput {
   cpuSlice?: CpuSlice | null;
   manifest?: ManifestHosts;
   statePath: string;
+  /** The run folder the container gets as /tmp. */
+  tmp: SandboxMount;
   userId: number;
 }
 
 /** The sandbox launch of one setup or check command. */
 function shellLaunch(args: ShellLaunchInput): Parameters<SandboxService['spawn']>[0] {
-  const { input, launch, command, mount, phase, check, place, manifest, statePath, userId } = args;
+  const { input, launch, command, mount, phase, check, place, manifest, statePath, userId, tmp } = args;
   return {
     runtime: input.runtime,
     runKey: input.key,
@@ -46,6 +48,7 @@ function shellLaunch(args: ShellLaunchInput): Parameters<SandboxService['spawn']
     command: [],
     userId,
     project: { ...launch, shell: command },
+    tmp,
     resultLost: true,
     ...(place !== undefined ? { checkPlace: place } : {}),
     ...(args.cpuSlice !== undefined ? { cpuSlice: args.cpuSlice } : {}),

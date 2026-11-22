@@ -37,6 +37,8 @@ export interface SandboxLaunch {
   stateDaemonPath?: string;
   /** Run in the project's own image, with the agent CLI mounted read-only from a volume. */
   project?: ProjectLaunch;
+  /** The run folder mounted at /tmp of a project container. Every project container has one; no other does. */
+  tmp?: SandboxMount;
   /** The address on the internal sandbox network. Its policy on the egress proxy decides what it reaches. */
   egress?: { ip: string };
   /**

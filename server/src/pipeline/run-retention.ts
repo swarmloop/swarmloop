@@ -6,6 +6,7 @@ import { Clock } from '../core/clock';
 import { isOutputFileOf } from '../core/attempt-output';
 import { isCheckOutputOf } from '../core/check-output';
 import { runLogDir } from '../core/run-logs';
+import { runTmpDir } from '../sandbox/run-tmp';
 import type { RunEntity } from '../history/entities';
 import { removeTreeAsync, root } from '../history/run-paths';
 import { RunRepository } from '../history/run.repository';
@@ -104,7 +105,7 @@ export class RunRetention {
     }
   }
 
-  /** The one removal of a workspace: the worktrees and the agent state of a run. */
+  /** The one removal of a workspace: the worktrees, the agent state and the /tmp folders of a run. */
   private async removeWorkspace(run: RunEntity): Promise<void> {
     const base = root(this.config);
     const worktrees = join(base, 'worktrees', run.key);
@@ -113,6 +114,7 @@ export class RunRetention {
     }
     await removeTreeAsync(worktrees);
     await removeTreeAsync(join(base, 'data', 'agent-state', run.key));
+    await removeTreeAsync(runTmpDir(base, run.key));
   }
 
   /** The output files, check outputs and log folder of a run. True when any was removed. */
