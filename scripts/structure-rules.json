@@ -11,6 +11,16 @@
       "pattern": "\\bderiveState\\b"
     },
     {
+      "include": [
+        "server/src/history/run-state.ts",
+        "server/src/api/run-view/flow-waiting.ts",
+        "server/src/pipeline/command.service.ts",
+        "server/src/steps/shared/run-state-refresh.ts"
+      ],
+      "allowLine": "latest\\(current, 'error'\\)|A required check failed again on unchanged files\\.",
+      "pattern": "\\bblockCode\\b|\\bdidNotFit\\(|\\bisStopNote\\b|does not fit|failed again on unchanged|\\.latestBody\\(|'error'|ARTIFACTS\\.error"
+    },
+    {
       "include": "server/src/",
       "exclude": "\\.spec(-helpers)?\\.ts$",
       "allowFiles": [

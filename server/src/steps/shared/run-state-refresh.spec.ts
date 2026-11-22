@@ -110,18 +110,6 @@ describe('RunStateRefresh', () => {
     }
   });
 
-  it('gives a blocked run with no code the code of its error', async () => {
-    const { db, refresh, run, documents, set, read } = await setup();
-    try {
-      await documents.putDocument(run, 'error', 'The plan does not fit the limit.');
-      await set({ status: 'blocked', currentStep: 'plan' });
-      expect(await read()).toEqual({ state: 'blocked', code: REASON.didNotFit });
-      await refresh.onModuleDestroy();
-    } finally {
-      await db.close();
-    }
-  });
-
   it('keeps the code a blocked run stores', async () => {
     const { db, refresh, set, read } = await setup();
     try {

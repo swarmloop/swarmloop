@@ -189,12 +189,12 @@ describe('planner scenarios: scripted turn results', () => {
     withPlanner(async (harness) => {
       const { backlogId, milestoneId } = await harness.seed();
       await harness.task(backlogId, milestoneId, 'going', { runKey: 'going-1', status: 'running' });
-      await harness.run('going-1', { status: 'blocked', facts: { blockCode: 'loop-limit' } });
+      await harness.run('going-1', { status: 'blocked', reason: { code: 'loop-limit', message: 'loop-limit' } });
       const resume = turnResult('Trying again.', { action: 'resume', run: 'going-1' });
       await harness.turns.apply('alpha', 'turn-1', resume);
       expect(harness.sent.map(({ key }) => key)).toEqual(['turn-1-action-0']);
 
-      await harness.run('going-1', { status: 'blocked', facts: { blockCode: 'loop-limit' } });
+      await harness.run('going-1', { status: 'blocked', reason: { code: 'loop-limit', message: 'loop-limit' } });
       await harness.turns.apply('alpha', 'turn-2', resume);
       expect(harness.sent).toHaveLength(1);
       expect((await harness.lines(backlogId)).pop()).toBe(
@@ -206,7 +206,7 @@ describe('planner scenarios: scripted turn results', () => {
     withPlanner(async (harness) => {
       const { backlogId, milestoneId } = await harness.seed();
       await harness.task(backlogId, milestoneId, 'going', { runKey: 'going-1', status: 'running' });
-      await harness.run('going-1', { status: 'blocked', facts: { blockCode: 'loop-limit' } });
+      await harness.run('going-1', { status: 'blocked', reason: { code: 'loop-limit', message: 'loop-limit' } });
       await harness.turns.apply('alpha', 'turn-1', turnResult('Trying again.', { action: 'resume', run: 'going-1' }));
       const shown = (await new BacklogQueries(harness.backlogs, harness.runs).view('alpha')).events;
       const resumed = shown.find((event) => event.facts.action === 'resume run');

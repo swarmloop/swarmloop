@@ -1,8 +1,7 @@
-import { isLoopStep } from '../core/pipeline-result';
 import { SERVER_INSTANCE } from '../core/server-instance';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import type { ErrorCode } from '../contract/error-codes';
-import { isStopNote, REASON } from '../contract/run-state';
+import { REASON } from '../contract/run-state';
 import type { MergeOutcome, RunState, StateReason } from '../contract/run-state';
 import type { StoredAgents } from '../contract/api';
 import type { RunEntity } from './entities';
@@ -21,23 +20,9 @@ export interface StateFacts {
   returned?: boolean;
   /** The words of an agent that waits for a free place; live only, never stored. */
   agentPlace?: string;
-  /** Why a blocked run is blocked. */
-  blockCode?: string;
 }
 
 type StateRow = Pick<RunEntity, 'status'> & { stateReason?: string | null; mergeOutcome?: string | null };
-
-/** Why a run is blocked, from the step and the error text of its last visit. */
-export function blockCode(step: string, error: string | null): string {
-  if (isStopNote(error ?? '')) return REASON.stopped;
-  if ((error ?? '').includes('does not fit')) return REASON.didNotFit;
-  if ((error ?? '').includes('failed again on unchanged files after a relaunch')) return REASON.checkFailed;
-  if ((error ?? '').includes(REASON.ciLogUnavailable)) return REASON.ciLogUnavailable;
-  if ((error ?? '').includes(REASON.ciNotRun)) return REASON.ciNotRun;
-  if ((error ?? '').includes(REASON.ciTimeout)) return REASON.ciTimeout;
-  if ((error ?? '').includes(ERROR_CODES.TEST_FLAKY)) return ERROR_CODES.TEST_FLAKY;
-  return isLoopStep(step) ? REASON.loopLimit : REASON.blocked;
-}
 
 function readReason(stored: string | null | undefined): StateReason | null {
   if (!stored) return null;
@@ -71,25 +56,9 @@ function reasonOf(code: string, message: string): StateReason {
   return { code, message };
 }
 
-/** A code the stop path or a step wrote stays: the error text of the last visit cannot say it. */
-function keptCode(stored: StateReason | null): string | null {
-  const kept =
-    stored?.code === REASON.stopped ||
-    stored?.code === ERROR_CODES.RESOURCE_UNKNOWN ||
-    stored?.code === ERROR_CODES.INPUT_MISSING ||
-    stored?.code === ERROR_CODES.SUBTASK_BLOCKED ||
-    stored?.code === ERROR_CODES.PARENT_TREE_CONFLICT ||
-    stored?.code === REASON.loopLimit ||
-    stored?.code === ERROR_CODES.SPEND_LIMIT ||
-    stored?.code === ERROR_CODES.PIPELINE_UNFIXED;
-  return kept ? stored.code : null;
-}
-
-function blockedState(stored: StateReason | null, facts: StateFacts): { state: RunState; reason: StateReason } {
-  // The error text gives a code of its own; the step alone gives only the loop limit or the plain BLOCKED.
-  const fromText = facts.blockCode !== REASON.blocked && facts.blockCode !== REASON.loopLimit ? facts.blockCode : null;
-  const written = stored && stored.code !== REASON.blocked ? stored.code : null;
-  const code = keptCode(stored) ?? fromText ?? written ?? facts.blockCode ?? REASON.blocked;
+/** A blocked run is blocked for the code its writer stored; a block that stored none is a plain block. */
+function blockedState(stored: StateReason | null): { state: RunState; reason: StateReason } {
+  const code = stored?.code ?? REASON.blocked;
   return {
     state: code === REASON.stopped ? 'stopped' : 'blocked',
     reason: reasonOf(code, stored?.message ?? 'blocked'),
@@ -136,7 +105,7 @@ function deriveState(run: StateRow, facts: StateFacts = {}): { state: RunState; 
       return { state: outcome ? ('merged' in outcome ? 'merged' : 'closed') : 'done', reason: stored };
     }
     case 'blocked':
-      return blockedState(stored, facts);
+      return blockedState(stored);
     case 'failed':
       return stored?.code === REASON.stopped
         ? { state: 'stopped', reason: stored }
@@ -174,13 +143,11 @@ export function liveState(run: StoredRow, live: LiveFacts): { state: RunState; r
 }
 
 /**
- * The state columns the refresh writes from the facts of a run's documents. A blocked row keeps a code from the kept
- * list; otherwise the code read from the last error text wins over any stored code, and a stored code other than the
- * plain BLOCKED stays over the step's own fallback.
+ * The state columns the refresh writes from the facts of a run's documents. A blocked row keeps its stored code.
  */
 export function factColumns(
   run: StateRow,
-  facts: Pick<StateFacts, 'needsAnswers' | 'returned' | 'blockCode'>,
+  facts: Pick<StateFacts, 'needsAnswers' | 'returned'>,
 ): Pick<RunEntity, 'state' | 'stateReason'> {
   const derived = deriveState(run, facts);
   return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };

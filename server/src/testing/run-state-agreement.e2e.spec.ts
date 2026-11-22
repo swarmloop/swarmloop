@@ -150,14 +150,6 @@ describe('every reader of a run state agrees with the stored state', () => {
     );
   });
 
-  it('gives a blocked run with no stored code the code of its error', async () => {
-    const read = await readings({
-      change: { status: 'blocked', currentStep: 'prepare' },
-      document: ['error', 'code-review does not fit\n'],
-    });
-    expectAgreement(read, 'blocked', REASON.didNotFit);
-  });
-
   it('keeps the code a blocked run stored when its error says another', async () => {
     const read = await readings({
       change: {

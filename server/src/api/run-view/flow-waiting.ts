@@ -1,6 +1,6 @@
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { countedVisits, isLoopStep, loopMark } from '../../core/pipeline-result';
-import { blockCode, isReturned, liveState, storedState, type LiveFacts } from '../../history/run-state';
+import { isReturned, liveState, storedState, type LiveFacts } from '../../history/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../../contract/error-codes';
 import { actionsFor, REASON } from '../../contract/run-state';
 import { parseSubtasks, statusLine, SUBTASKS_KIND } from '../../contract/subtask';
@@ -77,17 +77,19 @@ function codeSentence(run: RunEntity, maxReturns: number): string | null {
   return null;
 }
 
-function blockedSentence(run: RunEntity, documents: DocumentEntity[], maxReturns: number): string {
-  if (blockCode(run.currentStep, latest(documents, 'error')) === REASON.checkFailed) {
+function blockedSentence(run: RunEntity, maxReturns: number): string {
+  const code = storedState(run).reason?.code;
+  if (code === REASON.checkFailed) {
     return 'A required check failed again on unchanged files. Resume returns to implementation with the stored notes.';
   }
-  return didNotFit(documents)
-    ? run.currentStep === 'code-review'
+  if (code === REASON.didNotFit) {
+    return run.currentStep === 'code-review'
       ? 'This step cannot start with the remaining agent-call budget. Resume retries from stored reviews.'
-      : 'This step cannot start with the remaining agent-call budget. Resume runs it anyway.'
-    : isLoopStep(run.currentStep)
-      ? `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`
-      : 'This run is blocked. Another return is not available.';
+      : 'This step cannot start with the remaining agent-call budget. Resume runs it anyway.';
+  }
+  return isLoopStep(run.currentStep)
+    ? `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`
+    : 'This run is blocked. Another return is not available.';
 }
 
 export function sentence(
@@ -102,7 +104,7 @@ export function sentence(
     return coded;
   }
   if (run.status === 'blocked') {
-    return blockedSentence(run, documents, maxReturns);
+    return blockedSentence(run, maxReturns);
   }
   if (run.status === 'waiting' && isLoopStep(run.currentStep)) {
     const visits = countedVisits(stats, run.currentStep, loopMark(latest(documents, 'loop_mark')));
@@ -183,8 +185,4 @@ export function reason(run: RunEntity, documents: DocumentEntity[], stats: StepS
     return `${head}\n${text}`;
   }
   return text ?? head;
-}
-
-function didNotFit(documents: DocumentEntity[]): boolean {
-  return (latest(documents, 'error') ?? '').includes('does not fit');
 }
