@@ -4,6 +4,7 @@ import { resolveRepoRoot } from '../config/repo-root';
 import type { LiveHub } from '../live/live.hub';
 import type { AgentRuntime, AgentTools } from '../integrations/agent-runtime/agent-runtime';
 import type { SandboxMount } from '../core/sandbox-mount';
+import { prepareRunTmp, runTmpDir } from '../sandbox/run-tmp';
 import { agentStateDir, prepareStateDir, writeHomeFiles, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { syncChatMode } from './chat-mode';
@@ -32,6 +33,19 @@ export class AgentLaunchPrep {
     private readonly config: AppConfig,
     private readonly live?: LiveHub,
   ) {}
+
+  /**
+   * The /tmp of a project container: the folder of the chat it continues, kept when the launch resumes a chat id
+   * and emptied when it starts a new chat. Empty for a container that runs no project command.
+   */
+  async runTmp(input: LaunchInput): Promise<{ tmp?: SandboxMount }> {
+    if (!input.project) {
+      return {};
+    }
+    const root = resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname);
+    const path = runTmpDir(root, input.runKey, sessionHome(input.step));
+    return { tmp: await prepareRunTmp(path, sandboxUserId(), !input.resumeChatId) };
+  }
 
   /** Prepares the state directory, chat mode, prompt delivery, and arguments for one launch. */
   prepare(input: LaunchInput, runtime: AgentRuntime, resumed: boolean): Launch {

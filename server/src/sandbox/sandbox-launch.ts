@@ -18,7 +18,7 @@ import {
   sandboxNetworkName,
 } from './sandbox-hosts';
 import { imageName } from './image-resolver';
-import { assertDaemonPath, assertMask, assertMount, assertProject, sandboxMount } from './sandbox-checks';
+import { assertDaemonPath, assertMask, assertMount, assertProject, assertTmp, sandboxMount } from './sandbox-checks';
 import { CLI_ROOT, egressProxyArgs, projectImageArgs } from './sandbox-args';
 import { coreListText } from './core-slices';
 import type { SandboxLaunch } from './sandbox-types';
@@ -26,7 +26,6 @@ import type { SandboxLaunch } from './sandbox-types';
 import type { SandboxMount } from '../core/sandbox-mount';
 export type { EnvMask, ManifestHosts, ProjectLaunch, SandboxLaunch } from './sandbox-types';
 export { CLI_ROOT } from './sandbox-args';
-const PROJECT_TMP = '/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777';
 /** Test runners and JVM builds start many threads, and every thread counts. Still a ceiling against a fork bomb. */
 const PROJECT_PIDS = '1024';
 /**
@@ -135,15 +134,20 @@ export function covers(destination: string, real: string): boolean {
 
 const STATE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
+/** A run key or a step name that is safe to use as one folder name. */
+export function isStateName(name: string): boolean {
+  return STATE_NAME.test(name);
+}
+
 export function agentStateDir(root: string, key: string, step?: string): string {
-  if (!STATE_NAME.test(key)) {
+  if (!isStateName(key)) {
     throw new SwarmloopError('sandbox container name is invalid');
   }
   const base = join(root, 'data', 'agent-state', key);
   if (!step) {
     return base;
   }
-  if (!STATE_NAME.test(step)) {
+  if (!isStateName(step)) {
     throw new SwarmloopError('sandbox step is invalid');
   }
   return join(base, step);
@@ -215,6 +219,24 @@ function cpuShares(launch: SandboxLaunch): number {
   return launch.project && launch.cpuSlice && launch.checkPlace !== undefined ? CHECK_CPU_SHARES : SANDBOX_CPU_SHARES;
 }
 
+/**
+ * A container that runs project commands gets its run folder from the disk as /tmp, so a large suite does not
+ * run out of memory-backed space. Every other container keeps a small tmpfs.
+ */
+function tmpArgs(launch: SandboxLaunch, home: string): string[] {
+  if (!launch.project) {
+    if (launch.tmp) {
+      throw new SwarmloopError('sandbox /tmp is not allowed');
+    }
+    return ['--tmpfs', '/tmp:rw,nosuid,nodev,size=64m,mode=1777'];
+  }
+  if (!launch.tmp) {
+    throw new SwarmloopError('sandbox /tmp is missing');
+  }
+  assertTmp(launch.tmp, home, launch.workRoots);
+  return ['--mount', sandboxMount(launch.tmp)];
+}
+
 export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sandboxEngine()): string[] {
   if (launch.userId <= 0) {
     throw new SwarmloopError('sandbox user is root');
@@ -279,8 +301,7 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
     String(cpuShares(launch)),
     ...coreArgs(launch),
     '--read-only',
-    '--tmpfs',
-    project ? PROJECT_TMP : '/tmp:rw,nosuid,nodev,size=64m,mode=1777',
+    ...tmpArgs(launch, home),
   );
   if (launch.memoryCapBytes !== undefined) {
     args.push('--memory', `${launch.memoryCapBytes}b`);

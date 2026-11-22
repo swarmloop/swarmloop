@@ -78,6 +78,9 @@ describe('SandboxService memory cap', () => {
       allowHosts: [],
       command: ['agent'],
       userId: 501,
+      ...(patch.project
+        ? { tmp: { hostPath: join(root, 'worktrees', '.tmp', 'k', step), containerPath: '/tmp' } }
+        : {}),
       ...patch,
     };
   }

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
@@ -121,5 +121,29 @@ describe('runShell', () => {
     const result = await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'checks', { index: 0, file });
 
     expect(result.tail).toBe(['$ npm test', 'out 0', 'out 1', 'out 2', 'exit 0'].join('\n'));
+  });
+
+  it('gives a setup and a check each an empty /tmp folder of the run, left over files gone', async () => {
+    const w = world(1);
+    const file = checkOutputPath(w.root, 'r1', 'implement', 'attempt-1', 0);
+    const setupTmp = join(w.root, 'worktrees', '.tmp', 'r1', 'setup-repo');
+    const checkTmp = join(w.root, 'worktrees', '.tmp', 'r1', 'checks-repo-0');
+    mkdirSync(setupTmp, { recursive: true });
+    writeFileSync(join(setupTmp, 'old'), 'x');
+
+    await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'setup');
+    await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'checks', { index: 0, file });
+    writeFileSync(join(checkTmp, 'scratch'), 'x');
+    expect(readdirSync(checkTmp)).toEqual(['scratch']);
+    await runShell(w.deps, w.input, w.launch, COMMAND, w.mount, 'checks', { index: 0, file });
+
+    const launches = (w.deps.sandbox.spawn as jest.Mock).mock.calls.map(([given]) => given);
+    expect(launches.map((given) => given.tmp)).toEqual([
+      { hostPath: setupTmp, containerPath: '/tmp' },
+      { hostPath: checkTmp, containerPath: '/tmp' },
+      { hostPath: checkTmp, containerPath: '/tmp' },
+    ]);
+    expect(readdirSync(setupTmp)).toEqual([]);
+    expect(readdirSync(checkTmp)).toEqual([]);
   });
 });

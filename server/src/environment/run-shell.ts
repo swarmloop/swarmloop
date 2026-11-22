@@ -13,6 +13,7 @@ import type { SampleDraft } from '../history/visit';
 import type { LiveHub } from '../live/live.hub';
 import { containerSampler } from '../sandbox/container-sampler';
 import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
+import { prepareRunTmp, runTmpDir } from '../sandbox/run-tmp';
 import { agentStateDir, sandboxUserId } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import type { CpuSlice } from '../sandbox/sandbox-types';
@@ -57,6 +58,8 @@ export async function runShell(
   const userId = sandboxUserId();
   const unit = check ? `${basename(mount.hostPath)}-${check.index}` : basename(mount.hostPath);
   const statePath = agentStateDir(root, input.key, `${phase}-${unit}`);
+  // Setup and checks never see what an earlier command left in /tmp, so a verdict does not depend on it.
+  const tmp = await prepareRunTmp(runTmpDir(root, input.key, `${phase}-${unit}`), userId, true);
   // Every command streams to its file, so memory keeps only the window the live view and the tail read.
   const keep = check ? LIVE_LINES : 2000;
   const lines: string[] = [`$ ${command}`];
@@ -111,7 +114,7 @@ export async function runShell(
   };
   const child = await startShell(
     sandbox,
-    { input, launch, command, mount, phase, check, place, cpuSlice, manifest, statePath, userId },
+    { input, launch, command, mount, phase, check, place, cpuSlice, manifest, statePath, userId, tmp },
     onPaused,
     async () => {
       finish({ exitCode: null });

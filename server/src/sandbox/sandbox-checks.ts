@@ -61,6 +61,23 @@ export function assertMount(mount: SandboxMount, home: string, workRoots: string
   sandboxMount(mount);
 }
 
+/** The run folder that a project container gets as /tmp: writable, from a place the server owns. */
+export function assertTmp(mount: SandboxMount, home: string, workRoots: string[]): void {
+  if (mount.containerPath !== '/tmp' || mount.readonly === true) {
+    throw new SwarmloopError('sandbox /tmp is not allowed');
+  }
+  assertDaemonPath(mount.hostPath, home);
+  if (mount.daemonPath !== undefined) {
+    assertDaemonPath(mount.daemonPath, home);
+  }
+  try {
+    assertInsideWork(mount.hostPath, workRoots);
+  } catch {
+    throw new SwarmloopError('sandbox /tmp is not allowed');
+  }
+  sandboxMount(mount);
+}
+
 export function sandboxMount(mount: SandboxMount): string {
   const access = mount.readonly ? 'true' : 'false';
   if (mount.volume) {

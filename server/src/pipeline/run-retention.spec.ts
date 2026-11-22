@@ -41,6 +41,22 @@ describe('RunRetention', () => {
     expect((await freshRun(world)).workspace).toBe('removed');
   });
 
+  it('removes the /tmp folders of an old done run with its worktree, and not the folders of another run', async () => {
+    world = await makeWorld('PROJ-1');
+    const mine = join(world.swarm, 'worktrees', '.tmp', 'PROJ-1', 'implement');
+    const other = join(world.swarm, 'worktrees', '.tmp', 'PROJ-2', 'implement');
+    for (const folder of [mine, other]) {
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, 'scratch'), 'x');
+    }
+    await age(world, 10);
+
+    await world.app.get(RunRetention).apply(3);
+
+    expect(existsSync(join(world.swarm, 'worktrees', '.tmp', 'PROJ-1'))).toBe(false);
+    expect(existsSync(join(other, 'scratch'))).toBe(true);
+  });
+
   it('removes the output files of the check commands with the run, and not the files of another run', async () => {
     world = await makeWorld('PROJ-1');
     const mine = checkOutputPath(world.swarm, 'PROJ-1', 'checks', 'attempt1', 3);

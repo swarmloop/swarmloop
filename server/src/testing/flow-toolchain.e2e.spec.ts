@@ -152,4 +152,18 @@ describe('a run that changes its toolchain or its dependencies, on the real impl
     expect((await flow.app.app.get(RunRepository).findRun(KEY))?.currentStep).toBe('done');
     await assertInvariants(flow.app);
   });
+
+  it('gives the setup and every check command its own /tmp folder of the run', async () => {
+    await boot(manifest({ checks: ['npm test', 'npm run lint'] }));
+    await runImplement();
+
+    const folders = docker.spawned.map((launch) => launch.tmp?.hostPath ?? '');
+    expect(folders.length).toBeGreaterThanOrEqual(3);
+    for (const folder of folders) {
+      expect(folder).toMatch(/\/worktrees\/\.tmp\/PROJ-470\/(setup-[^/]+|checks-[^/]+-\d)$/);
+    }
+    expect(new Set(folders).size).toBe(folders.length);
+    expect(docker.spawned.every((launch) => launch.tmp?.containerPath === '/tmp')).toBe(true);
+    await assertInvariants(flow.app);
+  });
 });
