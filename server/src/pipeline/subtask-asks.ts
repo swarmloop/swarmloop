@@ -84,6 +84,10 @@ export class SubtaskAsks {
     return (await this.planner.askAbout(opened, task, questions, contract))?.decision.trim() ?? null;
   }
 
+  handUp(parent: RunEntity, taskId: string, text: string): Promise<void> {
+    return this.planner.handUp(parent, taskId, text);
+  }
+
   /** The needs a subtask run waits on, with the questions it asked. */
   async needsOf(run: RunEntity): Promise<Need[]> {
     return storedNeeds(

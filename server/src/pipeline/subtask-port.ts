@@ -17,6 +17,8 @@ import {
   type SubtaskStart,
   type OwnEdits,
   type RebaseEvent,
+  type ChainAsked,
+  type ChainQuestion,
   type SubtaskMergeRequest,
 } from '../steps/shared/subtask-ops';
 import { disagrees } from '../steps/shared/subtask-status';
@@ -36,11 +38,14 @@ import { StartGate } from './start-gate';
 import { SubtaskWakes } from './subtask-wakes';
 import { SubtaskWorktrees } from './subtask-worktrees';
 import { SubtaskAsks } from './subtask-asks';
+import { PlannerChain } from './planner-chain';
+import { SubtaskMergeRecord } from './subtask-merge-record';
 import { SubtaskRebases } from './subtask-rebases';
 import { SubtaskRequestCloser } from '../steps/shared/subtask-requests-close';
 import { PlanConversation } from '../steps/shared/plan-conversation';
 import { PlanChatStore } from '../history/plan-chat.store';
 import type { PlanChange, StarterPlan } from '../steps/implement/starter-actions';
+import type { PlanChatEntry } from '../contract/plan-chat';
 import type { StarterAnswerResult } from '../agent-result/definitions/starter-answer';
 
 /** What the api layer does for the subtasks of a parent. It registers itself at init, so `pipeline` never imports `api`. */
@@ -58,6 +63,8 @@ export class SubtaskPort extends SubtaskOps {
   private starter: SubtaskStarter | null = null;
   private readonly worktrees: SubtaskWorktrees;
   private readonly asks: SubtaskAsks;
+  private readonly chain: PlannerChain;
+  private readonly mergeRecord: SubtaskMergeRecord;
   private readonly wakes: SubtaskWakes;
   private readonly rebases: SubtaskRebases;
 
@@ -72,7 +79,7 @@ export class SubtaskPort extends SubtaskOps {
     gate: StartGate,
     @Optional() publisher?: RebasedPublisher,
     @Optional() private readonly rebaser?: RunRebase,
-    @Optional() private readonly reportRefresh?: ReportRefresh,
+    @Optional() reportRefresh?: ReportRefresh,
     @Optional() conversation?: PlanConversation,
     @Optional() private readonly runNames?: RunNames,
     @Optional() private readonly runAuthor?: RunAuthor,
@@ -80,14 +87,27 @@ export class SubtaskPort extends SubtaskOps {
   ) {
     super();
     this.worktrees = new SubtaskWorktrees(config, clock, publisher);
-    this.asks = new SubtaskAsks(
-      documents,
-      commands,
-      gate,
+    const planning =
       conversation ??
-        new PlanConversation(launcher, visits, documents, config, clock, new PlanChatStore(runs, documents)),
-      visits,
+      new PlanConversation(launcher, visits, documents, config, clock, new PlanChatStore(runs, documents));
+    this.asks = new SubtaskAsks(documents, commands, gate, planning, visits, runs);
+    this.chain = new PlannerChain(
+      {
+        askAbout: (opened, task, question, contract) => this.askAbout(opened, task, question, contract),
+        handUp: (parent, taskId, text) => this.asks.handUp(parent, taskId, text),
+      },
+      planning,
+      documents,
       runs,
+    );
+    this.mergeRecord = new SubtaskMergeRecord(
+      runs,
+      documents,
+      clock,
+      this.worktrees,
+      (parent) => this.branchOf(parent),
+      reportRefresh,
+      this.logger,
     );
     this.wakes = new SubtaskWakes(runs, commands, gate, visits, this.logger);
     this.rebases = new SubtaskRebases(
@@ -158,6 +178,31 @@ export class SubtaskPort extends SubtaskOps {
     return this.asks.askAbout(opened, task, questions, contract);
   }
 
+  override askUp(run: RunEntity, question: ChainQuestion, startLevel: number): Promise<ChainAsked> {
+    return this.chain.askUp(run, question, startLevel);
+  }
+
+  /** The question the chain left open in the plan chat of the run for its planner, or null. */
+  openQuestion(run: RunEntity): Promise<PlanChatEntry | null> {
+    return this.chain.openQuestion(run);
+  }
+
+  override needsWrittenAt(run: RunEntity): Promise<string | null> {
+    return this.documents.latestCreatedAt(run.key, ARTIFACTS.needs.kind);
+  }
+
+  override async settledAt(parent: RunEntity, taskId: string): Promise<string | null> {
+    const task = parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND)).find(
+      (item) => item.id === taskId,
+    );
+    if (!task || !settled(task)) return null;
+    if (task.status === 'merged') return (await this.runs.findSubtask(parent, taskId))?.doneAt ?? null;
+    // A skipped task has no run to say when: the first list that holds it as skipped does.
+    const lists = await this.documents.revisionsOfKind(parent.id, SUBTASKS_KIND);
+    const first = lists.find((item) => parseSubtasks(item.body).some((t) => t.id === taskId && t.status === 'skipped'));
+    return first?.createdAt ?? null;
+  }
+
   override async withoutCi(run: RunEntity): Promise<boolean> {
     return ((await this.documents.latestBody(run.key, 'pipeline_log')) ?? '').startsWith('result: none');
   }
@@ -219,45 +264,8 @@ export class SubtaskPort extends SubtaskOps {
     return storedBranch(stored, null, run.key, summaryForBranch(requirements, run.key));
   }
 
-  override async recordMerged(parent: RunEntity, run: RunEntity, merged: Record<string, string>): Promise<void> {
-    await this.recordMergedFiles(parent, run, merged);
-    try {
-      const fresh = await this.runs.findById(run.id);
-      if (fresh?.status !== 'done' || fresh.mergeOutcome) return;
-      const at = this.clock.iso();
-      const facts = Object.fromEntries(
-        Object.entries(merged).map(([repo, sha]) => [repo, { sha: sha || null, by: null, at, url: null }]),
-      );
-      await this.runs.release(fresh, { status: 'done', doneAt: fresh.doneAt ?? at, merge: { merged: facts } });
-    } catch (error) {
-      this.logger.warn(
-        `The merge of ${run.key} was not recorded on its run: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    await this.refreshReport(parent);
-  }
-
-  /** Makes the parent's report current at a task merge. No step scope is open, so a failure is a warning; the next step end tries again. */
-  private async refreshReport(parent: RunEntity): Promise<void> {
-    try {
-      await this.reportRefresh?.refresh(parent);
-    } catch (error) {
-      this.logger.warn(
-        `the report of ${parent.key} was not refreshed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  /** The files the merge of each repository changed, taken from its merge commit. A merge git cannot read leaves none. */
-  private async recordMergedFiles(parent: RunEntity, run: RunEntity, merged: Record<string, string>): Promise<void> {
-    try {
-      const files = await this.worktrees.changedFiles(run, merged, await this.branchOf(parent));
-      await this.documents.putDocument(run, ARTIFACTS.mergedFiles.kind, files.join('\n'));
-    } catch (error) {
-      this.logger.warn(
-        `The files of the merge of ${run.key} were not read: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+  override recordMerged(parent: RunEntity, run: RunEntity, merged: Record<string, string>): Promise<void> {
+    return this.mergeRecord.recordMerged(parent, run, merged);
   }
 
   override async commitOwnEdits(parent: RunEntity, park: boolean): Promise<OwnEdits> {

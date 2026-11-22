@@ -23,6 +23,8 @@ import {
 } from '../steps/implement/starter-actions';
 import { handBackErrors } from '../steps/shared/hand-back';
 import { renderNeeds } from '../steps/shared/needs';
+import { keepOpen, readStoredQuestions } from '../steps/shared/question-parts';
+import { askedQuestion } from '../steps/implement/split-questions';
 import type { OpenedStep } from '../steps/step-run';
 import type { CommandService } from './command.service';
 import type { StartGate } from './start-gate';
@@ -101,6 +103,27 @@ export class SubtaskPlannerAnswer {
       return given;
     }
     return (await this.reply(child, given)) ? given : null;
+  }
+
+  /**
+   * Puts a question of a task among the questions the parent holds for the person who started the run, as the parent's
+   * own pass does for a question its planner could not answer. The person's answer reaches the task through that pass.
+   */
+  async handUp(parent: RunEntity, taskId: string, text: string): Promise<void> {
+    const ask = askedQuestion(taskId, text, this.clock.iso());
+    const open = openQuestions(
+      (await this.documents.latestBody(parent.key, ARTIFACTS.subtaskQuestions.kind)) ?? '',
+      [],
+    );
+    const stored = readStoredQuestions(
+      (await this.documents.latestBody(parent.key, ARTIFACTS.questionParts.kind)) ?? '',
+    );
+    await this.documents.putDocument(parent, ARTIFACTS.subtaskQuestions.kind, renderQuestions([...open, ask.question]));
+    await this.documents.putDocument(
+      parent,
+      ARTIFACTS.questionParts.kind,
+      ARTIFACTS.questionParts.format(keepOpen(stored, open, [ask])),
+    );
   }
 
   /** Sends the answer again that the child refused, so the planner is not asked twice. Null while it is refused. */

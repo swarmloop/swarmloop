@@ -8,7 +8,9 @@ import { VisitRepository } from '../history/visit.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { RunQueriesService } from '../api/run-queries.service';
+import { CommandRepository } from '../history/command.repository';
 import { CommandService } from '../pipeline/command.service';
+import { startByOf } from '../pipeline/resume-sender';
 import { SubtaskPlannerAnswer } from '../pipeline/subtask-planner-answer';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
@@ -105,7 +107,9 @@ describe('a task that needs a sibling waits for it', () => {
     await runs().saveRun(run);
   }
 
-  async function done(id: string, iid: number, summary = ''): Promise<void> {
+  /** The merge of a task takes time after the need that waited for it was written, unless `sameTime` says it did not. */
+  async function done(id: string, iid: number, summary = '', sameTime = false): Promise<void> {
+    if (!sameTime) flow.app.clock.advance(1000);
     const run = await child(id);
     await documents().putDocument(run, 'requirements', requirements);
     await documents().putDocument(run, 'repos', 'demo\n');
@@ -187,10 +191,15 @@ describe('a task that needs a sibling waits for it', () => {
     jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue(null);
     await needs('a', 'research', '- zzz: something');
 
-    await pass();
+    await pass(false);
 
-    expect(await handoff()).toContain('zzz cannot go first: no task has the id zzz');
+    // A need that names no task is a question now: with no answer it goes to the person and the task waits for it.
+    expect(relaunched('a')).toEqual([]);
+    expect(await handoff()).not.toContain('zzz cannot go first');
     expect(await handoff()).not.toContain(NOBODY);
+    const asked = await view();
+    expect(asked.items).toHaveLength(1);
+    expect(asked.items[0].label.startsWith('Subtask a asks: a needs zzz: something')).toBe(true);
   });
 
   it('reruns a task that needs a sibling that depends on it once, with the reason in its handoff', async () => {
@@ -316,5 +325,74 @@ describe('a task that needs a sibling waits for it', () => {
       `question: ${REVIEW_QUESTION}\nanswer: Keep it.\n`,
     );
     expect((await view()).items).toEqual([]);
+  });
+
+  /** Who started the task's runs again, from the resume commands the gate stored. */
+  async function startsOf(id: string) {
+    const run = await child(id);
+    return (await flow.app.app.get(CommandRepository).listForRun(run.id))
+      .filter((command) => command.type === 'resume')
+      .map((command) => startByOf(command));
+  }
+
+  it('puts a need that names a sibling merged before the need was written to the planner, and its answer reruns the task once as a planner start', async () => {
+    await seedEpic([task('a'), task('b')]);
+    await done('b', 1, 'adds the retry policy');
+    await pass();
+    expect((await statuses()).b).toBe('merged');
+    flow.app.clock.advance(60_000);
+    jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue('Keep the policy in b.');
+    await needs('a', 'implement', '- b: which retry policy wins');
+
+    await pass();
+    await pass();
+
+    expect(relaunched('a')).toEqual([`${KEY}-a`]);
+    expect(await handoff()).toContain('Keep the policy in b.');
+    expect(await handoff()).not.toContain('b merged: adds the retry policy');
+    expect(await startsOf('a')).toContainEqual({ by: 'planner', level: 1 });
+    expect(await documents().latestBody(KEY, 'contract')).toMatch(/- subtask a: Keep the policy in b\./);
+  });
+
+  it('puts a need that names a sibling merged at the very time the need was written to the planner as a question', async () => {
+    await seedEpic([task('a'), task('b')]);
+    await done('b', 1, 'adds the retry policy', true);
+    await pass();
+    expect((await statuses()).b).toBe('merged');
+    jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue('Keep the policy in b.');
+    await needs('a', 'implement', '- b: which retry policy wins');
+
+    await pass();
+
+    expect(await handoff()).toContain('Keep the policy in b.');
+    expect(await handoff()).not.toContain('b merged: adds the retry policy');
+    expect(await startsOf('a')).toContainEqual({ by: 'planner', level: 1 });
+  });
+
+  it('puts a need that names no task to the planner as a question and reruns the task with its answer as a planner start', async () => {
+    await seedEpic([task('a'), task('b')]);
+    jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue('Build it in this task.');
+    await needs('a', 'implement', '- zzz: something');
+
+    await pass();
+
+    expect(relaunched('a')).toEqual([`${KEY}-a`]);
+    expect(await handoff()).toContain('Build it in this task.');
+    expect(await handoff()).not.toContain('cannot go first');
+    expect(await startsOf('a')).toContainEqual({ by: 'planner', level: 1 });
+  });
+
+  it('does not ask the person again when the pass repeats on a question that reached the starter', async () => {
+    await seedEpic([task('a'), task('b')]);
+    jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue(null);
+    await needs('a', 'implement', '- zzz: something');
+    await pass(false);
+
+    await pass(false);
+
+    expect(relaunched('a')).toEqual([]);
+    const asked = await view();
+    expect(asked.items).toHaveLength(1);
+    expect(asked.stateReason?.code).toBe('NEEDS_ANSWERS');
   });
 });
