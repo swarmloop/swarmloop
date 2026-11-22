@@ -39,6 +39,7 @@ import { RemoteRepositories } from '../steps/prepare/remote-repositories.service
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { AttemptChatUsage } from '../steps/shared/attempt-chat-usage';
 import { RunReport } from '../steps/shared/run-report';
 import { OpenReviewRounds } from '../steps/shared/open-review-rounds';
 import { StaleReview } from '../steps/shared/stale-review';
@@ -130,6 +131,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     ChecksStep,
     CodeReviewStep,
     AgentLauncher,
+    AttemptChatUsage,
     LimitFailover,
     LimitRelease,
     RunReport,

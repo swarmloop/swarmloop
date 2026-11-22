@@ -12,6 +12,7 @@ import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { emptyResult, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
 import { callsExceeded } from './limits';
+import { NO_USAGE, plusUsage } from './since-recorded';
 import { RunStop } from './run-stop';
 import { AgentLaunch } from './agent-launch';
 import { AgentLaunchEnv } from './agent-launch-env';
@@ -78,21 +79,21 @@ export class AgentProcessRunner {
       let prior = carried;
       let chatId = input.resumeChatId;
       let resumed = chatId !== null;
-      let groupUsd = input.groupUsd ?? 0;
+      let chatPrior = input.prior ?? NO_USAGE;
       let merged: AgentRunResult | null = null;
       let endedEarlyUsed = false;
       let resent = false;
       let freshPrompt = input.freshPrompt;
       for (;;) {
         const attempt = await this.launch.once(
-          { ...input, prompt, resumeChatId: chatId, groupUsd, agentCalls: input.agentCalls + calls },
+          { ...input, prompt, resumeChatId: chatId, prior: chatPrior, agentCalls: input.agentCalls + calls },
           runtime,
           resumed,
           prior,
         );
         merged = foldAttempt(merged, attempt);
         calls += attempt.calls;
-        groupUsd += attempt.usd;
+        chatPrior = plusUsage(chatPrior, attempt);
         if (attempt.limit) {
           // A limit is no attempt: relaunching into it only burns launches. The caller picks another agent or waits.
           return merged;
@@ -117,6 +118,7 @@ export class AgentProcessRunner {
           freshPrompt = undefined;
           chatId = null;
           resumed = false;
+          chatPrior = NO_USAGE;
           prompt = fresh;
           continue;
         }
@@ -140,6 +142,7 @@ export class AgentProcessRunner {
         endedEarlyUsed ||= relaunch.prompt === backgroundKilledContinue(input.answerEnding);
         chatId = relaunch.chatId;
         resumed = relaunch.resumed;
+        chatPrior = resumed ? chatPrior : NO_USAGE;
         prompt = relaunch.prompt ?? prompt;
       }
     } finally {

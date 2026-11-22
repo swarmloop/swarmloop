@@ -1,9 +1,15 @@
+import type { ChatUsage } from '../history/chat-usage.repository';
+import { guessLineTokens } from './stream-guess';
+import { NO_USAGE, recordedAfter, sinceRecorded } from './since-recorded';
+
 export interface StreamPiece {
   tokensIn: number | null;
   tokensOut: number | null;
   cacheRead: number | null;
   cacheWrite: number | null;
   reportedUsd: number | null;
+  /** The visit's own usage in a result line that reports it apart from the session total, summed over its models. */
+  own: OwnUsage | null;
   guessedIn: number;
   guessedOut: number;
   guessKind: 'user' | 'output' | 'tool-result' | 'none';
@@ -21,6 +27,15 @@ export interface StreamPiece {
   backgroundEvent: 'ended' | 'other' | null;
   text: string | null;
   replaceText: boolean;
+}
+
+export interface OwnUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  /** Null when no model entry reports a cost. */
+  usd: number | null;
 }
 
 interface CountedUsage {
@@ -44,7 +59,7 @@ export function readStreamLine(line: string): StreamPiece | null {
   const record = parsed as Record<string, unknown>;
   const usage = usageOf(record);
   const text = textFrom(record);
-  const guessed = guessLineTokens(record);
+  const guessed = guessLineTokens(record, text);
   return {
     tokensIn: uncachedInput(record, usage),
     tokensOut: numberFrom(usage, ['output_tokens', 'outputTokens', 'completion_tokens']),
@@ -53,6 +68,7 @@ export function readStreamLine(line: string): StreamPiece | null {
     reportedUsd:
       numberFrom(record, ['total_cost_usd', 'totalCostUsd', 'cost_usd']) ??
       numberFrom(usage, ['total_cost_usd', 'totalCostUsd', 'cost_usd']),
+    own: ownUsageOf(record),
     guessedIn: guessed.tokensIn,
     guessedOut: guessed.tokensOut,
     guessKind: guessed.kind,
@@ -157,22 +173,21 @@ export function takeAnswer(current: string, locked: boolean, piece: StreamPiece)
   return { text: piece.replaceText ? piece.text : current + piece.text, locked };
 }
 
-/** Sums every result line. A resumed log is two calls, and each result is that call's own total. */
-export function usageFromStream(raw: string): CountedUsage | null {
+/**
+ * Sums the visit's own usage of every result line. A line that reports it apart from the session total gives it as is.
+ * Otherwise its total is taken against the chat's recorded total, `prior` and the lines before it. A Codex turn
+ * reports its own tokens and is never reduced.
+ */
+export function usageFromStream(raw: string, prior: ChatUsage = NO_USAGE): CountedUsage | null {
   const results: CountedUsage[] = [];
   let last: CountedUsage | null = null;
+  const recorded = { ...prior };
   for (const line of raw.split('\n')) {
     const piece = readStreamLine(line);
     if (!piece || !counted(piece)) {
       continue;
     }
-    const row = {
-      input: piece.tokensIn ?? 0,
-      output: piece.tokensOut ?? 0,
-      cacheRead: piece.cacheRead ?? 0,
-      cacheWrite: piece.cacheWrite ?? 0,
-      reportedUsd: piece.reportedUsd,
-    };
+    const row = piece.result && !piece.addUsage ? resultRow(piece, recorded) : totalsRow(piece);
     last = row;
     if (piece.result) {
       results.push(row);
@@ -192,110 +207,76 @@ export function usageFromStream(raw: string): CountedUsage | null {
   };
 }
 
+function totalsRow(piece: StreamPiece): CountedUsage {
+  return {
+    input: piece.tokensIn ?? 0,
+    output: piece.tokensOut ?? 0,
+    cacheRead: piece.cacheRead ?? 0,
+    cacheWrite: piece.cacheWrite ?? 0,
+    reportedUsd: piece.reportedUsd,
+  };
+}
+
+/** The visit's part of a result line. `recorded` is the chat's total so far and moves on to include this line. */
+function resultRow(piece: StreamPiece, recorded: ChatUsage): CountedUsage {
+  const total = totalsRow(piece);
+  const own = piece.own;
+  if (own) {
+    recorded.tokensIn += own.input + own.cacheRead + own.cacheWrite;
+    recorded.tokensOut += own.output;
+    recorded.usd += own.usd ?? 0;
+    return { ...own, reportedUsd: own.usd };
+  }
+  const prompt = total.input + total.cacheRead + total.cacheWrite;
+  const promptOwn = sinceRecorded(prompt, recorded.tokensIn);
+  const share = prompt > 0 ? promptOwn / prompt : 0;
+  const cacheRead = Math.round(total.cacheRead * share);
+  const cacheWrite = Math.round(total.cacheWrite * share);
+  const row = {
+    input: Math.max(0, promptOwn - cacheRead - cacheWrite),
+    output: sinceRecorded(total.output, recorded.tokensOut),
+    cacheRead,
+    cacheWrite,
+    reportedUsd: total.reportedUsd === null ? null : sinceRecorded(total.reportedUsd, recorded.usd),
+  };
+  recorded.tokensIn = recordedAfter(prompt, recorded.tokensIn);
+  recorded.tokensOut = recordedAfter(total.output, recorded.tokensOut);
+  recorded.usd = recordedAfter(total.reportedUsd ?? 0, recorded.usd);
+  return row;
+}
+
 function counted(piece: StreamPiece): boolean {
   return (
     piece.tokensIn !== null ||
     piece.tokensOut !== null ||
     piece.cacheRead !== null ||
     piece.cacheWrite !== null ||
-    piece.reportedUsd !== null
+    piece.reportedUsd !== null ||
+    piece.own !== null
   );
 }
 
-interface UsageGuess {
-  context: number;
-  tokensIn: number;
-  tokensOut: number;
-  replay: boolean;
-}
-
-/** Cursor only puts usage on the result line. Live spend counts each model round until that line arrives. */
-export function emptyUsageGuess(): UsageGuess {
-  return { context: 0, tokensIn: 0, tokensOut: 0, replay: false };
-}
-
-export function guessFromStream(raw: string): { input: number; output: number } | null {
-  const state = emptyUsageGuess();
-  let any = false;
-  for (const line of raw.split('\n')) {
-    const piece = readStreamLine(line);
-    if (!piece || piece.guessKind === 'none') {
-      continue;
-    }
-    addGuessedLine(state, piece);
-    any = true;
-  }
-  if (!any || (state.tokensIn === 0 && state.tokensOut === 0)) {
+/** `model_usage_since_last_result` holds one entry per model. The piece's own usage is their sum. */
+function ownUsageOf(record: Record<string, unknown>): OwnUsage | null {
+  const byModel = record.model_usage_since_last_result;
+  if (!byModel || typeof byModel !== 'object') {
     return null;
   }
-  return { input: state.tokensIn, output: state.tokensOut };
-}
-
-export function addGuessedLine(state: UsageGuess, piece: StreamPiece): void {
-  if (piece.guessKind === 'user') {
-    state.context += piece.guessedIn;
-    state.tokensIn += piece.guessedIn;
-    return;
+  const entries = Object.values(byModel as Record<string, unknown>).filter(
+    (entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object',
+  );
+  if (entries.length === 0) {
+    return null;
   }
-  if (piece.guessKind === 'tool-result') {
-    state.context += piece.guessedIn;
-    state.replay = true;
-    return;
-  }
-  if (piece.guessKind === 'output' && piece.guessedOut > 0) {
-    if (state.replay) {
-      state.tokensIn += state.context;
-      state.replay = false;
-    }
-    state.tokensOut += piece.guessedOut;
-    state.context += piece.guessedOut;
-  }
-}
-
-function guessLineTokens(record: Record<string, unknown>): {
-  kind: StreamPiece['guessKind'];
-  tokensIn: number;
-  tokensOut: number;
-} {
-  if (record.type === 'thinking') {
-    return { kind: 'output', tokensIn: 0, tokensOut: tokensOf(typeof record.text === 'string' ? record.text : '') };
-  }
-  if (record.type === 'assistant') {
-    return { kind: 'output', tokensIn: 0, tokensOut: tokensOf(textFrom(record) ?? '') };
-  }
-  if (record.type === 'user') {
-    return { kind: 'user', tokensIn: tokensOf(textFrom(record) ?? ''), tokensOut: 0 };
-  }
-  if (record.type === 'tool_call') {
-    const { args, result } = toolParts(record);
-    if (record.subtype === 'completed') {
-      return { kind: 'tool-result', tokensIn: tokensOf(result), tokensOut: 0 };
-    }
-    return { kind: 'output', tokensIn: 0, tokensOut: tokensOf(args) };
-  }
-  return { kind: 'none', tokensIn: 0, tokensOut: 0 };
-}
-
-function toolParts(record: Record<string, unknown>): { args: unknown; result: unknown } {
-  const call = record.tool_call;
-  if (!call || typeof call !== 'object') {
-    return { args: null, result: null };
-  }
-  for (const body of Object.values(call as Record<string, unknown>)) {
-    if (body && typeof body === 'object') {
-      const item = body as { args?: unknown; result?: unknown };
-      return { args: item.args ?? null, result: item.result ?? null };
-    }
-  }
-  return { args: null, result: null };
-}
-
-function tokensOf(value: unknown): number {
-  if (value === null || value === undefined) {
-    return 0;
-  }
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  return text.length === 0 ? 0 : Math.ceil(text.length / 4);
+  const sum = (keys: string[]): number => entries.reduce((total, entry) => total + (numberFrom(entry, keys) ?? 0), 0);
+  const costs = entries.map((entry) => numberFrom(entry, ['costUSD', 'cost_usd']));
+  return {
+    input: sum(['inputTokens', 'input_tokens']),
+    output: sum(['outputTokens', 'output_tokens']),
+    cacheRead: sum(['cacheReadInputTokens', 'cache_read_input_tokens']),
+    cacheWrite: sum(['cacheCreationInputTokens', 'cache_creation_input_tokens']),
+    usd: costs.every((cost) => cost === null) ? null : costs.reduce<number>((total, cost) => total + (cost ?? 0), 0),
+  };
 }
 
 function usageOf(record: Record<string, unknown>): Record<string, unknown> {
