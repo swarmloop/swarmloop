@@ -7,7 +7,7 @@ import { addGuessedLine, emptyUsageGuess } from './stream-guess';
 interface AttemptBilling {
   model: string;
   prices: Record<string, ModelPrice>;
-  /** What the chat already cost before this attempt. A result line that reports the whole session is taken against it. */
+  /** The chat's previous reported session totals. A result line that reports the whole session is taken against them. */
   prior: ChatUsage;
 }
 
@@ -78,7 +78,7 @@ export class AttemptMeter {
   }
 
   billed(): AttemptUsage {
-    const { model, prices, prior } = this.billing;
+    const { model, prices } = this.billing;
     if (!this.billedFromStream) {
       return {
         tokensIn: this.guess.tokensIn,
@@ -94,15 +94,30 @@ export class AttemptMeter {
         usd: usd ?? priceTokens(model, input, output, prices, cacheRead, cacheWrite) ?? 0,
       };
     }
-    const priced = priceTokens(model, this.tokensIn, this.tokensOut, prices, this.cacheRead, this.cacheWrite) ?? 0;
-    const tokensIn = this.tokensIn + this.cacheRead + this.cacheWrite;
+    const totals = this.totals();
+    const { prior } = this.billing;
     if (!this.fromResult) {
-      return { tokensIn, tokensOut: this.tokensOut, usd: this.reportedUsd ?? priced };
+      return totals;
     }
     return {
-      tokensIn: sinceRecorded(tokensIn, prior.tokensIn),
-      tokensOut: sinceRecorded(this.tokensOut, prior.tokensOut),
-      usd: sinceRecorded(this.reportedUsd ?? priced, prior.usd),
+      tokensIn: sinceRecorded(totals.tokensIn, prior.tokensIn),
+      tokensOut: sinceRecorded(totals.tokensOut, prior.tokensOut),
+      usd: sinceRecorded(totals.usd, prior.usd),
+    };
+  }
+
+  /** The session totals of the last result line, also from a line that reports the visit's own part. Null when there is none. */
+  reported(): AttemptUsage | null {
+    return this.fromResult ? this.totals() : null;
+  }
+
+  private totals(): AttemptUsage {
+    const { model, prices } = this.billing;
+    const priced = priceTokens(model, this.tokensIn, this.tokensOut, prices, this.cacheRead, this.cacheWrite) ?? 0;
+    return {
+      tokensIn: this.tokensIn + this.cacheRead + this.cacheWrite,
+      tokensOut: this.tokensOut,
+      usd: this.reportedUsd ?? priced,
     };
   }
 

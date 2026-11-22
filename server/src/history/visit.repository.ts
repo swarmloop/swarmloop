@@ -10,7 +10,7 @@ import { insertAcceptedCommand } from './accepted-command';
 import { releasedColumns } from './run-state';
 import { transaction } from './transaction';
 import { summarizeSamples } from './visit';
-import type { VisitDraft } from './visit';
+import type { ExchangeDraft, VisitDraft } from './visit';
 import {
   StepStatEntity,
   ResourceSampleEntity,
@@ -50,6 +50,25 @@ interface FinalizeCommand {
 }
 
 const DUPLICATE_ATTEMPT = 'UNIQUE constraint failed: step_stats.attempt_id';
+
+/** The columns of one exchange of a visit, with the session totals its launch reported. */
+function exchangeRow(stepStatId: number, exchange: ExchangeDraft): Partial<AgentExchangeEntity> {
+  return {
+    stepStatId,
+    model: exchange.model,
+    startedAt: exchange.startedAt,
+    finishedAt: exchange.finishedAt,
+    durationMs: exchange.durationMs,
+    requestText: exchange.requestText,
+    responseText: exchange.responseText,
+    chatId: exchange.chatId,
+    resumed: exchange.resumed ? 1 : 0,
+    killReason: exchange.killReason,
+    reportedUsd: exchange.reported?.usd ?? null,
+    reportedTokensIn: exchange.reported?.tokensIn ?? null,
+    reportedTokensOut: exchange.reported?.tokensOut ?? null,
+  };
+}
 
 @Injectable()
 export class VisitRepository {
@@ -211,20 +230,7 @@ export class VisitRepository {
       );
     }
     for (const exchange of visit.exchanges ?? (visit.exchange ? [visit.exchange] : [])) {
-      await exchanges.save(
-        exchanges.create({
-          stepStatId: stat.id,
-          model: exchange.model,
-          startedAt: exchange.startedAt,
-          finishedAt: exchange.finishedAt,
-          durationMs: exchange.durationMs,
-          requestText: exchange.requestText,
-          responseText: exchange.responseText,
-          chatId: exchange.chatId,
-          resumed: exchange.resumed ? 1 : 0,
-          killReason: exchange.killReason,
-        }),
-      );
+      await exchanges.save(exchanges.create(exchangeRow(stat.id, exchange)));
     }
     for (const call of visit.httpCalls) {
       await httpCalls.save(

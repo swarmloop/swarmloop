@@ -19,6 +19,7 @@ export function agentExchange(agent: AgentRunResult, model: string, prompt: stri
     chatId: agent.chatId,
     resumed: agent.resumed,
     killReason: agent.killReason,
+    reported: agent.reported ?? null,
   };
 }
 

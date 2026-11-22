@@ -25,4 +25,19 @@ export class ChatUsageRepository {
     const row = rows[0];
     return { usd: Number(row?.usd) || 0, tokensIn: Number(row?.tokensIn) || 0, tokensOut: Number(row?.tokensOut) || 0 };
   }
+
+  /** The session totals the chat's latest exchange reported. Null when that exchange has none. */
+  async lastReportedOf(chatId: string): Promise<ChatUsage | null> {
+    const rows: { usd: number | null; tokensIn: number | null; tokensOut: number | null }[] =
+      await this.dataSource.query(
+        `SELECT reported_usd AS usd, reported_tokens_in AS tokensIn, reported_tokens_out AS tokensOut
+         FROM agent_exchanges WHERE chat_id = ? ORDER BY id DESC LIMIT 1`,
+        [chatId],
+      );
+    const row = rows[0];
+    if (!row || row.usd === null || row.tokensIn === null || row.tokensOut === null) {
+      return null;
+    }
+    return { usd: Number(row.usd), tokensIn: Number(row.tokensIn), tokensOut: Number(row.tokensOut) };
+  }
 }

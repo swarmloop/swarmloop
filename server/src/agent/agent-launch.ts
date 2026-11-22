@@ -144,7 +144,7 @@ export class AgentLaunch {
     const sessionWrites = new SessionWrites(input.sessionFile, runtime.name);
     try {
       await log.begin();
-      const sessionUsd = (): number => (input.prior ?? NO_USAGE).usd + meter.billed().usd;
+      const sessionUsd = (): number => (input.chatSpentUsd ?? 0) + meter.billed().usd;
 
       let chatId = input.resumeChatId;
       let killReason: KillReason | null = null;
@@ -273,6 +273,7 @@ export class AgentLaunch {
         tokensIn: priced.tokensIn,
         tokensOut: priced.tokensOut,
         usd: priced.usd,
+        reported: meter.reported(),
         killReason: finalKillReason,
         exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,
         output,

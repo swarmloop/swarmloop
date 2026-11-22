@@ -210,4 +210,19 @@ describe("a visit's own usage", () => {
     expect((usage?.input ?? 0) + (usage?.cacheRead ?? 0)).toBe(400);
     expect(usage).toMatchObject({ output: 100, reportedUsd: 8 });
   });
+
+  it("takes a result line after an own-part line against that line's session totals", () => {
+    const own = {
+      m: { inputTokens: 5, outputTokens: 7, cacheReadInputTokens: 11, cacheCreationInputTokens: 0, costUSD: 1.5 },
+    };
+    const second = JSON.stringify({
+      type: 'result',
+      total_cost_usd: 8,
+      usage: { input_tokens: 100, cache_read_input_tokens: 300, output_tokens: 100 },
+    });
+    const usage = usageFromStream(`${claudeResult({ model_usage_since_last_result: own })}\n${second}`);
+    // The first line is its own part, 16 prompt tokens. The second is 400 against the 340 the first reported: 60.
+    expect((usage?.input ?? 0) + (usage?.cacheRead ?? 0)).toBe(76);
+    expect(usage).toMatchObject({ output: 17, reportedUsd: 3.5 });
+  });
 });

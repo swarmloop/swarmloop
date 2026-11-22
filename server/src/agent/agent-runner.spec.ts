@@ -355,6 +355,22 @@ describe('AgentProcessRunner limit continuation', () => {
     expect(file).toContain('process started');
   });
 
+  it('takes a session total against none after a launch that reported no session total', async () => {
+    const session = JSON.stringify({
+      type: 'result',
+      result: 'done',
+      total_cost_usd: 5.4,
+      usage: { input_tokens: 540, output_tokens: 54 },
+    });
+    const { result } = await start(
+      'unreported',
+      [{ chunks: [chatStream('chat-9', 'first-stream')] }, { chunks: [`${session}\n`] }],
+      { resumeChatId: 'chat-9', timeLimitMs: 0, prior: { usd: 5, tokensIn: 500, tokensOut: 50 }, chatSpentUsd: 5 },
+    );
+    // The killed launch left the chat with no reported total, so 5.4 counts whole and not as 0.4.
+    expect(result.usd).toBeGreaterThan(5);
+  });
+
   it('relaunches an idle kill the same way', async () => {
     const { result, launches } = await start(
       'idle',

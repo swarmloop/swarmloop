@@ -30,8 +30,10 @@ export interface AgentRunInput {
   timeLimitMs?: number;
   approveMcps?: boolean;
   auto?: boolean;
-  /** What the chat already cost: its stored visits and the earlier launches of this attempt. A session total is taken against it. */
+  /** The chat's previous reported session totals. A session total is taken against them. */
   prior?: ChatUsage;
+  /** What the chat already cost: its stored visits and the earlier launches of this attempt. */
+  chatSpentUsd?: number;
   /**
    * Prompt for another launch after a time or idle kill.
    * Null leaves that kill as the result. Omitted uses the shared default.

@@ -18,6 +18,17 @@ describe('AttemptChatUsage', () => {
     expect(usage.of('run-2', 'attempt-1', 'chat-a')).toEqual(none);
   });
 
+  it('keeps the last reported totals of a chat in the attempt', () => {
+    const usage = new AttemptChatUsage();
+    expect(usage.reportedOf('run-1', 'attempt-1', 'chat-a')).toBeUndefined();
+    usage.add('run-1', 'attempt-1', 'chat-a', { ...first, reported: { usd: 1.37, tokensIn: 100, tokensOut: 10 } });
+    usage.add('run-1', 'attempt-1', 'chat-a', { ...first, reported: { usd: 1.5, tokensIn: 120, tokensOut: 12 } });
+    expect(usage.reportedOf('run-1', 'attempt-1', 'chat-a')).toEqual({ usd: 1.5, tokensIn: 120, tokensOut: 12 });
+    usage.add('run-1', 'attempt-1', 'chat-b', first);
+    expect(usage.reportedOf('run-1', 'attempt-1', 'chat-b')).toBeNull();
+    expect(usage.reportedOf('run-1', 'attempt-2', 'chat-a')).toBeUndefined();
+  });
+
   it('drops them when a new attempt of the run starts', () => {
     const usage = new AttemptChatUsage();
     usage.add('run-1', 'attempt-1', 'chat-a', first);
