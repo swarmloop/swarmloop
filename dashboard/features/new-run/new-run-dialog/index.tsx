@@ -17,7 +17,7 @@ import type { CreateRunBody, RemoteEntry, RemoteListView } from '@contract/api';
 import { PhasePicker } from './phase-picker';
 import { ProjectPicker } from './project-picker';
 
-const PREVIEW_DELAY_MS = 300;
+export const PREVIEW_DELAY_MS = 300;
 const DEFAULT_PHASES: PhaseName[] = [...PHASES];
 
 export function NewRunDialog({
