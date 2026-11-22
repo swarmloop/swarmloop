@@ -1,3 +1,4 @@
+import { HostUnavailable } from '../../../core/swarmloop-error';
 import { backlogMessageKey } from '../../../history/backlog-message-key';
 import { plannerTurnsHarness } from './planner-turns.spec-helpers';
 import { turnResult } from './planner-scenarios.spec-helpers';
@@ -88,6 +89,21 @@ describe('BacklogTurnRunner', () => {
       await expect(h.runner.run('one', 'turn-a')).rejects.toThrow("The planner's agent did not finish");
       expect(h.workspace.closed).toEqual(['turn-a']);
       expect((await h.chat.findTurn('turn-a'))?.tokensIn).toBe(10);
+    }));
+
+  it('ends with the next try of the host when the worktrees of a turn cannot be fetched', () =>
+    withTurn(async (h, id) => {
+      const retryAt = new Date(h.db.clock.now() + 5 * 60_000).toISOString();
+      const error = new HostUnavailable('github.com', 'Could not resolve host: github.com', retryAt);
+      h.failNextOpen(error);
+      await expect(h.runner.run('one', 'turn-a')).resolves.toEqual({
+        status: 'waiting',
+        reason: error.message,
+        resumesAt: retryAt,
+      });
+      expect(h.agent.launches).toEqual([]);
+      expect(h.workspace.closed).toEqual(['turn-a']);
+      expect(await h.lines(id)).toEqual(['person: plan it']);
     }));
 
   it('runs again on Resume after a launch halted its key', () =>

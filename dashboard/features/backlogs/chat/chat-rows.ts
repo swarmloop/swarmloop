@@ -36,8 +36,17 @@ function olderSentence(older: number): string {
   return `${older} older ${older === 1 ? 'message is' : 'messages are'} left out.`;
 }
 
+type Turn = BacklogChatView['turns'][number];
+
+/** What a turn that waits says: why, and when the planner tries again. */
+function waitingSentence(turn: Turn): string {
+  return turn.nextTryAt ? `${turn.reason} The planner tries again at ${localTime(turn.nextTryAt)}.` : turn.reason;
+}
+
 function turnRow(chat: BacklogChatView, owner: boolean): ChatRow | null {
   const turn = chat.turns.at(-1);
+  if (turn?.status === 'applied' && turn.nextTryAt)
+    return { type: 'info', key: 'turn', sentence: waitingSentence(turn) };
   switch (turn?.status) {
     case 'failed':
       return {
@@ -48,13 +57,7 @@ function turnRow(chat: BacklogChatView, owner: boolean): ChatRow | null {
         resume: owner,
       };
     case 'waiting':
-      return {
-        type: 'info',
-        key: 'turn',
-        sentence: turn.nextTryAt
-          ? `${turn.reason} The planner tries again at ${localTime(turn.nextTryAt)}.`
-          : turn.reason,
-      };
+      return { type: 'info', key: 'turn', sentence: waitingSentence(turn) };
     case 'running':
     case 'applied':
       return { type: 'working', key: 'turn' };

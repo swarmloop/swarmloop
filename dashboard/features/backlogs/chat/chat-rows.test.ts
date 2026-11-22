@@ -89,4 +89,16 @@ describe('chatRows', () => {
     expect(chatRows(failed, backlogView(), 'bob')).toMatchObject([{ type: 'problem', resume: false }]);
     expect(chatRows(running, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn' }]);
   });
+
+  it('shows a waiting turn and an applied turn that waits for a host with their next try, not the working row', () => {
+    const next = '2026-11-22T14:36:41.506Z';
+    const reason = 'github.com did not answer';
+    const info = [{ type: 'info', key: 'turn', sentence: expect.stringContaining('The planner tries again at') }];
+    for (const status of ['waiting', 'applied'] as const) {
+      const view = backlogChatView({ messages: [], turns: [{ status, reason, nextTryAt: next }] });
+      expect(chatRows(view, backlogView(), 'ada')).toEqual(info);
+    }
+    const applied = backlogChatView({ messages: [], turns: [{ status: 'applied', reason: '', nextTryAt: null }] });
+    expect(chatRows(applied, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn' }]);
+  });
 });
