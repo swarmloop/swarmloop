@@ -24,7 +24,7 @@ import {
 import { disagrees } from '../steps/shared/subtask-status';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
-import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { AgentDoor } from '../steps/shared/agent-door';
 import type { Need } from '../steps/shared/needs';
 import { mergeSummaryOf } from '../steps/shared/merge-summary';
 import type { OpenedStep } from '../steps/step-run';
@@ -75,7 +75,7 @@ export class SubtaskPort extends SubtaskOps {
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
     commands: CommandService,
-    launcher: AgentLauncher,
+    door: AgentDoor,
     visits: VisitRepository,
     config: AppConfig,
     private readonly clock: Clock,
@@ -92,8 +92,7 @@ export class SubtaskPort extends SubtaskOps {
     super();
     this.worktrees = new SubtaskWorktrees(config, clock, publisher);
     const planning =
-      conversation ??
-      new PlanConversation(launcher, visits, documents, config, clock, new PlanChatStore(runs, documents));
+      conversation ?? new PlanConversation(door, visits, documents, config, clock, new PlanChatStore(runs, documents));
     this.asks = new SubtaskAsks(documents, commands, gate, planning, visits, runs);
     this.chain = new PlannerChain(
       {

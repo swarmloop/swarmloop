@@ -13,7 +13,9 @@ import { subtaskAnswer } from '../../agent-result/definitions/subtask-answer';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { ModelStepContext } from '../model-step-context';
 import { withPlan } from '../plan/plan-record';
+import { launchingDoor } from '../../testing/agent-door.spec-helpers';
 import { PlanConversation } from './plan-conversation';
+import { StartRefused } from './start-refused';
 
 const answered = {
   responseText: '',
@@ -53,6 +55,7 @@ function setup(options: { chat?: boolean; split?: boolean } = {}) {
   } as unknown as RunEntity;
   const launch = jest.fn().mockResolvedValue(answered);
   const finished: VisitDraft[] = [];
+  const links: [string, number][] = [];
   const log: PlanChatLog = { entries: [], revisions: [] };
   const store = {
     read: async () => log,
@@ -76,9 +79,12 @@ function setup(options: { chat?: boolean; split?: boolean } = {}) {
     latestDocument: async () => null,
   };
   const conversation = new PlanConversation(
-    { launch } as never,
+    launchingDoor(launch, links),
     {
-      finishVisit: async (_run: unknown, visit: VisitDraft) => void finished.push(visit),
+      finishVisit: async (_run: unknown, visit: VisitDraft) => {
+        finished.push(visit);
+        return { id: finished.length };
+      },
       hasAgentVisit: async () => false,
     } as never,
     documents as never,
@@ -92,7 +98,7 @@ function setup(options: { chat?: boolean; split?: boolean } = {}) {
     reread: async (artifact: { kind: string }) => stored[artifact.kind] ?? null,
     launch: relaunch,
   } as unknown as ModelStepContext;
-  return { conversation, launch, finished, log, ctx, relaunch, run, stored };
+  return { conversation, launch, links, finished, log, ctx, relaunch, run, stored };
 }
 
 describe('PlanConversation.visit', () => {
@@ -131,6 +137,34 @@ describe('PlanConversation.visit', () => {
 
     await expect(conversation.visit({ run, startedAt: '' } as never, () => 'x', subtaskAnswer)).resolves.toBeNull();
     expect(finished).toMatchObject([{ step: 'plan', exitCode: 1 }]);
+  });
+
+  it('links the stored visit with its start, also when the launch failed after admission', async () => {
+    const { conversation, launch, links, run } = setup();
+    await conversation.visit({ run, startedAt: '' } as never, () => 'x', subtaskAnswer);
+    launch.mockRejectedValue(new Error('boom'));
+    await conversation.visit({ run, startedAt: '' } as never, () => 'x', subtaskAnswer);
+
+    expect(links).toEqual([
+      ['start-1', 1],
+      ['start-2', 2],
+    ]);
+  });
+
+  it('gives the refusal and records no visit when the door refuses the start', async () => {
+    const { conversation, launch, finished, links, run } = setup();
+    const refusal = StartRefused.sameInput({
+      message: 'same input',
+      question: { from: 'plan', text: 'same input' },
+      startLevel: 1,
+    });
+    launch.mockRejectedValue(refusal);
+
+    const visit = await conversation.visit({ run, startedAt: '' } as never, () => 'x', subtaskAnswer);
+
+    expect(visit).toEqual({ refused: refusal });
+    expect(finished).toEqual([]);
+    expect(links).toEqual([]);
   });
 });
 

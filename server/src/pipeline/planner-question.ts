@@ -9,7 +9,7 @@ import { planReplyFor, type PlanReplyResult } from '../agent-result/definitions/
 import { resultPromptFor } from '../agent-result/result-prompt';
 
 /** What the planner left of a step's question: an answer, an escalation for the person, or nothing usable. */
-type QuestionOutcome = { kind: 'answered' | 'none' } | { kind: 'escalated'; escalation: PlanChatEntry };
+type QuestionOutcome = { kind: 'answered' | 'none' | 'refused' } | { kind: 'escalated'; escalation: PlanChatEntry };
 
 /** What a question turn needs. */
 interface QuestionDeps {
@@ -64,8 +64,10 @@ export async function askPlanner(
     (received) => planAnswersStep(question.from ?? 'a step', question.text, resultPromptFor(answerOnly, received)),
     answerOnly,
     hasReply,
+    [question.text],
   );
   if (!visit) return { kind: 'none' };
+  if ('refused' in visit) return { kind: 'refused' };
   const reply = visit.value as PlanReplyResult;
   const decide = reply.escalate?.trim();
   if (decide) {
@@ -110,8 +112,10 @@ export async function readPersonAnswer(
       ),
     answerOnly,
     hasReply,
+    [question.text, escalation.text, person],
   );
   if (!visit) return { kind: 'none' };
+  if ('refused' in visit) return { kind: 'refused' };
   await recordAnswer(deps, run, question, (visit.value as PlanReplyResult).reply);
   return { kind: 'answered' };
 }

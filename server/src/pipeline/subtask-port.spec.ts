@@ -19,6 +19,7 @@ import { ReportRefresh } from '../steps/shared/report-refresh';
 import { RunReport } from '../steps/shared/run-report';
 import { StartGate } from './start-gate';
 import { SubtaskPlannerAnswer } from './subtask-planner-answer';
+import { launchingDoor } from '../testing/agent-door.spec-helpers';
 import { SubtaskPort } from './subtask-port';
 
 const answered = {
@@ -74,13 +75,15 @@ async function asked(
       {
         latestBody: async (_key: string, kind: string) =>
           stored[kind] ?? (['research_result', 'plan_result', 'implementation_result'].includes(kind) ? null : 'app\n'),
+        latestDocument: async () => null,
         putDocument: async (_run: unknown, kind: string, body: string) => void (written[kind] = body),
       } as never,
       { submit } as never,
-      { launch } as never,
+      launchingDoor(launch),
       {
         finishVisit: async (_run: unknown, visit: VisitDraft) => {
           finished.push(visit);
+          return { id: finished.length };
         },
       } as never,
       new AppConfig(testEnv({ SWARMLOOP_ROOT: dir, AGENTS_PLAN: 'claude:m-plan', ...env })),
