@@ -14,11 +14,12 @@ import type { RunStop } from '../agent/run-stop';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { assertKey, isStep } from '../core/pipeline-result';
 import { storedState, writeRunState } from '../history/run-state';
-import { ERROR_CODES } from '../contract/error-codes';
 import { REASON, STOP_NOTE, TIMED_RETRY_CODES } from '../contract/run-state';
 import { reportFailure } from '../steps/shared/step-failure';
 import { CHAT_LOCK, chatHeld } from './chat-lock';
 import { flagError } from './flag-error';
+import { STOP_CLEANUP } from './stopped-cleanup';
+import { closeStopped, stepElapsed } from './stop-close';
 import type { Reconciler } from './reconciler';
 import { silentMessage } from './reconciler';
 import { settleShell, shellHolding } from './shell-lock';
@@ -225,32 +226,28 @@ export class RunLifecycle implements OnApplicationBootstrap {
       return null;
     }
     this.runStop.halt(key);
-    if ((await this.stopContainers(key, run)) === 'unknown') {
-      return this.dockerSilent(key);
-    }
+    const first = await this.stopContainers(key, run);
     const idle = await this.untilIdle(key);
-    if (!idle) {
-      return { exitCode: 1, message: `${key} is still running` };
-    }
     // The driver may have started a container before it saw the intent: list again now that it has left.
-    return (await this.stopContainers(key, run)) === 'unknown' ? this.dockerSilent(key) : null;
+    const silent = first === 'unknown' || (idle && (await this.stopContainers(key, run)) === 'unknown');
+    if (idle && !silent) return null;
+    return this.closeUnconfirmed(key, run, silent);
   }
 
   private stopContainers(key: string, run: RunEntity): Promise<'gone' | 'unknown'> {
     return this.sandbox.stopRun(key, run.currentStep, this.config.env.STOP_GRACE_S);
   }
 
-  /** Docker did not answer: the run is blocked, not stopped, and the intent stays until a Resume. */
-  private async dockerSilent(key: string): Promise<PipelineResult> {
+  /**
+   * Docker did not answer or the driver has not left: the attempt closes as a killed visit and the run is stored
+   * STOPPED. A Docker that did not answer leaves a stop_cleanup document, which the reconciler works off.
+   */
+  private async closeUnconfirmed(key: string, run: RunEntity, silent: boolean): Promise<PipelineResult | null> {
+    if (silent) await this.documents.putDocument(run, STOP_CLEANUP, run.currentStep);
     const fresh = await this.runs.findRun(key);
-    if (fresh?.status === 'running') {
-      await this.runs.release(fresh, {
-        status: 'blocked',
-        reason: { code: ERROR_CODES.RESOURCE_UNKNOWN, message: silentMessage(key) },
-        stepStartedAt: null,
-      });
-    }
-    return { exitCode: 1, message: silentMessage(key) };
+    if (fresh?.status !== 'running') return null;
+    await closeStopped(this.visits, this.clock, fresh);
+    return { exitCode: 0, message: `${key} stopped` };
   }
 
   protected untilIdle(key: string): Promise<boolean> {
@@ -300,9 +297,4 @@ function targetError(path: string | undefined): string | null {
   if (path === undefined) return null;
   if (!existsSync(path) || !statSync(path).isDirectory()) return 'path is not a directory';
   return null;
-}
-function stepElapsed(startedAt: string | null, now: number): number {
-  if (!startedAt) return 0;
-  const started = Date.parse(startedAt);
-  return Number.isFinite(started) ? Math.max(0, now - started) : 0;
 }
