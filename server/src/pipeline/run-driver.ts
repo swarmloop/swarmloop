@@ -106,7 +106,12 @@ export class RunDriver {
       if (this.runStop.halted(key)) {
         return { exitCode: ran ? 0 : 1, message: `${key} stopped` };
       }
-      step = ((await this.subtasks?.applyPendingRebase(key)) as StepName | null) ?? step;
+      const rebased = (await this.subtasks?.applyPendingRebase(key)) as StepName | null | undefined;
+      if (rebased) {
+        // A taken rebase relaunches the run on a new head: a new round, as a person's start.
+        step = rebased;
+        manual = true;
+      }
       const gate = await this.passGate(key, step, stepOptions);
       if ('message' in gate) {
         return { exitCode: ran ? 0 : 1, message: gate.message };

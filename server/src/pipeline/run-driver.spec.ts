@@ -1,5 +1,6 @@
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
+import { VisitRepository } from '../history/visit.repository';
 import { RunRebase } from '../steps/run-rebase';
 import { storedState, writeRunState } from '../history/run-state';
 import {
@@ -212,6 +213,34 @@ describe('run driver and the parent of a subtask', () => {
       expect(ran[0]).toBe('implement');
       expect(ran).not.toContain('research');
       expect(await app.app.get(DocumentRepository).latestBody(`${PARENT}-a`, 'pending_rebase')).toBe('');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('makes the hop that takes a rebase a new round of an automatic run: the loop mark is the relaunched visit', async () => {
+    const { app } = await world();
+    try {
+      await seedParent(app, [task('a')]);
+      await pass(app);
+      const run = await child(app, 'a');
+      writeRunState(run, { status: 'waiting', currentStep: 'research' });
+      await app.app.get(RunRepository).saveRun(run);
+      await app.app.get(DocumentRepository).putDocument(run, 'pending_rebase', 'rebased onto the epic after b merged');
+      jest.spyOn(app.app.get(RunRebase), 'rebase').mockImplementation(async (key) => {
+        const moved = (await app.app.get(RunRepository).findRun(key))!;
+        writeRunState(moved, { status: 'waiting', currentStep: 'implement' });
+        await app.app.get(RunRepository).saveRun(moved);
+        return 'start';
+      });
+      installScripts(app, { implement: () => ({ outcome: 'waiting', exitCode: 0 }) }, ['implement']);
+
+      await app.pipeline.runThrough(`${PARENT}-a`, { auto: true });
+      await settle(app);
+
+      const stats = await app.app.get(VisitRepository).listStats(run.id);
+      const relaunched = stats.find((stat) => stat.step === 'implement')!;
+      expect(await app.app.get(DocumentRepository).latestBody(`${PARENT}-a`, 'loop_mark')).toBe(`${relaunched.id}\n`);
     } finally {
       await app.close();
     }
