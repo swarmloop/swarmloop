@@ -1,9 +1,19 @@
 import type { OnModuleInit } from '@nestjs/common';
 import { Injectable } from '@nestjs/common';
+import type { TurnAnswer } from '../agent-result/definitions/backlog-turn';
 import { CommandService } from '../pipeline/command.service';
 import { PlannerRunPort, type PlannerRunCommand } from '../pipeline/backlog/planner/planner-run-port';
 import { PERSON_RESUME } from '../pipeline/resume-sender';
 import { PlanChatService } from './plan-chat.service';
+
+/**
+ * Answers that each name a question go the way the person's route sends them. Any other answer goes as a message,
+ * which answers every open question the way a plan-chat message does.
+ */
+function answerPayload(answers: TurnAnswer[]): { answers: TurnAnswer[] } | { message: string } {
+  if (answers.length > 0 && answers.every((answer) => answer.kind && answer.id)) return { answers };
+  return { message: answers.map((answer) => answer.body.trim()).join('\n\n') };
+}
 
 /** Sends the planner's commands to a run the way the person's routes do: the same commands, the owner as the person. */
 @Injectable()
@@ -22,7 +32,7 @@ export class PlannerRunCommands implements OnModuleInit {
     const options = { idempotencyKey };
     switch (command.type) {
       case 'answer':
-        await this.commands.submit('answer', command.run, { answers: command.answers }, options);
+        await this.commands.submit('answer', command.run, answerPayload(command.answers), options);
         return;
       case 'resume':
         await this.commands.submit('resume', command.run, { ...PERSON_RESUME }, { ...options, actor: owner });

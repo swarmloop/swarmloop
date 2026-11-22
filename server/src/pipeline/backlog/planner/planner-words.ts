@@ -1,5 +1,7 @@
 import { isRunAction } from '../../../agent-result/definitions/backlog-turn';
 import type { BacklogTurnAction, RunAction } from '../../../agent-result/definitions/backlog-turn';
+import { commandOf } from './planner-backlog-calls';
+import type { PlannerRunCommand } from './planner-run-port';
 
 /** An action in plain words for the chat: what the planner asked for, without field names. */
 export function describeAction(action: BacklogTurnAction): string {
@@ -7,19 +9,24 @@ export function describeAction(action: BacklogTurnAction): string {
 }
 
 function describeRunAction(action: RunAction): string {
-  switch (action.action) {
-    case 'answerRun':
-      return `answer the run ${action.run}`;
+  return describeCommand(commandOf(action));
+}
+
+/** A command to a run in plain words for the chat. */
+export function describeCommand(command: PlannerRunCommand): string {
+  switch (command.type) {
+    case 'answer':
+      return `answer the run ${command.run}`;
     case 'planChat':
-      return `write to the planner of ${action.run}`;
+      return `write to the planner of ${command.run}`;
     case 'resume':
-      return `resume ${action.run}`;
+      return `resume ${command.run}`;
     case 'replay':
-      return `replay ${action.step} of ${action.run}`;
+      return `replay ${command.step} of ${command.run}`;
     case 'skipTask':
-      return `skip a task of ${action.run}`;
+      return `skip a task of ${command.run}`;
     case 'stop':
-      return `stop ${action.run}`;
+      return `stop ${command.run}`;
   }
 }
 

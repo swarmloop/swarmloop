@@ -16,6 +16,7 @@ import { CommandService } from '../pipeline/command.service';
 import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
+import { skillSection } from '../steps/shared/skill-prompt';
 import { createFlowHarness } from './flow-harness';
 import { BlockAgentRunner, type ScriptedAnswer } from './result-answer';
 import { remember } from './runs.spec-helpers';
@@ -30,6 +31,11 @@ const block = (value: unknown): ScriptedAnswer => ({ block: value });
 const firstPlan = block({ summary: ['planned'], plan: FIRST, covers: [['R1'], ['R1']] });
 const asks = block({ implementation: [], summary: ['stopped at a choice'], question: QUESTION });
 const done = block({ implementation: ['changed the field'], summary: ['implemented the plan'] });
+const GOAL = 'a block says why by its code and never by its text';
+const STOP_FIRST = "the stop's code comes first";
+const OLD_ROWS =
+  'How do old stopped rows read when their latest error is left over from an earlier visit (a step that did not fit its budget, or a check that failed again on unchanged files)?';
+const HELD_DECISION = `The row reads by the stop's code, because the goal says ${GOAL} and the run holds that ${STOP_FIRST}.`;
 const escalates = block({ reply: 'This is a product decision.', escalate: DECIDE });
 
 describe('a question the planner cannot settle goes to whoever started the run', () => {
@@ -124,16 +130,19 @@ describe('a review disagreement that implement and the reviewer did not settle',
     rejected: [{ reviewer: 'requirements', finding: 'the field is missing', reason: 'The plan removes it.' }],
   });
 
-  async function start(plan: ScriptedAnswer[]): Promise<void> {
+  async function start(
+    plan: ScriptedAnswer[],
+    { requirement = 'ship the field', reviews = [returns, stillReturns] } = {},
+  ): Promise<void> {
     blocks = new BlockAgentRunner({
       plan: [firstPlan, ...plan],
       implement: [done, keeps],
-      'code-review-requirements': [returns, stillReturns],
+      'code-review-requirements': reviews,
     });
     flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', realReview: true });
     const documents = flow.app.app.get(DocumentRepository);
     const run = await remember(flow.app.app.get(RunRepository), documents, KEY, 'plan', 'waiting');
-    await documents.putDocument(run, 'requirement_list', '[{"id":"R1","text":"ship the field"}]\n');
+    await documents.putDocument(run, 'requirement_list', JSON.stringify([{ id: 'R1', text: requirement }]) + '\n');
     mkdirSync(join(flow.app.root, 'worktrees', KEY, 'demo'), { recursive: true });
   }
 
@@ -153,6 +162,35 @@ describe('a review disagreement that implement and the reviewer did not settle',
       { kind: 'question', from: 'code-review-requirements', state: 'taken' },
       { kind: 'answer', from: 'code-review-requirements', text: 'The plan removes that field.' },
     ]);
+    expect(await questions()).toBeNull();
+    expect((await flow.app.app.get(RunQueriesService).flow(KEY)).items).toEqual([]);
+  });
+
+  it('is decided by the planner when its brief and its decisions answer it, and no one is asked', async () => {
+    const old = (reason?: string) =>
+      block({
+        decision: 'return',
+        review: 'requirements',
+        summary: ['rows do not say how they read'],
+        ...(reason ? { reason } : {}),
+        requirements: [{ id: 'R1', status: 'missing', note: OLD_ROWS }],
+      });
+    await start([block({ reply: HELD_DECISION })], {
+      requirement: `${GOAL}; ${STOP_FIRST}`,
+      reviews: [old(), old('Old stopped rows still do not say how they read.')],
+    });
+
+    await flow.app.pipeline.runThrough(KEY, { auto: true });
+
+    const planLaunch = blocks.prompts.filter((launch) => launch.step === 'plan').at(-1);
+    expect(planLaunch?.prompt).toContain('requirements still returns');
+    expect(planLaunch?.prompt).toContain(skillSection('plan', 'Decide what you hold'));
+    const entries = await asked();
+    expect(entries).toMatchObject([
+      { kind: 'question', from: 'code-review-requirements', state: 'taken' },
+      { kind: 'answer', from: 'code-review-requirements', text: HELD_DECISION },
+    ]);
+    expect(entries.some((entry) => entry.kind === 'escalation')).toBe(false);
     expect(await questions()).toBeNull();
     expect((await flow.app.app.get(RunQueriesService).flow(KEY)).items).toEqual([]);
   });
@@ -252,6 +290,25 @@ describe('a subtask asks the planner of its parent', () => {
     ]);
     expect(await documents.latestBody(PARENT, 'contract')).toMatch(/- subtask a at \S+: Use a column\./);
     expect(await documents.latestBody(PARENT, 'subtask_questions')).toBeNull();
+  });
+
+  it('is decided by the parent planner from its contract, and the person is not asked', async () => {
+    const { prompts, documents, parent } = await splitWorld(HELD_DECISION);
+    await documents.putDocument(parent, 'contract', `- names are camelCase\n- ${STOP_FIRST}\n`);
+    const run = await child(app, 'a');
+    writeRunState(run, { status: 'waiting', currentStep: 'code-review' });
+    await app.app.get(RunRepository).saveRun(run);
+    await documents.putDocument(run, 'review_questions', `- ${OLD_ROWS}\n`);
+
+    await pass(app);
+
+    expect(prompts[0]).toContain(`The contract now:\n- names are camelCase\n- ${STOP_FIRST}`);
+    expect(prompts[0]).toContain(skillSection('plan', 'Decide what you hold'));
+    expect(prompts[0]).not.toContain('escalate');
+    expect(await documents.latestBody(PARENT, 'contract')).toContain(`- subtask a at`);
+    expect(await documents.latestBody(PARENT, 'contract')).toContain(HELD_DECISION);
+    expect(await documents.latestBody(PARENT, 'subtask_questions')).toBeNull();
+    expect((await app.app.get(RunQueriesService).flow(PARENT)).items).toEqual([]);
   });
 
   it('asks the person of the parent when the planner gives no answer, and hands the answer to the subtask', async () => {

@@ -10,7 +10,7 @@ export interface TurnAnswer {
 }
 
 interface Reasoned {
-  /** One line that says why; an `answerRun` shows it as an info line and records it as a decision. */
+  /** One line that says why; an `answerRun` or a `recordDecision` shows it as an info line, and an `answerRun` also records it as a decision. */
   reason?: string;
 }
 
@@ -96,7 +96,7 @@ const action = Joi.object({
     .required()
     .description('The action to take; the fields it needs are listed under it'),
   reason: text(
-    'One line that says why. For answerRun it is shown to the person as an info line and kept as a decision',
+    'One line that says why. For answerRun and recordDecision it is shown to the person as an info line; for answerRun it is also kept as a decision',
   ),
   ...taskFields,
   goal: text('proposeMilestone: the goal of the milestone'),
@@ -120,7 +120,9 @@ const action = Joi.object({
   run: text('answerRun, planChat, resume, replay, skipTask, stop: the run key'),
   answers: Joi.array()
     .items(Joi.object({ kind: Joi.string(), id: Joi.string(), body: Joi.string().required() }))
-    .description('answerRun: one answer per open question'),
+    .description(
+      'answerRun: one answer per open question with its kind and id, or one answer with only a body, which answers every open question of the run',
+    ),
   message: text('planChat: the message for the planner of the run'),
   step: text('replay: the step to run again'),
 })

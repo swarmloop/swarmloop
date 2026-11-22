@@ -17,6 +17,7 @@ export type BacklogEventKind =
   | 'run-chat'
   | 'requirement-ready'
   | 'milestone-ready'
+  | 'command-refused'
   | 'action';
 
 /** Where a run comes from: the backlog and the milestone number (none for a backlog item). */

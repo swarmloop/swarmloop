@@ -27,4 +27,30 @@ describe('the backlog-plan skill', () => {
   it('asks `Milestone or backlog?` and records the answer as a decision', () => {
     expect(skill).toContain('`Milestone or backlog?`');
   });
+
+  describe('Questions and decisions', () => {
+    const section = skill.split('## Questions and decisions')[1].split('\n## ')[0];
+
+    it('decides what the decision log answers, records it with a reason shown as an info line, and does not wait', () => {
+      expect(section).toContain('Decide any question whose answer follows from the decision log');
+      expect(section).toContain('record it as a decision with a one-line reason');
+      expect(section).toContain('info line');
+      expect(section).toContain('nothing waits for the person');
+    });
+
+    it.each([
+      'a new behavior for the product',
+      "a change of the milestone's goal, or of an order the person set",
+      'money (limits, plans)',
+      'what a public repository shows about a person',
+      'anything that weakens a project rule (security, a test, CI)',
+      'anything you are not sure of',
+    ])('asks the person only about: %s', (kind) => {
+      expect(section).toContain(kind);
+    });
+
+    it('names no project and no person', () => {
+      expect(section).not.toMatch(/swarmloop|@\w/i);
+    });
+  });
 });

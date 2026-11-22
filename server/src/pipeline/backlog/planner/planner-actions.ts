@@ -9,8 +9,8 @@ import type { BacklogRecord, BacklogWriters } from '../../../history/backlog-wri
 import { BacklogRepository } from '../../../history/backlog.repository';
 import { commandOf, PlannerBacklogCalls } from './planner-backlog-calls';
 import { PlannerRules } from './planner-rules';
-import { PlannerRunPort } from './planner-run-port';
-import { describeAction } from './planner-words';
+import { PlannerRunPort, type PlannerRunCommand } from './planner-run-port';
+import { describeAction, describeCommand } from './planner-words';
 
 /** An action the server did not take, and why. */
 interface Dropped {
@@ -26,6 +26,11 @@ interface Evaluation {
   dropped: Dropped[];
   /** The reasons the planner gave for the answers it wrote itself. */
   infos: { index: number; text: string }[];
+}
+
+/** An action whose reason is a decision of the planner, shown to the person as an info line. */
+function recordsDecision(action: BacklogTurnAction): boolean {
+  return action.action === 'answerRun' || action.action === 'recordDecision';
 }
 
 /** Thrown to end `check`'s transaction: nothing it wrote stays. */
@@ -96,12 +101,42 @@ export class PlannerTurnActions {
         await this.port.send(command, backlog.owner, `${turnKey}-action-${index}`);
       } catch (error) {
         if (!(error instanceof HttpException)) throw error;
-        const text = `${command.run} refused the command: ${error.message}`;
-        await this.say(this.backlogs, backlog, `${turnKey}-sent-${index}`, turnKey, text, 'refused');
+        await this.refused(backlog, turnKey, index, command, error.message);
       }
     }
     const turn = await this.chat.findTurn(turnKey);
     if (turn) await this.chat.saveTurn({ ...turn, status: 'done' });
+  }
+
+  /**
+   * A command a run refused comes back to the planner as an event of the backlog. One refused again for the same
+   * reason as the refusal this turn answers is left to the person, with a line that names it.
+   */
+  private async refused(
+    backlog: BacklogRecord,
+    turnKey: string,
+    index: number,
+    command: PlannerRunCommand,
+    reason: string,
+  ): Promise<void> {
+    const key = `${turnKey}-sent-${index}`;
+    const refusedCommand = describeCommand(command);
+    const { events } = await this.chat.itemsOfTurn(turnKey);
+    const again = events.some(
+      (event) =>
+        event.kind === 'command-refused' &&
+        event.facts.refusedCommand === refusedCommand &&
+        event.facts.reason === reason,
+    );
+    if (again) {
+      await this.say(this.backlogs, backlog, key, turnKey, `I did not ${refusedCommand}: ${reason}`, 'refused');
+      return;
+    }
+    await this.backlogs.transaction(async (writers) => {
+      const facts = { run: command.run, refusedCommand, reason };
+      await writers.recordEvent(backlog.id as number, `command-refused:${turnKey}:${index}`, 'command-refused', facts);
+      await this.say(writers, backlog, key, turnKey, `${command.run} refused the command: ${reason}`, 'refused');
+    });
   }
 
   /** Runs the rules and then the service for each action, in order, on the given writers. A refusal drops that action only. */
@@ -127,8 +162,10 @@ export class PlannerTurnActions {
           const numbers = (await writers.milestones(backlog.id as number)).map((milestone) => milestone.number);
           result.proposed = Math.max(...numbers);
         }
-        if (action.action === 'answerRun' && action.reason) {
-          await this.calls.run(call, { action: 'recordDecision', text: action.reason });
+        if (recordsDecision(action) && action.reason) {
+          // An answer to a run keeps its reason as a decision; a recordDecision is one already.
+          if (action.action === 'answerRun')
+            await this.calls.run(call, { action: 'recordDecision', text: action.reason });
           result.infos.push({ index, text: action.reason });
         }
       } catch (error) {
