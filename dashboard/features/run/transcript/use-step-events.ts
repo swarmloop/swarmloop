@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { StepEvent } from '@contract/step-events';
 import { getStepEvents } from '../../../lib/endpoints';
@@ -11,7 +11,7 @@ const POLL_MS = 3000;
 /**
  * Every event of a step (of the run when `step` is null), in `seq` order. `events` is null while they load, and when there is no cursor yet. The list is read once;
  * after that only the events past the last held `seq` are read and appended. They are read when the cursor moves, when the live socket says the step appended
- * events, and every 3 s while `running` with the socket down.
+ * events, after a reconnect, and every 3 s while `running` with the socket down.
  */
 export function useStepEvents(
   runKey: string,
@@ -48,12 +48,21 @@ export function useStepEvents(
 
   const pushed = useLiveBridge((snapshot) => snapshot.events);
   const connected = useLiveBridge((snapshot) => snapshot.connected);
+  const connects = useLiveBridge((snapshot) => snapshot.connects);
+  const seenConnects = useRef(connects);
   useEffect(refresh, [refresh, cursor]);
   useEffect(() => {
     if (pushed && pushed.key === runKey && (step === null || pushed.step === step)) {
       refresh();
     }
   }, [refresh, pushed, runKey, step]);
+  // A reconnect (the socket connected before) may follow missed events; the first connect reads nothing extra.
+  useEffect(() => {
+    if (seenConnects.current >= 1 && connects > seenConnects.current) {
+      refresh();
+    }
+    seenConnects.current = connects;
+  }, [refresh, connects]);
   useEffect(() => {
     if (!running || connected) {
       return;
