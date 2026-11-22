@@ -25,6 +25,7 @@ import { handBackErrors } from '../steps/shared/hand-back';
 import { renderNeeds } from '../steps/shared/needs';
 import type { OpenedStep } from '../steps/step-run';
 import type { CommandService } from './command.service';
+import type { StartGate } from './start-gate';
 
 const ASKING_STEPS: string[] = ['research', 'plan', 'code-review', ...SUBTASK_ASKING_STEPS];
 
@@ -41,6 +42,7 @@ export class SubtaskPlannerAnswer {
   constructor(
     private readonly documents: DocumentRepository,
     private readonly commands: CommandService,
+    private readonly gate: StartGate,
     private readonly conversation: PlanConversation,
     private readonly visits: VisitRepository,
   ) {
@@ -155,12 +157,13 @@ export class SubtaskPlannerAnswer {
 
   /**
    * Records the answer in the subtask's own chat, where its step reads it, closes what the step asked and starts the step
-   * again. A start that was refused leaves the answer recorded, so the next pass sends the start again.
+   * again, as the start of the planner of `level` that answered. A start that was refused, or that the gate holds back
+   * for a run a person stopped, leaves the answer recorded.
    */
-  private async resume(child: RunEntity, text: string): Promise<void> {
+  private async resume(child: RunEntity, text: string, level = 0): Promise<void> {
     await this.close(child, text);
     const answer = await this.chat.answerFor(child.key, child.currentStep);
-    await this.commands.accept('resume', child.key, {}, { idempotencyKey: `subtask-${answer?.key ?? child.key}` });
+    await this.gate.resume(child, { by: 'planner', level, event: `subtask-${answer?.key ?? child.key}` });
   }
 
   /** Records the answer in the subtask's own chat and closes what the step asked, without starting the step. */

@@ -147,7 +147,7 @@ describe('a run that stopped moving with no reason', () => {
     await after(15 * MINUTE);
 
     expect((await tries()).map((command) => JSON.parse(command.payload))).toEqual(
-      Array(3).fill({ stalledAt: 'checks' }),
+      Array(3).fill({ by: 'machine', level: null, stalledAt: 'checks' }),
     );
     expect(await reasonOf()).toMatchObject({ code: 'STALLED' });
   });

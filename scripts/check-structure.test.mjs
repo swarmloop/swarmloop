@@ -479,3 +479,23 @@ test('only the naming module builds branch names, commit messages and titles', (
   assert.deepEqual(check({ 'server/src/steps/commit/commit.step.spec.ts': text }), []);
   assert.deepEqual(check({ 'server/src/testing/flow-harness.ts': text }), []);
 });
+
+test('forbidOutside reports a resume accepted or a run started outside the start gate, and lets the gate, a route and a spec be', () => {
+  const files = {
+    'server/src/pipeline/subtask-port.ts': "await this.commands.accept('resume', run.key, {}, { idempotencyKey });\n",
+    'server/src/pipeline/reconciler-resumes.ts': 'await this.pipeline.startDetached(run.key);\n',
+    'server/src/pipeline/start-gate.ts': "await this.commands.accept('resume', run.key, payload, options);\n",
+    'server/src/api/run-commands.service.ts':
+      "await this.commands.submit('resume', key, payload);\nthis.pipeline.startDetached(key);\n",
+    'server/src/pipeline/subtask-port.spec.ts':
+      "expect(accept).toHaveBeenCalledWith('resume', 'child');\nport.startDetached(key);\n",
+    'server/src/pipeline/subtask-rebases.ts': "await this.commands.accept('rebase', run.key, {});\n",
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 2);
+  assert.match(violations[0], /^server\/src\/pipeline\/subtask-port\.ts:1:/);
+  assert.match(violations[1], /^server\/src\/pipeline\/reconciler-resumes\.ts:1:/);
+});

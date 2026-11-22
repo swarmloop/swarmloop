@@ -67,7 +67,12 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
     expect(accept).not.toHaveBeenCalled();
 
     await tickFor(2);
-    expect(accept).toHaveBeenCalledWith('resume', KEY, {}, { idempotencyKey: `host-none-${retryAt}` });
+    expect(accept).toHaveBeenCalledWith(
+      'resume',
+      KEY,
+      { by: 'machine', level: null },
+      { idempotencyKey: `host-none-${retryAt}` },
+    );
   });
 
   it('waits while docker is silent for 10 minutes, starts nothing, then settles the run', async () => {

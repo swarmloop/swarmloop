@@ -10,9 +10,15 @@ import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { storedState, writeRunState } from '../history/run-state';
-import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
-import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND, withStatuses, type Subtask } from '../contract/subtask';
-import { SubtaskOps, type OwnEdits, type RebaseEvent, type SubtaskMergeRequest } from '../steps/shared/subtask-ops';
+import { ERROR_CODES } from '../contract/error-codes';
+import { parseSubtasks, settled, SUBTASKS_KIND, withStatuses, type Subtask } from '../contract/subtask';
+import {
+  SubtaskOps,
+  type SubtaskStart,
+  type OwnEdits,
+  type RebaseEvent,
+  type SubtaskMergeRequest,
+} from '../steps/shared/subtask-ops';
 import { disagrees } from '../steps/shared/subtask-status';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -26,6 +32,8 @@ import type { RunAuthor } from '../steps/shared/run-author';
 import type { RunNames } from '../steps/shared/run-names';
 import { RunRebase } from '../steps/run-rebase';
 import { CommandService } from './command.service';
+import { StartGate } from './start-gate';
+import { SubtaskWakes } from './subtask-wakes';
 import { SubtaskWorktrees } from './subtask-worktrees';
 import { SubtaskAsks } from './subtask-asks';
 import { SubtaskRebases } from './subtask-rebases';
@@ -50,16 +58,18 @@ export class SubtaskPort extends SubtaskOps {
   private starter: SubtaskStarter | null = null;
   private readonly worktrees: SubtaskWorktrees;
   private readonly asks: SubtaskAsks;
+  private readonly wakes: SubtaskWakes;
   private readonly rebases: SubtaskRebases;
 
   constructor(
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
-    private readonly commands: CommandService,
-    private readonly launcher: AgentLauncher,
-    private readonly visits: VisitRepository,
-    private readonly config: AppConfig,
+    commands: CommandService,
+    launcher: AgentLauncher,
+    visits: VisitRepository,
+    config: AppConfig,
     private readonly clock: Clock,
+    gate: StartGate,
     @Optional() publisher?: RebasedPublisher,
     @Optional() private readonly rebaser?: RunRebase,
     @Optional() private readonly reportRefresh?: ReportRefresh,
@@ -73,11 +83,13 @@ export class SubtaskPort extends SubtaskOps {
     this.asks = new SubtaskAsks(
       documents,
       commands,
+      gate,
       conversation ??
         new PlanConversation(launcher, visits, documents, config, clock, new PlanChatStore(runs, documents)),
       visits,
       runs,
     );
+    this.wakes = new SubtaskWakes(runs, commands, gate, visits, this.logger);
     this.rebases = new SubtaskRebases(
       runs,
       documents,
@@ -179,12 +191,12 @@ export class SubtaskPort extends SubtaskOps {
     return repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
   }
 
-  override rerun(run: RunEntity, lines: string[]): Promise<void> {
-    return this.asks.rerun(run, lines);
+  override rerun(run: RunEntity, lines: string[], start?: SubtaskStart): Promise<void> {
+    return this.asks.rerun(run, lines, start);
   }
 
-  override async resume(run: RunEntity): Promise<void> {
-    await this.commands.accept('resume', run.key, {}, { idempotencyKey: `subtasks-resume-${run.revision}` });
+  override resume(run: RunEntity): Promise<void> {
+    return this.wakes.resume(run);
   }
 
   override async mergeRequests(run: RunEntity): Promise<SubtaskMergeRequest[]> {
@@ -288,48 +300,32 @@ export class SubtaskPort extends SubtaskOps {
     await this.closer?.close(parent, run, () => this.mergeRequests(run), this.logger);
   }
 
-  async stop(run: RunEntity): Promise<void> {
-    await this.commands.submit('stop', run.key, {});
+  resumeStopped(parent: RunEntity): Promise<void> {
+    return this.wakes.resumeStopped(parent);
   }
 
-  /** Stops every subtask of the parent. A subtask that is not running stays as it is. */
-  async stopAll(parent: RunEntity): Promise<void> {
-    for (const child of await this.runs.children(parent)) {
-      if (storedState(child).state === 'skipped') continue;
-      await this.stop(child);
-    }
+  stop(run: RunEntity): Promise<void> {
+    return this.wakes.stop(run);
   }
 
-  /** Stops every subtask of the parent and removes its run and worktrees. */
-  async removeAll(parent: RunEntity): Promise<void> {
-    for (const child of await this.runs.children(parent)) {
-      await this.commands.submit('remove', child.key, {});
-    }
+  stopAll(parent: RunEntity): Promise<void> {
+    return this.wakes.stopAll(parent);
   }
 
-  /** Sends the parent of a subtask a `resume`, so its next pass sees the subtask as it is now. */
-  async notifyParent(key: string, idempotencyKey?: string): Promise<void> {
-    try {
-      const run = await this.runs.findRun(key);
-      const parent = run && isSubtask(run) ? await this.runs.findById(run.parentRunId as number) : null;
-      if (run && parent && this.passDue(parent)) {
-        await this.resumeParent(parent, idempotencyKey ?? `subtask-${run.key}-${run.revision}`);
-      }
-    } catch (error) {
-      this.logger.warn(`parent of ${key} was not told: ${error instanceof Error ? error.message : String(error)}`);
-    }
+  removeAll(parent: RunEntity): Promise<void> {
+    return this.wakes.removeAll(parent);
   }
 
-  /** The key of the wake-up for a subtask that is `blocked` or `failed` and is about to leave that state; null for any other run. */
-  async leavingKey(key: string): Promise<string | null> {
-    const run = await this.runs.findRun(key);
-    if (!run || !isSubtask(run) || !['blocked', 'failed'].includes(storedState(run).state)) return null;
-    return `subtask-left-${run.key}-${(await this.visits.listStats(run.id)).length}`;
+  notifyParent(key: string, idempotencyKey?: string): Promise<void> {
+    return this.wakes.notifyParent(key, idempotencyKey);
   }
 
-  /** Sends `resume` to a parent that waits between passes. A pass that already runs, or is queued, is enough. */
-  async resumeParent(parent: RunEntity, idempotencyKey: string): Promise<void> {
-    await this.commands.accept('resume', parent.key, {}, { idempotencyKey });
+  leavingKey(key: string): Promise<string | null> {
+    return this.wakes.leavingKey(key);
+  }
+
+  resumeParent(parent: RunEntity, idempotencyKey: string): Promise<void> {
+    return this.wakes.resumeParent(parent, idempotencyKey);
   }
 
   /** True when the subtasks are not as the last pass saw them, or when no pass recorded them yet. */
@@ -349,21 +345,12 @@ export class SubtaskPort extends SubtaskOps {
     return false;
   }
 
-  /** A split parent in implement with subtask runs: a pass that already runs, or is queued, is enough for a resume. */
-  async hasPass(key: string): Promise<boolean> {
-    const run = await this.runs.findRun(key);
-    return !!run?.split && run.currentStep === 'implement' && (await this.runs.children(run)).length > 0;
+  hasPass(key: string): Promise<boolean> {
+    return this.wakes.hasPass(key);
   }
 
-  /** Between passes: the parent waits for its subtasks, or a blocked subtask stopped it. */
   passDue(parent: RunEntity): boolean {
-    const { state, reason } = storedState(parent);
-    const code = reason?.code ?? '';
-    return (
-      parent.currentStep === 'implement' &&
-      ((state === 'waiting' && SUBTASK_WAIT_CODES.some((wait) => wait === code)) ||
-        (state === 'blocked' && code === ERROR_CODES.SUBTASK_BLOCKED))
-    );
+    return this.wakes.passDue(parent);
   }
 
   private started(): SubtaskStarter {

@@ -29,6 +29,7 @@ import { Reconciler } from './reconciler';
 import { PipelineService } from './pipeline.service';
 
 const GB = 1024 ** 3;
+const MACHINE = { by: 'machine', level: null };
 
 type AcceptedCall = [command: string, key: string, args: unknown, options: unknown];
 
@@ -122,7 +123,7 @@ describe('reconciler waits and automatic tries', () => {
 
       world.clock.advance(300_000);
       await world.app.get(Reconciler).resumeHostUnavailable();
-      expect(accepted).toEqual([['resume', KEY, {}, { idempotencyKey: `host-none-${retryAt}` }]]);
+      expect(accepted).toEqual([['resume', KEY, MACHINE, { idempotencyKey: `host-none-${retryAt}` }]]);
     });
 
     it('never resumes a stopped run', async () => {
@@ -243,7 +244,7 @@ describe('reconciler waits and automatic tries', () => {
       const waiting = await world.app.get(RunRepository).findRun(KEY);
       await world.app.get(Reconciler).resumeDocker();
       expect(accepted).toEqual([
-        ['resume', KEY, {}, { idempotencyKey: `docker-none-${storedState(waiting!).reason?.retryAt}` }],
+        ['resume', KEY, MACHINE, { idempotencyKey: `docker-none-${storedState(waiting!).reason?.retryAt}` }],
       ]);
     });
 
@@ -285,7 +286,7 @@ describe('reconciler waits and automatic tries', () => {
 
       guard.useFreeBytes(async () => 20 * GB);
       await world.app.get(Reconciler).resumeDiskLow();
-      expect(accepted).toEqual([['resume', KEY, {}, { idempotencyKey: 'disk-none-reason' }]]);
+      expect(accepted).toEqual([['resume', KEY, MACHINE, { idempotencyKey: 'disk-none-reason' }]]);
     });
 
     it('never resumes a stopped run', async () => {
@@ -317,7 +318,7 @@ describe('reconciler waits and automatic tries', () => {
 
       await world.app.get(Reconciler).resumeAskingPlanner();
 
-      expect(accepted).toEqual([['resume', KEY, {}, { idempotencyKey: 'planner-ask-implement-1' }]]);
+      expect(accepted).toEqual([['resume', KEY, MACHINE, { idempotencyKey: 'planner-ask-implement-1' }]]);
     });
 
     it('leaves a run alone whose question the planner answered', async () => {

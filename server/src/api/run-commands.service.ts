@@ -264,6 +264,8 @@ export class RunCommandsService {
     if (view.resume === 'done') {
       return { key, status: 'done' };
     }
+    const run = await this.runs.findRun(key);
+    if (run?.split) await this.subtasks.resumeStopped(run);
     const result = await this.pipeline.startDetached(key, prompt?.trim() ? { prompt: prompt.trim() } : {});
     if (pass && result.message.includes('already running')) {
       return { key, status: 'started' };
