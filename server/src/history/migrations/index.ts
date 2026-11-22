@@ -1,5 +1,6 @@
 import { CommandActor1796800000000 } from './1796800000000-command-actor';
 import { VisitStarts1797000000000 } from './1797000000000-visit-starts';
+import { AgentExchangeChatIndex1797000000002 } from './1797000000002-agent-exchange-chat-index';
 import { VisitCostDeltas1797000000001 } from './1797000000001-visit-cost-deltas';
 import { IntegrationSecrets1796000000000 } from './1796000000000-integration-secrets';
 import { CredentialCooldowns1796000000001 } from './1796000000001-credential-cooldowns';
@@ -93,4 +94,5 @@ export const migrations = [
   CommandActor1796800000000,
   VisitStarts1797000000000,
   VisitCostDeltas1797000000001,
+  AgentExchangeChatIndex1797000000002,
 ];

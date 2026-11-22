@@ -1,3 +1,4 @@
+import { ERROR_CODES } from '../contract/error-codes';
 import { REASON, TIMED_RETRY_CODES } from '../contract/run-state';
 import type { StepStatEntity } from '../history/entities';
 import type { VisitStartEntity } from '../history/visit-start.entity';
@@ -20,6 +21,9 @@ type SameInputDecision =
 
 const FINISHED = ['done', 'waiting', 'blocked'];
 
+/** The waits on something outside swarmloop that the reconciler clears by itself: the retry runs the visit again. */
+const OUTSIDE_WAIT_CODES: readonly string[] = [...TIMED_RETRY_CODES, ERROR_CODES.GIT_AUTH];
+
 /** A visit that ended on its own: it was not killed, and it did not fail, crash or wait for an outage or a limit. */
 function finished(stat: Pick<StepStatEntity, 'status' | 'killReason'>): boolean {
   return FINISHED.includes(stat.status) && !stat.killReason;
@@ -40,7 +44,7 @@ function unfinishedTail(facts: SameInputFacts): boolean {
 /**
  * Decides a start the machine or a planner asks for. The step's last finished visit is the one a new start is
  * compared with.
- * - A run that waits for an outage or a limit has no such visit: the retry runs again a visit that did not finish, on
+ * - A run that waits for an outage, a limit or its person's reconnect has no such visit: the retry runs again a visit that did not finish, on
  *   the input it had.
  * - A run that waits for its planner's answer starts the step once the planner has taken its turn, which comes after
  *   this check, so that start is on the answer.
@@ -51,7 +55,7 @@ function unfinishedTail(facts: SameInputFacts): boolean {
 export function sameInput(facts: SameInputFacts): SameInputDecision {
   const retrying =
     facts.reasonCode !== null &&
-    (facts.reasonCode === REASON.asksPlanner || TIMED_RETRY_CODES.includes(facts.reasonCode));
+    (facts.reasonCode === REASON.asksPlanner || OUTSIDE_WAIT_CODES.includes(facts.reasonCode));
   if (retrying || unfinishedTail(facts)) return { kind: 'new', rerunUnfinished: true };
   const last = facts.stats.filter((stat) => stat.step === facts.step).at(-1);
   if (!last) return { kind: 'new', rerunUnfinished: false };

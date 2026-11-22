@@ -81,6 +81,7 @@ export class ResourceSampleEntity {
 
 @Entity('agent_exchanges')
 @Index('IDX_agent_exchanges_step_stat_id', ['stepStatId'])
+@Index('IDX_agent_exchanges_chat_id', ['chatId'])
 export class AgentExchangeEntity {
   @PrimaryGeneratedColumn()
   id!: number;

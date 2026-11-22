@@ -267,7 +267,9 @@ export class RunCommandsService {
       return { key, status: 'done' };
     }
     const run = await this.runs.findRun(key);
-    if (run?.split) await this.subtasks.resumeStopped(run);
+    if (run?.split && (!start || start.by === 'person') && storedState(run).state === 'stopped') {
+      await this.subtasks.resumeStopped(run);
+    }
     const result = await this.pipeline.startDetached(key, {
       ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
       ...(start ? { startBy: start.by, level: start.level } : {}),

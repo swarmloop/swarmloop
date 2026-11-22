@@ -110,4 +110,18 @@ describe('a person’s Stop and Resume of an epic', () => {
     expect(storedState(await child('c')).reason?.code).toBe(REASON.stopped);
     await assertInvariants(flow.app);
   });
+
+  it('does not let a machine resume of an epic resume the tasks a person stopped', async () => {
+    await epicWithTasks();
+    await setState(await child('c'), 'blocked', { code: REASON.stopped, message: STOP_NOTE });
+    const parent = (await runs().findRun(KEY))!;
+    await documents().putDocument(parent, 'epic_stopped_tasks', `${KEY}-c`);
+
+    await commands().resume(KEY, undefined, { by: 'machine', level: null });
+    await flow.app.pipeline.whenIdle(KEY);
+
+    expect(await documents().latestBody(KEY, 'epic_stopped_tasks')).toBe(`${KEY}-c`);
+    expect(storedState(await child('c')).reason?.code).toBe(REASON.stopped);
+    await assertInvariants(flow.app);
+  });
 });

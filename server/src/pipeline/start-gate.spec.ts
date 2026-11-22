@@ -239,7 +239,7 @@ describe('StartGate admit', () => {
     }
   });
 
-  it.each(['HOST_UNAVAILABLE', 'RUNTIME_LIMIT'])(
+  it.each(['HOST_UNAVAILABLE', 'RUNTIME_LIMIT', 'GIT_AUTH'])(
     'admits a machine start on the same input while the run waits with %s',
     async (code) => {
       const { app, digest, visit, admit, run, runs } = await admitting();
