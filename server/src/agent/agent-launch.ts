@@ -25,6 +25,7 @@ import type { AgentLaunchPrep } from './agent-launch-prep';
 import { AgentProcess } from './agent-process';
 import { SessionWrites } from './session-writes';
 import { AttemptMeter } from './agent-attempt';
+import { NO_USAGE } from './since-recorded';
 import { OutputTail } from './output-tail';
 import { LimitGuard } from './limit-guard';
 import { SERVER_PAUSE_NOTE } from '../contract/server-pause';
@@ -135,14 +136,13 @@ export class AgentLaunch {
     const meter = new AttemptMeter({
       model: input.model,
       prices,
-      groupUsd: input.groupUsd ?? 0,
-      resumed,
+      prior: input.prior ?? NO_USAGE,
     });
     const log = new AttemptLog(input.outputFile, input.runKey, step, baseline, () => meter.billed(), this.live);
     const sessionWrites = new SessionWrites(input.sessionFile, runtime.name);
     try {
       await log.begin();
-      const sessionUsd = (): number => (input.groupUsd ?? 0) + meter.billed().usd;
+      const sessionUsd = (): number => (input.prior ?? NO_USAGE).usd + meter.billed().usd;
 
       let chatId = input.resumeChatId;
       let killReason: KillReason | null = null;

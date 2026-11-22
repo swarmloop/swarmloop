@@ -1,12 +1,14 @@
-import { type DecisionWatch, hasModelDecision, type ModelPrice, noteDecision, priceTokens, turnUsd } from './limits';
-import { addGuessedLine, emptyUsageGuess, readStreamLine, type StreamPiece, takeAnswer } from './stream';
+import type { ChatUsage } from '../history/chat-usage.repository';
+import { type DecisionWatch, hasModelDecision, type ModelPrice, noteDecision, priceTokens } from './limits';
+import { sinceRecorded } from './since-recorded';
+import { readStreamLine, type OwnUsage, type StreamPiece, takeAnswer } from './stream';
+import { addGuessedLine, emptyUsageGuess } from './stream-guess';
 
 interface AttemptBilling {
   model: string;
   prices: Record<string, ModelPrice>;
-  /** Dollars already recorded for this chat before this attempt. */
-  groupUsd: number;
-  resumed: boolean;
+  /** What the chat already cost before this attempt. A result line that reports the whole session is taken against it. */
+  prior: ChatUsage;
 }
 
 interface AttemptUsage {
@@ -24,6 +26,9 @@ export class AttemptMeter {
   private readonly guess = emptyUsageGuess();
   private billedFromStream = false;
   private reportedUsd: number | null = null;
+  /** The counted usage came from a result line, which covers a whole session. */
+  private fromResult = false;
+  private own: OwnUsage | null = null;
   private decision: DecisionWatch = { text: '', locked: false };
   private responseText = '';
   private answerLocked = false;
@@ -46,6 +51,7 @@ export class AttemptMeter {
     this.endedAfterResult ||= this.resultSeen && piece.taskEnded;
     this.noteBeforeResult(piece);
     this.resultSeen ||= piece.stops;
+    this.noteResultUsage(piece);
     this.tokensIn = this.add(this.tokensIn, piece.tokensIn, piece.addUsage);
     this.tokensOut = this.add(this.tokensOut, piece.tokensOut, piece.addUsage);
     this.cacheRead = this.add(this.cacheRead, piece.cacheRead, piece.addUsage);
@@ -72,7 +78,7 @@ export class AttemptMeter {
   }
 
   billed(): AttemptUsage {
-    const { model, prices, groupUsd, resumed } = this.billing;
+    const { model, prices, prior } = this.billing;
     if (!this.billedFromStream) {
       return {
         tokensIn: this.guess.tokensIn,
@@ -80,11 +86,23 @@ export class AttemptMeter {
         usd: priceTokens(model, this.guess.tokensIn, this.guess.tokensOut, prices) ?? 0,
       };
     }
+    if (this.own) {
+      const { input, output, cacheRead, cacheWrite, usd } = this.own;
+      return {
+        tokensIn: input + cacheRead + cacheWrite,
+        tokensOut: output,
+        usd: usd ?? priceTokens(model, input, output, prices, cacheRead, cacheWrite) ?? 0,
+      };
+    }
     const priced = priceTokens(model, this.tokensIn, this.tokensOut, prices, this.cacheRead, this.cacheWrite) ?? 0;
+    const tokensIn = this.tokensIn + this.cacheRead + this.cacheWrite;
+    if (!this.fromResult) {
+      return { tokensIn, tokensOut: this.tokensOut, usd: this.reportedUsd ?? priced };
+    }
     return {
-      tokensIn: this.tokensIn + this.cacheRead + this.cacheWrite,
-      tokensOut: this.tokensOut,
-      usd: turnUsd(this.reportedUsd, priced, groupUsd, resumed),
+      tokensIn: sinceRecorded(tokensIn, prior.tokensIn),
+      tokensOut: sinceRecorded(this.tokensOut, prior.tokensOut),
+      usd: sinceRecorded(this.reportedUsd ?? priced, prior.usd),
     };
   }
 
@@ -116,6 +134,16 @@ export class AttemptMeter {
     } else if (piece.backgroundEvent === 'other' || piece.guessKind !== 'none' || piece.text !== null) {
       this.contentBeforeResult = true;
     }
+  }
+
+  /** A result line holds the session's totals, or the visit's own usage when it reports that apart. A Codex turn is always its own. */
+  private noteResultUsage(piece: StreamPiece): void {
+    if (!piece.result || piece.addUsage) {
+      return;
+    }
+    this.own = piece.own ?? this.own;
+    this.billedFromStream ||= piece.own !== null;
+    this.fromResult ||= piece.tokensIn !== null || piece.tokensOut !== null || piece.reportedUsd !== null;
   }
 
   private add(current: number, next: number | null, addUsage: boolean): number {

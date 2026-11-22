@@ -3,13 +3,15 @@ import { readResult } from '../agent-result/read-result';
 import { resultAnswer } from '../testing/result-answer';
 import { priceTokens } from './limits';
 import { AttemptMeter } from './agent-attempt';
+import type { ChatUsage } from '../history/chat-usage.repository';
+import { NO_USAGE } from './since-recorded';
 
 const prices = {
   'test-model': { inputPerMillion: 1, outputPerMillion: 2, cacheReadPerMillion: 0.1, cacheWritePerMillion: 1 },
 };
 
-function meter(resumed = false): AttemptMeter {
-  return new AttemptMeter({ model: 'test-model', prices, groupUsd: 0, resumed });
+function meter(prior: ChatUsage = NO_USAGE): AttemptMeter {
+  return new AttemptMeter({ model: 'test-model', prices, prior });
 }
 
 /** One stream line, read the way the runner reads it: note the decision, then count the piece. */
@@ -86,5 +88,62 @@ describe('AttemptMeter', () => {
       JSON.stringify({ type: 'assistant', timestamp_ms: 2, message: { content: [{ type: 'text', text: 'more' }] } }),
     );
     expect(attempt.answer()).toBe('done.');
+  });
+  describe('against what the chat already cost', () => {
+    const prior = { usd: 3, tokensIn: 100, tokensOut: 20 };
+    const session = (extra: Record<string, unknown> = {}): string =>
+      JSON.stringify({
+        type: 'result',
+        total_cost_usd: 4,
+        usage: { input_tokens: 90, cache_read_input_tokens: 30, output_tokens: 26 },
+        ...extra,
+      });
+
+    it('bills the visit its own usage when the result line reports it', () => {
+      const attempt = meter(prior);
+      feed(
+        attempt,
+        session({
+          model_usage_since_last_result: {
+            a: { inputTokens: 5, outputTokens: 2, cacheReadInputTokens: 10, cacheCreationInputTokens: 1, costUSD: 0.5 },
+            b: { inputTokens: 1, outputTokens: 1, costUSD: 0.25 },
+          },
+        }),
+      );
+      expect(attempt.billed()).toEqual({ tokensIn: 17, tokensOut: 3, usd: 0.75 });
+    });
+
+    it('bills a session total as the difference to the recorded total', () => {
+      const attempt = meter(prior);
+      feed(attempt, session());
+      expect(attempt.billed()).toEqual({ tokensIn: 20, tokensOut: 6, usd: 1 });
+    });
+
+    it('bills a total below the recorded one as the visit alone', () => {
+      const attempt = meter({ usd: 9, tokensIn: 500, tokensOut: 90 });
+      feed(attempt, session());
+      expect(attempt.billed()).toEqual({ tokensIn: 120, tokensOut: 26, usd: 4 });
+    });
+
+    it('subtracts the recorded dollars from a priced total when the stream reports no cost', () => {
+      const attempt = meter({ usd: 0.0001, tokensIn: 0, tokensOut: 0 });
+      feed(attempt, JSON.stringify({ type: 'result', usage: { input_tokens: 1_000_000, output_tokens: 0 } }));
+      expect(attempt.billed().usd).toBeCloseTo(0.9999);
+    });
+
+    it('does not reduce per-message usage before the result line', () => {
+      const attempt = meter(prior);
+      feed(
+        attempt,
+        JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 150, output_tokens: 30 } } }),
+      );
+      expect(attempt.billed()).toMatchObject({ tokensIn: 150, tokensOut: 30 });
+    });
+
+    it('does not reduce a Codex turn, which reports its own usage', () => {
+      const attempt = meter(prior);
+      feed(attempt, JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 150, output_tokens: 30 } }));
+      expect(attempt.billed()).toMatchObject({ tokensIn: 150, tokensOut: 30 });
+    });
   });
 });
