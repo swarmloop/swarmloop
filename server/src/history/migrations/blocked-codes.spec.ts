@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
+import { sentence } from '../../api/run-view/flow-waiting';
 import { RunStateRefresh } from '../../steps/shared/run-state-refresh';
 import { boot, save } from '../../testing/runs.spec-helpers';
 import { DocumentRepository } from '../document.repository';
@@ -212,5 +213,22 @@ describe('BlockedCodes migration', () => {
       code: 'DID_NOT_FIT',
       message: 'blocked',
     });
+  });
+
+  it('keeps an old blocked STOPPED row at a non-loop step as stopped, with the plain sentence, when an older error says it does not fit', async () => {
+    const key = `proj-${counter + 1}`;
+    await seed({
+      step: 'implement',
+      stored: reasonOf('STOPPED'),
+      state: 'stopped',
+      errors: ['implement does not fit'],
+    });
+    await migrate();
+    expect(await readRow(key)).toMatchObject({ state: 'stopped', code: 'STOPPED' });
+    const run = (await app.get(RunRepository).findRun(key))!;
+    const documents = await app.get(DocumentRepository).listDocuments(run.id);
+    const said = sentence(run, [], documents, [], 3);
+    expect(said).toBe('This run is blocked. Another return is not available.');
+    expect(said).not.toContain('agent-call budget');
   });
 });
