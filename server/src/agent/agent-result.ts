@@ -1,4 +1,5 @@
 import type { EffortFields } from '../contract/effort';
+import type { ChatUsage } from '../history/chat-usage.repository';
 import type { SampleDraft } from '../history/visit';
 import type { LimitHit } from '../integrations/agent-runtime/runtime-limit';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
@@ -10,6 +11,8 @@ export interface AgentRunResult {
   tokensIn: number;
   tokensOut: number;
   usd: number;
+  /** The session totals the last result line reported, also when it reported the visit's own part. Null when it reported none. */
+  reported?: ChatUsage | null;
   killReason: KillReason | null;
   exitCode: number;
   output?: string;

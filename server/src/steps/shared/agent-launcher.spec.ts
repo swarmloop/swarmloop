@@ -1,8 +1,6 @@
-import { EventEmitter } from 'events';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { PassThrough } from 'stream';
 import { AgentLaunch } from '../../agent/agent-launch';
 import { AgentProcessRunner } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
@@ -18,6 +16,7 @@ import type { VisitDraft } from '../../history/visit';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SandboxService } from '../../sandbox/sandbox.service';
 import { AgentLauncher } from './agent-launcher';
+import { controlled, type Child, until } from './agent-launcher.spec-helpers';
 import { LimitFailover } from './limit-failover';
 
 const CHAT = JSON.stringify({ session_id: 'chat-9' });
@@ -37,29 +36,6 @@ function toolCompleted(): string {
     subtype: 'completed',
     tool_call: { shellToolCall: { result: { success: {} } } },
   });
-}
-
-/** A child that stays up until a spec ends it, or until the runner kills it. */
-function controlled() {
-  const child = new EventEmitter();
-  const stdout = new PassThrough();
-  const exit = (code: number): void => {
-    child.emit('close', code);
-  };
-  const kill = jest.fn(() => {
-    setImmediate(() => exit(1));
-    return true;
-  });
-  return Object.assign(child, { stdout, stderr: new PassThrough(), containerName: 'box', kill, exit });
-}
-
-type Child = ReturnType<typeof controlled>;
-
-async function until(done: () => boolean): Promise<void> {
-  for (let turn = 0; turn < 100_000 && !done(); turn += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  expect(done()).toBe(true);
 }
 
 describe('AgentLauncher relaunch', () => {

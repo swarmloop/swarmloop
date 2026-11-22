@@ -1,6 +1,6 @@
 import type { ChatUsage } from '../history/chat-usage.repository';
 import { guessLineTokens } from './stream-guess';
-import { NO_USAGE, recordedAfter, sinceRecorded } from './since-recorded';
+import { NO_USAGE, sinceRecorded } from './since-recorded';
 
 export interface StreamPiece {
   tokensIn: number | null;
@@ -175,8 +175,8 @@ export function takeAnswer(current: string, locked: boolean, piece: StreamPiece)
 
 /**
  * Sums the visit's own usage of every result line. A line that reports it apart from the session total gives it as is.
- * Otherwise its total is taken against the chat's recorded total, `prior` and the lines before it. A Codex turn
- * reports its own tokens and is never reduced.
+ * Otherwise its total is taken against the chat's previous reported session totals, `prior` or those of the line
+ * before it. A Codex turn reports its own tokens and is never reduced.
  */
 export function usageFromStream(raw: string, prior: ChatUsage = NO_USAGE): CountedUsage | null {
   const results: CountedUsage[] = [];
@@ -217,32 +217,32 @@ function totalsRow(piece: StreamPiece): CountedUsage {
   };
 }
 
-/** The visit's part of a result line. `recorded` is the chat's total so far and moves on to include this line. */
+/** The visit's part of a result line. `recorded` is the chat's last reported session total and moves on to this line's. */
 function resultRow(piece: StreamPiece, recorded: ChatUsage): CountedUsage {
   const total = totalsRow(piece);
   const own = piece.own;
-  if (own) {
-    recorded.tokensIn += own.input + own.cacheRead + own.cacheWrite;
-    recorded.tokensOut += own.output;
-    recorded.usd += own.usd ?? 0;
-    return { ...own, reportedUsd: own.usd };
-  }
   const prompt = total.input + total.cacheRead + total.cacheWrite;
+  const row = own ? { ...own, reportedUsd: own.usd } : partOfTotal(total, prompt, recorded);
+  if (!own || prompt > 0 || total.output > 0 || total.reportedUsd !== null) {
+    recorded.tokensIn = prompt;
+    recorded.tokensOut = total.output;
+    recorded.usd = total.reportedUsd ?? 0;
+  }
+  return row;
+}
+
+function partOfTotal(total: CountedUsage, prompt: number, recorded: ChatUsage): CountedUsage {
   const promptOwn = sinceRecorded(prompt, recorded.tokensIn);
   const share = prompt > 0 ? promptOwn / prompt : 0;
   const cacheRead = Math.round(total.cacheRead * share);
   const cacheWrite = Math.round(total.cacheWrite * share);
-  const row = {
+  return {
     input: Math.max(0, promptOwn - cacheRead - cacheWrite),
     output: sinceRecorded(total.output, recorded.tokensOut),
     cacheRead,
     cacheWrite,
     reportedUsd: total.reportedUsd === null ? null : sinceRecorded(total.reportedUsd, recorded.usd),
   };
-  recorded.tokensIn = recordedAfter(prompt, recorded.tokensIn);
-  recorded.tokensOut = recordedAfter(total.output, recorded.tokensOut);
-  recorded.usd = recordedAfter(total.reportedUsd ?? 0, recorded.usd);
-  return row;
 }
 
 function counted(piece: StreamPiece): boolean {

@@ -115,6 +115,16 @@ export class AgentExchangeEntity {
 
   @Column({ name: 'kill_reason', type: 'text', nullable: true })
   killReason!: string | null;
+
+  /** The session totals the launch's last result line reported. The next launch of the chat is taken against them. Null when it reported none. */
+  @Column({ name: 'reported_usd', type: 'float', nullable: true })
+  reportedUsd!: number | null;
+
+  @Column({ name: 'reported_tokens_in', type: 'integer', nullable: true })
+  reportedTokensIn!: number | null;
+
+  @Column({ name: 'reported_tokens_out', type: 'integer', nullable: true })
+  reportedTokensOut!: number | null;
 }
 
 @Entity('loop_events')

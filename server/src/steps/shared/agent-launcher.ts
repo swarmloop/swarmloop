@@ -18,7 +18,7 @@ import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
 import { ChatUsageRepository } from '../../history/chat-usage.repository';
 import type { ChatUsage } from '../../history/chat-usage.repository';
-import { NO_USAGE, plusUsage } from '../../agent/since-recorded';
+import { NO_USAGE } from '../../agent/since-recorded';
 import { AttemptChatUsage } from './attempt-chat-usage';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
@@ -99,6 +99,7 @@ export class AgentLauncher {
     const stored = await readSession(sessionFile, request.runtime);
     const removed = chatStateRemoved(request.root, request.key, request.step, stored);
     const chatId = request.resume === false || removed ? null : (stored?.chatId ?? null);
+    const before = await this.chatBefore(request, chatId);
     const launch = {
       runtime: request.runtime,
       model: request.model,
@@ -152,7 +153,8 @@ export class AgentLauncher {
       spentUsd: request.run.spentUsd,
       tokensInRun: request.run.tokensSoFar ?? (await this.visits.tokenTotal(request.run.id)),
       resumeChatId: chatId,
-      prior: await this.priorOf(request, chatId),
+      prior: before.reported,
+      chatSpentUsd: before.spentUsd,
       runKey: request.key,
       login: request.login,
       step: request.step,
@@ -191,13 +193,23 @@ export class AgentLauncher {
     return result;
   }
 
-  /** What the chat to resume already cost: its stored visits, and the launches of this attempt that are not stored yet. */
-  private async priorOf(request: AgentLaunchRequest, chatId: string | null): Promise<ChatUsage> {
+  /**
+   * The chat to resume: the session totals its previous launch reported (what a session total is taken against), and
+   * what it already cost: its stored visits and the launches of this attempt that are not stored yet.
+   */
+  private async chatBefore(
+    request: AgentLaunchRequest,
+    chatId: string | null,
+  ): Promise<{ reported: ChatUsage; spentUsd: number }> {
     if (chatId === null) {
-      return NO_USAGE;
+      return { reported: NO_USAGE, spentUsd: 0 };
     }
+    const attemptId = request.run.activeAttempt ?? '';
+    const inAttempt = this.attemptUsage?.reportedOf(request.key, attemptId, chatId);
+    const reported = inAttempt === undefined ? ((await this.chatUsage?.lastReportedOf(chatId)) ?? null) : inAttempt;
     const stored = (await this.chatUsage?.totalsOf(chatId)) ?? NO_USAGE;
-    return plusUsage(stored, this.attemptUsage?.of(request.key, request.run.activeAttempt ?? '', chatId) ?? NO_USAGE);
+    const spentUsd = stored.usd + (this.attemptUsage?.of(request.key, attemptId, chatId) ?? NO_USAGE).usd;
+    return { reported: reported ?? NO_USAGE, spentUsd };
   }
 
   /** The answer is complete when its result block is valid. */

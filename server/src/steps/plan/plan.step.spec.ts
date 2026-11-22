@@ -164,7 +164,9 @@ describe('plan step', () => {
       expect(input.resumeChatId).toBe('chat-1');
       expect(input.prompt).toContain('Do not copy these stage-local limits into the implementation checklist');
       expect(input.prompt).not.toContain('Tests run only in the GitLab or GitHub pipeline');
-      expect(input.prior).toEqual({ usd: 0.01, tokensIn: 10, tokensOut: 4 });
+      // The stored visit reported no session totals, so a session total counts whole. The chat has cost 0.01 so far.
+      expect(input.prior).toEqual({ usd: 0, tokensIn: 0, tokensOut: 0 });
+      expect(input.chatSpentUsd).toBe(0.01);
       expect(input.prompt).toContain('The requirements in this message are the whole task');
       expect(input.prompt).not.toContain('# Plan');
       expect(input.prompt).not.toContain('ship the field');

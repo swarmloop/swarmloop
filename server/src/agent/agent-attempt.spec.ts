@@ -131,6 +131,19 @@ describe('AttemptMeter', () => {
       expect(attempt.billed().usd).toBeCloseTo(0.9999);
     });
 
+    it('reports the session totals of the last result line, also from a line that reports its own part', () => {
+      const attempt = meter(prior);
+      expect(attempt.reported()).toBeNull();
+      feed(
+        attempt,
+        session({ model_usage_since_last_result: { a: { inputTokens: 5, outputTokens: 2, costUSD: 0.5 } } }),
+      );
+      expect(attempt.reported()).toEqual({ tokensIn: 120, tokensOut: 26, usd: 4 });
+      const codex = meter(prior);
+      feed(codex, JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 150, output_tokens: 30 } }));
+      expect(codex.reported()).toBeNull();
+    });
+
     it('does not reduce per-message usage before the result line', () => {
       const attempt = meter(prior);
       feed(

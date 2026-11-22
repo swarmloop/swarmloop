@@ -12,7 +12,8 @@ import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { emptyResult, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
 import { callsExceeded } from './limits';
-import { NO_USAGE, plusUsage } from './since-recorded';
+import type { ChatUsage } from '../history/chat-usage.repository';
+import { NO_USAGE } from './since-recorded';
 import { RunStop } from './run-stop';
 import { AgentLaunch } from './agent-launch';
 import { AgentLaunchEnv } from './agent-launch-env';
@@ -33,6 +34,23 @@ export { AGENT_CONTINUE, readSession } from './agent-session';
 export const AGENT_RUNNER = Symbol('AGENT_RUNNER');
 
 export type AgentRunInput = BaseAgentRunInput & { tools: AgentTools };
+
+/** What a chat holds before a launch: the session totals it last reported, and what it has cost so far. */
+interface ChatSpend {
+  prior: ChatUsage;
+  usd: number;
+}
+
+const NO_CHAT_SPEND: ChatSpend = { prior: NO_USAGE, usd: 0 };
+
+function chatSpendOf(input: AgentRunInput): ChatSpend {
+  return { prior: input.prior ?? NO_USAGE, usd: input.chatSpentUsd ?? 0 };
+}
+
+/** A launch that reported no session totals leaves the chat with none: the next session total counts whole. */
+function chatSpendAfter(chat: ChatSpend, attempt: AgentRunResult): ChatSpend {
+  return { prior: attempt.reported ?? NO_USAGE, usd: chat.usd + attempt.usd };
+}
 
 @Injectable()
 export class AgentProcessRunner {
@@ -79,21 +97,28 @@ export class AgentProcessRunner {
       let prior = carried;
       let chatId = input.resumeChatId;
       let resumed = chatId !== null;
-      let chatPrior = input.prior ?? NO_USAGE;
+      let chat = chatSpendOf(input);
       let merged: AgentRunResult | null = null;
       let endedEarlyUsed = false;
       let resent = false;
       let freshPrompt = input.freshPrompt;
       for (;;) {
         const attempt = await this.launch.once(
-          { ...input, prompt, resumeChatId: chatId, prior: chatPrior, agentCalls: input.agentCalls + calls },
+          {
+            ...input,
+            prompt,
+            resumeChatId: chatId,
+            prior: chat.prior,
+            chatSpentUsd: chat.usd,
+            agentCalls: input.agentCalls + calls,
+          },
           runtime,
           resumed,
           prior,
         );
         merged = foldAttempt(merged, attempt);
         calls += attempt.calls;
-        chatPrior = plusUsage(chatPrior, attempt);
+        chat = chatSpendAfter(chat, attempt);
         if (attempt.limit) {
           // A limit is no attempt: relaunching into it only burns launches. The caller picks another agent or waits.
           return merged;
@@ -118,7 +143,7 @@ export class AgentProcessRunner {
           freshPrompt = undefined;
           chatId = null;
           resumed = false;
-          chatPrior = NO_USAGE;
+          chat = NO_CHAT_SPEND;
           prompt = fresh;
           continue;
         }
@@ -142,7 +167,7 @@ export class AgentProcessRunner {
         endedEarlyUsed ||= relaunch.prompt === backgroundKilledContinue(input.answerEnding);
         chatId = relaunch.chatId;
         resumed = relaunch.resumed;
-        chatPrior = resumed ? chatPrior : NO_USAGE;
+        chat = resumed ? chat : NO_CHAT_SPEND;
         prompt = relaunch.prompt ?? prompt;
       }
     } finally {

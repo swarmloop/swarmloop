@@ -35,4 +35,28 @@ describe('ChatUsageRepository', () => {
       await db.close();
     }
   });
+
+  it("gives the reported totals of the chat's latest exchange, none when it has none", async () => {
+    const db = await repositoryDatabase();
+    try {
+      const run = await db.app.get(RunRepository).openWaiting('run-1', '/target');
+      const visits = db.app.get(VisitRepository);
+      const reported = (usd: number) => ({ usd, tokensIn: usd * 100, tokensOut: usd * 10 });
+      const on = (chat: string, totals: ReturnType<typeof reported> | null): VisitDraft => {
+        const draft = visitOn([chat], 1, 1, 1);
+        const exchange = { ...(draft.exchange as NonNullable<VisitDraft['exchange']>), reported: totals };
+        return { ...draft, exchange, exchanges: [exchange] };
+      };
+      await visits.finishVisit(run, on('chat-a', reported(1.37)));
+      await visits.finishVisit(run, on('chat-a', reported(0.1)));
+      await visits.finishVisit(run, on('chat-b', reported(5)));
+      await visits.finishVisit(run, on('chat-b', null));
+      const usage = db.app.get(ChatUsageRepository);
+      expect(await usage.lastReportedOf('chat-a')).toEqual(reported(0.1));
+      expect(await usage.lastReportedOf('chat-b')).toBeNull();
+      expect(await usage.lastReportedOf('chat-new')).toBeNull();
+    } finally {
+      await db.close();
+    }
+  });
 });
