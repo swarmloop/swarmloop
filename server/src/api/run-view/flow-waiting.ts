@@ -64,6 +64,7 @@ function codeSentence(run: RunEntity, maxReturns: number): string | null {
     return `${OUTAGE_NAMES[reason.code]} The step is tried again by itself${when}. Resume tries now.`;
   }
   if (state === 'waiting' && reason?.code === REASON.stalled) return reason.message;
+  if (state === 'skipped' && reason) return reason.message;
   if (state !== 'blocked' || !reason) return null;
   if (reason.code === REASON.loopLimit) {
     return `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`;
@@ -174,6 +175,7 @@ export function reason(run: RunEntity, documents: DocumentEntity[], stats: StepS
   if (run.status !== 'blocked' && run.status !== 'failed') {
     return null;
   }
+  if (storedState(run).state === 'skipped') return null;
   const stat = [...stats].reverse().find((item) => item.step === run.currentStep);
   const kind =
     run.currentStep === 'code-review' ? 'review_residual' : run.currentStep === 'pipeline' ? 'pipeline_log' : null;

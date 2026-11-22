@@ -44,6 +44,8 @@ export class MergeWatch {
   /** One pass over the runs that are not working and whose merge requests have not ended. A host that does not answer ends the pass: the next one tries again. */
   async run(): Promise<void> {
     for (const run of await this.runs.listRuns({ status: Not('running'), mergeOutcome: IsNull() })) {
+      // A subtask its epic closed keeps its reason: its closed merge requests do not make it `closed`.
+      if (storedState(run).state === 'skipped') continue;
       try {
         const hostDown = await (run.status === 'done' ? this.watch(run) : this.watchUnfinished(run));
         if (hostDown) return;

@@ -11,6 +11,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { EventRepository } from '../history/event.repository';
 import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
+import { storedState, writeRunState } from '../history/run-state';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { boot } from '../steps/prepare/prepare.step.spec-helpers';
@@ -288,6 +289,23 @@ describe('MergeWatch', () => {
     const run = await find('PROJ-13');
     expect([run.status, run.state]).toEqual(['done', 'closed']);
     expect((await loops('PROJ-13'))[0].reason).toContain('closed on GitHub while the run was waiting');
+  });
+
+  it('keeps a skipped subtask skipped when its merge requests are all closed', async () => {
+    await unfinishedRun('PROJ-15', 'blocked', 'blocked', ['acme/demo']);
+    const skipped = await find('PROJ-15');
+    writeRunState(skipped, { status: 'blocked', reason: { code: REASON.skipped, message: 'skipped by its epic: x' } });
+    await app.get(RunRepository).saveRun(skipped);
+    answers.set('acme/demo#1', { state: 'closed', by: 'grace', at: '2026-05-02T08:00:00Z' });
+
+    await app.get(MergeWatch).run();
+
+    const run = await find('PROJ-15');
+    expect([run.state, storedState(run).reason?.message, run.mergeOutcome]).toEqual([
+      'skipped',
+      'skipped by its epic: x',
+      null,
+    ]);
   });
 
   it('leaves a running run with a merged request alone', async () => {

@@ -22,6 +22,7 @@ import { openQuestions } from '../shared/answers';
 import { keepOpen } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
 import type { SubtaskOps } from '../shared/subtask-ops';
+import { skippedByEpic } from '../shared/subtask-skip-reason';
 import { mergedOf, taskStatusOf } from '../shared/subtask-status';
 import type { StepContext } from '../base-step';
 import type { StepResult } from '../contract/step-contract';
@@ -123,12 +124,12 @@ export class SplitPass {
     return own.committed ? { ...noted, summary: `${noted.summary}; ${own.committed}` } : noted;
   }
 
-  /** The open merge requests of a task this pass marked skipped are closed. A merged request stays as it is. */
+  /** The run of a task this pass marked skipped is closed with the epic's reason. */
   private async closeSkipped(parent: RunEntity, stored: Subtask[], next: Subtask[]): Promise<void> {
     for (const task of next.filter((item) => item.status === 'skipped')) {
       if (stored.find((item) => item.id === task.id)?.status === 'skipped') continue;
       const child = await this.deps.subtasks.find(parent, task.id);
-      if (child) await this.deps.subtasks.closeMergeRequests(parent, child);
+      if (child) await this.deps.subtasks.closeSkipped(parent, child, skippedByEpic(task.note));
     }
   }
 
