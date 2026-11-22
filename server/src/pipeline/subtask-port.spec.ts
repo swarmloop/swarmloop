@@ -567,6 +567,7 @@ describe('SubtaskPort rerun', () => {
   function rerunning(stopped: boolean) {
     const bodies: Record<string, string> = { needs, handoff: 'earlier note' };
     const accepted: unknown[][] = [];
+    const submitted: unknown[][] = [];
     const run = {
       key: 'child',
       status: stopped ? 'blocked' : 'waiting',
@@ -589,9 +590,11 @@ describe('SubtaskPort rerun', () => {
         accepted.push(call);
         return { replayed: false };
       },
+      submit: async (...call: unknown[]) => void submitted.push(call),
     };
     const documents = {
       latestBody: async (_key: string, kind: string) => bodies[kind] ?? null,
+      latestDocument: async (_key: string, kind: string) => (kind in bodies ? { id: 7, body: bodies[kind] } : null),
       putDocument: async (_run: unknown, kind: string, body: string) => void (bodies[kind] = body),
     };
     const port = new SubtaskPort(
@@ -609,6 +612,7 @@ describe('SubtaskPort rerun', () => {
       run,
       bodies,
       accepted,
+      submitted,
       stopBeforeResume: () => void (stopAfter = 1),
     };
   }
@@ -632,8 +636,9 @@ describe('SubtaskPort rerun', () => {
     expect(accepted).toEqual([]);
   });
 
-  it('does not resume a stopped task or parent for the machine, and resumes the stopped tasks for a person', async () => {
-    const { port, run, accepted } = rerunning(true);
+  it('does not resume a stopped task or parent for the machine, and resumes the recorded stopped tasks for a person', async () => {
+    const { port, run, bodies, accepted } = rerunning(true);
+    bodies.epic_stopped_tasks = 'child';
 
     await port.resume(run);
     await port.resumeParent(run, 'subtasks-1');
@@ -641,6 +646,56 @@ describe('SubtaskPort rerun', () => {
 
     await port.resumeStopped(run);
     expect(accepted.map((call) => call[2])).toEqual([{ by: 'person', level: null }]);
+  });
+
+  it('names the resume of a recorded task by the task and the record, and clears the record', async () => {
+    const { port, run, bodies, accepted } = rerunning(true);
+    bodies.epic_stopped_tasks = 'child';
+
+    await port.resumeStopped(run);
+
+    const key = (accepted[0][3] as { idempotencyKey: string }).idempotencyKey;
+    expect(key).toBe('epic-resume-child-7');
+    expect(bodies.epic_stopped_tasks).toBe('');
+  });
+
+  it('resumes nothing without a record, for a task not recorded, or for a recorded task no longer stopped', async () => {
+    const without = rerunning(true);
+    await without.port.resumeStopped(without.run);
+    const other = rerunning(true);
+    other.bodies.epic_stopped_tasks = 'someone-else';
+    await other.port.resumeStopped(other.run);
+    const moved = rerunning(false);
+    moved.bodies.epic_stopped_tasks = 'child';
+    await moved.port.resumeStopped(moved.run);
+
+    expect([without.accepted, other.accepted, moved.accepted]).toEqual([[], [], []]);
+  });
+
+  it('records only the tasks a Stop reaches, and keeps what an earlier Stop recorded', async () => {
+    const going = rerunning(false);
+    going.run.state = 'running';
+    await going.port.stopAll(going.run);
+    expect(going.bodies.epic_stopped_tasks).toBe('child');
+    expect(going.submitted.map((call) => call[0])).toEqual(['stop']);
+
+    const outage = rerunning(false);
+    outage.run.stateReason = JSON.stringify({ code: 'HOST_UNAVAILABLE', message: 'Host is down.' });
+    await outage.port.stopAll(outage.run);
+    expect(outage.bodies.epic_stopped_tasks).toBe('child');
+
+    const plain = rerunning(false);
+    await plain.port.stopAll(plain.run);
+    expect(plain.bodies.epic_stopped_tasks).toBeUndefined();
+
+    const stopped = rerunning(true);
+    await stopped.port.stopAll(stopped.run);
+    expect(stopped.bodies.epic_stopped_tasks).toBeUndefined();
+
+    const again = rerunning(true);
+    again.bodies.epic_stopped_tasks = 'first';
+    await again.port.stopAll(again.run);
+    expect(again.bodies.epic_stopped_tasks).toBe('first');
   });
 
   it('names the event by the needs and the lines, not by the visits, and resumes as the machine unless told', async () => {
