@@ -4,7 +4,8 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
-import { storedState } from '../history/run-state';
+import { REASON } from '../contract/run-state';
+import { storedState, writeRunState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { DocumentRepository } from '../history/document.repository';
@@ -246,7 +247,10 @@ describe('runs api', () => {
     };
     const app = await seededBoot(root, pipeline);
     try {
-      await save(app.get(RunRepository), 'proj-loop', 'code-review', 'blocked');
+      const runs = app.get(RunRepository);
+      const run = await save(runs, 'proj-loop', 'code-review', 'blocked');
+      writeRunState(run, { status: 'blocked', reason: { code: REASON.loopLimit, message: 'blocked' } });
+      await runs.saveRun(run);
       await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-loop');
       expect(flow.resume).toBe('ready');
@@ -269,7 +273,8 @@ describe('runs api', () => {
       const documents = app.get(DocumentRepository);
       const run = await save(runs, 'proj-fit', 'code-review', 'blocked');
       await documents.putDocument(run, 'error', 'code-review does not fit\n');
-      await save(runs, 'proj-fit', 'code-review', 'blocked');
+      writeRunState(run, { status: 'blocked', reason: { code: REASON.didNotFit, message: 'blocked' } });
+      await runs.saveRun(run);
       await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-fit');
       expect(flow.resume).toBe('ready');
@@ -294,6 +299,8 @@ describe('runs api', () => {
       const run = await save(runs, 'proj-check', 'implement-improve', 'blocked');
       await documents.putDocument(run, 'issues', '- the unit test for the field fails\n');
       await documents.putDocument(run, 'error', 'repo: npm test failed again on unchanged files after a relaunch\n');
+      writeRunState(run, { status: 'blocked', reason: { code: REASON.checkFailed, message: 'blocked' } });
+      await runs.saveRun(run);
       runs.notify('proj-check');
       await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-check');
@@ -676,6 +683,7 @@ describe('runs api', () => {
         await app.get(RunSubtaskCommandsService).skipTask('proj-skip', 'a');
 
         expect(storedState((await runs.findRun('proj-skip-a'))!).state).toBe('skipped');
+        expect(storedState((await runs.findRun('proj-skip-a'))!).reason?.code).toBe(REASON.skipped);
         const commands = app.get(CommandService);
         for (const type of ['resume', 'replay', 'rebase'] as const) {
           await expect(commands.submit(type, 'proj-skip-a', { step: 'implement', prompt: 'x' })).rejects.toThrow(

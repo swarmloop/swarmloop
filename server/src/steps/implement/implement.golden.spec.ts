@@ -4,6 +4,8 @@ import { EnvironmentService } from '../../environment/environment.service';
 import { runGit } from '../../git/git-repo.spec-helpers';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
+import { REASON } from '../../contract/run-state';
+import { storedState } from '../../history/run-state';
 import { goldenRun, type GoldenApp } from './implement.golden.spec-helpers';
 import { reply, result } from './implement.step.spec-helpers';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -128,6 +130,10 @@ describe('implement step golden traces', () => {
         const run = (await runs.findRun('PROJ-305'))!;
         run.agentCalls = 20;
         await runs.saveRun(run);
+      },
+      after: async (app) => {
+        const stored = (await app.get(RunRepository).findRun('PROJ-305'))!;
+        expect(storedState(stored).reason?.code).toBe(REASON.didNotFit);
       },
     });
     expect(done.message).toContain('implement does not fit');

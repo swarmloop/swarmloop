@@ -3,10 +3,9 @@ import type { OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
-import { latest } from '../../history/latest-document';
 import { RunFactsRepository } from '../../history/run-facts.repository';
 import { RunRepository } from '../../history/run.repository';
-import { blockCode, factColumns, isReturned } from '../../history/run-state';
+import { factColumns, isReturned } from '../../history/run-state';
 import { LiveHub } from '../../live/live.hub';
 import { OPEN_ITEM_KINDS, openItems } from './open-items';
 
@@ -15,7 +14,7 @@ const WRITTEN_WHOLE = ['running', 'done', 'failed'];
 
 /**
  * Keeps the `state` and `state_reason` columns of a run right when a fact the row does not hold changes: its open
- * questions, a return, the error of a block. It follows the live change notices on one queue and writes only
+ * questions and a return. It follows the live change notices on one queue and writes only
  * those two columns, through `RunFactsRepository`.
  */
 @Injectable()
@@ -80,7 +79,7 @@ export class RunStateRefresh implements OnApplicationBootstrap, OnModuleDestroy 
 
   /** The facts of the latest documents and pastes, read as the run view and the stall watch read them. */
   private async read(run: RunEntity): Promise<Parameters<typeof factColumns>[1]> {
-    const documents = await this.documents.latestDocuments([run.id], [...OPEN_ITEM_KINDS, 'error']);
+    const documents = await this.documents.latestDocuments([run.id], [...OPEN_ITEM_KINDS]);
     const asksPaste = run.currentStep === 'requirements' && documents.some(({ kind }) => kind === 'pending');
     const pastes = asksPaste ? await this.checkouts.listPastes(run.key) : [];
     return {
@@ -91,7 +90,6 @@ export class RunStateRefresh implements OnApplicationBootstrap, OnModuleDestroy 
           pastes.map((paste) => paste.url),
         ).length > 0,
       returned: isReturned(run),
-      blockCode: run.status === 'blocked' ? blockCode(run.currentStep, latest(documents, 'error')) : undefined,
     };
   }
 }

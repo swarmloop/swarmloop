@@ -65,7 +65,7 @@ export class AgentLaunch {
     const found = await this.credentials.runtimeCredential(runtime, starter);
     if (!found) {
       this.runStop.halt(key);
-      throw new StepStopped([], missingCredential(runtime));
+      throw new StepStopped([], missingCredential(runtime), null);
     }
     return found;
   }

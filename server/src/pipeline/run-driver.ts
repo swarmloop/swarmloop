@@ -18,6 +18,7 @@ import {
   failedLaunches,
   isStep,
   loopMark,
+  ownBlockCode,
   settle,
 } from '../core/pipeline-result';
 import { REASON } from '../contract/run-state';
@@ -301,9 +302,13 @@ export class RunDriver {
       run.targetPath = realpathSync(options.path);
     }
     const settled = settle(previousStep, previousStatus, name, 'blocked');
-    writeRunState(run, { status: settled.status, currentStep: settled.currentStep });
-    await this.runs.saveRun(run);
     const line = `${this.clock.iso()} ${name} not implemented`;
+    writeRunState(run, {
+      status: settled.status,
+      currentStep: settled.currentStep,
+      reason: { code: ownBlockCode(name), message: line },
+    });
+    await this.runs.saveRun(run);
     return { exitCode: 1, message: line };
   }
 

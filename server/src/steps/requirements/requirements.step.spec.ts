@@ -18,6 +18,7 @@ import { DataSource } from 'typeorm';
 import { AgentExchangeEntity, DocumentEntity, HttpCallEntity, StepStatEntity } from '../../history/entities';
 
 import { RunRepository } from '../../history/run.repository';
+import { storedState } from '../../history/run-state';
 
 import { DocumentRepository } from '../../history/document.repository';
 
@@ -311,6 +312,7 @@ describe('requirements step', () => {
       const run = await app.get(RunRepository).findRun('PROJ-4');
       expect(run?.status).toBe('blocked');
       expect(run?.currentStep).toBe('done');
+      expect(storedState(run!).reason?.code).toBe('BLOCKED');
     } finally {
       await app.close();
     }

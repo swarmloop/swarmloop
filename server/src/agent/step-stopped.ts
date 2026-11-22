@@ -1,5 +1,5 @@
 import type { RunStop } from './run-stop';
-import { STOP_NOTE } from '../contract/run-state';
+import { REASON, STOP_NOTE } from '../contract/run-state';
 
 /** Thrown where a step sees the Stop intent. The step ends blocked with the code STOPPED, not failed. */
 export class StepStopped extends Error {
@@ -7,7 +7,11 @@ export class StepStopped extends Error {
    * `external` is work outside this machine that may still run, such as a CI pipeline id and link. `message` says why
    * the run stopped when it was not the person's Stop.
    */
-  constructor(external: string[] = [], message: string = STOP_NOTE) {
+  constructor(
+    external: string[] = [],
+    message: string = STOP_NOTE,
+    readonly code: string | null = REASON.stopped,
+  ) {
     super(external.length > 0 ? `${message}\nMay still run: ${external.join(', ')}` : message);
   }
 }

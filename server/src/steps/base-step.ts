@@ -51,7 +51,7 @@ export interface StepEnd {
   moveTo?: StepName;
   /** Body of this step's handoff section. Recorded inside the close, so a failure there is not a failed visit. */
   handoff?: string;
-  /** Why a blocked run is blocked, when the step knows. Otherwise it comes from the error text. */
+  /** Why a blocked run is blocked, when the step knows. Otherwise the step's own code: LOOP_LIMIT for a loop step, else BLOCKED. */
   code?: string;
   /** The usage limit a run waits for, with `code` `RUNTIME_LIMIT`. */
   limit?: LimitState;

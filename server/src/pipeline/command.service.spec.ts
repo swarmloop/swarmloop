@@ -9,6 +9,8 @@ import { CommandRepository } from '../history/command.repository';
 import { CommandEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
+import { REASON } from '../contract/run-state';
+import { writeRunState } from '../history/run-state';
 import { save } from '../testing/runs.spec-helpers';
 import { seededBoot } from '../api/runs-boot.spec-helpers';
 import { CommandService } from './command.service';
@@ -159,6 +161,11 @@ describe('CommandService', () => {
       });
 
       const run = await save(runs, 'proj-2', 'implement-improve', 'blocked');
+      writeRunState(run, {
+        status: 'blocked',
+        reason: { code: REASON.checkFailed, message: 'a required check failed again' },
+      });
+      await runs.saveRun(run);
       await testApp
         .get(DocumentRepository)
         .putDocument(run, 'error', 'repo: npm test failed again on unchanged files after a relaunch\n');

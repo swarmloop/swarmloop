@@ -61,7 +61,7 @@ describe('PlannerRules', () => {
     withPlanner(async (harness) => {
       const { backlogId } = await harness.seed();
       await harness.task(backlogId, null, 'going', { runKey: 'going-1', status: 'running' });
-      await harness.run('going-1', { status: 'blocked', facts: { blockCode: 'loop-limit' } });
+      await harness.run('going-1', { status: 'blocked', reason: { code: 'loop-limit', message: 'loop-limit' } });
       expect(await refusal(harness, { action: 'resume', run: 'going-1' })).toBeNull();
       await harness.addEvent(backlogId, 'action:1', 'action', {
         command: 'resume',
@@ -71,7 +71,7 @@ describe('PlannerRules', () => {
       expect(await refusal(harness, { action: 'resume', run: 'going-1' })).toContain(
         'blocked again for the same reason',
       );
-      await harness.run('going-1', { status: 'blocked', facts: { blockCode: 'check-failed' } });
+      await harness.run('going-1', { status: 'blocked', reason: { code: 'check-failed', message: 'check-failed' } });
       expect(await refusal(harness, { action: 'resume', run: 'going-1' })).toBeNull();
     }));
 

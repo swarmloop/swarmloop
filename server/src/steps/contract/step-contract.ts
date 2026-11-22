@@ -48,12 +48,23 @@ export interface StepFailure {
   answerErrors?: string[];
 }
 
+/** The reason code a block stores: an error code or one of the reasons a block can name. */
+export type BlockCode =
+  | ErrorCode
+  | typeof REASON.stopped
+  | typeof REASON.checkFailed
+  | typeof REASON.didNotFit
+  | typeof REASON.loopLimit
+  | typeof REASON.ciLogUnavailable
+  | typeof REASON.ciTimeout
+  | typeof REASON.blocked;
+
 export type Route =
   | { to: 'next' }
   | { to: 'jump'; step: StepName }
   | { to: 'return'; step: StepName; issues: Issue[] }
   | { to: 'wait'; reason: string; code?: ErrorCode | typeof REASON.asksPlanner; limit?: LimitState; retryAt?: string }
-  | { to: 'block'; reason: string; code?: ErrorCode }
+  | { to: 'block'; reason: string; code?: BlockCode }
   | { to: 'fail'; error: StepFailure };
 
 export interface ArtifactValue {

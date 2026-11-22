@@ -248,6 +248,24 @@ test('forbidOutside reports a state derived outside the run state module and let
   assert.match(violations[1], /^server\/src\/pipeline\/foo\.spec\.ts:1:/);
 });
 
+test('forbidOutside reports a block code or an error document read in the four state readers and lets the display read and other files be', () => {
+  const files = {
+    'server/src/history/run-state.ts':
+      'const code = blockCode(step, error);\nconst stored = readReason(run.stateReason);\n',
+    'server/src/steps/shared/run-state-refresh.ts':
+      "const documents = await latestDocuments([run.id], [...KINDS, 'error']);\n",
+    'server/src/api/run-view/flow-waiting.ts': "const residual = latest(current, 'error') ?? null;\n",
+    'server/src/steps/step-error-end.ts': 'const code = blockCode(step, error);\n',
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 2);
+  assert.match(violations[0], /^server\/src\/history\/run-state\.ts:1:/);
+  assert.match(violations[1], /^server\/src\/steps\/shared\/run-state-refresh\.ts:1:/);
+});
+
 test('forbidOutside keeps the old phase name in the migration and nowhere else', () => {
   const old = ['brain', 'storm'].join('');
   const files = {

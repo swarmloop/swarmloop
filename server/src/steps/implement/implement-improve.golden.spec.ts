@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { EnvironmentService } from '../../environment/environment.service';
 import { RunRepository } from '../../history/run.repository';
+import { REASON } from '../../contract/run-state';
+import { storedState } from '../../history/run-state';
 import { goldenRun } from './implement.golden.spec-helpers';
 import { resultAnswer } from '../../testing/result-answer';
 import { result } from './implement.step.spec-helpers';
@@ -55,6 +57,10 @@ describe('implement-improve step golden traces', () => {
         const run = (await runs.findRun('PROJ-313'))!;
         run.agentCalls = 20;
         await runs.saveRun(run);
+      },
+      after: async (app) => {
+        const stored = (await app.get(RunRepository).findRun('PROJ-313'))!;
+        expect(storedState(stored).reason?.code).toBe(REASON.didNotFit);
       },
     });
     expect(done.message).toContain('implement-improve does not fit');
