@@ -54,7 +54,6 @@ describe('runs api', () => {
       const kept = await save(runs, 'keep', 'plan', 'waiting');
       await documents.putDocument(kept, 'requirements', 'stay\n');
       const data = join(root, 'data');
-      await mkdir(join(data, 'agent-state', 'PROJ-20'), { recursive: true });
       await mkdir(join(root, 'runs', 'PROJ-20'), { recursive: true });
       await mkdir(join(root, 'worktrees', 'PROJ-20'), { recursive: true });
       await writeFile(join(data, 'PROJ-20-plan-output.txt'), 'out\n');
@@ -63,7 +62,6 @@ describe('runs api', () => {
       await writeFile(join(data, 'PROJ-20--2-plan-session.json'), '{}\n');
       await writeFile(join(data, 'price-cache-cursor.json'), '{}\n');
       await writeFile(join(data, 'swarmloop-empty-env'), '');
-      await writeFile(join(data, 'agent-state', 'PROJ-20', 'brief.txt'), 'brief\n');
       await writeFile(join(root, 'runs', 'PROJ-20', 'state.json'), '{}\n');
       await writeFile(join(root, 'worktrees', 'PROJ-20', 'keep.txt'), 'keep\n');
       const stats = await visits.listStats(run.id);
@@ -92,7 +90,6 @@ describe('runs api', () => {
       expect(existsSync(join(data, 'PROJ-20-plan-output.txt'))).toBe(false);
       expect(existsSync(join(data, 'PROJ-20-plan-launches.txt'))).toBe(false);
       expect(existsSync(join(data, 'PROJ-20-plan-session.json'))).toBe(false);
-      expect(existsSync(join(data, 'agent-state', 'PROJ-20'))).toBe(false);
       expect(existsSync(join(root, 'runs', 'PROJ-20'))).toBe(false);
       expect(existsSync(join(data, 'PROJ-20--2-plan-session.json'))).toBe(true);
       expect(existsSync(join(data, 'price-cache-cursor.json'))).toBe(true);
@@ -231,14 +228,14 @@ describe('runs api', () => {
         return { exitCode: 0, message: 'proj-70 stopped' };
       }),
     };
-    const prepare = { removeWorktrees: jest.fn() };
-    const app = await seededBoot(root, pipeline, prepare);
+    const folders = { remove: jest.fn() };
+    const app = await seededBoot(root, pipeline, folders);
     try {
       const runs = app.get(RunRepository);
       await save(runs, 'proj-70', 'implement', 'running');
       const file = join(root, 'data', 'proj-70-implement-output.txt');
       await writeFile(file, 'out\n');
-      prepare.removeWorktrees.mockImplementation(async () => {
+      folders.remove.mockImplementation(async () => {
         events.push('worktrees');
         expect(existsSync(file)).toBe(true);
         expect(await runs.findRun('proj-70')).not.toBeNull();
@@ -246,9 +243,48 @@ describe('runs api', () => {
       expect(await app.get(RunCommandsService).remove('proj-70')).toEqual({ key: 'proj-70' });
       expect(events).toEqual(['stop', 'worktrees']);
       expect(pipeline.stop).toHaveBeenCalledWith('proj-70');
-      expect(prepare.removeWorktrees).toHaveBeenCalledWith('proj-70');
+      expect(folders.remove).toHaveBeenCalledWith('proj-70');
       expect(await runs.findRun('proj-70')).toBeNull();
       expect(existsSync(file)).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("deletes a run with its worktrees, agent state, /tmp folders and setup output, and keeps another run's", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-delete-folders-'));
+    const pipeline = { startDetached: jest.fn(), stop: jest.fn().mockResolvedValue({ exitCode: 0, message: '' }) };
+    const app = await seededBoot(root, pipeline, undefined, { CHECKOUTS_ROOT: '.' });
+    try {
+      const runs = app.get(RunRepository);
+      await save(runs, 'PROJ-30', 'implement', 'idle');
+      await save(runs, 'PROJ-30-a', 'implement', 'idle');
+      const data = join(root, 'data');
+      const leave = async (key: string) => {
+        const folders = [
+          join(root, 'worktrees', key, 'demo'),
+          join(data, 'agent-state', key, 'implement'),
+          join(root, 'worktrees', '.tmp', key, 'implement'),
+        ];
+        for (const folder of folders) {
+          await mkdir(folder, { recursive: true });
+        }
+        const files = [join(data, `${key}-setup-output.txt`), join(data, `${key}-checks-att-command-0-log.txt`)];
+        for (const file of files) {
+          await writeFile(file, 'x\n');
+        }
+        return [...folders, ...files];
+      };
+      const own = await leave('PROJ-30');
+      const other = await leave('PROJ-30-a');
+
+      await app.get(RunCommandsService).remove('PROJ-30');
+
+      expect(own.map((path) => existsSync(path))).toEqual(own.map(() => false));
+      expect(other.map((path) => existsSync(path))).toEqual(other.map(() => true));
+      expect(existsSync(join(root, 'worktrees', 'PROJ-30'))).toBe(false);
+      expect(existsSync(join(data, 'agent-state', 'PROJ-30'))).toBe(false);
+      expect(existsSync(join(root, 'worktrees', '.tmp', 'PROJ-30'))).toBe(false);
     } finally {
       await app.close();
     }
@@ -260,15 +296,15 @@ describe('runs api', () => {
       startDetached: jest.fn(),
       stop: jest.fn().mockResolvedValue({ exitCode: 1, message: 'proj-71 is still running' }),
     };
-    const prepare = { removeWorktrees: jest.fn() };
-    const app = await seededBoot(root, pipeline, prepare);
+    const folders = { remove: jest.fn() };
+    const app = await seededBoot(root, pipeline, folders);
     try {
       const runs = app.get(RunRepository);
       await save(runs, 'proj-71', 'implement', 'running');
       const file = join(root, 'data', 'proj-71-implement-output.txt');
       await writeFile(file, 'out\n');
       await expect(app.get(RunCommandsService).remove('proj-71')).rejects.toBeInstanceOf(ConflictException);
-      expect(prepare.removeWorktrees).not.toHaveBeenCalled();
+      expect(folders.remove).not.toHaveBeenCalled();
       expect(await runs.findRun('proj-71')).not.toBeNull();
       expect(existsSync(file)).toBe(true);
     } finally {

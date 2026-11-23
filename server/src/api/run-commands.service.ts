@@ -16,7 +16,7 @@ import { storedState, writeRunState } from '../history/run-state';
 import { PhaseName, pipelineStepOf, reviewerOf, STEPS } from '../contract/steps';
 import { REASON, STOP_NOTE } from '../contract/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
-import { PrepareStep } from '../steps/prepare/prepare.step';
+import { RunFolders } from '../pipeline/run-folders';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { type IssueTracker, runKeys } from '../integrations/issue-tracker/issue-tracker';
@@ -58,7 +58,7 @@ export class RunCommandsService {
     private readonly flows: FlowRepository,
     private readonly pipeline: PipelineService,
     private readonly projects: ProjectAppendService,
-    private readonly prepare: PrepareStep,
+    private readonly folders: RunFolders,
     private readonly queries: RunQueriesService,
     private readonly clock: Clock,
     private readonly config: AppConfig,
@@ -242,7 +242,7 @@ export class RunCommandsService {
       await this.holdParent(key);
       await this.closing.removeAll(run);
     }
-    await this.prepare.removeWorktrees(key);
+    await this.folders.remove(key);
     await this.runs.remove(run);
     return { key };
   }

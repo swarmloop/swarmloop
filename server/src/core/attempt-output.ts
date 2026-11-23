@@ -1,36 +1,21 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { readdir } from 'fs/promises';
 import { join, resolve, sep } from 'path';
-import { REVIEW_STEPS, STEPS } from '../contract/steps';
+import { isAttemptId, runFileName } from './run-files';
 
 /** The output file of one attempt of a step. A relaunch of the step writes another file. */
 export function attemptOutputPath(root: string, key: string, step: string, attemptId: string): string {
-  return join(root, 'data', `${key}-${step}-${attemptId}-output.txt`);
+  return join(root, 'data', runFileName(key, `${step}-${attemptId}`, 'output'));
 }
 
 /** The output file to write for an attempt. A launch without an attempt keeps today's name. */
 export function outputFileFor(root: string, key: string, step: string, attemptId: string | null): string {
-  return attemptId ? attemptOutputPath(root, key, step, attemptId) : join(root, 'data', `${key}-${step}-output.txt`);
+  return attemptId
+    ? attemptOutputPath(root, key, step, attemptId)
+    : join(root, 'data', runFileName(key, step, 'output'));
 }
-
-/** For each step, the suffixes of its sibling steps ("code-review" has "report"): an id that starts so is the file of the sibling. */
-const SIBLING_SUFFIXES: ReadonlyMap<string, readonly string[]> = new Map(
-  [...STEPS, ...REVIEW_STEPS].map((step) => [
-    step,
-    [...STEPS, ...REVIEW_STEPS]
-      .filter((other) => other !== step && other.startsWith(`${step}-`))
-      .map((other) => other.slice(step.length + 1)),
-  ]),
-);
 
 const OUTPUT_SUFFIX = '-output.txt';
-
-/** True when the id is a non-empty id of an attempt of this step, not the start of a sibling step's name. */
-function isAttemptId(step: string, id: string): boolean {
-  return (
-    id !== '' && !(SIBLING_SUFFIXES.get(step) ?? []).some((sibling) => id === sibling || id.startsWith(`${sibling}-`))
-  );
-}
 
 /** An attempt file of this step: a non-empty id between the step and the suffix, not the file of a sibling step. */
 function isAttemptFile(name: string, key: string, step: string): boolean {
@@ -43,45 +28,6 @@ function isAttemptFile(name: string, key: string, step: string): boolean {
     return false;
   }
   return isAttemptId(step, name.slice(prefix.length, name.length - OUTPUT_SUFFIX.length));
-}
-
-/** Every step that writes an output file. */
-export const OUTPUT_STEPS: readonly string[] = [...STEPS, ...REVIEW_STEPS, 'code-review-report', 'chat'];
-
-const OUTPUT_STEP_SET: ReadonlySet<string> = new Set(OUTPUT_STEPS);
-
-/** The matcher of one run key: a name is split at its hyphens once, not tried against every step. */
-function outputMatcher(key: string): (name: string) => boolean {
-  const prefix = `${key}-`;
-  return (name) => {
-    if (
-      !name.startsWith(prefix) ||
-      !name.endsWith(OUTPUT_SUFFIX) ||
-      name.length < prefix.length + OUTPUT_SUFFIX.length
-    ) {
-      return false;
-    }
-    const middle = name.slice(prefix.length, name.length - OUTPUT_SUFFIX.length);
-    if (OUTPUT_STEP_SET.has(middle)) {
-      return true;
-    }
-    for (let at = middle.indexOf('-'); at !== -1; at = middle.indexOf('-', at + 1)) {
-      if (OUTPUT_STEP_SET.has(middle.slice(0, at)) && isAttemptId(middle.slice(0, at), middle.slice(at + 1))) {
-        return true;
-      }
-    }
-    return false;
-  };
-}
-
-let lastMatcher: { key: string; matches: (name: string) => boolean } | undefined;
-
-/** True for any output file of this run: one per attempt, or the single file of a run from before attempts. */
-export function isOutputFileOf(name: string, key: string): boolean {
-  if (lastMatcher?.key !== key) {
-    lastMatcher = { key, matches: outputMatcher(key) };
-  }
-  return lastMatcher.matches(name);
 }
 
 /** The attempt ids a run's flow knows: every stored attempt of any step (reviewers write under the code-review id) and the active one. */

@@ -1,7 +1,8 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { checkOutputPath, isCheckOutputOf, readCheckOutput } from './check-output';
+import { checkOutputPath, readCheckOutput } from './check-output';
+import { runFileOwner } from './run-files';
 
 describe('check output files', () => {
   it('names the file from the run, step, attempt and command and keeps it in data', () => {
@@ -9,7 +10,10 @@ describe('check output files', () => {
     expect(checkOutputPath(root, 'PROJ-1', 'checks', 'att-1', 3)).toBe(
       join(root, 'data', 'run-logs', 'PROJ-1', 'checks-att-1-command-3-log.txt'),
     );
-    expect(isCheckOutputOf('PROJ-1-checks-att-1-command-3-log.txt', 'PROJ-1')).toBe(true);
+    expect(runFileOwner('PROJ-1-checks-att-1-command-3-log.txt', new Set(['PROJ-1']))).toEqual({
+      key: 'PROJ-1',
+      kind: 'check-output',
+    });
   });
 
   it('refuses a part that could leave data/', () => {

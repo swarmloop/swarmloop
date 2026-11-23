@@ -86,7 +86,12 @@ async function readings(setup: Setup): Promise<Readings> {
     app.get(DocumentRepository),
     app.get(Clock),
   ).report('0');
-  const retention = new RunRetention(runs, {} as never, app.get(AppConfig), app.get(Clock));
+  const retention = new RunRetention(
+    runs,
+    { remove: async () => undefined, removeLeftTmp: async () => undefined } as never,
+    app.get(AppConfig),
+    app.get(Clock),
+  );
   return {
     column: { state: column.state, code: column.reason?.code },
     flow: { state: flow.state, code: flow.stateReason?.code, actions: flow.actions },

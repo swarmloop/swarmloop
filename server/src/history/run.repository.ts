@@ -292,10 +292,10 @@ export class RunRepository {
     return this.runs.find({ where, order: { createdAt: 'DESC', id: 'DESC' } });
   }
 
-  /** Drop this run's rows and the files swarmloop stored for it. Worktrees stay with prepare. */
+  /** Drop this run's rows and the files swarmloop stored for it. The worktrees, agent state and /tmp folders go through RunFolders. */
   async remove(run: RunEntity): Promise<void> {
     const keys = (await this.listRuns()).map((row) => row.key);
-    removeStoredFiles(root(this.config), run.key, keys);
+    await removeStoredFiles(root(this.config), run.key, keys);
     const stats = await this.stepStats.find({ where: { runId: run.id } });
     const statIds = stats.map((stat) => stat.id);
     if (statIds.length > 0) {

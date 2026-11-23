@@ -22,6 +22,7 @@ import { reviewContinue, reviewResume } from './code-review.prompts';
 import type { AgentDoor } from '../shared/agent-door';
 import { StartRefused } from '../shared/start-refused';
 import { StepStopped } from '../../agent/step-stopped';
+import { runFileName } from '../../core/run-files';
 import type { StartBy } from '../../core/pipeline-result';
 import { ResultInvalid } from '../shared/answer-errors';
 import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
@@ -197,7 +198,7 @@ async function one(
   try {
     const directory = join(deps.root, 'data');
     mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, `${key}-code-review-${job.reviewer.name}-output.txt`), 'starting\n');
+    writeFileSync(join(directory, runFileName(key, `code-review-${job.reviewer.name}`, 'output')), 'starting\n');
     const result = await launchReview(deps, opened, key, env, job, auto, fresh, (id) => (startId = id));
     // A reviewer that took over from a limited agent is recorded and priced as the agent that ran.
     const agent = result.agent ?? job;

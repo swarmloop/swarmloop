@@ -1,7 +1,5 @@
-import { existsSync, readdirSync, realpathSync, rmSync, statSync } from 'fs';
 import type { StepCapabilities } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
-import { dirname, isAbsolute, join, resolve } from 'path';
 import { Injectable } from '@nestjs/common';
 import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
@@ -9,7 +7,7 @@ import { StepName } from '../../contract/steps';
 import { assignCodeHost, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { reportFailure } from '../shared/step-failure';
-import { git, gitDetail } from '../../git/git';
+import { gitDetail } from '../../git/git';
 import { BaseStep, StepContext } from '../base-step';
 import { CheckoutService } from '../shared/checkout.service';
 import {
@@ -113,60 +111,5 @@ export class PrepareStep extends BaseStep<typeof INPUTS> {
     await this.worktrees.assertGit(located);
     await this.checkouts.saveCheckout(trimmed, '');
     return { name: trimmed };
-  }
-
-  async removeWorktrees(key: string): Promise<void> {
-    const directory = join(root(this.config), 'worktrees', key);
-    if (!existsSync(directory)) {
-      return;
-    }
-    if (linkedWorktree(directory)) {
-      await this.unregisterWorktree(directory);
-    } else {
-      for (const name of readdirSync(directory)) {
-        const child = join(directory, name);
-        if (linkedWorktree(child)) {
-          await this.unregisterWorktree(child);
-        }
-      }
-    }
-    rmSync(directory, { recursive: true, force: true });
-  }
-
-  private async unregisterWorktree(worktree: string): Promise<void> {
-    let main = '';
-    try {
-      const common = await git(['-C', worktree, 'rev-parse', '--git-common-dir']);
-      main = dirname(isAbsolute(common) ? common : resolve(worktree, common));
-    } catch {
-      rmSync(worktree, { recursive: true, force: true });
-      return;
-    }
-    if (samePlace(main, worktree)) {
-      return;
-    }
-    try {
-      await git(['-C', main, 'worktree', 'remove', '--force', worktree]);
-    } catch {
-      rmSync(worktree, { recursive: true, force: true });
-      try {
-        await git(['-C', main, 'worktree', 'prune']);
-      } catch {
-        return;
-      }
-    }
-  }
-}
-
-function linkedWorktree(path: string): boolean {
-  const marker = join(path, '.git');
-  return existsSync(marker) && statSync(marker).isFile();
-}
-
-function samePlace(left: string, right: string): boolean {
-  try {
-    return realpathSync(left) === realpathSync(right);
-  } catch {
-    return resolve(left) === resolve(right);
   }
 }

@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'fs';
 import { resolve, sep } from 'path';
+import { runFileName } from './run-files';
 import { runLogPath } from './run-logs';
 
-const SUFFIX = '-log.txt';
 /** A name part holds no separator, so the file stays in its folder whatever the caller passed. */
 const SAFE_PART = /^[\w.-]*$/;
 
@@ -20,16 +20,11 @@ export function checkOutputPath(root: string, key: string, step: string, attempt
 /** The file runs wrote flat in `data/` before the log folder; it is read and removed for those runs. */
 function flatCheckOutputPath(root: string, key: string, step: string, attemptId: string, index: number): string {
   const data = resolve(root, 'data');
-  const file = resolve(data, `${key}-${step}-${attemptId}-command-${index}${SUFFIX}`);
+  const file = resolve(data, runFileName(key, `${step}-${attemptId}-command-${index}`, 'check-output'));
   if (!file.startsWith(`${data}${sep}`)) {
     throw new Error('check output name is invalid');
   }
   return file;
-}
-
-/** True for a flat check command file of this run, so retention removes it with the run's other logs. */
-export function isCheckOutputOf(name: string, key: string): boolean {
-  return name.startsWith(`${key}-checks-`) && /-command-\d+-log\.txt$/.test(name);
 }
 
 /** What the command wrote, in the run's log folder or, for an older run, flat in `data/`. Null when no file exists. */
