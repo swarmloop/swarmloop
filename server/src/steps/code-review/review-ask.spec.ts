@@ -19,7 +19,7 @@ describe('review asks', () => {
   const exchanges = new Map<string, Exchange>([['requirements', { finding: points.join('\n'), answer: null }]]);
 
   it('names only the missing point of a 50-point review, and keeps the question text as it was', () => {
-    const [ask] = reviewAsks(exchanges, finished, true, ASKED_AT);
+    const [ask] = reviewAsks(exchanges, finished, ASKED_AT);
 
     expect(ask.question).toBe(
       `requirements still returns: ${points.join(' ')} Implement answered: nothing. Which holds? (asked ${ASKED_AT})`,
@@ -32,6 +32,7 @@ describe('review asks', () => {
   });
 
   it('asks nothing when the diff changed', () => {
-    expect(reviewAsks(exchanges, finished, false, ASKED_AT)).toEqual([]);
+    // The question no longer depends on the diff: a repeated return asks on any head.
+    expect(reviewAsks(exchanges, finished, ASKED_AT)).toHaveLength(1);
   });
 });

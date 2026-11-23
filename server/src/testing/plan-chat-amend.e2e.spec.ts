@@ -46,7 +46,7 @@ describe('a person writes to the planner after implement started, on a run that 
 
   async function start(scripts: Record<string, ScriptedAnswer[]>, split = false): Promise<void> {
     blocks = new MessageDuringImplement({ plan: [firstPlan, ...(scripts.plan ?? [])] });
-    flow = await createFlowHarness(KEY, { blocks, realImplement: 'all' });
+    flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', implementCommits: true });
     blocks.advance = () => flow.app.clock.advance(1000);
     const documents = flow.app.app.get(DocumentRepository);
     const run = await remember(flow.app.app.get(RunRepository), documents, KEY, 'plan', 'waiting');
@@ -256,6 +256,8 @@ describe('a person writes to the planner of a done run whose merge request is op
     const opened = await flow.host.findMergeRequest(request);
     const before = opened.record!.summary;
     flow.app.clock.advance(1000);
+    // The amended work is a new commit on the branch, so its review is a new input.
+    await flow.recommit();
 
     await flow.app.app.get(PlanChatService).send(KEY, 'Also keep the old rows', 'ana');
     await flow.app.app.get(PlannerTurns).idle();

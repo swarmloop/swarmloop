@@ -46,7 +46,6 @@ interface SettleInput {
   exchanges: Map<string, Exchange>;
   fresh: boolean;
   thirdParty: boolean;
-  same: boolean;
 }
 
 /** What the planner is asked: the reviewers' own questions, then the disagreements that implement and a reviewer did not settle. */
@@ -76,7 +75,7 @@ export class ReviewSettle {
 
   async settle(input: SettleInput): Promise<PipelineResult> {
     const { ctx, deps, env, finished, kept, recovered, fingerprint, only } = input;
-    const { mounts, requirements, notes, impact, list, exchanges, fresh, thirdParty, same } = input;
+    const { mounts, requirements, notes, impact, list, exchanges, fresh, thirdParty } = input;
     const { opened, options } = ctx;
     const { key } = opened.run;
     const tally = tallyRound(kept, recovered, finished);
@@ -88,7 +87,7 @@ export class ReviewSettle {
       await this.stamp(opened.run, stored, fingerprint);
       return closed;
     }
-    const disagreed = thirdParty ? [] : reviewAsks(exchanges, finished, same, opened.startedAt);
+    const disagreed = thirdParty ? [] : reviewAsks(exchanges, finished, opened.startedAt);
     // The run's planner is asked first: a subtask has none, its disagreement goes to the person who started the run.
     const toPlanner = this.chat !== undefined && !isSubtask(opened.run);
     const questions = plannerQuestions(finished, toPlanner ? disagreed : []);

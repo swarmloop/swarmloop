@@ -123,15 +123,17 @@ function resumedPrompt(
     returned: string | null;
     retry: boolean;
     received: string | null;
+    /** The chat's stored session ended its last launch: that launch was not the interrupted round's. */
+    completed: boolean;
   },
 ): string {
-  const { fix, plan, returned, retry, received } = round;
+  const { fix, plan, returned, retry, received, completed } = round;
   const name = job.reviewer.name;
   if (job.answer) {
     const definition = job.exchange ? reviewAnswerDefinition(name) : reviewDefinition(name);
     return answerFollowUp(job.answer, resultPromptFor(definition, received));
   }
-  if (retry) return reviewContinue(name, received);
+  if (retry && !completed) return reviewContinue(name, received);
   return reviewResume(name, fix.implement, fix.reviewed, plan, returned, received, job.exchange ?? undefined);
 }
 
@@ -153,7 +155,9 @@ export async function runJob(
   const full = fresh || !session?.chatId;
   const received = session?.resultName ?? null;
   const briefed = await deps.briefing?.prepare(opened.run, step, session?.chatId ?? null, { continued: !full });
-  const resumed = full ? job.prompt : resumedPrompt(job, { fix, plan, returned, retry, received });
+  const resumed = full
+    ? job.prompt
+    : resumedPrompt(job, { fix, plan, returned, retry, received, completed: session?.completed === true });
   // A resumed chat is told only what its starter changed since its last prompt; a new chat has the whole state in its prompt.
   const chosen = full ? resumed : `${resumed}${briefed?.told ?? ''}`;
   const finished = await one(
@@ -257,7 +261,12 @@ async function launchReview(
 ): Promise<LaunchResult> {
   const step = `code-review-${job.reviewer.name}`;
   const { by, level, prompt } = deps.start;
-  const input = { visitOf: 'code-review' as const, prompt, texts: [job.reviewer.name] };
+  // The planner's answer to this reviewer's own question is part of what it starts on, so a reviewer that goes on with it is not a repeat.
+  const input = {
+    visitOf: 'code-review' as const,
+    prompt,
+    texts: job.answer ? [job.reviewer.name, job.answer.text] : [job.reviewer.name],
+  };
   return deps.door.outside(
     { step, by, level, input, admitted },
     {

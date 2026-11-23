@@ -98,13 +98,30 @@ function findingsOf(body: string | null): string[] {
   return issues.map((issue) => `${issue.source}\n${issue.title}\n${issue.body}`);
 }
 
+/**
+ * The steps whose input is the tree and the brief only. What planners say between review rounds is not a review's
+ * input: a round on the same heads, brief and instructions is the same round, whatever was answered in between.
+ */
+const TREE_AND_BRIEF_STEPS: readonly string[] = ['code-review'];
+
 /** Gathers the parts of the input of one step's visit from the run's documents, its plan chat and its worktrees. */
 export async function readVisitInput(
   deps: VisitInputDeps,
-  run: Pick<RunEntity, 'key' | 'targetPath'>,
+  run: Pick<RunEntity, 'key' | 'targetPath' | 'prompt'>,
   step: string,
   instruction = '',
 ): Promise<string> {
+  if (TREE_AND_BRIEF_STEPS.includes(step)) {
+    return visitInput({
+      heads: await headsOf(deps, run),
+      checklist: [],
+      handoff: '',
+      answers: [],
+      returns: [],
+      findings: [],
+      instruction: `${run.prompt}${instruction}`,
+    });
+  }
   const { documents } = deps;
   const stored = (artifact: Reader & { kind: string }) =>
     takes(artifact, step) ? documents.latestBody(run.key, artifact.kind) : Promise.resolve(null);
@@ -147,7 +164,7 @@ export interface StartInputParts {
  */
 export async function startInput(
   deps: VisitInputDeps,
-  run: Pick<RunEntity, 'key' | 'targetPath'>,
+  run: Pick<RunEntity, 'key' | 'targetPath' | 'prompt'>,
   input: StartInputParts,
 ): Promise<string | null> {
   let base = '';

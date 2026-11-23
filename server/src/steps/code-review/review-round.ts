@@ -1,13 +1,11 @@
 import { agentFor } from '../../config/agents';
-import { readFileSync } from 'fs';
-import { basename, join } from 'path';
+import { basename } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
 import type { EventRepository } from '../../history/event.repository';
 import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
-import { agentStateDir } from '../../sandbox/sandbox-launch';
 import type { StepContext } from '../base-step';
 import { withReturnNotes } from '../implement/implement-record';
 import {
@@ -104,18 +102,6 @@ export async function runRound(deps: ReviewDeps, input: RoundInput): Promise<Fin
     await recordAngle(deps, input.opened, item);
   }
   return finished;
-}
-
-export function sameReviewedDiff(root: string, key: string, patch: string): boolean {
-  try {
-    const previous = readFileSync(
-      join(agentStateDir(root, key, 'code-review-requirements'), 'briefs', 'diff.md'),
-      'utf8',
-    );
-    return previous === patch;
-  } catch {
-    return false;
-  }
 }
 
 /** Sorts the round's opinions into reviewer order and drafts the documents they are stored with. */

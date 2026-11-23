@@ -139,7 +139,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
       implement: [done, keeps],
       'code-review-requirements': reviews,
     });
-    flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', realReview: true });
+    flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', realReview: true, implementCommits: true });
     const documents = flow.app.app.get(DocumentRepository);
     const run = await remember(flow.app.app.get(RunRepository), documents, KEY, 'plan', 'waiting');
     await documents.putDocument(run, 'requirement_list', JSON.stringify([{ id: 'R1', text: requirement }]) + '\n');
