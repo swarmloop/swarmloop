@@ -148,7 +148,6 @@ describe('a reviewer killed after its block', () => {
       only: undefined,
       fresh: false,
       retry: true,
-      same: false,
       attemptId: 'aaa',
       counts: async () => false,
     });
@@ -167,7 +166,6 @@ describe('a reviewer killed after its block', () => {
       only: undefined,
       fresh: false,
       retry: true,
-      same: false,
       attemptId: 'aaa',
       counts: async () => false,
     });
@@ -192,7 +190,6 @@ describe('a stored return on an unchanged diff', () => {
       only: undefined,
       fresh: false,
       retry: false,
-      same: true,
       attemptId: null,
       counts: async () => true,
     });

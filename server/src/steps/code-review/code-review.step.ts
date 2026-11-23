@@ -207,7 +207,6 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       only,
       fresh,
       retry,
-      same,
       exchanges,
       returned,
       diff,
@@ -289,7 +288,6 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       exchanges,
       fresh,
       thirdParty,
-      same,
     });
   }
 }

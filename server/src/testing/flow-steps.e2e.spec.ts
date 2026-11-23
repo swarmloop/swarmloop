@@ -385,7 +385,12 @@ describe('the real code-review step in a whole flow', () => {
         },
       ],
     });
-    flow = await createFlowHarness(REVIEW_KEY, { blocks, realImplement: 'all', realReview: true });
+    flow = await createFlowHarness(REVIEW_KEY, {
+      blocks,
+      realImplement: 'all',
+      realReview: true,
+      implementCommits: true,
+    });
     const documents = flow.app.app.get(DocumentRepository);
     const run = await approvedRun(flow, REVIEW_KEY, 'code-review');
     await documents.putDocument(run, 'implementation', '- changed the field parser\n');

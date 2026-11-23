@@ -19,8 +19,17 @@ export class RuntimeCooldownRepository {
     @InjectRepository(CredentialCooldownEntity) private readonly rows: Repository<CredentialCooldownEntity>,
   ) {}
 
+  /** The writes of `set` go one after another: two limits that land together read the same row, and both would insert it. */
+  private writes: Promise<void> = Promise.resolve();
+
   /** The credential of the runtime is out of use until `until`. A later end already stored stays. */
-  async set(key: CooldownKey, until: number, resetKnown: boolean): Promise<void> {
+  set(key: CooldownKey, until: number, resetKnown: boolean): Promise<void> {
+    const write = this.writes.then(() => this.write(key, until, resetKnown));
+    this.writes = write.catch(() => undefined);
+    return write;
+  }
+
+  private async write(key: CooldownKey, until: number, resetKnown: boolean): Promise<void> {
     const stored = await this.rows.findOneBy(key);
     if (stored && Date.parse(stored.until) >= until) {
       return;

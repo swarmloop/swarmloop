@@ -65,7 +65,7 @@ describe('readVisitInput', () => {
   let root: string;
   let stored: Map<string, string>;
   let documents: DocumentRepository;
-  const run = { key: 'run-1', targetPath: null };
+  const run = { key: 'run-1', targetPath: null, prompt: 'Build it.' };
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'visit-input-'));
@@ -137,5 +137,22 @@ describe('readVisitInput', () => {
     const before = await readVisitInput({ documents, worktrees: root }, target, 'checks');
     stored.set(ARTIFACTS.answers.kind, 'Use the old way.');
     expect(await readVisitInput({ documents, worktrees: root }, target, 'checks')).toBe(before);
+  });
+
+  it("leaves the code-review input the same after a planner's answer and changes it on a new head or an added instruction", async () => {
+    const { clone } = copyMainWithOrigin(root, 'main');
+    const deps = { documents, worktrees: root };
+    const target = { ...run, targetPath: clone };
+    const first = await readVisitInput(deps, target, 'code-review');
+
+    chat({ key: 'answer-1', role: 'planner', text: 'The return stands.', at: 't', state: 'taken', kind: 'answer' });
+    stored.set(ARTIFACTS.answers.kind, 'Use the old way.');
+    expect(await readVisitInput(deps, target, 'code-review')).toBe(first);
+
+    expect(
+      await readVisitInput(deps, { ...target, prompt: 'Build it.\n\nAlso mind the cache.' }, 'code-review'),
+    ).not.toBe(first);
+    git(clone, ['commit', '--allow-empty', '-m', 'next']);
+    expect(await readVisitInput(deps, target, 'code-review')).not.toBe(first);
   });
 });
