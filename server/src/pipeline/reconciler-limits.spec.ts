@@ -3,6 +3,7 @@ import { ERROR_CODES } from '../contract/error-codes';
 import { writeRunState } from '../history/run-state';
 import { RESUME_AFTER_RESET_MS } from '../history/runtime-cooldown.repository';
 import { credentialDatabase } from '../testing/credential-database.spec-helpers';
+import { AgentDoor } from '../steps/shared/agent-door';
 import { Reconciler } from './reconciler';
 import { StartGate } from './start-gate';
 
@@ -16,6 +17,8 @@ async function setup() {
     accepted.push(call);
     return { replayed: false };
   };
+  const none = undefined as never;
+  const door = new AgentDoor(none, fixture.runs, none, none, none, none, none, none, none);
   const reconciler = new Reconciler(
     fixture.runs,
     {} as never,
@@ -32,7 +35,7 @@ async function setup() {
     {} as never,
     {} as never,
     {} as never,
-    new StartGate({ accept } as never, fixture.runs, {} as never, {} as never, {} as never),
+    new StartGate({ accept } as never, {} as never, {} as never, door),
     undefined,
     fixture.credentials,
   );

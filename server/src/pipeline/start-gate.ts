@@ -1,11 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { REASON } from '../contract/run-state';
 import type { StepName } from '../contract/steps';
 import type { StartBy, StepOptions } from '../core/pipeline-result';
 import type { RunEntity } from '../history/entities';
-import { RunRepository } from '../history/run.repository';
-import { storedState } from '../history/run-state';
 import { AgentDoor } from '../steps/shared/agent-door';
 import type { Admission } from '../steps/shared/agent-door';
 import { StepRegistry } from '../steps/step.registry';
@@ -28,7 +25,6 @@ interface StartRequest {
 export class StartGate {
   constructor(
     private readonly commands: CommandService,
-    private readonly runs: RunRepository,
     private readonly guards: RunGuards,
     /** The registry is found when a start is admitted: the steps reach the subtask port, which holds this gate. */
     private readonly modules: ModuleRef,
@@ -54,8 +50,7 @@ export class StartGate {
 
   /** Whether a person stopped the run. The run is read again, so a copy from before the Stop does not count. */
   async stopped(run: Pick<RunEntity, 'key'>): Promise<boolean> {
-    const stored = await this.runs.findRun(run.key);
-    return stored?.status === 'blocked' && storedState(stored).reason?.code === REASON.stopped;
+    return this.door.stopped(run);
   }
 
   /**
