@@ -44,6 +44,7 @@ import { PlannerChain } from './planner-chain';
 import { SubtaskMergeRecord } from './subtask-merge-record';
 import { SubtaskRebases } from './subtask-rebases';
 import { SubtaskRequestCloser } from '../steps/shared/subtask-requests-close';
+import type { LookStart } from '../steps/shared/look-start';
 import { PlanConversation } from '../steps/shared/plan-conversation';
 import { PlanChatStore } from '../history/plan-chat.store';
 import type { PlanChange, StarterPlan } from '../steps/implement/starter-actions';
@@ -158,8 +159,9 @@ export class SubtaskPort extends SubtaskOps {
     task: Subtask,
     contract: string,
     plan?: StarterPlan,
+    start?: LookStart,
   ): Promise<StarterAnswerResult | null> {
-    return this.asks.answer(opened, child, task, contract, plan);
+    return this.asks.answer(opened, child, task, contract, plan, start);
   }
 
   override resend(child: RunEntity): Promise<StarterAnswerResult | null> {

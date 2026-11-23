@@ -40,6 +40,7 @@ import type { OpenedStep } from '../step-run';
 import { agentFailure } from './agent-result';
 import { AgentDoor } from './agent-door';
 import type { LaunchResult } from './result-exchange';
+import { plannerStart, type LookStart } from './look-start';
 import { requirementsBrief } from './requirements-brief';
 import { StartRefused } from './start-refused';
 import { correctCoverage } from './coverage-correction';
@@ -117,6 +118,7 @@ export class PlanConversation {
     definition: ResultDefinition,
     check: (value: unknown) => string[] = () => [],
     entries: string[] = [],
+    start?: LookStart,
   ): Promise<{ value: unknown } | { refused: StartRefused } | null> {
     const run = opened.run;
     const env = this.config.env;
@@ -135,9 +137,7 @@ export class PlanConversation {
       result = await this.door.outside(
         {
           step: 'plan',
-          by: 'machine',
-          plannerLevel: 0,
-          input: { texts: [...plan, brief, ...entries] },
+          ...plannerStart(start, [...plan, brief, ...entries]),
           admitted: (id) => {
             started.id = id;
           },

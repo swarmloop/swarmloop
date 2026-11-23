@@ -5,6 +5,7 @@ import type { StarterAnswerResult } from '../../agent-result/definitions/starter
 import type { OutOfScope, StarterDecision } from '../../agent-result/definitions/starter-fields';
 import { withDecision } from '../shared/handoff';
 import type { StoredQuestion } from '../shared/question-parts';
+import { implementStart } from '../shared/look-start';
 import type { SubtaskOps } from '../shared/subtask-ops';
 import type { StepContext } from '../base-step';
 import type { InputReader } from '../contract/input-reader';
@@ -130,7 +131,14 @@ export class StarterInbox {
     const { subtasks } = this.deps;
     if (subtasks.replyPending(child)) return (await subtasks.resend(child)) ?? 'held';
     const { contract, tasks, requirements } = state;
-    const answer = await subtasks.answer(ctx.opened, child, task, contract, { tasks, requirements });
+    const answer = await subtasks.answer(
+      ctx.opened,
+      child,
+      task,
+      contract,
+      { tasks, requirements },
+      implementStart(ctx.options),
+    );
     return answer === null && subtasks.replyPending(child) ? 'held' : answer;
   }
 }
