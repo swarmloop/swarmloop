@@ -11,6 +11,9 @@ import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { resultAnswer } from '../../testing/result-answer';
 import { type TestApp } from '../../testing/test-app';
 import { SubtaskOps } from '../shared/subtask-ops';
+import { AgentDoor } from '../shared/agent-door';
+import { StartRefused } from '../shared/start-refused';
+import { storedState } from '../../history/run-state';
 import { mergeHandoff } from '../shared/handoff';
 import { KEY, child, pass, seedParent, statuses, task, tasksOf, work, world } from './split-implement.spec-helpers';
 
@@ -175,5 +178,59 @@ describe('merge look', () => {
     await pass(app);
 
     expect(prompts).toHaveLength(1);
+  });
+
+  describe('when the door refuses the look', () => {
+    const refuseWith = (error: StartRefused) => jest.spyOn(app.app.get(AgentDoor), 'outside').mockRejectedValue(error);
+    const same = () =>
+      StartRefused.sameInput({
+        message: 'Same input as the last start.',
+        question: { from: 'plan', text: 'What now?' },
+        startLevel: 1,
+      });
+    const runState = async () => storedState((await app.app.get(RunRepository).findRun(KEY))!);
+
+    it('waits with SAME_INPUT, records no look for the refused task and launches no planner', async () => {
+      const { documents, prompts } = await lookWorld({ decision: 'Nothing changes.' });
+      refuseWith(same());
+      await merge('a');
+
+      await pass(app);
+
+      expect(prompts).toHaveLength(0);
+      expect(await looks(documents)).toEqual([]);
+      expect((await tasksOf(app)).map((item) => item.id)).toEqual(['a', 'b', 'c']);
+      expect((await statuses(app)).b).toBe('waiting');
+      const state = await runState();
+      expect(state.state).toBe('waiting');
+      expect(state.reason?.code).toBe('SAME_INPUT');
+      expect(state.reason?.message).toContain('Same input as the last start.');
+    });
+
+    it('blocks the run on a limit and records no look', async () => {
+      const { documents } = await lookWorld({ decision: 'Nothing changes.' });
+      refuseWith(StartRefused.limit('The spend limit is reached.'));
+      await merge('a');
+
+      await pass(app);
+
+      expect(await looks(documents)).toEqual([]);
+      const state = await runState();
+      expect(state.state).toBe('blocked');
+      expect(state.reason?.code).toBe('SPEND_LIMIT');
+    });
+
+    it('makes the look on the next pass once the refusal clears', async () => {
+      const { documents, prompts } = await lookWorld({ decision: 'Nothing changes.' });
+      const refusing = refuseWith(same());
+      await merge('a');
+      await pass(app);
+
+      refusing.mockRestore();
+      await pass(app);
+
+      expect(prompts).toHaveLength(1);
+      expect((await looks(documents)).map((look) => look.task)).toEqual(['a']);
+    });
   });
 });
