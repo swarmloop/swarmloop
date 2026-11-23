@@ -85,6 +85,7 @@ describe('one limit on agents for the whole server', () => {
     const flow = await createFlowHarness(PARENTS[0], { env: { AGENTS_PARALLEL: '4' }, runner: agents });
     const { app } = flow;
     try {
+      flow.fastWaits();
       const gate = app.app.get(ContainerGate);
       agents.through(gate);
       const second = PARENTS[1];

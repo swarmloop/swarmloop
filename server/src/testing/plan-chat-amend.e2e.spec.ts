@@ -47,6 +47,7 @@ describe('a person writes to the planner after implement started, on a run that 
   async function start(scripts: Record<string, ScriptedAnswer[]>, split = false): Promise<void> {
     blocks = new MessageDuringImplement({ plan: [firstPlan, ...(scripts.plan ?? [])] });
     flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', implementCommits: true });
+    flow.fastWaits();
     blocks.advance = () => flow.app.clock.advance(1000);
     const documents = flow.app.app.get(DocumentRepository);
     const run = await remember(flow.app.app.get(RunRepository), documents, KEY, 'plan', 'waiting');
