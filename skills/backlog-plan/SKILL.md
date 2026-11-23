@@ -38,7 +38,9 @@ The general `Rules` text, written into every brief as it is here:
 
 ## After a merge
 
-Check each requirement the task covers against the report, the per-id statuses and the code on main. Close it with its evidence, or add a fix task to the same milestone.
+Whether or not the task covers a milestone requirement, read its marks against its brief: the unmet items of its review, its `not built:` lines, and the files its merge request changed outside its files or its plan. Read them with the report, the per-id statuses and the code on main. A real miss gets a fix task in the same milestone, with a one-line reason in the chat.
+
+Check each requirement the task covers against the same facts. Close it with its evidence, or add a fix task to the same milestone.
 
 Then re-read the tasks that have not started (this milestone's and the queued ones) against what landed. Bring their `Today` up to date (names, paths and numbers that moved), drop or merge a task the merge made unnecessary, fix dependencies, and add what is now missing. Each change is an action with a one-line reason in the chat. A started task hears of it only when the merge changes what it must do, through its own planner (`planChat`). The tasks that depend on the merged one start only after this turn ended, so they start from the plan as it is now.
 

@@ -7,6 +7,7 @@ import type { StepName } from '../../contract/steps';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { taskStatusOf } from '../shared/subtask-status';
 import { PlanConversation } from '../shared/plan-conversation';
+import { MergeMarks } from '../shared/merge-marks';
 import { MergeLook } from './merge-look';
 import { REBASED_PREFIX } from './split-rebase';
 import { SplitMerge } from './split-merge';
@@ -61,7 +62,13 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     super(kernel);
     this.needs = new SplitNeeds(subtasks);
     this.inbox = new StarterInbox({ subtasks, reader: this.reader });
-    this.look = new MergeLook({ subtasks, reader: this.reader, config: this.config, conversation });
+    this.look = new MergeLook({
+      subtasks,
+      reader: this.reader,
+      marks: new MergeMarks(this.documents),
+      config: this.config,
+      conversation,
+    });
     this.pass = new SplitPass({
       subtasks,
       merges,

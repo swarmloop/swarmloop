@@ -1,5 +1,6 @@
 import type { BacklogEventKind } from '../../../contract/backlog';
 import { ARTIFACTS } from '../../../steps/contract/artifacts';
+import { mergeHandoff } from '../../../steps/shared/handoff';
 import { EventFacts } from './event-facts';
 import { plannerFacts } from './planner-facts.spec-helpers';
 
@@ -104,6 +105,50 @@ describe('EventFacts', () => {
         requirements: 'R1 is met: in x.ts',
         diff: '- added x.ts',
       });
+    }));
+
+  it('names the files a merged backlog task changed outside its files and its not built lines', () =>
+    withFacts(async (h, facts) => {
+      const id = await h.addBacklog();
+      await h.addTask(id, 'a', { runKey: 'a-1', files: ['src/a.ts'] });
+      await h.addRun('a-1', {
+        [ARTIFACTS.mergedFiles.kind]: 'src/a.ts\nsrc/other.spec.ts',
+        [ARTIFACTS.handoff.kind]: mergeHandoff(null, 'implement', '- not built: docs - out of time'),
+      });
+      const event = await eventOf(h, id, 'task-merged', { slug: 'a' });
+
+      const marks = (await facts.of('owner', event)).marks ?? '';
+
+      expect(marks).toContain('not built: docs - out of time');
+      expect(marks).toContain('its merge request changed files outside its plan: src/other.spec.ts');
+    }));
+
+  it("reads the files outside the plan from the commit paths and the run's plan when the task lists none, and every unmet review item", () =>
+    withFacts(async (h, facts) => {
+      const id = await h.addBacklog();
+      await h.addTask(id, 'a', { runKey: 'a-1' });
+      const plan = { summary: [], plan: ['Do a - files: src/a.ts - proof: a.spec.ts'], questions: [] };
+      const review = {
+        decision: 'ok',
+        review: 'requirements',
+        summary: [],
+        requirements: [
+          { id: 'R1', status: 'met', note: 'in a.ts' },
+          { id: 'R2', status: 'partial', note: 'half done' },
+        ],
+      };
+      await h.addRun('a-1', {
+        [ARTIFACTS.planResult.kind]: ARTIFACTS.planResult.format(plan as never),
+        [ARTIFACTS.commit.kind]: 'web\tsrc/a.ts\nweb\tsrc/b.ts\n',
+        [ARTIFACTS.reviewRequirementsResult.kind]: JSON.stringify(review),
+      });
+      const event = await eventOf(h, id, 'task-merged', { slug: 'a' });
+
+      const marks = (await facts.of('owner', event)).marks ?? '';
+
+      expect(marks).toContain('its merge request changed files outside its plan: src/b.ts');
+      expect(marks).toContain('requirement R2 is partial: half done');
+      expect(marks).not.toContain('R1');
     }));
 
   it('says why a merged task has no facts to read', () =>
