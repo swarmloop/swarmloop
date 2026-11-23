@@ -358,6 +358,20 @@ describe('factColumns', () => {
     });
   });
 
+  it('says waiting for the backlog planner on a run whose open questions the planner holds', () => {
+    expect(read(factColumns({ status: 'waiting' }, { ...facts, asksPlanner: true }))).toEqual({
+      state: 'waiting',
+      code: 'ASKS_PLANNER',
+    });
+  });
+
+  it('says waiting for a person when one question is the planner’s and another is passed on', () => {
+    expect(read(factColumns({ status: 'waiting' }, { ...facts, asksPlanner: true, needsAnswers: true }))).toEqual({
+      state: 'waiting',
+      code: 'NEEDS_ANSWERS',
+    });
+  });
+
   it('clears the open questions once they are gone', () => {
     const run = { status: 'waiting', stateReason: reasonOf('NEEDS_ANSWERS') };
     expect(read(factColumns(run, facts))).toEqual({ state: 'idle', code: null });

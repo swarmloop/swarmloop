@@ -2,6 +2,7 @@ import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { RunRebase } from '../steps/run-rebase';
+import { REASON } from '../contract/run-state';
 import { storedState, writeRunState } from '../history/run-state';
 import {
   child,
@@ -65,6 +66,24 @@ describe('run driver blocks', () => {
     );
     expect(state).toBe('failed');
     expect(launches).toBe(3);
+  });
+});
+
+describe('run driver with a question only the backlog planner holds', () => {
+  it('runs the asking step once and ends the drive, since no plan chat entry waits for a planner turn', async () => {
+    let launches = 0;
+    const { state, reason } = await drive(
+      {
+        plan: () => {
+          launches += 1;
+          return { outcome: 'waiting', exitCode: 0, code: REASON.asksPlanner };
+        },
+      },
+      { auto: true },
+    );
+    expect(launches).toBe(1);
+    expect(state).toBe('waiting');
+    expect(reason?.code).toBe(REASON.asksPlanner);
   });
 });
 

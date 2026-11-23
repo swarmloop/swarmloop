@@ -9,6 +9,7 @@ export type TaskMadeBy = 'person' | 'planner';
 export type BacklogEventKind =
   | 'task-merged'
   | 'run-needs-person'
+  | 'run-asks-planner'
   | 'run-done-without-request'
   | 'merge-refused'
   | 'rebase-refused'

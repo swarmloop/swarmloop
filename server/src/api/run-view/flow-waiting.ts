@@ -130,7 +130,9 @@ export function sentence(
     return 'A link still needs a pasted body before the run can continue.';
   }
   if (open.some((item) => item.kind === 'question')) {
-    return 'Answer the open questions before the run continues.';
+    return open.every((item) => item.kind !== 'question' || item.holder === 'planner')
+      ? "The backlog's planner has the open questions. You can still answer them here."
+      : 'Answer the open questions before the run continues.';
   }
   if (run.currentStep === 'commit' && run.status === 'waiting') {
     return 'Resume stages the paths below and pushes the feature branch.';

@@ -47,6 +47,28 @@ describe('EventFacts', () => {
       });
     }));
 
+  it('gives a question the planner holds the decide line and sides of that one question only', () =>
+    withFacts(async (h, facts) => {
+      const id = await h.addBacklog();
+      const stored = (question: string, who: string) => ({
+        question,
+        parts: { decide: `Decide ${question}`, sides: [{ who, text: `${who} says` }], full: '', askedAt: '' },
+      });
+      await h.addRun('a-1', { question_parts: JSON.stringify([stored('Q1', 'quality'), stored('Q2', 'security')]) });
+      const event = await eventOf(h, id, 'run-asks-planner', {
+        slug: 'a',
+        runKey: 'a-1',
+        questionId: 'Q2',
+        question: 'Q2',
+      });
+
+      expect(await facts.of('owner', event)).toMatchObject({
+        questionId: 'Q2',
+        question: 'Decide Q2',
+        sides: 'security: security says',
+      });
+    }));
+
   it('falls back to the questions document, and says so when the run stored none', () =>
     withFacts(async (h, facts) => {
       const id = await h.addBacklog();

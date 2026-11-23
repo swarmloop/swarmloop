@@ -8,6 +8,7 @@ import { RunFactsRepository } from '../../history/run-facts.repository';
 import { RunRepository } from '../../history/run.repository';
 import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { LiveHub } from '../../live/live.hub';
+import { holdServices, seedBacklogTask } from './question-holds.spec-helpers';
 import { RunStateRefresh } from './run-state-refresh';
 
 const QUESTION = 'Which field is optional?';
@@ -20,8 +21,7 @@ async function setup() {
   const rows = dataSource.getRepository(RunEntity);
   const refresh = new RunStateRefresh(
     db.app.get(RunRepository),
-    db.app.get(DocumentRepository),
-    db.app.get(CheckoutRepository),
+    holdServices(db.app, db.clock).holds,
     new RunFactsRepository(rows, hub),
     hub,
   );
@@ -48,6 +48,23 @@ describe('RunStateRefresh', () => {
     try {
       await documents.putDocument(run, 'questions', `- ${QUESTION}\n`);
       await set({ currentStep: 'research' });
+      expect(await read()).toEqual({ state: 'waiting', code: 'NEEDS_ANSWERS' });
+      await refresh.onModuleDestroy();
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('reads the question of a backlog run as waiting for the planner, and for a person once the planner passed it on', async () => {
+    const { db, hub, refresh, run, documents, set, read } = await setup();
+    try {
+      await seedBacklogTask(db.app, run.key);
+      await documents.putDocument(run, 'questions', `- ${QUESTION}\n`);
+      await set({ currentStep: 'research' });
+      expect(await read()).toEqual({ state: 'waiting', code: REASON.asksPlanner });
+      await holdServices(db.app, db.clock).passOn.pass(run.key, QUESTION, 'Only you can choose.');
+      hub.changed(run.key);
+      await refresh.settled();
       expect(await read()).toEqual({ state: 'waiting', code: 'NEEDS_ANSWERS' });
       await refresh.onModuleDestroy();
     } finally {

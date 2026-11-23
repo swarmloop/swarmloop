@@ -1,4 +1,5 @@
 import type { BacklogTurnAction, BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
+import type { Type } from '@nestjs/common';
 import { AppConfig } from '../../../config/env';
 import { testEnv } from '../../../config/env.spec-helpers';
 import type { Clock } from '../../../core/clock';
@@ -11,6 +12,8 @@ import { BacklogActionSupport } from '../backlog-action-support';
 import { BacklogActions } from '../backlog-actions';
 import { BacklogQueries } from '../backlog-queries';
 import { BacklogTaskActions } from '../backlog-task-actions';
+import { holdServices } from '../../../steps/shared/question-holds.spec-helpers';
+import { LeftQuestions } from './left-questions';
 import { PlannerTurnActions } from './planner-actions';
 import { PlannerBacklogCalls } from './planner-backlog-calls';
 import { PlannerRules } from './planner-rules';
@@ -29,6 +32,7 @@ export const turnResult = (say: string, ...actions: BacklogTurnAction[]): Backlo
 
 /** What the planner's apply path is built from. */
 interface PlannerParts {
+  app: { get<T>(token: Type<T>): T };
   backlogs: BacklogRepository;
   chat: BacklogChatRepository;
   runs: RunRepository;
@@ -39,14 +43,16 @@ interface PlannerParts {
 }
 
 /** The planner's apply path and the parts a spec reaches into, built the way the server wires them. */
-export function plannerTurnActions({ backlogs, chat, runs, clock, config, commands, port }: PlannerParts) {
+export function plannerTurnActions({ app, backlogs, chat, runs, clock, config, commands, port }: PlannerParts) {
   const queries = new BacklogQueries(backlogs, runs);
   const support = new BacklogActionSupport(backlogs, clock);
   const taskActions = new BacklogTaskActions(backlogs, queries, runs, commands, clock, support);
   const actions = new BacklogActions(backlogs, queries, clock, config, support, taskActions);
   const rules = new PlannerRules(backlogs, runs);
   const calls = new PlannerBacklogCalls(actions, support, backlogs, runs);
-  const turns = new PlannerTurnActions(backlogs, chat, rules, calls, port, clock);
+  const { holds, passOn } = holdServices(app, clock);
+  const left = new LeftQuestions(chat, calls, holds, passOn, runs, backlogs, clock);
+  const turns = new PlannerTurnActions(backlogs, chat, rules, calls, port, clock, left);
   return { rules, calls, turns };
 }
 
@@ -68,6 +74,7 @@ export async function plannerHarness() {
     sent.push({ command, owner, key });
   });
   const { rules, calls, turns } = plannerTurnActions({
+    app: db.app,
     backlogs: db.backlogs,
     chat: db.chat,
     runs,

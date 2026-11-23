@@ -395,3 +395,29 @@ describe('a stored spend note on a waiting run', () => {
     expect(sentence(run, asked, note, stats, 3)).toBe('Answer the open questions before the run continues.');
   });
 });
+
+describe('sentence of a run whose open questions the backlog planner holds', () => {
+  const run = { key: 'r', currentStep: 'research', status: 'waiting' } as RunEntity;
+  const item = { kind: 'question', id: 'q', label: 'q', answer: '' } as const;
+
+  it('says the planner has them and the person can still answer', () => {
+    expect(sentence(run, [{ ...item, holder: 'planner' }], [], [], 3)).toBe(
+      "The backlog's planner has the open questions. You can still answer them here.",
+    );
+  });
+
+  it('asks for answers once one open question is for the person', () => {
+    expect(
+      sentence(
+        run,
+        [
+          { ...item, holder: 'planner' },
+          { ...item, id: 'p', passedOn: 'Yours.' },
+        ],
+        [],
+        [],
+        3,
+      ),
+    ).toBe('Answer the open questions before the run continues.');
+  });
+});

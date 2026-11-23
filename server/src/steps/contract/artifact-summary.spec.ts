@@ -33,6 +33,7 @@ const JSON_BODIES: Record<string, string> = {
   implementation_result: '{"implementation":["changed the parser"],"summary":["why"]}\n',
   implementation_improve_result: '{"implementation":["fixed the case"],"summary":["why"]}\n',
   review_report_result: '{"whatChanged":"fixed the parser","codeReview":"every check is ok"}\n',
+  passed_on: '[{"question":"Q","line":"Only you can choose.","at":"t"}]\n',
   question_parts: '[{"question":"Q","parts":{"decide":"Is it?","sides":[],"full":"","askedAt":"t"}}]\n',
   rebase_resolution_result: '{"summary":["kept both sides"]}\n',
   requirement_list: '[{"id":"R1","text":"first"}]\n',

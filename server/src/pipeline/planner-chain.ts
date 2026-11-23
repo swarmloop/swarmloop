@@ -9,10 +9,11 @@ import type { RunRepository } from '../history/run.repository';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { mergeHandoff } from '../steps/shared/handoff';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
+import type { QuestionHolds } from '../steps/shared/question-holds';
 import type { ChainAsked, ChainQuestion } from '../steps/shared/subtask-ops';
 import { normalizedText } from '../steps/shared/visit-input';
 import type { OpenedStep } from '../steps/step-run';
-import { escalateToPerson } from './escalation';
+import { escalateToPerson, releaseAsked } from './escalation';
 import { askPlanner, openedFor } from './planner-question';
 
 /** The levels of one run that answered a question, by the normalized text of the question. */
@@ -49,6 +50,7 @@ export class PlannerChain {
     private readonly conversation: PlanConversation,
     private readonly documents: DocumentRepository,
     private readonly runs: RunRepository,
+    private readonly holds?: QuestionHolds,
   ) {
     this.chat = conversation.chat;
     this.clock = conversation.clock;
@@ -144,7 +146,7 @@ export class PlannerChain {
   }
 
   /**
-   * The person who started the run is asked. A subtask's question goes among the questions of its parent, which the
+   * The person who started the run is asked, through the backlog's planner when the run is a backlog's. A subtask's question goes among the questions of its parent, which the
    * person's answer reaches the task from. A run of no parent puts it among its own, as the planner's escalation does.
    */
   private async toStarter(run: RunEntity, parent: RunEntity | null, question: ChainQuestion): Promise<void> {
@@ -164,9 +166,7 @@ export class PlannerChain {
       await this.chat.appendEntry(run.key, escalation);
       await escalateToPerson(this.documents, run, escalation);
     }
-    const fresh = await this.runs.findRun(waiting.key);
-    if (fresh?.status === 'waiting')
-      await this.runs.release(fresh, { status: 'waiting', facts: { needsAnswers: true } });
+    await releaseAsked(this.runs, this.holds, waiting.key);
   }
 
   private async levels(run: RunEntity): Promise<Record<string, number[]>> {

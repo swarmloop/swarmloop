@@ -52,6 +52,7 @@ import {
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
 import { outputsOf, readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
 import { openItems } from '../steps/shared/open-items';
+import { QuestionHolds } from '../steps/shared/question-holds';
 import { viewTitle } from './run-view/run-title';
 import type { Part, RunsPage } from '../contract/run-list';
 import { RunListRows } from './run-list-rows';
@@ -89,6 +90,7 @@ export class RunQueriesService {
     private readonly rows: RunListRows,
     private readonly waitLog: RunWaitLog,
     private readonly etaSummary: EtaSummary,
+    private readonly holds: QuestionHolds,
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly gate: ContainerGate = new ContainerGate(),
     @Optional() private readonly turns?: PlannerTurns,
@@ -121,10 +123,14 @@ export class RunQueriesService {
     const stats = await this.visits.listStats(run.id);
     const pastes = await this.checkouts.listPastes(key);
     const launches = await this.flows.listFlows(run.id);
-    const open = openItems(
+    const open = await this.holds.mark(
       run,
+      openItems(
+        run,
+        documents,
+        pastes.map((paste) => paste.url),
+      ),
       documents,
-      pastes.map((paste) => paste.url),
     );
     const shown = shownRun(run, (held) => this.pipeline.claimed(held));
     const state = await runState(this.commands, shown, open, runPlace(this.gate.agentWait(run.key)));

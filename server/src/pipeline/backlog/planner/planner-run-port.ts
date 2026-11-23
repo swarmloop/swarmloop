@@ -9,7 +9,8 @@ export type PlannerRunCommand =
   | { type: 'replay'; run: string; step: string }
   | { type: 'skipTask'; run: string; task: string }
   | { type: 'stop'; run: string }
-  | { type: 'planChat'; run: string; message: string };
+  | { type: 'planChat'; run: string; message: string }
+  | { type: 'passOn'; run: string; question?: string; line: string };
 
 type PlannerRunSender = (command: PlannerRunCommand, owner: string, key: string) => Promise<void>;
 

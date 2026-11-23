@@ -7,6 +7,7 @@ import { SwarmloopError } from '../../../core/swarmloop-error';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import type { BacklogRecord, BacklogWriters } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
+import { LeftQuestions } from './left-questions';
 import { commandOf, PlannerBacklogCalls } from './planner-backlog-calls';
 import { PlannerRules } from './planner-rules';
 import { PlannerRunPort, type PlannerRunCommand } from './planner-run-port';
@@ -28,9 +29,9 @@ interface Evaluation {
   infos: { index: number; text: string }[];
 }
 
-/** An action whose reason is a decision of the planner, shown to the person as an info line. */
-function recordsDecision(action: BacklogTurnAction): boolean {
-  return action.action === 'answerRun' || action.action === 'recordDecision';
+/** An action whose reason is shown to the person as an info line: a decision of the planner, or why it passed a question on. */
+function showsReason(action: BacklogTurnAction): boolean {
+  return action.action === 'answerRun' || action.action === 'recordDecision' || action.action === 'passQuestion';
 }
 
 /** Thrown to end `check`'s transaction: nothing it wrote stays. */
@@ -50,6 +51,7 @@ export class PlannerTurnActions {
     private readonly calls: PlannerBacklogCalls,
     private readonly port: PlannerRunPort,
     private readonly clock: Clock,
+    private readonly left: LeftQuestions,
   ) {}
 
   /** The refusals of a result as lines for a person, written nothing: what `apply` would drop. */
@@ -104,6 +106,7 @@ export class PlannerTurnActions {
         await this.refused(backlog, turnKey, index, command, error.message);
       }
     }
+    await this.left.pass(backlog, turnKey);
     const turn = await this.chat.findTurn(turnKey);
     if (turn) await this.chat.saveTurn({ ...turn, status: 'done' });
   }
@@ -162,8 +165,8 @@ export class PlannerTurnActions {
           const numbers = (await writers.milestones(backlog.id as number)).map((milestone) => milestone.number);
           result.proposed = Math.max(...numbers);
         }
-        if (recordsDecision(action) && action.reason) {
-          // An answer to a run keeps its reason as a decision; a recordDecision is one already.
+        if (showsReason(action) && action.reason) {
+          // An answer to a run keeps its reason as a decision; a recordDecision is one already; a pass-on is not one.
           if (action.action === 'answerRun')
             await this.calls.run(call, { action: 'recordDecision', text: action.reason });
           result.infos.push({ index, text: action.reason });

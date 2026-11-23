@@ -7,6 +7,7 @@ import { AttachmentStore } from '../history/attachment-store';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
+import { QuestionPassOn } from '../pipeline/question-pass-on';
 import { PlannerRunPort } from '../pipeline/backlog/planner/planner-run-port';
 import { PlannerTurns } from '../pipeline/planner-turns';
 import { SubtaskPort } from '../pipeline/subtask-port';
@@ -59,7 +60,7 @@ export async function withAnswerRoutes(test: (parts: AnswerRoutes) => Promise<vo
       app.get(AttachmentStore),
     ).onModuleInit();
     const port = new PlannerRunPort();
-    new PlannerRunCommands(port, app.get(CommandService), chat).onModuleInit();
+    new PlannerRunCommands(port, app.get(CommandService), chat, app.get(QuestionPassOn)).onModuleInit();
     await test({ app, chat, turns, started, port });
   } finally {
     await app.close();

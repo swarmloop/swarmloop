@@ -4,6 +4,7 @@ import type { TurnAnswer } from '../agent-result/definitions/backlog-turn';
 import { CommandService } from '../pipeline/command.service';
 import { PlannerRunPort, type PlannerRunCommand } from '../pipeline/backlog/planner/planner-run-port';
 import { PERSON_RESUME } from '../pipeline/resume-sender';
+import { QuestionPassOn } from '../pipeline/question-pass-on';
 import { PlanChatService } from './plan-chat.service';
 
 /**
@@ -22,6 +23,7 @@ export class PlannerRunCommands implements OnModuleInit {
     private readonly port: PlannerRunPort,
     private readonly commands: CommandService,
     private readonly chat: PlanChatService,
+    private readonly passOn: QuestionPassOn,
   ) {}
 
   onModuleInit(): void {
@@ -53,6 +55,9 @@ export class PlannerRunCommands implements OnModuleInit {
         return;
       case 'planChat':
         await this.chat.send(command.run, command.message, owner, idempotencyKey);
+        return;
+      case 'passOn':
+        await this.passOn.passOrRefuse(command.run, command.question, command.line);
         return;
     }
   }

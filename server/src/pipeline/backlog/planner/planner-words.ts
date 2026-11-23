@@ -19,6 +19,8 @@ export function describeCommand(command: PlannerRunCommand): string {
       return `answer the run ${command.run}`;
     case 'planChat':
       return `write to the planner of ${command.run}`;
+    case 'passOn':
+      return `pass the question of ${command.run} to the person`;
     case 'resume':
       return `resume ${command.run}`;
     case 'replay':

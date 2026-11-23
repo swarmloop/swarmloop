@@ -7,6 +7,13 @@ export interface StoredQuestion {
   parts: QuestionParts;
 }
 
+/** A question the backlog's planner passed on to the person: the question's text, the planner's one line and when. */
+export interface PassedOn {
+  question: string;
+  line: string;
+  at: string;
+}
+
 /** Who asked and the plan chat entry the question came from. */
 type QuestionSource = Pick<QuestionParts, 'asker' | 'entry'>;
 

@@ -23,6 +23,7 @@ import { FakeBacklogHost, pipelineOf } from '../../testing/fake-backlog-host';
 import type { CommandService } from '../command.service';
 import { BacklogActionSupport } from './backlog-action-support';
 import { BacklogActions } from './backlog-actions';
+import { holdServices } from '../../steps/shared/question-holds.spec-helpers';
 import { BacklogEvents } from './backlog-events';
 import { BacklogQueries } from './backlog-queries';
 import { BacklogTaskActions } from './backlog-task-actions';
@@ -101,6 +102,7 @@ export async function backlogHarness(parallel = 3) {
     documents,
     host,
     db.app.get(PlanChatStore),
+    holdServices(db.app, db.clock).holds,
   );
   const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands, events);
   const starts: BacklogStart[] = [];

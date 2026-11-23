@@ -1,13 +1,10 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
-import { CheckoutRepository } from '../../history/checkout.repository';
-import { DocumentRepository } from '../../history/document.repository';
-import type { RunEntity } from '../../history/entities';
 import { RunFactsRepository } from '../../history/run-facts.repository';
 import { RunRepository } from '../../history/run.repository';
-import { factColumns, isReturned } from '../../history/run-state';
+import { factColumns } from '../../history/run-state';
 import { LiveHub } from '../../live/live.hub';
-import { OPEN_ITEM_KINDS, openItems } from './open-items';
+import { QuestionHolds } from './question-holds';
 
 /** Statuses whose writers store the whole state: the facts of the documents do not change it. */
 const WRITTEN_WHOLE = ['running', 'done', 'failed'];
@@ -26,8 +23,7 @@ export class RunStateRefresh implements OnApplicationBootstrap, OnModuleDestroy 
 
   constructor(
     private readonly runs: RunRepository,
-    private readonly documents: DocumentRepository,
-    private readonly checkouts: CheckoutRepository,
+    private readonly holds: QuestionHolds,
     private readonly facts: RunFactsRepository,
     @Optional() live?: LiveHub,
   ) {
@@ -74,22 +70,6 @@ export class RunStateRefresh implements OnApplicationBootstrap, OnModuleDestroy 
   private async refresh(key: string): Promise<void> {
     const run = await this.runs.findRun(key);
     if (!run || (run.state !== null && WRITTEN_WHOLE.includes(run.status))) return;
-    await this.facts.recordFacts(run, factColumns(run, await this.read(run)));
-  }
-
-  /** The facts of the latest documents and pastes, read as the run view and the stall watch read them. */
-  private async read(run: RunEntity): Promise<Parameters<typeof factColumns>[1]> {
-    const documents = await this.documents.latestDocuments([run.id], [...OPEN_ITEM_KINDS]);
-    const asksPaste = run.currentStep === 'requirements' && documents.some(({ kind }) => kind === 'pending');
-    const pastes = asksPaste ? await this.checkouts.listPastes(run.key) : [];
-    return {
-      needsAnswers:
-        openItems(
-          run,
-          documents,
-          pastes.map((paste) => paste.url),
-        ).length > 0,
-      returned: isReturned(run),
-    };
+    await this.facts.recordFacts(run, factColumns(run, await this.holds.facts(run)));
   }
 }

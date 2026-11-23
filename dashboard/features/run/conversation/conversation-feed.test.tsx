@@ -112,6 +112,38 @@ describe('ConversationFeed', () => {
     expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
   });
 
+  it('titles a question the backlog planner holds Asked the planner, not Question for you', () => {
+    feed(
+      flowView({
+        status: 'waiting',
+        items: [{ kind: 'question', id: 'q1', label: 'Which database?', answer: '', holder: 'planner' }],
+      }),
+    );
+
+    expect(screen.getByText('Asked the planner')).toBeInTheDocument();
+    expect(screen.queryByText('Question for you')).toBeNull();
+    expect(screen.getByText('Which database?')).toBeInTheDocument();
+  });
+
+  it('shows the line of the planner above a question it passed on, still titled Question for you', () => {
+    feed(
+      flowView({
+        status: 'waiting',
+        items: [
+          { kind: 'question', id: 'q1', label: 'Which database?', answer: '', passedOn: 'Only you can choose it.' },
+        ],
+      }),
+    );
+
+    const line = screen.getByText('The planner passed this on: Only you can choose it.');
+    const title = screen.getByText('Question for you');
+    expect(screen.queryByText('Asked the planner')).toBeNull();
+    expect(title.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      line.compareDocumentPosition(screen.getByText('Which database?')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('names who asks on each question card, and leads each line of talk to its own card', async () => {
     const user = userEvent.setup({ delay: null });
     // jsdom has no scrollIntoView, so removing the stub restores the window as it was.

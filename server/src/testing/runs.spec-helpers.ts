@@ -24,6 +24,8 @@ import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { RunStop } from '../agent/run-stop';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { writeRunState } from '../history/run-state';
+import { QuestionHolds } from '../steps/shared/question-holds';
+import { QuestionPassOn } from '../pipeline/question-pass-on';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { StepRegistry } from '../steps/step.registry';
 import { PrepareStep } from '../steps/prepare/prepare.step';
@@ -72,6 +74,8 @@ export async function boot(
     providers: [
       RunQueriesService,
       RunStateRefresh,
+      QuestionHolds,
+      QuestionPassOn,
       RunListRows,
       EtaSummary,
       RunReport,

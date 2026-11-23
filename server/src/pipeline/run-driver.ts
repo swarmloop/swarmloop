@@ -105,6 +105,12 @@ export class RunDriver {
     return !run || !isSubtask(run) || asksPlanner(run);
   }
 
+  /** True while the step waits for the planner of its own run, which has a question of the step in its plan chat to take. */
+  private async waitsForPlanner(run: RunEntity | null, step: StepName, key: string): Promise<boolean> {
+    if (!run || run.currentStep !== step || !asksPlanner(run)) return false;
+    return !this.turns || (await this.turns.hasQuestion(key));
+  }
+
   private async driveSteps(name: StepName, key: string, options: StepOptions): Promise<PipelineResult> {
     let step = name;
     let stepOptions = options;
@@ -192,8 +198,8 @@ export class RunDriver {
     const mark = loopMark(await this.documents.latestBody(key, 'loop_mark'));
     const stats = run ? await this.visits.listStats(run.id) : [];
     const env = this.config.env;
-    if (run && run.currentStep === step && asksPlanner(run)) {
-      // The next hop takes the question to the planner; the step goes on with its answer.
+    if (await this.waitsForPlanner(run, step, key)) {
+      // The next hop takes the question to the planner; the step goes on with its answer. A question only the backlog's planner holds is not in the run's plan chat: the drive ends.
       return { again: FOLLOWING };
     }
     if (result.resume && run?.status === 'waiting' && run.currentStep === step) {

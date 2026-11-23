@@ -16,6 +16,8 @@ export interface StateFacts {
   queued?: boolean;
   /** An open question or a link still waits for a person. */
   needsAnswers?: boolean;
+  /** An open question waits for the planner of the backlog, not yet for a person. */
+  asksPlanner?: boolean;
   /** The run went back to implementation after a review or pipeline return. */
   returned?: boolean;
   /** The words of an agent that waits for a free place; live only, never stored. */
@@ -84,6 +86,8 @@ function unfinishedState(
   )
     return { state: 'waiting', reason: stored };
   if (facts.needsAnswers) return { state: 'waiting', reason: reasonOf('NEEDS_ANSWERS', 'waiting for a person') };
+  if (facts.asksPlanner)
+    return { state: 'waiting', reason: reasonOf(REASON.asksPlanner, 'waiting for the backlog planner') };
   if (facts.returned) return { state: 'idle', reason: reasonOf(REASON.returned, 'returned to implement') };
   return { state: 'idle', reason: null };
 }
@@ -147,7 +151,7 @@ export function liveState(run: StoredRow, live: LiveFacts): { state: RunState; r
  */
 export function factColumns(
   run: StateRow,
-  facts: Pick<StateFacts, 'needsAnswers' | 'returned'>,
+  facts: Pick<StateFacts, 'needsAnswers' | 'asksPlanner' | 'returned'>,
 ): Pick<RunEntity, 'state' | 'stateReason'> {
   const derived = deriveState(run, facts);
   return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };

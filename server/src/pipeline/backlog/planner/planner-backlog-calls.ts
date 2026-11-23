@@ -20,6 +20,7 @@ const COMMAND_WORDS: Record<PlannerRunCommand['type'], string> = {
   skipTask: 'skip task of run',
   stop: 'stop run',
   planChat: 'write to run planner',
+  passOn: 'pass question of run to person',
 };
 
 /** The command a run action asks for. */
@@ -29,6 +30,13 @@ export function commandOf(action: RunAction): PlannerRunCommand {
       return { type: 'answer', run: action.run, answers: action.answers };
     case 'planChat':
       return { type: 'planChat', run: action.run, message: action.message };
+    case 'passQuestion':
+      return {
+        type: 'passOn',
+        run: action.run,
+        ...(action.question === undefined ? {} : { question: action.question }),
+        line: action.reason ?? '',
+      };
     case 'resume':
       return { type: 'resume', run: action.run };
     case 'replay':

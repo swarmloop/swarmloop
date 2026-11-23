@@ -105,6 +105,10 @@ export interface FlowItem {
   answer: string;
   /** Set on a question that carries its parts next to its text. */
   parts?: QuestionParts;
+  /** Set on a question of a backlog's run that the backlog's planner has and has not passed on. */
+  holder?: 'planner';
+  /** The planner's line when it passed the question on to the person. */
+  passedOn?: string;
 }
 
 /** The merge request of a run in one repository. */

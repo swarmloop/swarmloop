@@ -57,6 +57,24 @@ describe('PlannerRules', () => {
       expect(await refusal(harness, { action: 'stop', run: 'going-1' })).toBeNull();
     }));
 
+  it('accepts an answer and a pass-on for a run below a task run, which holds a subtask question, but no other command', () =>
+    withPlanner(async (harness) => {
+      const { backlogId } = await harness.seed();
+      await harness.task(backlogId, null, 'going', { runKey: 'going-1', status: 'running' });
+      await harness.run('going-1', { status: 'waiting' });
+      const parent = await harness.runs.findRun('going-1');
+      await harness.runs.openSubtask('going-1-a', (parent as NonNullable<typeof parent>).id, 'a');
+      const answers = [{ body: 'yes' }];
+      expect(await refusal(harness, { action: 'answerRun', run: 'going-1-a', answers })).toBeNull();
+      expect(await refusal(harness, { action: 'passQuestion', run: 'going-1-a', reason: 'Yours.' })).toBeNull();
+      expect(await refusal(harness, { action: 'stop', run: 'going-1-a' })).toBe(
+        'going-1-a is not a run of this backlog',
+      );
+      expect(await refusal(harness, { action: 'answerRun', run: 'other-1', answers })).toBe(
+        'other-1 is not a run of this backlog',
+      );
+    }));
+
   it('refuses a resume of a run that is blocked again for the reason of its last planner resume', () =>
     withPlanner(async (harness) => {
       const { backlogId } = await harness.seed();
