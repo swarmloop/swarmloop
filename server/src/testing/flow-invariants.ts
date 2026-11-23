@@ -7,13 +7,13 @@ import {
   REASON,
   type StateReason,
 } from '../contract/run-state';
-import type { StepStatEntity } from '../history/entities';
+import type { AgentExchangeEntity, StepStatEntity } from '../history/entities';
 import { liveState } from '../history/run-state';
 import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitStartRepository } from '../history/visit-start.repository';
 import type { VisitStartEntity } from '../history/visit-start.entity';
-import { VisitRepository } from '../history/visit.repository';
+import { LIMIT_VISIT, VisitRepository } from '../history/visit.repository';
 import type { TestApp } from './test-app';
 
 /**
@@ -30,10 +30,13 @@ export async function assertInvariants(app: TestApp): Promise<void> {
   for (const run of await runs.listRuns()) {
     const queued = (await commands.pending(run.id)).some((command) => command.type !== 'stop');
     const { state, reason } = liveState(run, { queued });
+    const stats = await visits.listStats(run.id);
+    const runStarts = await starts.forRun(run.id);
     broken.push(
       ...stateRules(run.key, state, reason),
-      ...visitRules(run.key, state, reason, await visits.listStats(run.id)),
-      ...startRules(run.key, await starts.forRun(run.id)),
+      ...visitRules(run.key, state, reason, stats),
+      ...startRules(run.key, runStarts),
+      ...visitStartRules(run.key, stats, await visits.listExchanges(stats.map((stat) => stat.id)), runStarts),
     );
   }
   if (broken.length > 0) throw new Error(broken.join('\n'));
@@ -78,6 +81,21 @@ function startRules(key: string, starts: VisitStartEntity[]): string[] {
     digests.set(seen, first ?? start.id);
   }
   return broken;
+}
+
+/** Every agent visit, but one that ended on a provider limit, has its start: by the attempt, or by the stat an outside start linked. */
+function visitStartRules(
+  key: string,
+  stats: StepStatEntity[],
+  exchanges: AgentExchangeEntity[],
+  starts: VisitStartEntity[],
+): string[] {
+  const withExchange = new Set(exchanges.map((exchange) => exchange.stepStatId));
+  return stats
+    .filter((stat) => withExchange.has(stat.id))
+    .filter((stat) => !(stat.status === LIMIT_VISIT.status && stat.killReason === LIMIT_VISIT.killReason))
+    .filter((stat) => !starts.some((start) => start.attemptId === stat.attemptId || start.statId === stat.id))
+    .map((stat) => `${key} visit ${stat.id} of ${stat.step} has no start`);
 }
 
 /** An automatic next try names its time; a stop names the action a person takes. */

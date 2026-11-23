@@ -231,6 +231,22 @@ test('forbidOutside lets only the checks step call the server checks, and a spec
   assert.match(violations[1], /^server\/src\/steps\/implement\/implement-improve\.step\.ts:1:/);
 });
 
+test("forbidOutside reports a use of the agent launcher outside the door and the backlog planner's turn runner, and lets them and a spec keep it", () => {
+  const use = "import { AgentLauncher } from './agent-launcher';\n";
+  const files = {
+    'server/src/steps/research/research.step.ts': use,
+    'server/src/steps/shared/agent-door.ts': use,
+    'server/src/pipeline/backlog/planner/turn-runner.ts': use,
+    'server/src/steps/research/research.step.spec.ts': use,
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^server\/src\/steps\/research\/research\.step\.ts:1:/);
+});
+
 test('forbidOutside reports a state derived outside the run state module and lets that module and its spec be', () => {
   const files = {
     'server/src/history/run-state.ts': 'function deriveState(run) {}\n',
