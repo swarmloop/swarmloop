@@ -19,6 +19,7 @@ import {
   type RebaseEvent,
   type ChainAsked,
   type ChainQuestion,
+  type Escalated,
   type SubtaskMergeRequest,
 } from '../steps/shared/subtask-ops';
 import { disagrees } from '../steps/shared/subtask-status';
@@ -100,7 +101,7 @@ export class SubtaskPort extends SubtaskOps {
     this.chain = new PlannerChain(
       {
         askAbout: (opened, task, question, contract) => this.askAbout(opened, task, question, contract),
-        handUp: (parent, taskId, text) => this.asks.handUp(parent, taskId, text),
+        handUp: (parent, taskId, text, words) => this.asks.handUp(parent, taskId, text, words),
       },
       planning,
       documents,
@@ -163,7 +164,7 @@ export class SubtaskPort extends SubtaskOps {
     contract: string,
     plan?: StarterPlan,
     start?: LookStart,
-  ): Promise<StarterAnswerResult | null> {
+  ): Promise<StarterAnswerResult | Escalated | null> {
     return this.asks.answer(opened, child, task, contract, plan, start);
   }
 
@@ -183,7 +184,12 @@ export class SubtaskPort extends SubtaskOps {
     return this.asks.deliverAnswer(child, text);
   }
 
-  override askAbout(opened: OpenedStep, task: Subtask, questions: string, contract: string): Promise<string | null> {
+  override askAbout(
+    opened: OpenedStep,
+    task: Subtask,
+    questions: string,
+    contract: string,
+  ): Promise<string | Escalated | null> {
     return this.asks.askAbout(opened, task, questions, contract);
   }
 
@@ -200,16 +206,8 @@ export class SubtaskPort extends SubtaskOps {
     return this.documents.latestCreatedAt(run.key, ARTIFACTS.needs.kind);
   }
 
-  override async settledAt(parent: RunEntity, taskId: string): Promise<string | null> {
-    const task = parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND)).find(
-      (item) => item.id === taskId,
-    );
-    if (!task || !settled(task)) return null;
-    if (task.status === 'merged') return (await this.runs.findSubtask(parent, taskId))?.doneAt ?? null;
-    // A skipped task has no run to say when: the first list that holds it as skipped does.
-    const lists = await this.documents.revisionsOfKind(parent.id, SUBTASKS_KIND);
-    const first = lists.find((item) => parseSubtasks(item.body).some((t) => t.id === taskId && t.status === 'skipped'));
-    return first?.createdAt ?? null;
+  override settledAt(parent: RunEntity, taskId: string): Promise<string | null> {
+    return this.mergeRecord.settledAt(parent, taskId);
   }
 
   override async withoutCi(run: RunEntity): Promise<boolean> {

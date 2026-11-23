@@ -304,7 +304,7 @@ describe('a subtask asks the planner of its parent', () => {
 
     expect(prompts[0]).toContain(`The contract now:\n- names are camelCase\n- ${STOP_FIRST}`);
     expect(prompts[0]).toContain(skillSection('plan', 'Decide what you hold'));
-    expect(prompts[0]).not.toContain('escalate');
+    expect(prompts[0]).toContain(skillSection('plan', 'Escalate what you do not hold'));
     expect(await documents.latestBody(PARENT, 'contract')).toContain(`- subtask a at`);
     expect(await documents.latestBody(PARENT, 'contract')).toContain(HELD_DECISION);
     expect(await documents.latestBody(PARENT, 'subtask_questions')).toBeNull();

@@ -174,6 +174,17 @@ describe('merge look', () => {
     expect((await statuses(app)).b).toBe('running');
   });
 
+  it('asks the look for a decision only: its prompt offers no escalation', async () => {
+    const { prompts } = await lookWorld({ decision: 'Nothing changes.' });
+    await merge('a');
+
+    await pass(app);
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('decision');
+    expect(prompts[0]).not.toContain('escalate');
+  });
+
   it('does not visit twice for a task it looked at', async () => {
     const { prompts } = await lookWorld({ decision: 'Nothing changes.' });
     await merge('a');

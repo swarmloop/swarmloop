@@ -1,7 +1,7 @@
 import Joi from 'joi';
 import { readResult } from '../read-result';
 import { block } from '../result.spec-helpers';
-import { starterAnswer } from './starter-answer';
+import { starterAnswer, starterAnswerWithoutEscalate } from './starter-answer';
 import { starterKeys, type OutOfScope, type StarterDecision } from './starter-fields';
 import { subtaskAnswer } from './subtask-answer';
 
@@ -32,6 +32,23 @@ describe('starter answer', () => {
     expect(readResult(starterAnswer, block({ decision: 'x', dropTask: [{ id: 'gone' }] })).ok).toBe(false);
     const { proof: _proof, ...bare } = TASK;
     expect(readResult(starterAnswer, block({ decision: 'x', addTask: [bare] })).ok).toBe(false);
+  });
+
+  it('reads an escalation alone and refuses an answer with neither a decision nor an escalation', () => {
+    expect(readResult(starterAnswer, block({ escalate: 'which currency?' }))).toMatchObject({
+      ok: true,
+      value: { escalate: 'which currency?' },
+    });
+    expect(readResult(starterAnswer, block({ decision: 'x', escalate: 'y' })).ok).toBe(true);
+    expect(readResult(starterAnswer, block({ waitFor: [{ id: 'core', what: 'the helper' }] })).ok).toBe(false);
+  });
+
+  it('has a variant without escalate of the same kind, that refuses an escalation', () => {
+    expect(starterAnswerWithoutEscalate.kind).toBe(starterAnswer.kind);
+    expect(starterAnswerWithoutEscalate.name).toBe(starterAnswer.name);
+    expect(readResult(starterAnswerWithoutEscalate, block({ decision: 'use UTC' })).ok).toBe(true);
+    expect(readResult(starterAnswerWithoutEscalate, block({ escalate: 'which currency?' })).ok).toBe(false);
+    expect(readResult(starterAnswerWithoutEscalate, block({ decision: 'x', escalate: 'y' })).ok).toBe(false);
   });
 
   it('still reads the words-only subtask_answer body', () => {
