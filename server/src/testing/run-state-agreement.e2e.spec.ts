@@ -26,6 +26,8 @@ import { RunRetention } from '../pipeline/run-retention';
 import { EventRepository } from '../history/event.repository';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { WRITE_REFUSAL } from '../steps/shared/start-refused';
+import { doorAround } from './agent-door.spec-helpers';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { seededBoot } from '../api/runs-boot.spec-helpers';
 
@@ -241,15 +243,18 @@ describe('every reader of a run state agrees with the stored state', () => {
       app.get(AppConfig),
       app.get(Clock),
       { assertReady: async () => undefined } as never,
-      new AgentLauncher(
-        { run: async (input: AgentRunInput) => answer(input.prompt) } as never,
-        { tokenTotal: async () => 1 } as never,
-        new RunStop(),
+      doorAround(
+        app,
+        new AgentLauncher(
+          { run: async (input: AgentRunInput) => answer(input.prompt) } as never,
+          { tokenTotal: async () => 1 } as never,
+          new RunStop(),
+        ),
       ),
       { block: async () => '' } as never,
       { ensureForRequest: async () => undefined } as never,
     );
-    await chat.speak(key, { prompt: 'look at it', cwd: project });
+    await expect(chat.speak(key, { prompt: 'look at it', cwd: project })).rejects.toThrow(WRITE_REFUSAL);
     await app.get(RunStateRefresh).settled();
     const stored = (await app.get(RunRepository).findRun(key))!;
     const flow = await app.get(RunQueriesService).flow(key);

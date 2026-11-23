@@ -29,7 +29,7 @@ async function plan(agent: jest.Mock, questions: string, split = false) {
       golden.stepEvents,
     ),
     golden.sandbox,
-    golden.launcher,
+    golden.door,
   );
   return { golden, step };
 }

@@ -7,10 +7,18 @@ import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
+import { AgentDoor } from '../steps/shared/agent-door';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { WRITE_REFUSAL } from '../steps/shared/start-refused';
 import { REASON } from '../contract/run-state';
 import { stateColumns, storedState } from '../history/run-state';
 import { ChatService } from './chat.service';
+
+/** The door around a launcher. The refusal of write tools needs nothing of the door's repositories. */
+function doorOf(launcher: AgentLauncher): AgentDoor {
+  const none = {} as never;
+  return new AgentDoor(launcher, none, none, none, none, none, none, none, none);
+}
 
 describe('chat', () => {
   it('uses the implement model from the environment and removes the mcp file', async () => {
@@ -19,11 +27,6 @@ describe('chat', () => {
     await mkdir(join(root, 'skills', 'research'), { recursive: true });
     await mkdir(project, { recursive: true });
     await writeFile(join(root, 'skills', 'research', 'SKILL.md'), '# Research\n\nRead the ticket.\n');
-    await mkdir(join(root, 'skills', 'plan'), { recursive: true });
-    await writeFile(
-      join(root, 'skills', 'plan', 'SKILL.md'),
-      '# Plan\n[plan tool] Use the tool.\n[no plan tool] Use the answer.\n',
-    );
     const run = {
       id: 4,
       key: 'PROJ-1',
@@ -57,55 +60,32 @@ describe('chat', () => {
       },
     };
     const visitRepository = { tokenTotal: async () => 3 };
-    const agent = jest.fn(async (input: AgentRunInput): Promise<AgentRunResult> => {
-      const raw = await readFile(join(project, '.cursor', 'mcp.json'), 'utf8');
-      expect(raw).toContain('idea-mcp');
-      expect(raw).not.toContain('secret-value');
-      return result(input.prompt);
-    });
+    const agent = jest.fn(async (input: AgentRunInput): Promise<AgentRunResult> => result(input.prompt));
     const chat = new ChatService(
       runRepository as never,
       documentRepository as never,
       config(root),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      new AgentLauncher({ run: agent } as never, visitRepository as never, new RunStop()),
+      doorOf(new AgentLauncher({ run: agent } as never, visitRepository as never, new RunStop())),
       { block: async () => 'Services:\nJira PROJ-1: Ship the field' } as never,
       { ensureForRequest: async () => undefined } as never,
     );
-    const spoken = await chat.speak('PROJ-1', {
-      prompt: 'what is open?',
-      skill: 'research',
-      cwd: project,
-      mcpServers: [{ name: 'idea', command: 'idea-mcp', args: [], env: [{ name: 'TOKEN', value: 'secret-value' }] }],
-    });
-    expect(spoken.text).toBe('answered');
-    const input = agent.mock.calls[0][0];
-    expect(input.model).toBe('implement-model');
-    expect(input.mode).toBe('agent');
-    expect(input.approveMcps).toBe(true);
-    expect(input.prompt).toContain('Read the ticket.');
-    expect(input.prompt).toContain('Do not start a service');
-    expect(input.prompt).toContain('Add the field');
-    expect(input.prompt).toContain('Jira PROJ-1: Ship the field');
-    expect(input.prompt).toContain('MCP servers: idea');
-    expect(input.prompt).not.toContain('secret-value');
-    expect(input.continuePrompt).toBeNull();
+    await expect(
+      chat.speak('PROJ-1', {
+        prompt: 'what is open?',
+        skill: 'research',
+        cwd: project,
+        mcpServers: [{ name: 'idea', command: 'idea-mcp', args: [], env: [{ name: 'TOKEN', value: 'secret-value' }] }],
+      }),
+    ).rejects.toThrow(new BadRequestException(WRITE_REFUSAL));
+    expect(agent).not.toHaveBeenCalled();
     expect(run.status).toBe('waiting');
-    expect(run.spentUsd).toBeCloseTo(0.21);
+    expect(run.spentUsd).toBeCloseTo(0.2);
     await expect(readFile(join(project, '.cursor', 'mcp.json'), 'utf8')).rejects.toThrow();
     expect(saved.map((row) => (row as { status: string }).status)).toEqual(['running', 'waiting']);
     expect(documents.some((row) => row.startsWith(`chat_lock:waiting ${process.pid}`))).toBe(true);
     expect(documents.some((row) => row.startsWith('chat_lock:clear'))).toBe(true);
-    await chat.speak('PROJ-1', {
-      prompt: 'plan it',
-      skill: 'plan',
-      cwd: project,
-      mcpServers: [{ name: 'idea', command: 'idea-mcp', args: [], env: [{ name: 'TOKEN', value: 'secret-value' }] }],
-    });
-    const planned = agent.mock.calls[1][0].prompt;
-    expect(planned).toContain('Use the tool.');
-    expect(planned).not.toMatch(/\[(no )?plan tool\]/);
   });
 
   it('puts a stopped run back stopped with Resume after a chat', async () => {
@@ -145,15 +125,17 @@ describe('chat', () => {
       config(root),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      new AgentLauncher(
-        { run: async (input: AgentRunInput) => result(input.prompt) } as never,
-        { tokenTotal: async () => 1 } as never,
-        new RunStop(),
+      doorOf(
+        new AgentLauncher(
+          { run: async (input: AgentRunInput) => result(input.prompt) } as never,
+          { tokenTotal: async () => 1 } as never,
+          new RunStop(),
+        ),
       ),
       { block: async () => '' } as never,
       { ensureForRequest: async () => undefined } as never,
     );
-    await chat.speak('PROJ-2', { prompt: 'look at it', cwd: project });
+    await expect(chat.speak('PROJ-2', { prompt: 'look at it', cwd: project })).rejects.toThrow(WRITE_REFUSAL);
     expect(run.status).toBe('blocked');
     expect(storedState(run)).toEqual(before);
   });
@@ -170,7 +152,7 @@ describe('chat', () => {
       config('/tmp'),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      new AgentLauncher({ run: jest.fn() } as never, {} as never, new RunStop()),
+      doorOf(new AgentLauncher({ run: jest.fn() } as never, {} as never, new RunStop())),
       {
         block: async () => '',
       } as never,
@@ -191,7 +173,7 @@ describe('chat', () => {
       config('/tmp'),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      new AgentLauncher({ run: jest.fn() } as never, {} as never, new RunStop()),
+      doorOf(new AgentLauncher({ run: jest.fn() } as never, {} as never, new RunStop())),
       {
         block: async () => '',
       } as never,
@@ -216,7 +198,7 @@ describe('chat', () => {
       config('/tmp'),
       new FakeClock(),
       { assertReady: async () => undefined } as never,
-      new AgentLauncher({ run: jest.fn() } as never, {} as never, new RunStop()),
+      doorOf(new AgentLauncher({ run: jest.fn() } as never, {} as never, new RunStop())),
       {
         block: async () => '',
       } as never,

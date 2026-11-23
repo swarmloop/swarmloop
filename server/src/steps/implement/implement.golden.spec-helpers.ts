@@ -4,7 +4,7 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
-import { AgentLauncher } from '../shared/agent-launcher';
+import { AgentDoor } from '../shared/agent-door';
 import { AppConfig } from '../../config/env';
 import { StepEventLog } from '../../history/step-event.log';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
@@ -80,7 +80,7 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
         ? new ImplementStep(
             ...common,
             app.get(RebasedPublisher),
-            app.get(AgentLauncher),
+            app.get(AgentDoor),
             app.get(EnvironmentService),
             app.get(SplitImplementStep),
             app.get(RunNames),
@@ -89,7 +89,7 @@ export async function goldenRun(input: GoldenCase): Promise<PipelineResult> {
           )
         : new ImplementImproveStep(
             ...common,
-            app.get(AgentLauncher),
+            app.get(AgentDoor),
             app.get(EnvironmentService),
             app.get(RunNames),
             app.get(GitRulesWriter),

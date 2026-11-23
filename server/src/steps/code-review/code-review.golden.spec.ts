@@ -7,7 +7,7 @@ import { join } from 'path';
 import { DataSource } from 'typeorm';
 import type { AgentRunInput } from '../../agent/agent-runner';
 import { RunReport } from '../shared/run-report';
-import { AgentLauncher } from '../shared/agent-launcher';
+import { AgentDoor } from '../shared/agent-door';
 import { AppConfig } from '../../config/env';
 import { StepEventLog } from '../../history/step-event.log';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
@@ -58,7 +58,7 @@ describe('code-review step golden traces', () => {
       app.get(EventRepository),
       app.get(CheckoutService),
       app.get(SandboxService),
-      app.get(AgentLauncher),
+      app.get(AgentDoor),
       app.get(RunReport),
     );
     const done = await step.execute(KEY);

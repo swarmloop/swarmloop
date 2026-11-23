@@ -5,6 +5,10 @@ import { join } from 'path';
 import { Logger } from '@nestjs/common';
 import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
 import { AgentLauncher } from './shared/agent-launcher';
+import type { AgentDoor } from './shared/agent-door';
+import { StartRefused } from './shared/start-refused';
+import { REASON } from '../contract/run-state';
+import { storedState } from '../history/run-state';
 import { goldenApp } from './shared/model-golden.spec-helpers';
 import { StepKernel } from './step-kernel';
 import { ResearchStep } from './research/research.step';
@@ -371,7 +375,7 @@ describe('agent step without requirements', () => {
             golden.stepEvents,
           ),
           golden.sandbox,
-          golden.launcher,
+          golden.door,
         );
         const result = await step.execute('PROJ-30');
         expect(result.message).toContain('requirements is missing');
@@ -408,7 +412,7 @@ describe('agent step failure', () => {
           golden.stepEvents,
         ),
         golden.sandbox,
-        golden.launcher,
+        golden.door,
       );
       const result = await step.execute('PROJ-31');
       const id = /\((E-[0-9a-z]{8})\)$/.exec(result.message)?.[1];
@@ -451,7 +455,7 @@ describe('agent step during a passing outage', () => {
         golden.stepEvents,
       );
       const retryAt = new Date(golden.clock.now() + golden.config.env.RECONCILE_MS).toISOString();
-      await new ResearchStep(kernel, golden.sandbox, golden.launcher).execute('PROJ-32');
+      await new ResearchStep(kernel, golden.sandbox, golden.door).execute('PROJ-32');
       const stored = await golden.runs.findRun('PROJ-32');
       const stats = await golden.visits.listStats(run.id);
       return {
@@ -509,3 +513,52 @@ function emptyAgent(): AgentRunResult {
     finishedAt: '',
   };
 }
+
+describe('agent step whose start the door refused', () => {
+  async function refusedRun(error: StartRefused) {
+    const golden = await goldenApp('agent-refused', { worktrees: ['PROJ-33/billing-api'] });
+    try {
+      const run = await golden.runs.begin('PROJ-33', 'prepare');
+      run.status = 'waiting';
+      run.currentStep = 'research';
+      await golden.runs.saveRun(run);
+      await golden.seedDocuments.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
+      const kernel = new StepKernel(
+        golden.runs,
+        golden.documents,
+        golden.visits,
+        golden.flows,
+        golden.clock,
+        golden.config,
+        golden.stepEvents,
+      );
+      const door = {
+        inVisit: async () => {
+          throw error;
+        },
+      } as unknown as AgentDoor;
+      await new ResearchStep(kernel, golden.sandbox, door).execute('PROJ-33');
+      const stored = (await golden.runs.findRun('PROJ-33'))!;
+      const stats = await golden.visits.listStats(run.id);
+      return { status: stored.status, reason: storedState(stored).reason, visits: stats.map((item) => item.status) };
+    } finally {
+      await golden.close();
+    }
+  }
+
+  it('blocks the run on the limit and stores a waiting visit when the door refused for a limit', async () => {
+    const ended = await refusedRun(StartRefused.limit('PROJ-33 is over the spend limit. research was not started'));
+    expect(ended.status).toBe('blocked');
+    expect(ended.reason?.code).toBe(ERROR_CODES.SPEND_LIMIT);
+    expect(ended.visits).toEqual(['waiting']);
+  });
+
+  it('waits with the same-input reason and stores a waiting visit when the door refused the same input', async () => {
+    const ended = await refusedRun(
+      StartRefused.sameInput({ message: 'research already ran on this input', question: {} as never, startLevel: 0 }),
+    );
+    expect(ended.status).toBe('waiting');
+    expect(ended.reason?.code).toBe(REASON.sameInput);
+    expect(ended.visits).toEqual(['waiting']);
+  });
+});

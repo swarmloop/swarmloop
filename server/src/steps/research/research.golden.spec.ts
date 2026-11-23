@@ -26,7 +26,7 @@ async function research(agent: jest.Mock) {
       golden.stepEvents,
     ),
     golden.sandbox,
-    golden.launcher,
+    golden.door,
   );
   return { golden, step };
 }

@@ -10,7 +10,7 @@ import { mountsForStep } from '../../git/repo-names';
 import type { RunEntity } from '../../history/entities';
 import { root } from '../../history/run-paths';
 import { agentFailure } from './agent-result';
-import { AgentLauncher } from './agent-launcher';
+import { AgentDoor } from './agent-door';
 
 /** The validated result, or the reason the agent gave none. */
 export type ChatAnswer = { value: unknown } | { error: string };
@@ -22,7 +22,7 @@ export type ChatAnswer = { value: unknown } | { error: string };
 @Injectable()
 export class ImplementChat {
   constructor(
-    private readonly launcher: AgentLauncher,
+    private readonly door: AgentDoor,
     private readonly config: AppConfig,
   ) {}
 
@@ -32,22 +32,26 @@ export class ImplementChat {
     const dir = root(this.config);
     const chat = await resumableChat(dir, run.key, 'implement', runtime);
     try {
-      const result = await this.launcher.launch({
-        root: dir,
-        run,
-        key: run.key,
-        step: chat?.chatId ? 'implement' : 'merge-request',
-        mode: 'plan',
-        tools: 'none',
-        runtime,
-        model,
-        ...effort,
-        timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
-        prompt,
-        result: definition,
-        workspace: join(dir, 'worktrees', run.key),
-        mounts: mountsForStep(dir, run.key, repos, run.targetPath),
-      });
+      const step = chat?.chatId ? 'implement' : 'merge-request';
+      const result = await this.door.outside(
+        { step, by: 'machine', input: { texts: [prompt] } },
+        {
+          root: dir,
+          run,
+          key: run.key,
+          step,
+          mode: 'plan',
+          tools: 'none',
+          runtime,
+          model,
+          ...effort,
+          timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
+          prompt,
+          result: definition,
+          workspace: join(dir, 'worktrees', run.key),
+          mounts: mountsForStep(dir, run.key, repos, run.targetPath),
+        },
+      );
       const failure = agentFailure(result, 'implement', 'plan');
       if (failure) {
         return { error: failure };

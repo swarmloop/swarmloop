@@ -6,7 +6,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
-import { AgentLauncher } from './agent-launcher';
+import { AgentDoor } from './agent-door';
 import { SwarmloopConfigModule } from '../../config/config.module';
 import { AppConfig } from '../../config/env';
 import { Clock } from '../../core/clock';
@@ -58,7 +58,7 @@ export async function goldenApp(prefix: string, options: GoldenOptions = {}) {
     config: app.get(AppConfig),
     stepEvents: app.get(StepEventLog),
     sandbox: app.get(SandboxService),
-    launcher: app.get(AgentLauncher),
+    door: app.get(AgentDoor),
     trace: (key: string, step: string) => traceRun(app.get(DataSource), key, { [step]: documents.kinds }),
     close: async () => {
       await app.close();

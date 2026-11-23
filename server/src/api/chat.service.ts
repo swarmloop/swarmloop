@@ -14,7 +14,7 @@ import { agentFor } from '../config/agents';
 import { CHAT_LOCK, chatLockBody } from '../pipeline/chat-lock';
 import { settleShell, shellHolding } from '../pipeline/shell-lock';
 import { ServiceContextService } from '../integrations/service-context';
-import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { AgentDoor } from '../steps/shared/agent-door';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { agentFailure } from '../steps/shared/agent-result';
 import { LOCAL_RUN_RULE, skillText } from '../steps/shared/skill-prompt';
@@ -32,7 +32,7 @@ export class ChatService {
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly sandbox: SandboxService,
-    private readonly launcher: AgentLauncher,
+    private readonly door: AgentDoor,
     private readonly services: ServiceContextService,
     private readonly workspace: WorkspaceGuard,
   ) {}
@@ -71,22 +71,25 @@ export class ChatService {
       locked = true;
       run = await this.take(run);
       await this.sandbox.assertReady(runtime);
-      const result = await this.launcher.launch({
-        root: root(this.config),
-        run,
-        key,
-        step: 'chat',
-        mode: 'agent',
-        tools: 'write',
-        runtime,
-        model,
-        timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
-        prompt: await this.prompt(key, body.skill, prompt, mounts[0].hostPath, servers, runtime),
-        workspace: mounts[0].containerPath,
-        mounts,
-        approveMcps: servers.length > 0,
-        continuePrompt: null,
-      });
+      const result = await this.door.outside(
+        { step: 'chat', by: 'person', input: { texts: [prompt] } },
+        {
+          root: root(this.config),
+          run,
+          key,
+          step: 'chat',
+          mode: 'agent',
+          tools: 'write',
+          runtime,
+          model,
+          timeLimitMs: env.IMPLEMENT_TIMEOUT_MS,
+          prompt: await this.prompt(key, body.skill, prompt, mounts[0].hostPath, servers, runtime),
+          workspace: mounts[0].containerPath,
+          mounts,
+          approveMcps: servers.length > 0,
+          continuePrompt: null,
+        },
+      );
       const failed = agentFailure(result, 'chat', 'agent');
       if (failed) {
         throw new BadRequestException(failed);
