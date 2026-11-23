@@ -24,6 +24,17 @@
       "include": "server/src/",
       "exclude": "\\.spec(-helpers)?\\.ts$",
       "allowFiles": [
+        "server/src/steps/shared/agent-door.ts",
+        "server/src/pipeline/backlog/planner/turn-runner.ts",
+        "server/src/steps/shared/agent-launcher.ts",
+        "server/src/pipeline/pipeline.module.ts"
+      ],
+      "pattern": "\\bAgentLauncher\\b"
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
         "server/src/pipeline/start-gate.ts",
         "server/src/api/",
         "server/src/cli/",
