@@ -10,7 +10,7 @@ export interface TurnAnswer {
 }
 
 interface Reasoned {
-  /** One line that says why; an `answerRun` or a `recordDecision` shows it as an info line, and an `answerRun` also records it as a decision. */
+  /** One line that says why; an `answerRun`, a `passQuestion` or a `recordDecision` shows it as an info line, and an `answerRun` also records it as a decision. */
   reason?: string;
 }
 
@@ -32,6 +32,7 @@ export type BacklogTurnAction = Reasoned &
     | { action: 'unpause' }
     | { action: 'closeRequirement'; id: string; evidence: string }
     | { action: 'answerRun'; run: string; answers: TurnAnswer[] }
+    | { action: 'passQuestion'; run: string; question?: string }
     | { action: 'planChat'; run: string; message: string }
     | { action: 'resume'; run: string }
     | { action: 'replay'; run: string; step: string }
@@ -69,6 +70,7 @@ const REQUIRED: Record<BacklogTurnAction['action'], string[]> = {
   unpause: [],
   closeRequirement: ['id', 'evidence'],
   answerRun: ['run', 'answers'],
+  passQuestion: ['run', 'reason'],
   planChat: ['run', 'message'],
   resume: ['run'],
   replay: ['run', 'step'],
@@ -96,7 +98,7 @@ const action = Joi.object({
     .required()
     .description('The action to take; the fields it needs are listed under it'),
   reason: text(
-    'One line that says why. For answerRun and recordDecision it is shown to the person as an info line; for answerRun it is also kept as a decision',
+    'One line that says why. For answerRun, passQuestion and recordDecision it is shown to the person as an info line; for answerRun it is also kept as a decision. passQuestion needs it',
   ),
   ...taskFields,
   goal: text('proposeMilestone: the goal of the milestone'),
@@ -117,7 +119,10 @@ const action = Joi.object({
   id: text('addItem: the item id; closeRequirement: the requirement, like M1.R2'),
   text: text('recordDecision: the decision'),
   evidence: text('closeRequirement: what shows the requirement is met'),
-  run: text('answerRun, planChat, resume, replay, skipTask, stop: the run key'),
+  run: text('answerRun, passQuestion, planChat, resume, replay, skipTask, stop: the run key'),
+  question: text(
+    'passQuestion: the id of the question to pass to the person; leave out to pass every question of the run you hold',
+  ),
   answers: Joi.array()
     .items(Joi.object({ kind: Joi.string(), id: Joi.string(), body: Joi.string().required() }))
     .description(

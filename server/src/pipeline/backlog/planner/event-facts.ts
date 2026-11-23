@@ -37,6 +37,9 @@ export class EventFacts {
   async of(owner: string, event: BacklogEventRecord): Promise<Facts> {
     try {
       if (event.kind === 'run-needs-person') return { ...event.facts, ...(await this.question(event.facts.runKey)) };
+      if (event.kind === 'run-asks-planner') {
+        return { ...event.facts, ...(await this.question(event.facts.runKey, event.facts.questionId)) };
+      }
       if (event.kind === 'task-merged') return { ...event.facts, ...(await this.merged(event)) };
       if (event.kind === 'main-red')
         return { ...event.facts, ...(await this.failedJob(owner, event.facts.repository)) };
@@ -46,10 +49,12 @@ export class EventFacts {
     }
   }
 
-  /** What is decided and each side of every question the run waits on, in the shape the run page shows. */
-  private async question(runKey: string | undefined): Promise<Facts> {
+  /** What is decided and each side of every question the run waits on, or of the one question named, in the shape the run page shows. */
+  private async question(runKey: string | undefined, questionId?: string): Promise<Facts> {
     if (!runKey) return {};
-    const stored = readStoredQuestions((await this.documents.latestBody(runKey, 'question_parts')) ?? '');
+    const parts = readStoredQuestions((await this.documents.latestBody(runKey, 'question_parts')) ?? '');
+    const stored = questionId === undefined ? parts : parts.filter((item) => item.question === questionId);
+    if (questionId !== undefined && stored.length === 0) return {};
     if (stored.length > 0) {
       return {
         question: stored.map(({ parts }) => parts.decide).join('\n'),

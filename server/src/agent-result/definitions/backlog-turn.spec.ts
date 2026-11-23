@@ -22,6 +22,7 @@ describe('backlog turn result', () => {
           { action: 'closeRequirement', id: 'M1.R1', evidence: 'merged' },
           { action: 'answerRun', run: 'r', answers: [{ body: 'yes' }] },
           { action: 'planChat', run: 'r', message: 'm' },
+          { action: 'passQuestion', run: 'r', question: 'q', reason: 'Only you can choose.' },
           { action: 'resume', run: 'r' },
           { action: 'replay', run: 'r', step: 'implement' },
           { action: 'skipTask', run: 'r', task: 't' },
@@ -47,6 +48,13 @@ describe('backlog turn result', () => {
     expect(errorsOf({ say: '', actions: [{ action: 'closeRequirement', id: 'M1.R1' }] })).toEqual([
       'actions.0: closeRequirement needs evidence',
     ]);
+  });
+
+  it('refuses a pass-on with no reason and reads one that names no question', () => {
+    expect(errorsOf({ say: '', actions: [{ action: 'passQuestion', run: 'r' }] })).toEqual([
+      'actions.0: passQuestion needs reason',
+    ]);
+    expect(errorsOf({ say: '', actions: [{ action: 'passQuestion', run: 'r', reason: 'Yours.' }] })).toEqual([]);
   });
 
   it('needs a say that is text, or none', () => {

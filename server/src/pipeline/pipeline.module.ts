@@ -77,6 +77,7 @@ import { PlannerRules } from './backlog/planner/planner-rules';
 import { PlannerRunPort } from './backlog/planner/planner-run-port';
 import { BacklogPlanner } from './backlog/planner/backlog-planner';
 import { PlannerTurnActions } from './backlog/planner/planner-actions';
+import { LeftQuestions } from './backlog/planner/left-questions';
 import { BacklogTurnPrompt } from './backlog/planner/turn-prompt';
 import { BacklogTurnRunner } from './backlog/planner/turn-runner';
 import { BacklogTurnState } from './backlog/planner/turn-state';
@@ -84,6 +85,8 @@ import { BacklogTurnWorkspace } from './backlog/planner/turn-workspace';
 import { EventFacts } from './backlog/planner/event-facts';
 import { StallWatch } from './stall-watch';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
+import { QuestionHolds } from '../steps/shared/question-holds';
+import { QuestionPassOn } from './question-pass-on';
 import { RunSettler } from './run-settler';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
@@ -153,6 +156,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     Reconciler,
     StallWatch,
     RunStateRefresh,
+    QuestionHolds,
+    QuestionPassOn,
     PlannerTurns,
     PlanConversation,
     BacklogActionSupport,
@@ -168,6 +173,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PlannerBacklogCalls,
     PlannerRunPort,
     PlannerTurnActions,
+    LeftQuestions,
     EventFacts,
     BacklogTurnState,
     BacklogTurnPrompt,
@@ -188,6 +194,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     StartGate,
     Reconciler,
     PlannerTurns,
+    QuestionHolds,
+    QuestionPassOn,
     BacklogActions,
     BacklogQueries,
     BacklogScheduler,

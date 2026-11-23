@@ -50,6 +50,7 @@ export const OPEN_ITEM_KINDS = [
   'subtask_questions',
   'review_questions',
   'pending',
+  'passed_on',
   research.kind,
   plan.kind,
 ];

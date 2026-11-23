@@ -4,7 +4,7 @@ import type { Issue } from './step-contract';
 import { SPLIT_ARTIFACTS } from './artifacts-split';
 import type { CoveredRequirement, Requirement } from '../../contract/requirement-list';
 import type { KeepLine } from '../shared/keep-lines';
-import type { StoredQuestion } from '../shared/question-parts';
+import type { PassedOn, StoredQuestion } from '../shared/question-parts';
 import { research, type ResearchResult } from '../../agent-result/definitions/research';
 import { plan, type PlanResult } from '../../agent-result/definitions/plan';
 import { planImprove, type PlanImproveResult } from '../../agent-result/definitions/plan-improve';
@@ -152,6 +152,14 @@ export const ARTIFACTS = {
     readers: ['implement'],
     codec: jsonArrayCodec<StoredQuestion>(),
     summarize: (questions) => listSummary(questions.length, 'questions', questions[0]?.parts.decide),
+  }),
+  // The questions of a backlog's run that the backlog's planner passed on to the person, each with its line; written by the pass-on service.
+  passedOn: artifact('passed_on', {
+    writers: [],
+    readers: [],
+    external: true,
+    codec: jsonArrayCodec<PassedOn>(),
+    summarize: (passed) => listSummary(passed.length, 'passed on questions', passed[0]?.line),
   }),
   needs: artifact('needs', { writers: ['research', 'plan', 'implement'], readers: [], summarize: firstLine }),
   impact: artifact('impact', {

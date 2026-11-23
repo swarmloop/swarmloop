@@ -1,9 +1,11 @@
 import type { PlanChatEntry } from '../contract/plan-chat';
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
+import type { RunRepository } from '../history/run.repository';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { renderQuestions } from '../steps/research/research-record';
 import { openQuestions } from '../steps/shared/answers';
+import type { QuestionHolds } from '../steps/shared/question-holds';
 import { askedParts, readStoredQuestions } from '../steps/shared/question-parts';
 
 /** The question for the person that a planner's escalation makes: one line, built the same way to write and to match. */
@@ -34,6 +36,19 @@ export async function escalateToPerson(
     ARTIFACTS.questionParts.kind,
     ARTIFACTS.questionParts.format([...stored.filter((item) => item.question !== line), parts]),
   );
+}
+
+/**
+ * Releases the run that waits for an escalated question. The run waits for the person, except that a question of a
+ * backlog's run which the backlog's planner has not passed on keeps the run waiting for the planner.
+ */
+export async function releaseAsked(runs: RunRepository, holds: QuestionHolds | undefined, key: string): Promise<void> {
+  const fresh = await runs.findRun(key);
+  if (fresh?.status !== 'waiting') return;
+  const found = holds ? await holds.facts(fresh) : null;
+  const known = found && (found.needsAnswers || found.asksPlanner);
+  const facts = known ? { needsAnswers: found.needsAnswers, asksPlanner: found.asksPlanner } : { needsAnswers: true };
+  await runs.release(fresh, { status: 'waiting', facts });
 }
 
 /** Takes the escalated question out of the open questions once the planner read the person's answer. */

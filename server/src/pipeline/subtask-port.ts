@@ -46,6 +46,7 @@ import { SubtaskRebases } from './subtask-rebases';
 import { SubtaskRequestCloser } from '../steps/shared/subtask-requests-close';
 import type { LookStart } from '../steps/shared/look-start';
 import { PlanConversation } from '../steps/shared/plan-conversation';
+import { QuestionHolds } from '../steps/shared/question-holds';
 import { PlanChatStore } from '../history/plan-chat.store';
 import type { PlanChange, StarterPlan } from '../steps/implement/starter-actions';
 import type { PlanChatEntry } from '../contract/plan-chat';
@@ -89,6 +90,7 @@ export class SubtaskPort extends SubtaskOps {
     @Optional() private readonly runAuthor?: RunAuthor,
     @Optional() private readonly closer?: SubtaskRequestCloser,
     @Optional() retention?: RunRetention,
+    @Optional() holds?: QuestionHolds,
   ) {
     super();
     this.worktrees = new SubtaskWorktrees(config, clock, publisher);
@@ -103,6 +105,7 @@ export class SubtaskPort extends SubtaskOps {
       planning,
       documents,
       runs,
+      holds,
     );
     this.mergeRecord = new SubtaskMergeRecord(
       runs,

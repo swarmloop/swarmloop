@@ -13,7 +13,8 @@ import { asksParentReason } from '../steps/shared/starter-exchange';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { readPlan } from '../steps/plan/plan-record';
 import { messageTurn } from './plan-chat-route';
-import { closeEscalation, escalateToPerson, escalationLine } from './escalation';
+import { closeEscalation, escalateToPerson, escalationLine, releaseAsked } from './escalation';
+import type { QuestionHolds } from '../steps/shared/question-holds';
 import { answered } from '../steps/shared/answers';
 import { askPlanner, readPersonAnswer } from './planner-question';
 
@@ -47,6 +48,7 @@ export class PlannerTurns implements OnModuleDestroy {
     @Optional() private readonly conversation?: PlanConversation,
     @Optional() private readonly runs?: RunRepository,
     @Optional() private readonly clock?: Clock,
+    @Optional() private readonly holds?: QuestionHolds,
   ) {
     // Every planner turn of the run, a subtask's question to its parent included, goes through this one queue.
     if (conversation) conversation.gate = this;
@@ -140,9 +142,7 @@ export class PlannerTurns implements OnModuleDestroy {
       return;
     }
     await escalateToPerson(documents, run, escalation);
-    const fresh = await this.runs?.findRun(run.key);
-    if (fresh?.status === 'waiting')
-      await this.runs?.release(fresh, { status: 'waiting', facts: { needsAnswers: true } });
+    if (this.runs) await releaseAsked(this.runs, this.holds, run.key);
   }
 
   /** The escalations that wait whose question the person answered, oldest first. */

@@ -4,6 +4,7 @@ import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { RunRepository } from '../history/run.repository';
 import { storedState } from '../history/run-state';
 import { handoffText } from '../steps/shared/handoff';
+import { holdServices, seedBacklogTask } from '../steps/shared/question-holds.spec-helpers';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import { PlannerChain } from './planner-chain';
 
@@ -29,10 +30,17 @@ async function setup() {
     },
   } as unknown as PlanConversation;
   const chain = new PlannerChain(
-    { askAbout: () => Promise.resolve(epicAnswers.shift() ?? null), handUp: () => Promise.resolve() },
+    {
+      askAbout: () => Promise.resolve(epicAnswers.shift() ?? null),
+      // What the real hand-up leaves: the task's question among the questions of its parent's implement step.
+      handUp: async (parent, _task, text) => {
+        await documents.putDocument(parent, 'subtask_questions', `- ${text}\n`);
+      },
+    },
     conversation,
     documents,
     runs,
+    holdServices(db.app, db.clock).holds,
   );
   const epic = await runs.openWaiting('EPIC-1', '/target');
   const task = await runs.openSubtask('EPIC-1-a', epic.id, 'a');
@@ -125,6 +133,38 @@ describe('PlannerChain', () => {
       expect(questions.match(/which retry policy wins/g)).toHaveLength(1);
       const run = (await h.runs.findRun('ALONE-1'))!;
       expect(storedState(run).reason?.code).toBe('NEEDS_ANSWERS');
+    } finally {
+      await h.db.close();
+    }
+  });
+
+  it('leaves the question no level answers with the backlog planner when the run is a backlog task run', async () => {
+    const h = await setup();
+    try {
+      await seedBacklogTask(h.db.app, 'ALONE-1');
+      await h.runs.saveRun({ ...h.alone, currentStep: 'implement' });
+      h.turns.push(null);
+
+      await h.chain.askUp(h.alone, question, 0);
+
+      const run = (await h.runs.findRun('ALONE-1'))!;
+      expect(storedState(run)).toMatchObject({ state: 'waiting', reason: { code: 'ASKS_PLANNER' } });
+    } finally {
+      await h.db.close();
+    }
+  });
+
+  it('leaves the question a subtask hands up to a backlog epic with the backlog planner', async () => {
+    const h = await setup();
+    try {
+      await seedBacklogTask(h.db.app, 'EPIC-1');
+      await h.runs.saveRun({ ...h.epic, split: true, currentStep: 'implement' });
+      h.epicAnswers.push(null);
+
+      await h.chain.askUp(h.task, question, 1);
+
+      const epic = (await h.runs.findRun('EPIC-1'))!;
+      expect(storedState(epic)).toMatchObject({ state: 'waiting', reason: { code: 'ASKS_PLANNER' } });
     } finally {
       await h.db.close();
     }

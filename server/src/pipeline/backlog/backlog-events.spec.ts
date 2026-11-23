@@ -54,6 +54,47 @@ describe('BacklogEvents', () => {
       ]);
     }));
 
+  it('writes run-asks-planner once for each open question of a run the planner holds, with its id', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      const id = (await h.seedBacklog('one')).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1' });
+      await h.seedDoneRun('a-1', []);
+      await h.moveRun('a-1', { status: 'waiting', currentStep: 'research' });
+      const run = (await h.runs.findRun('a-1')) as NonNullable<Awaited<ReturnType<typeof h.runs.findRun>>>;
+      await h.db.app.get(DocumentRepository).putDocument(run, 'questions', '- Which store?\n- Which queue?\n');
+
+      await h.tick();
+      await h.tick();
+
+      const asked = await events(h, id, 'run-asks-planner');
+      expect(asked.map((event) => event.facts).sort((a, b) => a.questionId.localeCompare(b.questionId))).toEqual([
+        { slug: 'a', runKey: 'a-1', questionId: 'Which queue?', question: 'Which queue?' },
+        { slug: 'a', runKey: 'a-1', questionId: 'Which store?', question: 'Which store?' },
+      ]);
+    }));
+
+  it('writes no run-asks-planner for a question the planner passed on', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      const id = (await h.seedBacklog('one')).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1' });
+      await h.seedDoneRun('a-1', []);
+      await h.moveRun('a-1', { status: 'waiting', currentStep: 'research' });
+      const run = (await h.runs.findRun('a-1')) as NonNullable<Awaited<ReturnType<typeof h.runs.findRun>>>;
+      const documents = h.db.app.get(DocumentRepository);
+      await documents.putDocument(run, 'questions', '- Which store?\n');
+      await documents.putDocument(
+        run,
+        'passed_on',
+        JSON.stringify([{ question: 'Which store?', line: 'Yours.', at: 'now' }]),
+      );
+
+      await h.tick();
+
+      expect(await events(h, id, 'run-asks-planner')).toEqual([]);
+    }));
+
   it('writes run-needs-person once for a blocked run', () =>
     withHarness(async (h) => {
       h.setMain('web');

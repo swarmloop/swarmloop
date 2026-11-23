@@ -1,12 +1,15 @@
+import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { etaPhase } from '../../contract/eta';
 import { settled } from '../../contract/subtask';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { DocumentRepository } from '../../history/document.repository';
+import type { RunEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { storedState } from '../../history/run-state';
 import { VisitRepository } from '../../history/visit.repository';
 import { PlanChatStore } from '../../history/plan-chat.store';
+import { QuestionHolds } from '../../steps/shared/question-holds';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import { backlogProgress } from './backlog-progress';
 import { heldBack } from './held-back';
@@ -28,6 +31,7 @@ export class BacklogEvents {
     private readonly documents: DocumentRepository,
     private readonly host: RepositoryHost,
     private readonly chats: PlanChatStore,
+    private readonly holds: QuestionHolds,
   ) {}
 
   taskMerged(backlogId: number, slug: string): Promise<boolean> {
@@ -74,6 +78,7 @@ export class BacklogEvents {
     for (const record of records.filter((task) => !settled(task))) {
       const run = found.get(record.runKey ?? '');
       if (!run) continue;
+      await this.observeHeld(backlogId, record.slug, run);
       const { state, reason } = storedState(run);
       if (etaPhase(state, reason) === 'person') {
         const visit = visits.get(run.id)?.id;
@@ -91,6 +96,24 @@ export class BacklogEvents {
         });
       }
     }
+  }
+
+  /** One event per question of the run, or of a run below it, that waits for the planner; the key names the run, its visit and the question. */
+  private async observeHeld(backlogId: number, slug: string, run: RunEntity): Promise<void> {
+    if (run.status === 'waiting') {
+      const visit = (await this.visits.latestVisits([run.id])).get(run.id)?.id;
+      for (const { id, label } of await this.holds.held(run)) {
+        const hash = createHash('sha1').update(id).digest('hex').slice(0, 10);
+        const key = `asks-planner:${run.key}:${visit ?? 'none'}:${hash}`;
+        await this.backlogs.recordEvent(backlogId, key, 'run-asks-planner', {
+          slug,
+          runKey: run.key,
+          questionId: id,
+          question: label,
+        });
+      }
+    }
+    for (const child of await this.runs.children(run)) await this.observeHeld(backlogId, slug, child);
   }
 
   /** A person's message to the planner of a run and the planner's reply are one event, once per reply, so every level above learns what was said below. */

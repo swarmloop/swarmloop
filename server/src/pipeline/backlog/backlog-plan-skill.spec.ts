@@ -24,6 +24,10 @@ describe('the backlog-plan skill', () => {
     expect(skill).toContain(`\`${section}\``);
   });
 
+  it('lists the pass-on action among the run actions it hands back', () => {
+    expect(skill).toContain("pass a run's question to the person");
+  });
+
   it('asks `Milestone or backlog?` and records the answer as a decision', () => {
     expect(skill).toContain('`Milestone or backlog?`');
   });
@@ -47,6 +51,12 @@ describe('the backlog-plan skill', () => {
       'anything you are not sure of',
     ])('asks the person only about: %s', (kind) => {
       expect(section).toContain(kind);
+    });
+
+    it('says a run question comes to the planner first and that passing it on is an action with a reason', () => {
+      expect(section).toContain("A run's question comes to you first, as an event with the question's id");
+      expect(section).toContain('pass it to the person with the pass-on action and a one-line reason');
+      expect(section).toContain('A turn that ends with neither passes the question on and says so in the chat');
     });
 
     it('names no project and no person', () => {

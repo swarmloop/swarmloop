@@ -19,6 +19,8 @@ import { resultAnswer } from '../../../testing/result-answer';
 import { BacklogActionSupport } from '../backlog-action-support';
 import { backlogHarness } from '../backlog.spec-helpers';
 import { BacklogPlanner } from './backlog-planner';
+import { holdServices } from '../../../steps/shared/question-holds.spec-helpers';
+import { LeftQuestions } from './left-questions';
 import { PlannerTurnActions } from './planner-actions';
 import { PlannerBacklogCalls } from './planner-backlog-calls';
 import { PlannerRules } from './planner-rules';
@@ -82,13 +84,17 @@ export async function plannerTurnsHarness(
     }
     sent.push({ command, key });
   });
+  const chat = db.app.get(BacklogChatRepository);
+  const calls = new PlannerBacklogCalls(h.actions, support, h.backlogs, h.runs);
+  const { holds, passOn } = holdServices(db.app, db.clock);
   const turns = new PlannerTurnActions(
     h.backlogs,
-    db.app.get(BacklogChatRepository),
+    chat,
     new PlannerRules(h.backlogs, h.runs),
-    new PlannerBacklogCalls(h.actions, support, h.backlogs, h.runs),
+    calls,
     port,
     db.clock,
+    new LeftQuestions(chat, calls, holds, passOn, h.runs, h.backlogs, db.clock),
   );
   const agent = processOf(config, db.clock) as ScriptedTurnAgent;
   const failover = new LimitFailover(
@@ -123,7 +129,6 @@ export async function plannerTurnsHarness(
     },
   };
   const prompt = { build: async (name: string, key: string) => `plan ${name} in ${key}` };
-  const chat = db.app.get(BacklogChatRepository);
   const attachments = new AttachmentStore(config, db.clock);
   const runner = new BacklogTurnRunner(
     h.backlogs,

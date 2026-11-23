@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import type { CommandService, SubmitOptions } from '../pipeline/command.service';
 import { PlannerRunPort, type PlannerRunCommand } from '../pipeline/backlog/planner/planner-run-port';
+import type { QuestionPassOn } from '../pipeline/question-pass-on';
 import type { PlanChatService } from './plan-chat.service';
 import { PlannerRunCommands } from './planner-run-commands';
 
@@ -19,9 +20,15 @@ function wired() {
       sent.push({ service: 'plan-chat', type: 'message', key, payload: { message, author, idempotencyKey } });
     },
   } as unknown as PlanChatService;
+  const passes: { run: string; question: string | undefined; line: string }[] = [];
+  const passOn = {
+    passOrRefuse: async (run: string, question: string | undefined, line: string) => {
+      passes.push({ run, question, line });
+    },
+  } as unknown as QuestionPassOn;
   const port = new PlannerRunPort();
-  new PlannerRunCommands(port, commands, chat).onModuleInit();
-  return { port, sent };
+  new PlannerRunCommands(port, commands, chat, passOn).onModuleInit();
+  return { port, sent, passes };
 }
 
 describe('PlannerRunCommands', () => {
@@ -55,6 +62,13 @@ describe('PlannerRunCommands', () => {
       { service: 'commands', type: 'skip', key: 'r1', payload: { taskId: 't1' }, options: key },
       { service: 'commands', type: 'stop', key: 'r1', payload: {}, options: key },
     ]);
+  });
+
+  it('passes a question to the person through the pass-on service, not through a run command', async () => {
+    const { port, sent, passes } = wired();
+    await port.send({ type: 'passOn', run: 'r1', question: 'Which?', line: 'Only you can choose.' }, 'ada', 'k-0');
+    expect(passes).toEqual([{ run: 'r1', question: 'Which?', line: 'Only you can choose.' }]);
+    expect(sent).toEqual([]);
   });
 
   it('sends an answer that names no question as a message, which answers every open question', async () => {

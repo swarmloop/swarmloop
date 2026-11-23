@@ -110,6 +110,22 @@ describe('PlannerTurnActions', () => {
       expect(harness.sent).toHaveLength(2);
     }));
 
+  it('shows the reason of a pass-on as an info line, records no decision, and sends one passOn command', () =>
+    withPlanner(async (harness) => {
+      const { backlogId } = await harness.seed();
+      await harness.task(backlogId, null, 'going', { runKey: 'going-1', status: 'running' });
+      await harness.turns.apply(
+        'alpha',
+        'turn-1',
+        turnResult('', { action: 'passQuestion', run: 'going-1', question: 'Which?', reason: 'Only you can choose.' }),
+      );
+      expect(await harness.lines(backlogId)).toEqual(['Only you can choose.']);
+      expect(await harness.backlogs.decisions(backlogId)).toEqual([]);
+      expect(harness.sent.map(({ command, key }) => [command, key])).toEqual([
+        [{ type: 'passOn', run: 'going-1', question: 'Which?', line: 'Only you can choose.' }, 'turn-1-action-0'],
+      ]);
+    }));
+
   it('names a refused action once in check, and drops it with a chat line in apply, the other actions going on', () =>
     withPlanner(async (harness) => {
       const { backlogId } = await harness.seed(['web']);

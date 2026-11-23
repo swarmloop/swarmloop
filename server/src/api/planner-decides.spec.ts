@@ -16,6 +16,7 @@ type Parts = Parameters<Parameters<typeof withAnswerRoutes>[0]>[0];
 /** The planner's apply path over the app's repositories, sending through the real run port. */
 function turnActions({ app, port }: Parts): PlannerTurnActions {
   return plannerTurnActions({
+    app,
     backlogs: app.get(BacklogRepository),
     chat: app.get(BacklogChatRepository),
     runs: app.get(RunRepository),

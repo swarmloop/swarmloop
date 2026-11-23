@@ -24,6 +24,7 @@ import { SubtaskClose } from '../api/subtask-close';
 import { RunAnswersService } from '../api/run-answers.service';
 import { RunCommandsService } from '../api/run-commands.service';
 import { RunSubtaskCommandsService } from '../api/run-subtask-commands.service';
+import { QuestionHolds } from '../steps/shared/question-holds';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunListRows } from '../api/run-list-rows';
 import { EtaSummary } from '../api/eta-summary';
@@ -187,6 +188,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
     controllers: [HealthController, ServerController, RunsController, ReadinessController],
     providers: [
       RunQueriesService,
+      QuestionHolds,
       RunListRows,
       EtaSummary,
       RunCommandsService,

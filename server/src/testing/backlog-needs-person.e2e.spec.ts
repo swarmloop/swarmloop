@@ -25,7 +25,10 @@ describe('a backlog whose run waits for a person', () => {
   beforeEach(async () => {
     const blocks = new BlockAgentRunner({
       research: [{ block: { ...DEFAULT_RESEARCH, questions: [QUESTION] } }],
-      'backlog-plan': [{ block: { say: `The run asks: ${QUESTION} Which one is it?`, actions: [] } }],
+      'backlog-plan': [
+        { block: { say: `The run asks: ${QUESTION} Which one is it?`, actions: [] } },
+        { block: { say: `The person is asked: ${QUESTION}`, actions: [] } },
+      ],
     });
     flow = await createFlowHarness(KEY, {
       env: { CHECKOUTS_ROOT: '.', ...FAKE_MODEL_KEY },
@@ -88,6 +91,18 @@ describe('a backlog whose run waits for a person', () => {
     const id = await setUp();
     const runKey = await untilAsked(id);
 
+    // The first turn takes the question as an event of its own and ends without answering it: its end passes it on.
+    await flow.backlog().scheduler.tick();
+    await flow.app.app.get(BacklogPlanner).whenIdle();
+
+    const run = (await flow.app.app.get(RunRepository).findRun(runKey))!;
+    expect(storedState(run)).toMatchObject({ state: 'waiting', reason: { code: 'NEEDS_ANSWERS' } });
+    const asked = (await backlogs().events(id, 100)).filter((event) => event.kind === 'run-asks-planner');
+    expect(asked).toHaveLength(1);
+    expect(asked[0].facts).toMatchObject({ slug: 'a', runKey, questionId: QUESTION });
+    expect(asked[0].turn).not.toBeNull();
+
+    // The run is now in the person's phase: one more pass records run-needs-person, which the next turn takes.
     await flow.backlog().scheduler.tick();
     await flow.app.app.get(BacklogPlanner).whenIdle();
 
@@ -96,12 +111,13 @@ describe('a backlog whose run waits for a person', () => {
     expect(events[0].facts).toMatchObject({ slug: 'a', runKey });
     expect(events[0].turn).not.toBeNull();
     const chat = await flow.app.app.get(BacklogChatService).chat(BACKLOG);
-    expect(chat.turns.map((turn) => turn.status)).toEqual(['done']);
-    expect(chat.messages.map((message) => [message.author, message.text.includes(QUESTION)])).toEqual([
-      ['planner', true],
+    expect(chat.turns.map((turn) => turn.status)).toEqual(['done', 'done']);
+    expect(chat.messages.map((message) => [message.author, message.kind, message.text.includes(QUESTION)])).toEqual([
+      ['planner', 'message', true],
+      ['planner', 'info', false],
+      ['planner', 'message', true],
     ]);
-    const run = (await flow.app.app.get(RunRepository).findRun(runKey))!;
-    expect(storedState(run)).toMatchObject({ state: 'waiting', reason: { code: 'NEEDS_ANSWERS' } });
+    expect(chat.messages[1].text).toContain('ended without answering');
     const [shown] = (await flow.app.app.get(BacklogQueries).view(BACKLOG)).tasks;
     expect(shown.run).toMatchObject({ state: 'waiting', stateReason: { code: 'NEEDS_ANSWERS' } });
   });
