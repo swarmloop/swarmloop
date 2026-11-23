@@ -154,7 +154,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
   const asked = async () => (await flow.app.app.get(PlanChatStore).read(KEY)).entries.filter((e) => e.kind);
 
   it('goes to the planner first and not to the person', async () => {
-    await start([block({ reply: 'The plan removes that field.' })]);
+    await start([block({ reply: 'The plan removes that field.', finding: 'holds' })]);
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 
@@ -175,7 +175,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
         ...(reason ? { reason } : {}),
         requirements: [{ id: 'R1', status: 'missing', note: OLD_ROWS }],
       });
-    await start([block({ reply: HELD_DECISION })], {
+    await start([block({ reply: HELD_DECISION, finding: 'holds' })], {
       requirement: `${GOAL}; ${STOP_FIRST}`,
       reviews: [old(), old('Old stopped rows still do not say how they read.')],
     });
@@ -196,7 +196,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
   });
 
   it('reaches the person only when the planner escalates', async () => {
-    await start([escalates]);
+    await start([block({ reply: 'This is a product decision.', escalate: DECIDE, finding: 'holds' })]);
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 

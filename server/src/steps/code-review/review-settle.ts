@@ -48,15 +48,25 @@ interface SettleInput {
   thirdParty: boolean;
 }
 
-/** What the planner is asked: the reviewers' own questions, then the disagreements that implement and a reviewer did not settle. */
+/**
+ * What the planner is asked, one question for each reviewer: its own question followed by its finding, and the
+ * disagreement that implement and the reviewer did not settle. A reviewer with both sends both texts.
+ */
 function plannerQuestions(
   finished: Finished[],
   disagreed: { question: string }[],
 ): { reviewer: string; question: string }[] {
-  return [
-    ...finished.flatMap((item) => (item.asked ? [{ reviewer: item.reviewer.name, question: item.asked }] : [])),
-    ...disagreed.map((item) => ({ reviewer: askedReviewer(item.question) ?? 'code-review', question: item.question })),
-  ];
+  const texts = new Map<string, string[]>();
+  const add = (reviewer: string, ...parts: string[]): void => {
+    texts.set(reviewer, [...(texts.get(reviewer) ?? []), ...parts]);
+  };
+  for (const item of finished) {
+    if (!item.asked) continue;
+    const finding = item.parsed?.decision === 'return' ? `Its finding: ${item.parsed.result.review.trim()}` : null;
+    add(item.reviewer.name, item.asked.trim(), ...(finding ? [finding] : []));
+  }
+  for (const item of disagreed) add(askedReviewer(item.question) ?? 'code-review', item.question);
+  return [...texts].map(([reviewer, parts]) => ({ reviewer, question: parts.join('\n\n') }));
 }
 
 /** The route a report launch ends the visit on when a provider limit or the door stopped it; null for any other error, and a Stop. */
@@ -197,8 +207,8 @@ export class ReviewSettle {
   }
 
   /**
-   * Closes the review as waiting for the planner. The reviewers that answered keep their answers; the ones that
-   * asked, or whose disagreement is asked, run again with the planner's answer.
+   * Closes the review as waiting for the planner, with one question about the finding of each reviewer that asked.
+   * Every reviewer's decision is kept and stamped: the next visit settles by them and the planner's answers.
    */
   private async waitForPlanner(
     chat: PlanChatStore,
@@ -206,20 +216,21 @@ export class ReviewSettle {
     stored: DocumentDraft[],
     questions: { reviewer: string; question: string }[],
   ): Promise<PipelineResult> {
-    const { ctx, finished, fingerprint } = input;
+    const { ctx, fingerprint } = input;
     const { opened } = ctx;
-    const ask = { chat, clock: ctx.clock, attemptId: opened.attemptId, startedAt: opened.startedAt };
+    const ask = {
+      chat,
+      clock: ctx.clock,
+      attemptId: opened.attemptId,
+      startedAt: opened.startedAt,
+      about: 'finding' as const,
+    };
     const waits = [];
     for (const { reviewer, question } of questions) {
       waits.push(await waitForPlanner(opened.run, { ...ask, step: `code-review-${reviewer}`, question }));
     }
-    const waiting = new Set(questions.map((item) => item.reviewer));
-    const reviewing = new Set(
-      finished.filter((item) => waiting.has(item.reviewer.name)).map((item) => item.reviewer.kind),
-    );
-    const kept = stored.filter((document) => !reviewing.has(document.kind));
-    const closed = await closeReview(ctx, waits[0].route, waits[0].summary, kept, []);
-    await this.stamp(opened.run, kept, fingerprint);
+    const closed = await closeReview(ctx, waits[0].route, waits[0].summary, stored, []);
+    await this.stamp(opened.run, stored, fingerprint);
     return closed;
   }
 

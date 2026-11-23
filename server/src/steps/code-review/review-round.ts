@@ -23,6 +23,7 @@ import { skillPrompt } from '../shared/skill-prompt';
 import { REVIEW_DIFF_READ } from './review-diff';
 import type { Requirement } from '../../contract/requirement-list';
 import type { Subtask } from '../../contract/subtask';
+import type { Issue } from '../contract/step-contract';
 import type { KeepLine } from '../shared/keep-lines';
 import { SUBTASK_PROOF_CHECK, exchangeSection } from './code-review.prompts';
 import { requirementsSection } from '../shared/coverage-correction';
@@ -38,8 +39,7 @@ import { closeReview, recordAngle } from './review-report';
 import type { Finished, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { projectRules } from '../shared/project-rules';
 import { REVIEWERS, runJob } from './reviewer';
-import type { PlanChatEntry } from '../../contract/plan-chat';
-import { answerSection, mayAsk, readAnswer } from '../implement/implement-question';
+import { mayAsk } from '../implement/implement-question';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 
 interface RoundInput {
@@ -74,12 +74,7 @@ export async function runRound(deps: ReviewDeps, input: RoundInput): Promise<Fin
   const documents = await deps.documents.listDocuments(input.opened.run.id);
   const changes = planChangesOf(documents);
   const may = await mayAsk(input.opened.run, deps.chat, { root: deps.root, env: input.env });
-  const jobs = await Promise.all(
-    input.pending.map(async (reviewer) => {
-      const answer = await readAnswer(deps.chat, input.key, `code-review-${reviewer.name}`);
-      return reviewJob(reviewer, input, changes, { answer, mayAsk: may && !answer });
-    }),
-  );
+  const jobs = input.pending.map((reviewer) => reviewJob(reviewer, input, changes, may));
   const fix = fixNotes(documents, input.handoff);
   const finished = await Promise.all(
     jobs.map((job) =>
@@ -166,17 +161,41 @@ export async function routeReview(
       usage,
     );
   }
-  opened.run.attemptsReview += 1;
-  await events.recordLoop(
-    opened.run,
-    'review',
-    opened.run.attemptsReview,
-    returning.map((item) => item.kind).join(','),
-  );
   const issues = returning.map((item) => {
     const source = item.kind.slice(REVIEWS.prefix.length);
     return issueOf(source, `${source} returned the change`, item.body);
   });
+  return returnToImplement(events, ctx, {
+    issues,
+    kinds: returning.map((item) => item.kind),
+    line,
+    documents,
+    exchanges,
+    usage,
+  });
+}
+
+/** What a round that goes back to implement carries: its issues, who returned, and what the visit stores. */
+interface ReturnToImplement {
+  issues: Issue[];
+  /** The reviews that returned, named in the loop record. */
+  kinds: string[];
+  line: string;
+  documents: DocumentDraft[];
+  exchanges: ExchangeDraft[];
+  usage?: Usage;
+}
+
+/** Counts the return against the loop limit and closes the review as a return to implement with its issues. */
+export async function returnToImplement(
+  events: EventRepository,
+  ctx: StepContext,
+  back: ReturnToImplement,
+): Promise<PipelineResult> {
+  const { opened } = ctx;
+  const { issues, kinds, line, documents, exchanges, usage } = back;
+  opened.run.attemptsReview += 1;
+  await events.recordLoop(opened.run, 'review', opened.run.attemptsReview, kinds.join(','));
   const listed = textDocument(ARTIFACTS.issues.kind, ARTIFACTS.issues.format(issues));
   return closeReview(
     ctx,
@@ -188,13 +207,8 @@ export async function routeReview(
   );
 }
 
-/** What a reviewer's launch knows of the planner: its answer to the last question, and whether it may ask one. */
-interface PlannerLink {
-  answer: PlanChatEntry | null;
-  mayAsk: boolean;
-}
-
-function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSection | null, planner: PlannerLink) {
+/** `asks` is true when the reviewer may ask the planner a question: the run has a planner of its own. */
+function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSection | null, asks: boolean) {
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
   const listSection = input.list ? [requirementsSection(input.list)] : [];
@@ -228,11 +242,10 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
   const exchange = input.exchanges.get(reviewer.name);
   const answered = exchange ? exchangeSection(exchange.finding, exchange.answer) : null;
   const exchanged = answered ? [...kept, answered] : kept;
-  const sections = planner.answer ? [...exchanged, answerSection(planner.answer)] : exchanged;
   // The first prompt of a reviewer's chat carries the whole result text; a resumed chat gets one line in `runJob`.
   const promptFor = (runtime: string): string =>
     [
-      skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, sections, input.mounts, {
+      skillPrompt(`code-review/${reviewer.name}`, input.requirements, names, exchanged, input.mounts, {
         rules: projectRules(names, input.mounts, runtime, false),
         reads: [REVIEW_DIFF_READ],
       }),
@@ -247,7 +260,7 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
   const marked = input.list && reviewer.name === 'requirements' ? requirementsCheck(input.list, itemIds) : undefined;
   // A reviewer that asks the planner gives no marks yet: its decision is not taken.
   const check = marked
-    ? (value: unknown) => (planner.mayAsk && (value as ReviewResult).question?.trim() ? [] : marked(value))
+    ? (value: unknown) => (asks && (value as ReviewResult).question?.trim() ? [] : marked(value))
     : undefined;
   return {
     reviewer,
@@ -257,7 +270,6 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
     mounts: input.mounts,
     exchange: answered,
     check,
-    answer: planner.answer,
-    mayAsk: planner.mayAsk,
+    mayAsk: asks,
   };
 }

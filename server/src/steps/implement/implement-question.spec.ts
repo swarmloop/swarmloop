@@ -59,6 +59,28 @@ describe('a step that asks the planner', () => {
     }
   });
 
+  it('records what the question is about only when the step says so', async () => {
+    const { db, run, chat, ask } = await asking();
+    try {
+      await ask('attempt-1');
+      await waitForPlanner(run, {
+        chat,
+        clock: db.clock,
+        step: 'code-review-quality',
+        attemptId: 'attempt-1',
+        startedAt: 'T0',
+        question: QUESTION,
+        about: 'finding',
+      });
+
+      const [own, about] = await chat.pendingQuestions(run.key);
+      expect(own).not.toHaveProperty('about');
+      expect(about).toMatchObject({ key: 'ask-code-review-quality-attempt-1', about: 'finding' });
+    } finally {
+      await db.close();
+    }
+  });
+
   it('reads the planner answer once, after the step took it', async () => {
     const { db, run, chat } = await asking();
     try {

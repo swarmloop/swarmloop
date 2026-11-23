@@ -4,10 +4,7 @@ import { effortFields } from '../../contract/effort';
 import type { EffortFields } from '../../contract/effort';
 import type { SwarmloopEnv } from '../../config/env';
 import type { DocumentRepository } from '../../history/document.repository';
-import type { PlanChatEntry } from '../../contract/plan-chat';
 import type { PlanChatStore } from '../../history/plan-chat.store';
-import { answerFollowUp, takeAnswer } from '../implement/implement-question';
-import { resultPromptFor } from '../../agent-result/result-prompt';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SampleDraft } from '../../history/visit';
 import type { AgentRunResult } from '../../agent/agent-runner';
@@ -51,10 +48,8 @@ export interface Finished extends EffortFields {
   answerErrors?: string[];
   /** The reviewer's launch ended on a provider limit and no agent of the role was left. */
   limit?: RuntimeLimit;
-  /** The reviewer's question to the planner. Its decision is not taken: the round waits for the answer. */
+  /** The reviewer's question to the planner. Its decision, when it gave one, stays in `parsed`. */
   asked?: string;
-  /** The reviewer read the planner's answer in this launch, so its decision is final for the round. */
-  heard?: boolean;
   /** The id of the start the door admitted for this launch, also when the launch then threw. */
   startId?: string;
   /** The door refused this reviewer's start, or a person's Stop held it: the round ends on it once the others are recorded. */
@@ -74,9 +69,7 @@ interface ReviewLaunch extends EffortFields {
   answerErrors?: string[];
   /** The server's check of the answer, made before it is accepted. */
   check?: (value: unknown) => string[];
-  /** The planner's answer to the reviewer's last question, read once when the launch has returned. */
-  answer: PlanChatEntry | null;
-  /** The reviewer may ask the planner: it has no answer yet and the run has a planner of its own. */
+  /** The reviewer may ask the planner: the run has a planner of its own. */
   mayAsk: boolean;
 }
 
@@ -114,7 +107,7 @@ type RoundJob = Omit<ReviewLaunch, 'briefFor' | 'answering'> & {
   exchange: { heading: string; body: string } | null;
 };
 
-/** What a resumed reviewer chat is sent: the answer to its question, a continue after an interruption, or the new round. */
+/** What a resumed reviewer chat is sent: a continue after an interruption, or the new round. */
 function resumedPrompt(
   job: RoundJob,
   round: {
@@ -129,10 +122,6 @@ function resumedPrompt(
 ): string {
   const { fix, plan, returned, retry, received, completed } = round;
   const name = job.reviewer.name;
-  if (job.answer) {
-    const definition = job.exchange ? reviewAnswerDefinition(name) : reviewDefinition(name);
-    return answerFollowUp(job.answer, resultPromptFor(definition, received));
-  }
   if (retry && !completed) return reviewContinue(name, received);
   return reviewResume(name, fix.implement, fix.reviewed, plan, returned, received, job.exchange ?? undefined);
 }
@@ -176,7 +165,6 @@ export async function runJob(
       answering: job.exchange !== null,
       answerErrors: await storedAnswerErrors(deps, opened.run.id, step),
       check: job.check,
-      answer: job.answer,
       mayAsk: job.mayAsk,
     },
     auto,
@@ -211,7 +199,6 @@ async function one(
       model: agent.model,
       ...effortFields(agent),
       prompt: job.prompt,
-      ...(job.answer ? { heard: true } : {}),
       startId,
     };
     refused = refusedWrite(result.output);
@@ -222,10 +209,9 @@ async function one(
     if (!result.resultValue) {
       throw new SwarmloopError('decision is missing');
     }
-    await takeAnswer(deps.chat, key, job.answer);
     const value = result.resultValue as ReviewResult;
     if (job.mayAsk && value.question?.trim()) {
-      return { ...ran, result, asked: value.question };
+      return { ...ran, result, asked: value.question, parsed: opinionOf(job.reviewer.kind, value) };
     }
     return { ...ran, result, parsed: opinionOf(job.reviewer.kind, value) };
   } catch (error) {
@@ -261,12 +247,7 @@ async function launchReview(
 ): Promise<LaunchResult> {
   const step = `code-review-${job.reviewer.name}`;
   const { by, level, prompt } = deps.start;
-  // The planner's answer to this reviewer's own question is part of what it starts on, so a reviewer that goes on with it is not a repeat.
-  const input = {
-    visitOf: 'code-review' as const,
-    prompt,
-    texts: job.answer ? [job.reviewer.name, job.answer.text] : [job.reviewer.name],
-  };
+  const input = { visitOf: 'code-review' as const, prompt, texts: [job.reviewer.name] };
   return deps.door.outside(
     { step, by, level, input, admitted },
     {

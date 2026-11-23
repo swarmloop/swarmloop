@@ -19,7 +19,6 @@ const block = (value: unknown): ScriptedAnswer => ({ block: value });
 const firstPlan = block({ summary: ['planned'], plan: FIRST, covers: [['R1'], ['R1']] });
 const stops = block({ implementation: [], summary: ['stopped at a choice'], question: QUESTION });
 const done = block({ implementation: ['changed the field'], summary: ['implemented the plan'] });
-const passes = block({ decision: 'ok', review: 'fine now', summary: ['fine'] });
 const asking = block({ decision: 'ok', review: 'fine so far', summary: ['fine'], question: QUESTION });
 
 describe('the planner turns of a run pass the door', () => {
@@ -64,8 +63,8 @@ describe('the planner turns of a run pass the door', () => {
 
   it('refuses the planner turn that answers the same reviewer question a second time: no launch, the run waits, the question goes one level up', async () => {
     blocks = new BlockAgentRunner({
-      plan: [firstPlan, block({ reply: 'Cursor, as in the brief.' })],
-      'code-review-quality': [asking, passes, asking],
+      plan: [firstPlan, block({ reply: 'Cursor, as in the brief.', finding: 'holds' })],
+      'code-review-quality': [asking, asking],
     });
     flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', realReview: true });
     flow.fastWaits();
