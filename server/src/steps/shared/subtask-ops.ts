@@ -3,6 +3,7 @@ import type { Subtask } from '../../contract/subtask';
 import type { OpenedStep } from '../step-run';
 import type { Need } from './needs';
 import type { StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
+import type { LookStart } from './look-start';
 import type { PlanChange, StarterPlan } from '../implement/starter-actions';
 
 /** Who starts a step again: a person, a planner of some level, or the machine. */
@@ -110,6 +111,7 @@ export abstract class SubtaskOps {
     task: Subtask,
     contract: string,
     plan?: StarterPlan,
+    start?: LookStart,
   ): Promise<StarterAnswerResult | null>;
   /** Sends a subtask run the answer again that it refused, so the planner is not asked twice. Null while it is refused. */
   abstract resend(child: RunEntity): Promise<StarterAnswerResult | null>;

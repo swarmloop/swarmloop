@@ -11,6 +11,8 @@ import type { RunEntity } from '../history/entities';
 import { repositoryVisit } from '../history/repository.spec-helpers';
 import { closeStopped } from '../pipeline/stop-close';
 import { RunGuards } from '../pipeline/run-guards';
+import { SpendLimit } from './shared/spend-limit';
+import { refusedRoute, StartRefused } from './shared/start-refused';
 import type { StepName } from '../contract/steps';
 import type { OpenedStep } from './step-run';
 import { closeStep } from './step-run';
@@ -129,6 +131,11 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
     'checkRepeatedBlock',
     () => afterRoute(checkRepeatedBlock('10:00', 'checks', new Error('again')), 'checks'),
     REASON.checkFailed,
+  ],
+  [
+    'refusedRoute for a limit',
+    () => afterRoute({ route: refusedRoute(StartRefused.limit('over')), summary: 'over', outputs: [] }, 'implement'),
+    ERROR_CODES.SPEND_LIMIT,
   ],
   ['flakyBlock', () => afterRoute(flakyBlock(OPENED, 'a test'), 'pipeline'), ERROR_CODES.TEST_FLAKY],
   [
@@ -329,10 +336,9 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
     async () => {
       const release = jest.fn();
       const guards = new RunGuards(
-        { release } as never,
         null as never,
         null as never,
-        null as never,
+        new SpendLimit({ release } as never, null as never, null as never, null as never),
         null as never,
         null as never,
       );
@@ -366,6 +372,8 @@ const WRITER_FILES = [
   'steps/pipeline/pipeline.step.ts',
   'steps/requirements/requirements-visit.ts',
   'steps/requirements/requirements.step.ts',
+  'steps/shared/spend-limit.ts',
+  'steps/shared/start-refused.ts',
   'pipeline/run-driver.ts',
   'pipeline/run-guards.ts',
   'pipeline/run-lifecycle.ts',

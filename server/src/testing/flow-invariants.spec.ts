@@ -1,7 +1,8 @@
 import 'reflect-metadata';
+import { DataSource } from 'typeorm';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON, type StateReason } from '../contract/run-state';
-import { StepStatEntity } from '../history/entities';
+import { AgentExchangeEntity, StepStatEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { VisitStartRepository } from '../history/visit-start.repository';
@@ -134,6 +135,80 @@ describe('assertInvariants', () => {
       await expect(assertInvariants(app)).rejects.toThrow(
         `${run.key} implement was started by the machine on a stopped run`,
       );
+    });
+  });
+
+  describe('the start of an agent visit', () => {
+    const seed = async (visit: {
+      attemptId: string | null;
+      status?: string;
+      killReason?: string;
+      exchange?: boolean;
+    }) => {
+      const run = await save(app.app.get(RunRepository), 'PROJ-902', 'implement', 'done');
+      const now = new Date().toISOString();
+      const visits = app.app.get(VisitRepository);
+      const stat = Object.assign(new StepStatEntity(), {
+        runId: run.id,
+        step: 'implement',
+        attempt: 1,
+        attemptId: visit.attemptId,
+        startedAt: now,
+        finishedAt: now,
+        durationMs: 0,
+        status: visit.status ?? 'done',
+        killReason: visit.killReason ?? null,
+      });
+      await visits.saveStat(stat);
+      if (visit.exchange !== false) {
+        await app.app.get(DataSource).getRepository(AgentExchangeEntity).save({
+          stepStatId: stat.id,
+          model: 'm',
+          startedAt: now,
+          finishedAt: now,
+          durationMs: 0,
+          requestText: '',
+          responseText: '',
+        });
+      }
+      return { run, stat };
+    };
+    const start = (runId: number, attemptId: string, statId: number | null) =>
+      app.app.get(VisitStartRepository).note({
+        runId,
+        step: 'implement',
+        attemptId,
+        startedBy: 'person',
+        level: null,
+        inputDigest: null,
+        startReason: null,
+        rerunUnfinished: false,
+        createdAt: new Date().toISOString(),
+        outside: statId !== null,
+        statId,
+      });
+
+    it('throws for an agent visit with no start', async () => {
+      const { run, stat } = await seed({ attemptId: 'a-1' });
+      await expect(assertInvariants(app)).rejects.toThrow(`${run.key} visit ${stat.id} of implement has no start`);
+    });
+
+    it('passes for a visit whose start has its attempt', async () => {
+      const { run } = await seed({ attemptId: 'a-1' });
+      await start(run.id, 'a-1', null);
+      await expect(assertInvariants(app)).resolves.toBeUndefined();
+    });
+
+    it('passes for a visit that an outside start linked by its stat', async () => {
+      const { run, stat } = await seed({ attemptId: null });
+      await start(run.id, 'start-1', stat.id);
+      await expect(assertInvariants(app)).resolves.toBeUndefined();
+    });
+
+    it('passes for a visit that ended on a provider limit and for one with no exchange', async () => {
+      await seed({ attemptId: 'a-1', status: 'interrupted', killReason: ERROR_CODES.RUNTIME_LIMIT });
+      await seed({ attemptId: 'a-2', exchange: false });
+      await expect(assertInvariants(app)).resolves.toBeUndefined();
     });
   });
 });

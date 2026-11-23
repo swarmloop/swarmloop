@@ -4,7 +4,10 @@ import type { Requirement } from '../../contract/requirement-list';
 import type { Subtask } from '../../contract/subtask';
 import { starterAnswer, type StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
 import { handoffText } from '../shared/handoff';
+import { implementStart } from '../shared/look-start';
 import type { PlanConversation } from '../shared/plan-conversation';
+import { StartRefused } from '../shared/start-refused';
+import { mergedOf } from '../shared/subtask-status';
 import type { SubtaskOps } from '../shared/subtask-ops';
 import type { StepContext } from '../base-step';
 import type { InputReader } from '../contract/input-reader';
@@ -19,11 +22,15 @@ interface Look {
   at: string;
 }
 
-/** What the look leaves of a pass: the contract and tasks as they are now, and the new `merge_look` value, or null when no look was made. */
+/**
+ * What the look leaves of a pass: the contract and tasks as they are now, and the new `merge_look` value, or null when no look was made.
+ * When the door refused a visit, the pass stopped there: `refused` says why, and the refused task has no look yet.
+ */
 interface LookPass {
   contract: string;
   tasks: Subtask[];
   looks: string | null;
+  refused?: StartRefused;
 }
 
 /** What the look reads and asks through. */
@@ -72,7 +79,11 @@ export class MergeLook {
       const marks = child ? await this.marks(child, task) : [];
       if (marks.length > 0 || this.deps.config.env.EPIC_REPLAN_EVERY_MERGE) {
         const state = { ...current, requirements, asker: task.id };
-        current = (await this.visit(ctx, { task, child, marks }, state)) ?? current;
+        const visited = await this.visit(ctx, { task, child, marks }, state);
+        if (visited instanceof StartRefused) {
+          return { ...current, looks: looks.length > stored.length ? JSON.stringify(looks) : null, refused: visited };
+        }
+        current = visited ?? current;
       }
       looks.push({ task: task.id, marks, at: startedAt });
     }
@@ -114,18 +125,21 @@ export class MergeLook {
     ];
   }
 
-  /** One visit of the parent's planner for a merged task. Null, with nothing changed, when it gave no usable answer. */
+  /** One visit of the parent's planner for a merged task. Null, with nothing changed, when it gave no usable answer; the refusal when the door did not start it. */
   private async visit(
     ctx: StepContext,
     merged: { task: Subtask; child: RunEntity | null; marks: string[] },
     state: StarterState,
-  ): Promise<{ contract: string; tasks: Subtask[] } | null> {
+  ): Promise<{ contract: string; tasks: Subtask[] } | StartRefused | null> {
     const { conversation, subtasks } = this.deps;
     const { run, startedAt } = ctx.opened;
     const { task, child, marks } = merged;
     if (!conversation) return null;
     const source = `Task ${task.id} merged`;
     const summary = child ? await subtasks.mergeSummary(child) : '';
+    const commits = Object.entries((child && mergedOf(child)) ?? {})
+      .filter(([, sha]) => sha)
+      .map(([repo, sha]) => `${repo}=${sha}`);
     const notStarted = state.tasks.filter((item) => NOT_STARTED.includes(item.status));
     const turn = { id: `merge-look-${task.id}`, at: startedAt, text: marks.join('\n') };
     const visit = await conversation.ordered(run.key, turn, () =>
@@ -134,9 +148,12 @@ export class MergeLook {
         (received) => mergeLookPrompt({ task, summary, marks }, state.contract, notStarted, received),
         starterAnswer,
         (value) => lookErrors(state, value as StarterAnswerResult, startedAt, source),
+        [task.id, task.title, ...commits, summary, ...marks],
+        implementStart(ctx.options),
       ),
     );
     if (!visit) return null;
+    if ('refused' in visit) return visit.refused;
     const applied = applyStarterAnswer(state, visit.value as StarterAnswerResult, startedAt, source);
     await subtasks.recordRevisions(run, applied.changes, startedAt);
     return { contract: applied.contract, tasks: applied.tasks };

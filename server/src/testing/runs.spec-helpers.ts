@@ -16,9 +16,10 @@ import type { VisitDraft } from '../history/visit';
 import { CommandService } from '../pipeline/command.service';
 import { StartGate } from '../pipeline/start-gate';
 import { RunGuards } from '../pipeline/run-guards';
-import { VisitRepository } from '../history/visit.repository';
 import { SubtaskPort } from '../pipeline/subtask-port';
+import { AgentDoor } from '../steps/shared/agent-door';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { SpendLimit } from '../steps/shared/spend-limit';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { RunStop } from '../agent/run-stop';
 import { PipelineService } from '../pipeline/pipeline.service';
@@ -80,11 +81,13 @@ export async function boot(
       SubtaskClose,
       CommandService,
       StartGate,
+      AgentDoor,
+      SpendLimit,
       {
         provide: RunGuards,
-        useFactory: (runs: RunRepository, documents: DocumentRepository, visits: VisitRepository, config: AppConfig) =>
-          new RunGuards(runs, documents, visits, config, {} as never, {} as never),
-        inject: [RunRepository, DocumentRepository, VisitRepository, AppConfig],
+        useFactory: (runs: RunRepository, documents: DocumentRepository, limit: SpendLimit) =>
+          new RunGuards(runs, documents, limit, {} as never, {} as never),
+        inject: [RunRepository, DocumentRepository, SpendLimit],
       },
       SubtaskPort,
       { provide: AgentLauncher, useValue: {} },

@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { Clock } from '../core/clock';
 import type { PlanChatEntry } from '../contract/plan-chat';
 import type { PlanChatStore } from '../history/plan-chat.store';
+import type { LookStart } from '../steps/shared/look-start';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
@@ -88,9 +89,10 @@ export class SubtaskPlannerAnswer {
     task: Subtask,
     contract: string,
     plan?: StarterPlan,
+    start?: LookStart,
   ): Promise<StarterAnswerResult | null> {
     const questions = await this.askedBody(child);
-    const given = await this.askAbout(opened, task, questions, contract, plan);
+    const given = await this.askAbout(opened, task, questions, contract, plan, start);
     if (given === null) {
       // The person who started the run is asked next, from the questions the subtask holds.
       if (SUBTASK_ASKING_STEPS.includes(child.currentStep) || (await this.handedUp(child))) {
@@ -240,6 +242,7 @@ export class SubtaskPlannerAnswer {
     questions: string,
     contract: string,
     plan?: StarterPlan,
+    start?: LookStart,
   ): Promise<StarterAnswerResult | null> {
     const turn = { id: `subtask-${task.id}`, at: opened.startedAt, text: questions };
     const state: StarterState | null = plan ? { contract, ...plan, asker: task.id } : null;
@@ -254,9 +257,11 @@ export class SubtaskPlannerAnswer {
             ? [...handBackErrors(questions, given), ...applyStarterAnswer(state, given, opened.startedAt).errors]
             : decisionErrors(given, false);
         },
+        [questions],
+        start,
       ),
     );
-    if (!visit) return null;
+    if (!visit || 'refused' in visit) return null;
     const given = visit.value as StarterAnswerResult;
     await this.documents.putDocument(
       opened.run,

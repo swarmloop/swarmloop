@@ -12,7 +12,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { renderProjects, storedProjects } from '../../config/checkout-path';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
-import { AgentLauncher } from '../shared/agent-launcher';
+import { AgentDoor } from '../shared/agent-door';
 import { CONTRACT_KIND, isSubtask, parseSubtasks, SUBTASKS_KIND } from '../../contract/subtask';
 import { assumptions, withHandoff } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
@@ -51,8 +51,8 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.requirementList,
   ];
 
-  constructor(kernel: StepKernel, sandbox: SandboxService, launcher: AgentLauncher) {
-    super(kernel, sandbox, launcher);
+  constructor(kernel: StepKernel, sandbox: SandboxService, door: AgentDoor) {
+    super(kernel, sandbox, door);
   }
 
   protected profile(env: SwarmloopEnv, run?: RunEntity | null): AgentProfile {

@@ -16,7 +16,7 @@ import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { planAmended } from '../shared/amendment';
 import { projectRules } from '../shared/project-rules';
-import { AgentLauncher } from '../shared/agent-launcher';
+import { AgentDoor } from '../shared/agent-door';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { appendImpact, withHandoff, withImpact } from '../shared/handoff';
 import { PLAN_EXECUTION_RULE, skillPrompt } from '../shared/skill-prompt';
@@ -85,10 +85,10 @@ export class PlanImproveStep extends AgentStep<typeof INPUTS> {
   constructor(
     kernel: StepKernel,
     sandbox: SandboxService,
-    launcher: AgentLauncher,
+    door: AgentDoor,
     @Optional() private readonly planChat?: PlanChatStore,
   ) {
-    super(kernel, sandbox, launcher);
+    super(kernel, sandbox, door);
   }
 
   protected profile(env: SwarmloopEnv, run?: RunEntity | null): AgentProfile {

@@ -1,6 +1,7 @@
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
 import type { VisitRepository } from '../history/visit.repository';
+import type { LookStart } from '../steps/shared/look-start';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import type { OpenedStep } from '../steps/step-run';
 import type { Subtask } from '../contract/subtask';
@@ -46,8 +47,9 @@ export class SubtaskAsks {
     task: Subtask,
     contract: string,
     plan?: StarterPlan,
+    start?: LookStart,
   ): Promise<StarterAnswerResult | null> {
-    return this.planner.answer(opened, child, task, contract, plan);
+    return this.planner.answer(opened, child, task, contract, plan, start);
   }
 
   resend(child: RunEntity): Promise<StarterAnswerResult | null> {

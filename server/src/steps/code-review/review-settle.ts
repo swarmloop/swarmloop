@@ -5,10 +5,13 @@ import type { RunEntity } from '../../history/entities';
 import type { DocumentDraft } from '../../history/visit';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { PipelineResult } from '../../core/pipeline-result';
+import type { OpenedStep } from '../step-run';
 import { RuntimeLimit } from '../../core/swarmloop-error';
+import { StartRefused, refusedRoute } from '../shared/start-refused';
 import type { Requirement } from '../../contract/requirement-list';
 import { isResultKind } from '../../agent-result/result-definition';
 import type { StepContext } from '../base-step';
+import type { Route } from '../contract/step-contract';
 import { limitRoute } from '../shared/limit-failover';
 import { stampGate } from '../shared/gate';
 import { textDocument } from '../shared/handoff';
@@ -57,6 +60,12 @@ function plannerQuestions(
   ];
 }
 
+/** The route a report launch ends the visit on when a provider limit or the door stopped it; null for any other error, and a Stop. */
+function stoppedRoute(error: unknown): Route | null {
+  if (error instanceof RuntimeLimit) return limitRoute(error);
+  return error instanceof StartRefused ? refusedRoute(error) : null;
+}
+
 /** Ends the code-review visit after the reviewers: a limit, an error, a wait, an ask, or the routed report. */
 export class ReviewSettle {
   constructor(
@@ -72,13 +81,8 @@ export class ReviewSettle {
     const { key } = opened.run;
     const tally = tallyRound(kept, recovered, finished);
     const { reportContinued, opinions, stored, errors } = tally;
-    const limited = finished.find((item) => item.limit)?.limit;
-    if (limited) {
-      // The reviewers that answered keep their answers; the ones the limit stopped run again when the run goes on.
-      const waiting = await closeReview(ctx, limitRoute(limited), `${opened.startedAt} ${limited.message}`, stored, []);
-      await this.stamp(opened.run, stored, fingerprint);
-      return waiting;
-    }
+    const stopped = await this.refusedOrLimited(input, stored);
+    if (stopped) return stopped;
     if (errors.length > 0) {
       const closed = await closeReview(ctx, failed(errors[0]), `${opened.startedAt} ${errors[0]}`, stored, []);
       await this.stamp(opened.run, stored, fingerprint);
@@ -121,16 +125,15 @@ export class ReviewSettle {
         exchanges,
       );
     } catch (error) {
-      if (!(error instanceof RuntimeLimit)) {
-        throw error;
-      }
-      const waiting = await closeReview(ctx, limitRoute(error), `${opened.startedAt} ${error.message}`, noted, []);
+      const route = stoppedRoute(error);
+      if (!route) throw error;
+      const waiting = await closeReview(ctx, route, `${opened.startedAt} ${(error as Error).message}`, noted, []);
       await this.stamp(opened.run, stored, fingerprint);
       return waiting;
     }
     const reportExchanges = written.exchange ? [written.exchange] : [];
     if ('error' in written) {
-      return closeReview(
+      const closed = await closeReview(
         ctx,
         failed(written.error),
         `${opened.startedAt} ${written.error}`,
@@ -138,6 +141,8 @@ export class ReviewSettle {
         reportExchanges,
         written.usage,
       );
+      await this.linkReport(deps, opened, written.startId);
+      return closed;
     }
     const recorded = [...noted, ...written.documents];
     if (fresh) {
@@ -146,6 +151,7 @@ export class ReviewSettle {
     const asks = toPlanner ? [] : disagreed;
     if (asks.length > 0) {
       const asked = await askPerson(ctx, asks, recorded, reportExchanges, written.usage);
+      await this.linkReport(deps, opened, written.startId);
       await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
       return asked;
     }
@@ -158,8 +164,37 @@ export class ReviewSettle {
       thirdParty,
       written.usage,
     );
+    await this.linkReport(deps, opened, written.startId);
     await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
     return routed;
+  }
+
+  /** Ends the visit on a start the door refused or a provider limit, once the reviewers that ran are recorded. */
+  private async refusedOrLimited(input: SettleInput, stored: DocumentDraft[]): Promise<PipelineResult | null> {
+    const { ctx, finished, fingerprint } = input;
+    const { opened } = ctx;
+    const refused = finished.find((item) => item.refused)?.refused;
+    if (refused) {
+      // The reviewers that started have answered and are recorded; none is cut short by the refusal of a later one.
+      if (!(refused instanceof StartRefused)) throw refused;
+      const waiting = await closeReview(
+        ctx,
+        refusedRoute(refused),
+        `${opened.startedAt} ${refused.message}`,
+        stored,
+        [],
+      );
+      await this.stamp(opened.run, stored, fingerprint);
+      return waiting;
+    }
+    const limited = finished.find((item) => item.limit)?.limit;
+    if (limited) {
+      // The reviewers that answered keep their answers; the ones the limit stopped run again when the run goes on.
+      const waiting = await closeReview(ctx, limitRoute(limited), `${opened.startedAt} ${limited.message}`, stored, []);
+      await this.stamp(opened.run, stored, fingerprint);
+      return waiting;
+    }
+    return null;
   }
 
   /**
@@ -187,6 +222,13 @@ export class ReviewSettle {
     const closed = await closeReview(ctx, waits[0].route, waits[0].summary, kept, []);
     await this.stamp(opened.run, kept, fingerprint);
     return closed;
+  }
+
+  /** The report is an exchange of the code-review visit, so its start is linked to that visit once it is closed. */
+  private async linkReport(deps: ReviewDeps, opened: OpenedStep, startId: string | undefined): Promise<void> {
+    if (!startId) return;
+    const stat = (await deps.visits.listStats(opened.run.id)).find((item) => item.attemptId === opened.attemptId);
+    if (stat) await deps.door.linkVisit(startId, stat.id);
   }
 
   /** The reviews this round stored count for the generation and the files they judged, once their visit is closed. */

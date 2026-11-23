@@ -19,7 +19,7 @@ import { createTestApp } from '../testing/test-app';
 import { CommandService } from './command.service';
 import { Reconciler } from './reconciler';
 import { installScripts } from './run-driver.spec-helpers';
-import { sameInput } from './same-input';
+import { sameInput } from '../steps/shared/same-input';
 import { StartGate } from './start-gate';
 import { SubtaskPort } from './subtask-port';
 

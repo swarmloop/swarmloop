@@ -95,6 +95,20 @@ describe('subtask questions', () => {
     expect((await app.app.get(RunRepository).findRun(KEY))?.spentUsd).toBe(0.5);
   });
 
+  it("answers a question again on a person's start of the parent's implement, and the door does not refuse it", async () => {
+    const { prompts, documents } = await questionWorld(() => ({ text: 'Use a column.' }));
+    await ask('a', '- which field?\n');
+    await pass(app);
+    expect(prompts).toHaveLength(1);
+    await documents.putDocument(await child(app, 'a'), 'answers', '');
+    await ask('a', '- which field?\n');
+
+    await pass(app, { startBy: 'person' });
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain('Subtask a asks:\n- which field?');
+  });
+
   it('applies the actions of the answer: a task that has not started is changed with its reason, and the asking task goes on', async () => {
     const { prompts, documents } = await questionWorld(
       () => ({

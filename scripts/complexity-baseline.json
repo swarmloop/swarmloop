@@ -45,9 +45,6 @@
   "server/src/integrations/issue-tracker/jira/adf.ts": {
     "Function 'adfToMarkdown'": 34
   },
-  "server/src/pipeline/run-driver.ts": {
-    "Async method 'driveSteps'": 30
-  },
   "server/src/sandbox/sandbox-launch.ts": {
     "Function 'sandboxArgs'": 54
   },

@@ -23,7 +23,7 @@ import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import { lateInput } from '../agent-step';
-import { AgentLauncher } from '../shared/agent-launcher';
+import { AgentDoor } from '../shared/agent-door';
 import { StarterBriefing } from '../shared/starter-briefing';
 import { RunReport } from '../shared/run-report';
 import { OpenReviewRounds } from '../shared/open-review-rounds';
@@ -86,7 +86,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     events: EventRepository,
     private readonly worktrees: CheckoutService,
     private readonly sandbox: SandboxService,
-    private readonly launcher: AgentLauncher,
+    private readonly door: AgentDoor,
     private readonly runReport: RunReport,
     @Optional() private readonly planChat?: PlanChatStore,
     @Optional() private readonly openRounds?: OpenReviewRounds,
@@ -193,7 +193,8 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       documents: this.documents,
       visits: this.visits,
       root: root(this.config),
-      launcher: this.launcher,
+      door: this.door,
+      start: { by: options.startBy ?? 'person', level: options.level ?? null, prompt: options.prompt ?? '' },
       runReport: this.runReport,
       chat: this.planChat,
       briefing: this.briefing,

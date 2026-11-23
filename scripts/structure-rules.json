@@ -24,6 +24,17 @@
       "include": "server/src/",
       "exclude": "\\.spec(-helpers)?\\.ts$",
       "allowFiles": [
+        "server/src/steps/shared/agent-door.ts",
+        "server/src/pipeline/backlog/planner/turn-runner.ts",
+        "server/src/steps/shared/agent-launcher.ts",
+        "server/src/pipeline/pipeline.module.ts"
+      ],
+      "pattern": "\\bAgentLauncher\\b"
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
         "server/src/pipeline/start-gate.ts",
         "server/src/api/",
         "server/src/cli/",
@@ -147,7 +158,7 @@
         "server/src/api/run-view/reviewer-steps.ts",
         "server/src/api/chat.service.ts",
         "server/src/pipeline/run-settler.ts",
-        "server/src/pipeline/start-gate.ts"
+        "server/src/steps/shared/agent-door.ts"
       ],
       "pattern": "\\.responseText\\b|\\bstepOutput\\("
     },

@@ -9,7 +9,7 @@ import type { PlanChange } from './starter-actions';
 
 const AT = '2026-01-01T00:00:00.000Z';
 const parent = { key: 'epic' } as RunEntity;
-const ctx = { opened: { run: parent, startedAt: AT } } as unknown as StepContext;
+const ctx = { opened: { run: parent, startedAt: AT }, options: {} } as unknown as StepContext;
 
 function task(id: string, status: Subtask['status'], more: Partial<Subtask> = {}): Subtask {
   return {

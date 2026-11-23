@@ -38,7 +38,11 @@ import {
 import { improveUnits } from '../plan-improve/plan-improve-coverage';
 import type { OpenedStep } from '../step-run';
 import { agentFailure } from './agent-result';
-import { AgentLauncher } from './agent-launcher';
+import { AgentDoor } from './agent-door';
+import type { LaunchResult } from './result-exchange';
+import { plannerStart, type LookStart } from './look-start';
+import { requirementsBrief } from './requirements-brief';
+import { StartRefused } from './start-refused';
 import { correctCoverage } from './coverage-correction';
 import { currentPlan } from './current-plan';
 import { storedGraph } from './stored-graph';
@@ -67,7 +71,7 @@ export class PlanConversation {
   gate?: TurnGate;
 
   constructor(
-    private readonly launcher: AgentLauncher,
+    private readonly door: AgentDoor,
     private readonly visits: VisitRepository,
     private readonly documents: DocumentRepository,
     private readonly config: AppConfig,
@@ -113,7 +117,9 @@ export class PlanConversation {
     prompt: (received: string | null) => string,
     definition: ResultDefinition,
     check: (value: unknown) => string[] = () => [],
-  ): Promise<{ value: unknown } | null> {
+    entries: string[] = [],
+    start?: LookStart,
+  ): Promise<{ value: unknown } | { refused: StartRefused } | null> {
     const run = opened.run;
     const env = this.config.env;
     const { runtime, model, ...effort } = agentFor(env, run, 'plan');
@@ -121,35 +127,48 @@ export class PlanConversation {
     const chat = await resumableChat(dir, run.key, 'plan', runtime);
     if (!chat?.chatId) return null;
     const text = prompt(chat.resultName ?? null);
-    let result: Awaited<ReturnType<AgentLauncher['launch']>> | null = null;
+    let result: LaunchResult | null = null;
     let failure: string | null = null;
+    const started: { id: string | null } = { id: null };
     try {
       const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
-      result = await this.launcher.launch({
-        root: dir,
-        run,
-        key: run.key,
-        step: 'plan',
-        mode: 'plan',
-        tools: 'plan',
-        runtime,
-        model,
-        ...effort,
-        timeLimitMs: env.PLAN_TIMEOUT_MS,
-        prompt: text,
-        result: definition,
-        check,
-        workspace: join(dir, 'worktrees', run.key),
-        mounts: mountsForStep(dir, run.key, names, run.targetPath),
-      });
+      const plan = (await currentPlan(this.documents, run.key))?.items ?? [];
+      const brief = requirementsBrief((await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind)) ?? '');
+      result = await this.door.outside(
+        {
+          step: 'plan',
+          ...plannerStart(start, [...plan, brief, ...entries]),
+          admitted: (id) => {
+            started.id = id;
+          },
+        },
+        {
+          root: dir,
+          run,
+          key: run.key,
+          step: 'plan',
+          mode: 'plan',
+          tools: 'plan',
+          runtime,
+          model,
+          ...effort,
+          timeLimitMs: env.PLAN_TIMEOUT_MS,
+          prompt: text,
+          result: definition,
+          check,
+          workspace: join(dir, 'worktrees', run.key),
+          mounts: mountsForStep(dir, run.key, names, run.targetPath),
+        },
+      );
       failure = agentFailure(result, 'plan', 'plan');
     } catch (error) {
       if (error instanceof StepStopped) throw error;
+      if (error instanceof StartRefused) return { refused: error };
       failure = error instanceof SwarmloopError ? error.message : 'plan failed';
     }
     const value = failure ? undefined : result?.resultValue;
     const ok = value !== undefined;
-    await this.visits.finishVisit(
+    const stat = await this.visits.finishVisit(
       run,
       modelVisit({
         opened,
@@ -165,6 +184,7 @@ export class PlanConversation {
         exitCode: ok ? 0 : 1,
       }),
     );
+    if (started.id) await this.door.linkVisit(started.id, stat.id);
     return ok ? { value } : null;
   }
 
