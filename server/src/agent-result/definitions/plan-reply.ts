@@ -10,6 +10,10 @@ export interface PlanReplyResult extends Partial<Omit<PlanResult, 'questions'>> 
   escalate?: string;
   /** The texts of the requirements the reply adds. */
   requirements?: string[];
+  /** Whether the reviewer's finding holds. Only an answer to a question about a finding has it. */
+  finding?: 'holds' | 'ruled-out';
+  /** What implement does now, a change of the plan included. Only an answer to a question about a finding has it. */
+  instruction?: string;
 }
 
 /** What a run lets a reply change. */
@@ -20,6 +24,8 @@ interface ReplyShape {
   addTasksOnly?: boolean;
   /** The reply answers and changes nothing: no requirements and no plan. */
   answerOnly?: boolean;
+  /** The answer-only reply decides a reviewer's finding: it says whether it holds and what implement does now. */
+  finding?: boolean;
 }
 
 const SPLIT_KEYS = ['contract', 'tasks', 'keep'];
@@ -41,6 +47,17 @@ const ownKeys = {
     ),
 };
 
+/** The decision of an answer about a reviewer's finding. */
+const findingKeys = {
+  finding: Joi.string()
+    .valid('holds', 'ruled-out')
+    .required()
+    .description("Whether the reviewer's finding holds: holds, or ruled-out when it does not"),
+  instruction: Joi.string().description(
+    'What implement does now, a change of the plan included; leave out when the finding alone is enough',
+  ),
+};
+
 /** The plan fields of a reply are all optional: a reply without them changes nothing. */
 function planPart(addTasksOnly: boolean, stored: boolean): Record<string, Joi.Schema> {
   const optional = Object.fromEntries(Object.entries(PLAN_SCHEMAS).map(([name, schema]) => [name, schema.optional()]));
@@ -56,8 +73,16 @@ function planPart(addTasksOnly: boolean, stored: boolean): Record<string, Joi.Sc
   };
 }
 
-function schemaOf(hidden: string[], shape: Pick<ReplyShape, 'addTasksOnly'>, stored = false): Joi.ObjectSchema {
-  const keys = { ...ownKeys, ...planPart(Boolean(shape.addTasksOnly), stored) };
+function schemaOf(
+  hidden: string[],
+  shape: Pick<ReplyShape, 'addTasksOnly' | 'finding'>,
+  stored = false,
+): Joi.ObjectSchema {
+  const keys = {
+    ...ownKeys,
+    ...planPart(Boolean(shape.addTasksOnly), stored),
+    ...(shape.finding ? findingKeys : {}),
+  };
   return Joi.object(keysFor(keys, hidden))
     .unknown(hidden.length > 0)
     .custom((value: PlanReplyResult, helpers) =>

@@ -69,4 +69,15 @@ describe('plan reply result', () => {
   it('shows only reply and escalate for answerOnly', () => {
     expect(fields({ split: true, subtask: false, answerOnly: true })).toEqual(['reply', 'escalate']);
   });
+
+  it('adds a required finding and an optional instruction to an answer about a reviewer finding', () => {
+    const shape = { split: false, subtask: false, answerOnly: true, finding: true };
+    expect(fields(shape)).toEqual(['reply', 'escalate', 'finding', 'instruction']);
+    const answer = planReplyFor(shape);
+    expect(readResult(answer, block({ reply: 'It stands.', finding: 'holds' })).ok).toBe(true);
+    const full = readResult(answer, block({ reply: 'No.', finding: 'ruled-out', instruction: 'Keep the plan.' }));
+    expect(full.ok && full.value).toMatchObject({ finding: 'ruled-out', instruction: 'Keep the plan.' });
+    expect(readResult(answer, block({ reply: 'It stands.' })).ok).toBe(false);
+    expect(readResult(answer, block({ reply: 'It stands.', finding: 'maybe' })).ok).toBe(false);
+  });
 });

@@ -31,21 +31,33 @@ export function openedFor(run: RunEntity, clock: Clock): OpenedStep {
   };
 }
 
-const answerOnly = planReplyFor({ split: false, subtask: false, answerOnly: true });
+const plainAnswer = planReplyFor({ split: false, subtask: false, answerOnly: true });
+const findingAnswer = planReplyFor({ split: false, subtask: false, answerOnly: true, finding: true });
+
+/** An answer to a question about a reviewer's finding also decides the finding. */
+const answerOnly = (question: PlanChatEntry) => (question.about === 'finding' ? findingAnswer : plainAnswer);
 
 const hasReply = (value: unknown): string[] =>
   (value as PlanReplyResult).reply.trim() ? [] : ['reply: give the answer'];
 
 /** The planner's answer to the step that asked, kept for the step to read once. */
-async function recordAnswer(deps: QuestionDeps, run: RunEntity, question: PlanChatEntry, reply: string): Promise<void> {
+async function recordAnswer(
+  deps: QuestionDeps,
+  run: RunEntity,
+  question: PlanChatEntry,
+  reply: PlanReplyResult,
+): Promise<void> {
+  const instruction = reply.instruction?.trim();
   await deps.chat.appendEntry(run.key, {
     key: `answer-${question.key}`,
     role: 'planner',
-    text: reply.trim(),
+    text: reply.reply.trim(),
     at: deps.clock.iso(),
     state: 'pending',
     kind: 'answer',
     ...(question.from ? { from: question.from } : {}),
+    ...(reply.finding ? { finding: reply.finding } : {}),
+    ...(instruction ? { instruction } : {}),
   });
 }
 
@@ -59,10 +71,11 @@ export async function askPlanner(
   run: RunEntity,
   question: PlanChatEntry,
 ): Promise<QuestionOutcome> {
+  const shape = answerOnly(question);
   const visit = await deps.conversation.visit(
     openedFor(run, deps.clock),
-    (received) => planAnswersStep(question.from ?? 'a step', question.text, resultPromptFor(answerOnly, received)),
-    answerOnly,
+    (received) => planAnswersStep(question.from ?? 'a step', question.text, resultPromptFor(shape, received)),
+    shape,
     hasReply,
     [question.text],
   );
@@ -84,7 +97,7 @@ export async function askPlanner(
     await deps.chat.markTaken(run.key, [question.key]);
     return { kind: 'escalated', escalation };
   }
-  await recordAnswer(deps, run, question, reply.reply);
+  await recordAnswer(deps, run, question, reply);
   await deps.chat.markTaken(run.key, [question.key]);
   return { kind: 'answered' };
 }
@@ -100,6 +113,7 @@ export async function readPersonAnswer(
   question: PlanChatEntry,
   person: string,
 ): Promise<QuestionOutcome> {
+  const shape = answerOnly(question);
   const visit = await deps.conversation.visit(
     openedFor(run, deps.clock),
     (received) =>
@@ -108,14 +122,14 @@ export async function readPersonAnswer(
         question.text,
         escalation.text,
         person,
-        resultPromptFor(answerOnly, received),
+        resultPromptFor(shape, received),
       ),
-    answerOnly,
+    shape,
     hasReply,
     [question.text, escalation.text, person],
   );
   if (!visit) return { kind: 'none' };
   if ('refused' in visit) return { kind: 'refused' };
-  await recordAnswer(deps, run, question, (visit.value as PlanReplyResult).reply);
+  await recordAnswer(deps, run, question, visit.value as PlanReplyResult);
   return { kind: 'answered' };
 }
