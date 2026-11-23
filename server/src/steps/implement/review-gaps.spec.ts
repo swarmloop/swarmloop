@@ -4,10 +4,14 @@ import { DocumentRepository } from '../../history/document.repository';
 import type { TestApp } from '../../testing/test-app';
 import { reviewResultOf } from '../contract/artifacts';
 import { parseSubtasks } from '../../contract/subtask';
+import { SubtaskOps } from '../shared/subtask-ops';
 import { gapOf, gapTaken } from './review-gaps';
 import { KEY, pass, seedParent, task, tasksOf, world } from './split-implement.spec-helpers';
 
 const KIND = reviewResultOf('requirements').kind;
+/** A settle time later than any review the specs store: the review was recorded while the last task still ran. */
+const LATER = '2999-01-01T00:00:00.000Z';
+const EARLIER = '2000-01-01T00:00:00.000Z';
 
 const review = (marks: Record<string, 'met' | 'partial' | 'missing'>, decision: 'ok' | 'return'): ReviewResult => ({
   decision,
@@ -25,8 +29,9 @@ describe('final review gaps', () => {
   });
 
   /** A parent whose tasks are merged and that holds the contract and the requirements list. */
-  async function merged(tasks = [task('a'), task('b')]) {
+  async function merged(tasks = [task('a'), task('b')], settledAt = LATER) {
     app = (await world()).app;
+    jest.spyOn(app.app.get(SubtaskOps), 'settledAt').mockResolvedValue(settledAt);
     const parent = await seedParent(
       app,
       tasks.map((item) => ({ ...item, status: 'merged', covers: item.id === 'a' ? ['R1'] : ['R2'] })),
@@ -41,7 +46,7 @@ describe('final review gaps', () => {
         { id: 'R2', text: 'two' },
       ])}\n`,
     );
-    return { parent, documents };
+    return { parent, documents, tasks: tasks.map(({ id }) => ({ id })), subtasks: app.app.get(SubtaskOps) };
   }
 
   const reviewed = async (
@@ -63,16 +68,18 @@ describe('final review gaps', () => {
   });
 
   it('does not take the same review twice, and a new review of the same id is a new gap', async () => {
-    const { parent, documents } = await merged();
+    const { parent, documents, subtasks, tasks } = await merged();
     await reviewed(documents, parent, review({ R1: 'met', R2: 'missing' }, 'return'));
     await pass(app);
     await pass(app);
     expect((await tasksOf(app)).map((item) => item.id)).toEqual(['a', 'b', 'gap-1']);
 
     const taken = JSON.parse((await documents.latestBody(KEY, 'starter_taken')) ?? '[]') as string[];
-    expect(await gapOf(documents, KEY, taken)).toBeNull();
+    expect(await gapOf(documents, subtasks, parent, tasks, taken)).toBeNull();
     await reviewed(documents, parent, review({ R1: 'met', R2: 'partial' }, 'return'));
-    expect(await gapOf(documents, KEY, taken)).toMatchObject({ marks: [{ id: 'R2', status: 'partial' }] });
+    expect(await gapOf(documents, subtasks, parent, tasks, taken)).toMatchObject({
+      marks: [{ id: 'R2', status: 'partial' }],
+    });
   });
 
   it('counts a return as the taken gap only until a failed check returns the run again', async () => {
@@ -88,11 +95,17 @@ describe('final review gaps', () => {
   });
 
   it('gives no gap for a return that marks nothing, or for a review that passes', async () => {
-    const { parent, documents } = await merged();
+    const { parent, documents, subtasks, tasks } = await merged();
     await reviewed(documents, parent, review({ R1: 'met', R2: 'met' }, 'return'));
-    expect(await gapOf(documents, KEY, [])).toBeNull();
+    expect(await gapOf(documents, subtasks, parent, tasks, [])).toBeNull();
     await reviewed(documents, parent, review({ R1: 'met', R2: 'met' }, 'ok'));
-    expect(await gapOf(documents, KEY, [])).toBeNull();
+    expect(await gapOf(documents, subtasks, parent, tasks, [])).toBeNull();
+  });
+
+  it('gives no gap for a review recorded after the last task settled', async () => {
+    const { parent, documents, subtasks, tasks } = await merged(undefined, EARLIER);
+    await reviewed(documents, parent, review({ R1: 'met', R2: 'missing' }, 'return'));
+    expect(await gapOf(documents, subtasks, parent, tasks, [])).toBeNull();
   });
 
   it('asks whoever started the run when a requirement is still missing after its gap task merged, and adds no second task', async () => {
