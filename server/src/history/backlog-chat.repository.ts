@@ -21,6 +21,16 @@ import { transaction } from './transaction';
 /** The record of what a person or the planner did is state the planner reads, never an event that wakes it. */
 const ACTION_RECORD = 'action';
 
+/** Matches the rows no turn has taken, and the rows of the given turns when there are any. */
+function waiting<Match extends object>(match: Match, from: string[]) {
+  return from.length === 0
+    ? { ...match, turn: IsNull() }
+    : [
+        { ...match, turn: IsNull() },
+        { ...match, turn: In(from) },
+      ];
+}
+
 /** A person's messages and events that no turn has taken, together. */
 interface WaitingItems {
   messages: BacklogMessageRecord[];
@@ -75,26 +85,27 @@ export class BacklogChatRepository {
     return { messages: rows.reverse().map(toMessage), older: total - rows.length };
   }
 
-  /** The person's messages and the events no turn has taken. What a failed turn took stays with it until Resume. */
-  async waitingItems(backlogId: number): Promise<WaitingItems> {
+  /** The person's messages and the events no turn has taken, and those of the given failed turns, which wait with them. */
+  async waitingItems(backlogId: number, from: string[] = []): Promise<WaitingItems> {
     const manager = this.dataSource.manager;
     const messages = await manager.find(BacklogMessageEntity, {
-      where: { backlogId, author: 'person', turn: IsNull() },
+      where: waiting({ backlogId, author: 'person' }, from),
       order: { id: 'ASC' },
     });
     const events = await manager.find(BacklogEventEntity, {
-      where: { backlogId, kind: Not(ACTION_RECORD), turn: IsNull() },
+      where: waiting({ backlogId, kind: Not(ACTION_RECORD) }, from),
       order: { id: 'ASC' },
     });
     return { messages: messages.map(toMessage), events: events.map(toEvent) };
   }
 
-  /** Gives every waiting message and event to the turn, together. Returns what the turn took. */
-  async takeInto(backlogId: number, turnKey: string): Promise<WaitingItems> {
+  /** Gives every waiting message and event, and those of the given failed turns, to the turn, together. Returns what the turn took. */
+  async takeInto(backlogId: number, turnKey: string, from: string[] = []): Promise<WaitingItems> {
     return transaction(this.dataSource, async (manager) => {
-      const turn = IsNull();
-      await manager.update(BacklogMessageEntity, { backlogId, author: 'person', turn }, { turn: turnKey });
-      await manager.update(BacklogEventEntity, { backlogId, kind: Not(ACTION_RECORD), turn }, { turn: turnKey });
+      await manager.update(BacklogMessageEntity, waiting({ backlogId, author: 'person' }, from), { turn: turnKey });
+      await manager.update(BacklogEventEntity, waiting({ backlogId, kind: Not(ACTION_RECORD) }, from), {
+        turn: turnKey,
+      });
       return this.itemsOfTurn(turnKey, manager);
     });
   }
@@ -131,11 +142,11 @@ export class BacklogChatRepository {
     return rows.map(toTurn);
   }
 
-  /** The backlogs that have a person's message or an event waiting for a turn, in id order. */
-  async backlogsWithWaitingWork(): Promise<number[]> {
+  /** The backlogs that have a person's message or an event waiting for a turn, those of the given failed turns included, in id order. */
+  async backlogsWithWaitingWork(from: string[] = []): Promise<number[]> {
     const manager = this.dataSource.manager;
-    const messages = await manager.find(BacklogMessageEntity, { where: { author: 'person', turn: IsNull() } });
-    const events = await manager.find(BacklogEventEntity, { where: { kind: Not(ACTION_RECORD), turn: IsNull() } });
+    const messages = await manager.find(BacklogMessageEntity, { where: waiting({ author: 'person' }, from) });
+    const events = await manager.find(BacklogEventEntity, { where: waiting({ kind: Not(ACTION_RECORD) }, from) });
     const ids = new Set([...messages, ...events].map((item) => item.backlogId));
     return [...ids].sort((left, right) => left - right);
   }

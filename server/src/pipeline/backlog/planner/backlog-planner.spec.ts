@@ -1,5 +1,9 @@
 import type { BacklogTurnAction } from '../../../agent-result/definitions/backlog-turn';
 import { HostUnavailable } from '../../../core/swarmloop-error';
+import { NoFailedTurn } from './backlog-planner';
+import { writeRunState } from '../../../history/run-state';
+import { DocumentRepository } from '../../../history/document.repository';
+import { ARTIFACTS } from '../../../steps/contract/artifacts';
 import { plannerTurnsHarness } from './planner-turns.spec-helpers';
 import { turnResult } from './planner-scenarios.spec-helpers';
 
@@ -156,7 +160,7 @@ describe('BacklogPlanner', () => {
       expect((await h.lines(id)).at(-1)).toBe('planner: Here is the plan.');
     }));
 
-  it('keeps the events of a failed turn for Resume when a person writes again, and takes only the new message', () =>
+  it("gives the items of a failed turn to the turn a person's message starts, and leaves nothing to Resume", () =>
     withTurns(async (h) => {
       const id = await backlogOf(h);
       await h.backlogs.recordEvent(id, 'task-merged:a', 'task-merged', { slug: 'a' });
@@ -171,13 +175,118 @@ describe('BacklogPlanner', () => {
       await h.planner.whenIdle();
       const turns = await h.turnsOf(id);
       expect(turns.map((turn) => turn.status)).toEqual(['failed', 'done']);
-      expect((await h.chat.itemsOfTurn(failed.turnKey)).events).toHaveLength(1);
-      expect((await h.chat.itemsOfTurn(turns[1].turnKey)).events).toEqual([]);
+      const taken = await h.chat.itemsOfTurn(turns[1].turnKey);
+      expect(taken.events.map((event) => event.eventKey)).toEqual(['task-merged:a']);
+      expect(taken.messages.map((message) => message.text)).toEqual(['are you there?']);
+      expect(await h.chat.itemsOfTurn(failed.turnKey)).toEqual({ messages: [], events: [] });
+      await expect(h.planner.resume('one')).rejects.toBeInstanceOf(NoFailedTurn);
+    }));
 
-      h.agent.script = [turnResult('Read the merge.')];
+  it('a turn after a failed one takes its events and lets the next event start a turn by itself', () =>
+    withTurns(async (h) => {
+      const id = await backlogOf(h);
+      await h.backlogs.recordEvent(id, 'task-merged:a', 'task-merged', { slug: 'a' });
+      h.agent.script = ['crash'];
+      await h.say(id, 'first');
+      await h.planner.whenIdle();
+
+      h.agent.script = [turnResult('Hello.')];
+      await h.say(id, 'second');
+      await h.planner.whenIdle();
+      const turns = await h.turnsOf(id);
+      expect(turns.map((turn) => turn.status)).toEqual(['failed', 'done']);
+      const taken = await h.chat.itemsOfTurn(turns[1].turnKey);
+      expect(taken.events.map((event) => event.eventKey)).toEqual(['task-merged:a']);
+      expect(taken.messages.map((message) => message.text)).toEqual(['first', 'second']);
+
+      h.agent.script = [turnResult('Red main read.')];
+      await h.backlogs.recordEvent(id, 'main-red:1', 'main-red', { repository: 'web' });
+      await h.tick();
+      await h.planner.whenIdle();
+      expect((await h.turnsOf(id)).map((turn) => turn.status)).toEqual(['failed', 'done', 'done']);
+    }));
+
+  it('reads a merge that a failed turn took once the turn that takes it over is done, and starts its dependent after', () =>
+    withTurns(async (h) => {
+      const id = await backlogOf(h);
+      const milestone = await h.seedMilestone(id, 1);
+      await h.seedTask(id, 'a', { milestoneId: milestone.id, status: 'merged' });
+      await h.seedTask(id, 'b', { milestoneId: milestone.id, depends: ['a'] });
+      await h.backlogs.recordEvent(id, 'task-merged:a', 'task-merged', { slug: 'a' });
+      h.agent.script = ['crash'];
+      await h.tick();
+      await h.planner.whenIdle();
+      await h.tick();
+      expect(h.started()).toEqual([]);
+      expect((await h.task(id, 'b')).note).toBe('waits for the planner to read the merge of a');
+
+      h.agent.script = [turnResult('Noted.')];
+      await h.say(id, 'carry on');
+      await h.planner.whenIdle();
+      await h.tick();
+      expect(h.started()).toEqual(['b']);
+    }));
+
+  it('holds a backlog whose last turn failed until Resume, and wakes stored rows where a later turn followed the failed one', () =>
+    withTurns(async (h) => {
+      const id = await backlogOf(h);
+      h.agent.script = ['crash'];
+      await h.say(id, 'plan something');
+      await h.planner.whenIdle();
+      const [failed] = await h.turnsOf(id);
+      await h.backlogs.recordEvent(id, 'main-red:1', 'main-red', { repository: 'web' });
+      await h.tick();
+      await h.planner.whenIdle();
+      expect(h.agent.launches).toHaveLength(1);
+
+      h.agent.script = [turnResult('Here it is.')];
       await h.planner.resume('one');
       await h.planner.whenIdle();
-      expect((await h.turnsOf(id)).map((turn) => turn.status)).toEqual(['done', 'done']);
+      expect((await h.turnsOf(id)).map((turn) => [turn.turnKey, turn.status])).toEqual([[failed.turnKey, 'done']]);
+
+      const other = (await h.seedBacklog('two')).id as number;
+      const base = { backlogId: other, reason: '', nextTryAt: null, createdAt: h.db.clock.iso() };
+      await h.chat.addPersonMessage(other, 'old', 'm-old', []);
+      await h.chat.takeInto(other, 'turn-a');
+      await h.chat.saveTurn({ ...base, turnKey: 'turn-a', status: 'failed' });
+      await h.chat.saveTurn({ ...base, turnKey: 'turn-b', status: 'done' });
+      await h.backlogs.recordEvent(other, 'main-red:2', 'main-red', { repository: 'web' });
+      h.agent.script = [turnResult('Read both.')];
+      await h.tick();
+      await h.planner.whenIdle();
+      const turns = await h.turnsOf(other);
+      expect(turns).toHaveLength(3);
+      const taken = await h.chat.itemsOfTurn(turns[2].turnKey);
+      expect(taken.events.map((event) => event.eventKey)).toEqual(['main-red:2']);
+      expect(taken.messages.map((message) => message.text)).toEqual(['old']);
+      expect(turns[0]).toMatchObject({ turnKey: 'turn-a', status: 'failed' });
+      expect(await h.chat.itemsOfTurn('turn-a')).toEqual({ messages: [], events: [] });
+    }));
+
+  it("passes on once the question of a failed turn that a person's message took over and left", () =>
+    withTurns(async (h) => {
+      const id = await backlogOf(h);
+      const milestone = await h.seedMilestone(id, 1);
+      await h.seedTask(id, 'going', { milestoneId: milestone.id, runKey: 'going-1', status: 'running' });
+      const run = (await h.runs.findRun('going-1')) ?? h.runs.newWaitingRun('going-1', null, 'owner');
+      writeRunState(run, { status: 'waiting', currentStep: 'research', facts: { asksPlanner: true } });
+      await h.runs.saveRun(run);
+      const documents = h.db.app.get(DocumentRepository);
+      await documents.putDocument(run, 'questions', '- Which store?\n');
+      const facts = { slug: 'going', runKey: 'going-1', questionId: 'Which store?', question: 'Which store?' };
+      await h.backlogs.recordEvent(id, 'asks-planner:going-1:1:abc', 'run-asks-planner', facts);
+      h.agent.script = ['crash'];
+      await h.tick();
+      await h.planner.whenIdle();
+
+      h.agent.script = [turnResult('Noted.')];
+      await h.say(id, 'hello');
+      await h.planner.whenIdle();
+
+      const passed = ARTIFACTS.passedOn.parse((await documents.latestBody('going-1', ARTIFACTS.passedOn.kind)) ?? '[]');
+      expect(passed.map((entry) => entry.question)).toEqual(['Which store?']);
+      const left = (await h.lines(id)).filter((line) => line.includes('My turn ended without answering the question'));
+      expect(left).toHaveLength(1);
     }));
 
   it('does not touch the turns a stop left until the API server starts the planner', () =>
@@ -303,6 +412,34 @@ describe('BacklogPlanner', () => {
         { command: expect.objectContaining({ type: 'planChat', run: 'going-1' }), key: `${applied.turnKey}-action-1` },
       ]);
       expect((await h.backlogs.tasks(id)).map((task) => task.slug)).toEqual(['going', 'extra']);
+      expect(h.agent.launches).toHaveLength(1);
+    }));
+
+  it('answers that an applied turn waiting on the code host waits, and sends its commands once at the next try without launching the planner again', () =>
+    withTurns(async (h) => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+      const id = await backlogOf(h);
+      const milestone = await h.seedMilestone(id, 1);
+      await h.seedTask(id, 'going', { milestoneId: milestone.id, runKey: 'going-1', status: 'running' });
+      h.agent.script = [turnResult('On it.', { action: 'planChat', run: 'going-1', message: 'hi' })];
+      const fiveMinutes = 5 * 60_000;
+      const retryAt = new Date(h.db.clock.now() + fiveMinutes).toISOString();
+      h.failNextSend(new HostUnavailable('github.com', 'HTTP 503', retryAt));
+      await h.say(id, 'tell going to say hi');
+      await h.planner.whenIdle();
+      const [applied] = await h.turnsOf(id);
+      expect(applied).toMatchObject({ status: 'applied', nextTryAt: retryAt });
+
+      await expect(h.planner.resume('one')).rejects.toBeInstanceOf(NoFailedTurn);
+      await h.restart();
+      await h.planner.whenIdle();
+      expect(h.sent).toEqual([]);
+
+      h.db.clock.advance(fiveMinutes);
+      await jest.advanceTimersByTimeAsync(fiveMinutes);
+      await h.planner.whenIdle();
+      expect(h.sent).toHaveLength(1);
+      expect((await h.turnsOf(id)).map((turn) => turn.status)).toEqual(['done']);
       expect(h.agent.launches).toHaveLength(1);
     }));
 

@@ -91,6 +91,28 @@ describe('BacklogChatRepository', () => {
       expect(kept.events).toHaveLength(1);
     }));
 
+  it('gives the items of the named failed turns to the new turn together with the waiting ones', () =>
+    withPlanner(async (db) => {
+      const id = await db.addBacklog();
+      await db.addMessage(id, 'first');
+      await db.addEvent(id, 'task-merged:a');
+      await db.chat.takeInto(id, 'turn-1');
+      await db.chat.saveTurn(turn(id, 'turn-1', 'failed'));
+      await db.addMessage(id, 'second');
+
+      const waiting = await db.chat.waitingItems(id, ['turn-1']);
+      expect(waiting.messages.map((message) => message.text)).toEqual(['first', 'second']);
+      expect(waiting.events.map((event) => event.eventKey)).toEqual(['task-merged:a']);
+      expect(await db.chat.backlogsWithWaitingWork(['turn-1'])).toEqual([id]);
+
+      const taken = await db.chat.takeInto(id, 'turn-2', ['turn-1']);
+      expect(taken.messages.map((message) => message.text)).toEqual(['first', 'second']);
+      expect(taken.events.map((event) => event.eventKey)).toEqual(['task-merged:a']);
+      const kept = await db.chat.itemsOfTurn('turn-1');
+      expect(kept.messages).toEqual([]);
+      expect(kept.events).toEqual([]);
+    }));
+
   it('reads the last messages in order with the count of older ones', () =>
     withPlanner(async (db) => {
       const id = await db.addBacklog();

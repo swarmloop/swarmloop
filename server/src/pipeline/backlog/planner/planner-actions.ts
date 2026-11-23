@@ -7,7 +7,7 @@ import { SwarmloopError } from '../../../core/swarmloop-error';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import type { BacklogRecord, BacklogWriters } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
-import { LeftQuestions } from './left-questions';
+import { LeftQuestions, type CommandOutcome } from './left-questions';
 import { commandOf, PlannerBacklogCalls } from './planner-backlog-calls';
 import { PlannerRules } from './planner-rules';
 import { PlannerRunPort, type PlannerRunCommand } from './planner-run-port';
@@ -98,22 +98,25 @@ export class PlannerTurnActions {
 
   /** The recorded commands go out with the key of their place in the turn, so a resend runs none twice. */
   private async send(backlog: BacklogRecord, turnKey: string): Promise<void> {
+    const outcomes: CommandOutcome[] = [];
     for (const { index, command } of await this.calls.recorded(backlog.id as number, turnKey)) {
       try {
         await this.port.send(command, backlog.owner, `${turnKey}-action-${index}`);
+        outcomes.push({ command, outcome: 'taken' });
       } catch (error) {
         if (!(error instanceof HttpException)) throw error;
-        await this.refused(backlog, turnKey, index, command, error.message);
+        outcomes.push({ command, outcome: await this.refused(backlog, turnKey, index, command, error.message) });
       }
     }
-    await this.left.pass(backlog, turnKey);
+    await this.left.pass(backlog, turnKey, outcomes);
     const turn = await this.chat.findTurn(turnKey);
     if (turn) await this.chat.saveTurn({ ...turn, status: 'done' });
   }
 
   /**
    * A command a run refused comes back to the planner as an event of the backlog. One refused again for the same
-   * reason as the refusal this turn answers is left to the person, with a line that names it.
+   * reason as the refusal this turn answers is left to the person, with a line that names it. The event names the
+   * questions the command was about, so the next turn has them.
    */
   private async refused(
     backlog: BacklogRecord,
@@ -121,7 +124,7 @@ export class PlannerTurnActions {
     index: number,
     command: PlannerRunCommand,
     reason: string,
-  ): Promise<void> {
+  ): Promise<CommandOutcome['outcome']> {
     const key = `${turnKey}-sent-${index}`;
     const refusedCommand = describeCommand(command);
     const { events } = await this.chat.itemsOfTurn(turnKey);
@@ -133,13 +136,20 @@ export class PlannerTurnActions {
     );
     if (again) {
       await this.say(this.backlogs, backlog, key, turnKey, `I did not ${refusedCommand}: ${reason}`, 'refused');
-      return;
+      return 'refused-again';
     }
+    const questions = await this.left.about(turnKey, command);
     await this.backlogs.transaction(async (writers) => {
-      const facts = { run: command.run, refusedCommand, reason };
+      const facts = {
+        run: command.run,
+        refusedCommand,
+        reason,
+        ...(questions.length > 0 ? { questions: questions.join('\n') } : {}),
+      };
       await writers.recordEvent(backlog.id as number, `command-refused:${turnKey}:${index}`, 'command-refused', facts);
       await this.say(writers, backlog, key, turnKey, `${command.run} refused the command: ${reason}`, 'refused');
     });
+    return 'refused';
   }
 
   /** Runs the rules and then the service for each action, in order, on the given writers. A refusal drops that action only. */

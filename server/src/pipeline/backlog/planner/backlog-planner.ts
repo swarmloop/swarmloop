@@ -11,6 +11,7 @@ import { BacklogScheduler } from '../backlog-scheduler';
 import { PlannerTurnActions } from './planner-actions';
 import { messageView, turnView } from './planner-views';
 import { BacklogTurnRunner } from './turn-runner';
+import { failedKeys, holdsBacklog, resumeTarget, waitsForTry } from './turn-hold';
 import { waitOf } from './turn-wait';
 import type { TurnOutcome } from './turn-wait';
 
@@ -77,38 +78,35 @@ export class BacklogPlanner implements OnModuleDestroy {
     if (!this.running.has(backlogId) && !this.timers.has(backlogId)) this.begin(backlogId, () => Promise.resolve());
   }
 
-  /** Runs the failed turn again under its key, with the items it took. */
+  /** Runs the backlog's last turn again under its key, with the items it took, when it failed; or an applied turn whose sending failed. */
   async resume(backlogName: string): Promise<void> {
     const backlog = await this.find(backlogName);
     const id = backlog.id as number;
-    const turns = await this.chat.turnsByStatus(['failed', 'applied']);
-    const failed = turns
-      .filter((turn) => turn.backlogId === id && (turn.status === 'failed' || turn.reason !== ''))
-      .pop();
+    const failed = resumeTarget(await this.chat.turnsOf(id));
     if (!failed) throw new NoFailedTurn(`${backlogName} has no failed turn to resume`);
     if (this.running.has(id)) throw new SwarmloopError(`${backlogName}: the planner is working on a turn`);
     this.begin(id, () => this.execute(backlog, failed.turnKey));
   }
 
-  /** On the end of each events pass: the backlogs with a message or an event no turn has taken. A failed turn holds its backlog until Resume. */
+  /** On the end of each events pass: the backlogs with a message or an event no turn has taken. Only a last turn that failed or waits holds its backlog. */
   private async wakeWaiting(): Promise<void> {
     try {
-      const ids = await this.chat.backlogsWithWaitingWork();
-      if (ids.length === 0) return;
-      const held = new Set((await this.chat.turnsByStatus(['failed', 'waiting'])).map((turn) => turn.backlogId));
-      for (const id of ids) if (!held.has(id)) this.wake(id);
+      const failed = (await this.chat.turnsByStatus(['failed'])).map((turn) => turn.turnKey);
+      for (const id of await this.chat.backlogsWithWaitingWork(failed)) {
+        if (!holdsBacklog(await this.chat.turnsOf(id))) this.wake(id);
+      }
     } catch (error) {
       this.logger.warn(`planner pass failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  /** After a start: sends again what an applied turn recorded, runs a running turn again under its key, and sets the timer of a waiting one. */
+  /** After a start: sends again what an applied turn recorded, runs a running turn again under its key, and sets the timer of a turn that waits for its next try. */
   private async recover(): Promise<void> {
     const backlogs = await this.backlogs.listBacklogs();
     for (const turn of await this.chat.turnsByStatus(['applied', 'running', 'waiting'])) {
       const backlog = backlogs.find((candidate) => candidate.id === turn.backlogId);
       if (!backlog) continue;
-      if (turn.status === 'waiting') this.arm(backlog, turn.turnKey, turn.nextTryAt);
+      if (waitsForTry(turn)) this.arm(backlog, turn.turnKey, turn.nextTryAt);
       else this.begin(turn.backlogId, () => this.execute(backlog, turn.turnKey));
     }
   }
@@ -136,9 +134,10 @@ export class BacklogPlanner implements OnModuleDestroy {
     }
   }
 
-  /** A turn that takes every waiting message and event. Nothing waiting launches nothing. */
+  /** A turn that takes every waiting message and event, and those of the backlog's failed turns. Nothing waiting launches nothing. */
   private async newTurn(backlogId: number): Promise<void> {
-    const waiting = await this.chat.waitingItems(backlogId);
+    const failed = failedKeys(await this.chat.turnsOf(backlogId));
+    const waiting = await this.chat.waitingItems(backlogId, failed);
     if (waiting.messages.length + waiting.events.length === 0) return;
     const backlog = (await this.backlogs.listBacklogs()).find((candidate) => candidate.id === backlogId);
     if (!backlog) return;
@@ -151,7 +150,7 @@ export class BacklogPlanner implements OnModuleDestroy {
       nextTryAt: null,
       createdAt: this.clock.iso(),
     });
-    await this.chat.takeInto(backlogId, turnKey);
+    await this.chat.takeInto(backlogId, turnKey, failed);
     await this.execute(backlog, turnKey);
   }
 
@@ -179,6 +178,12 @@ export class BacklogPlanner implements OnModuleDestroy {
       await this.fail(backlog, turnKey, error);
     }
     await this.publish(backlog, turnKey);
+  }
+
+  /** The timer's work: the turn runs only when it still waits for its next try, never after it was sent or done meanwhile. */
+  private async executeWaiting(backlog: BacklogRecord, turnKey: string): Promise<void> {
+    const turn = await this.chat.findTurn(turnKey);
+    if (turn && waitsForTry(turn)) await this.execute(backlog, turnKey);
   }
 
   /** Sends again what an applied turn recorded. A code host outage is a wait; any other error is thrown. */
@@ -227,7 +232,7 @@ export class BacklogPlanner implements OnModuleDestroy {
     });
   }
 
-  /** Runs a waiting turn again at its next try, through the clock. */
+  /** Runs a turn again at its next try, through the clock, only while that turn still waits for it. */
   private arm(backlog: BacklogRecord, turnKey: string, nextTryAt: string | null): void {
     if (this.closed) return;
     const id = backlog.id as number;
@@ -235,7 +240,7 @@ export class BacklogPlanner implements OnModuleDestroy {
     const wait = Math.min(MAX_DELAY_MS, Math.max(0, Date.parse(nextTryAt ?? '') - this.clock.now() || 0));
     const timer = setTimeout(() => {
       this.timers.delete(id);
-      if (!this.closed && !this.running.has(id)) this.begin(id, () => this.execute(backlog, turnKey));
+      if (!this.closed && !this.running.has(id)) this.begin(id, () => this.executeWaiting(backlog, turnKey));
     }, wait);
     timer.unref();
     this.timers.set(id, timer);
