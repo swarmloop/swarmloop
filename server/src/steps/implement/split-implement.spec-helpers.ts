@@ -1,4 +1,5 @@
 import { parseSubtasks, type Subtask } from '../../contract/subtask';
+import type { StepOptions } from '../../core/pipeline-result';
 import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import type { CodeHost } from '../../integrations/code-host/code-host';
@@ -64,8 +65,8 @@ export async function seedParent(app: TestApp, tasks: Subtask[]) {
   return parent;
 }
 
-export async function pass(app: TestApp) {
-  return app.pipeline.step('implement', KEY);
+export async function pass(app: TestApp, options: StepOptions = {}) {
+  return app.pipeline.step('implement', KEY, options);
 }
 
 /** Waits for the commands accepted so far and for the pass they started. */

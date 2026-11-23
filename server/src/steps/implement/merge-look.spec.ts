@@ -11,6 +11,7 @@ import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { resultAnswer } from '../../testing/result-answer';
 import { type TestApp } from '../../testing/test-app';
 import { SubtaskOps } from '../shared/subtask-ops';
+import { PlanChatStore } from '../../history/plan-chat.store';
 import { AgentDoor } from '../shared/agent-door';
 import { StartRefused } from '../shared/start-refused';
 import { storedState } from '../../history/run-state';
@@ -18,6 +19,9 @@ import { mergeHandoff } from '../shared/handoff';
 import { KEY, child, pass, seedParent, statuses, task, tasksOf, work, world } from './split-implement.spec-helpers';
 
 type Reply = Record<string, unknown>;
+
+/** The start of a pass that the machine makes on its own, which the door refuses on the same input. */
+const MACHINE = { startBy: 'machine' } as const;
 
 describe('merge look', () => {
   let app: TestApp;
@@ -69,12 +73,12 @@ describe('merge look', () => {
   }
 
   /** The run of a task is done and its merge is recorded, as a pass that merged it leaves it. */
-  async function merge(id: string, files?: string[], handoff?: string): Promise<void> {
+  async function merge(id: string, files?: string[], handoff?: string, sha = 'abc'): Promise<void> {
     const run = await child(app, id);
     writeRunState(run, {
       status: 'done',
       currentStep: 'done',
-      merge: { merged: { demo: { sha: 'abc', by: null, at: '2026-11-19T00:07:10.000Z', url: null } } },
+      merge: { merged: { demo: { sha, by: null, at: '2026-11-19T00:07:10.000Z', url: null } } },
     });
     await app.app.get(RunRepository).saveRun(run);
     const documents = app.app.get(DocumentRepository);
@@ -178,6 +182,67 @@ describe('merge look', () => {
     await pass(app);
 
     expect(prompts).toHaveLength(1);
+  });
+
+  describe('with the real door', () => {
+    const runState = async () => storedState((await app.app.get(RunRepository).findRun(KEY))!);
+    const dropLook = async (documents: DocumentRepository, id: string) => {
+      const kept = (await looks(documents)).filter((look) => look.task !== id);
+      await documents.putDocument((await app.app.get(RunRepository).findRun(KEY))!, 'merge_look', JSON.stringify(kept));
+    };
+
+    /** a is looked at, c merges and is looked at, then c's entry is dropped as a pass that ended before writing it leaves it. */
+    async function refusedLook() {
+      const built = await lookWorld({ decision: 'Nothing changes.' });
+      await merge('a', undefined, undefined, 'sha-a');
+      await pass(app, MACHINE);
+      await merge('c', undefined, undefined, 'sha-c');
+      await pass(app, MACHINE);
+      await dropLook(built.documents, 'c');
+      await pass(app, MACHINE);
+      return built;
+    }
+
+    it('gives each of two tasks merged as planned its own look', async () => {
+      const { documents, prompts } = await lookWorld({ decision: 'Nothing changes.' });
+      await merge('a', undefined, undefined, 'sha-a');
+      await pass(app, MACHINE);
+      await merge('c', undefined, undefined, 'sha-c');
+      await pass(app, MACHINE);
+
+      expect(prompts).toHaveLength(2);
+      expect((await looks(documents)).map((look) => look.task)).toEqual(['a', 'c']);
+    });
+
+    it("goes on with a refused look after a person's Resume", async () => {
+      const { documents, prompts } = await refusedLook();
+      expect(prompts).toHaveLength(2);
+      expect((await runState()).reason?.code).toBe('SAME_INPUT');
+      expect((await looks(documents)).map((look) => look.task)).toEqual(['a']);
+
+      await pass(app, { startBy: 'person' });
+
+      expect(prompts).toHaveLength(3);
+      expect((await looks(documents)).map((look) => look.task)).toEqual(['a', 'c']);
+    });
+
+    it("goes on with a refused look after the chain's answer", async () => {
+      const { documents, prompts } = await refusedLook();
+      expect((await runState()).reason?.code).toBe('SAME_INPUT');
+      await app.app.get(PlanChatStore).appendEntry(KEY, {
+        key: 'chain-answer',
+        role: 'planner',
+        kind: 'answer',
+        state: 'taken',
+        text: 'Go on with the merge as it is.',
+        at: '2026-01-01T00:00:00.000Z',
+      });
+
+      await pass(app, { startBy: 'planner', level: 1 });
+
+      expect(prompts).toHaveLength(3);
+      expect((await looks(documents)).map((look) => look.task)).toEqual(['a', 'c']);
+    });
   });
 
   describe('when the door refuses the look', () => {

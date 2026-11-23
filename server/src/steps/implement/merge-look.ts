@@ -4,8 +4,10 @@ import type { Requirement } from '../../contract/requirement-list';
 import type { Subtask } from '../../contract/subtask';
 import { starterAnswer, type StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
 import { handoffText } from '../shared/handoff';
+import { implementStart } from '../shared/look-start';
 import type { PlanConversation } from '../shared/plan-conversation';
 import { StartRefused } from '../shared/start-refused';
+import { mergedOf } from '../shared/subtask-status';
 import type { SubtaskOps } from '../shared/subtask-ops';
 import type { StepContext } from '../base-step';
 import type { InputReader } from '../contract/input-reader';
@@ -135,6 +137,9 @@ export class MergeLook {
     if (!conversation) return null;
     const source = `Task ${task.id} merged`;
     const summary = child ? await subtasks.mergeSummary(child) : '';
+    const commits = Object.entries((child && mergedOf(child)) ?? {})
+      .filter(([, sha]) => sha)
+      .map(([repo, sha]) => `${repo}=${sha}`);
     const notStarted = state.tasks.filter((item) => NOT_STARTED.includes(item.status));
     const turn = { id: `merge-look-${task.id}`, at: startedAt, text: marks.join('\n') };
     const visit = await conversation.ordered(run.key, turn, () =>
@@ -143,7 +148,8 @@ export class MergeLook {
         (received) => mergeLookPrompt({ task, summary, marks }, state.contract, notStarted, received),
         starterAnswer,
         (value) => lookErrors(state, value as StarterAnswerResult, startedAt, source),
-        marks,
+        [task.id, task.title, ...commits, summary, ...marks],
+        implementStart(ctx.options),
       ),
     );
     if (!visit) return null;
