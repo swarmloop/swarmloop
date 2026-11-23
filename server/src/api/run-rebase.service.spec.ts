@@ -39,7 +39,55 @@ function startingWith(next: 'resume' | 'start') {
   return { service, seen };
 }
 
+/** A service for a split epic: what its rebase answers, and every call to the rebase and to the subtasks. */
+function splitEpic(next: 'resume' | 'start' | 'stay') {
+  const seen = { rebase: [] as unknown[][], moved: [] as unknown[][], resume: undefined as unknown };
+  const run = { key: 'PROJ-1', split: true };
+  const service = new RunRebaseService(
+    {
+      rebase: async (...args: unknown[]) => {
+        seen.rebase.push(args);
+        return next;
+      },
+      tipOf: async () => 'demo@abc',
+    } as never,
+    {} as never,
+    {
+      resume: async (_key: string, _prompt: unknown, start: unknown) => {
+        seen.resume = start;
+        return { key: 'PROJ-1', status: 'started' };
+      },
+    } as never,
+    { findRun: async () => run } as never,
+    { ensureForRequest: async () => undefined } as never,
+    { rebaseOpen: async (...args: unknown[]) => void seen.moved.push(args) } as never,
+  );
+  return { service, seen, run };
+}
+
 describe('run rebase service', () => {
+  it('moves the open subtasks of an epic after a main move, naming its new tip and why, and starts it as the machine', async () => {
+    const { service, seen, run } = splitEpic('resume');
+    await service.rebase('PROJ-1', false, 'demo at abc123');
+    expect(seen.rebase[0]?.slice(2)).toEqual([false, true]);
+    expect(seen.moved).toEqual([
+      [run, { tip: 'demo@abc', note: 'rebased onto the epic after main moved on (demo at abc123)' }],
+    ]);
+    expect(seen.resume).toEqual({ by: 'machine', level: null });
+  });
+
+  it('moves no subtask when the epic stayed on its branch after a conflict with main', async () => {
+    const { service, seen } = splitEpic('stay');
+    await service.rebase('PROJ-1', false, 'demo at abc123');
+    expect(seen.moved).toEqual([]);
+  });
+
+  it("sends the open subtasks no event on a person's Rebase of an epic", async () => {
+    const { service, seen, run } = splitEpic('resume');
+    await service.rebase('PROJ-1');
+    expect(seen.moved).toEqual([[run]]);
+  });
+
   it("starts a parent's rebase of a task as the machine and a person's rebase with no start", async () => {
     const resumed = startingWith('resume');
     await resumed.service.rebase('PROJ-1', true);

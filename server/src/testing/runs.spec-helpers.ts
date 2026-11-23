@@ -42,6 +42,7 @@ import { RunReport } from '../steps/shared/run-report';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
 import { RunAuthor } from '../steps/shared/run-author';
+import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
 import { RunNames } from '../steps/shared/run-names';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
@@ -106,6 +107,7 @@ export async function boot(
         inject: [DocumentRepository, AppConfig, RunRepository],
       },
       { provide: RunAuthor, useValue: { of: async () => null } },
+      { provide: RebasedPublisher, useValue: { publishRebased: async () => undefined } },
       MergeRequestDrafts,
       { provide: WorkspaceGuard, useValue: { ensureForRequest: async () => undefined } },
       { provide: RunRebaseEnvironment, useExisting: EnvironmentService },

@@ -69,6 +69,8 @@ import { BacklogTaskActions } from './backlog/backlog-task-actions';
 import { BacklogQueries } from './backlog/backlog-queries';
 import { BacklogEvents } from './backlog/backlog-events';
 import { BacklogMerge } from './backlog/backlog-merge';
+import { EpicMainMoves } from './backlog/epic-main-moves';
+import { MainHeld } from './backlog/main-held';
 import { ServerStallWatch } from './server-stalls/server-stall-watch';
 import { BacklogScheduler } from './backlog/backlog-scheduler';
 import { BacklogStartPort } from './backlog/backlog-start-port';
@@ -166,6 +168,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BacklogQueries,
     BacklogEvents,
     BacklogMerge,
+    EpicMainMoves,
+    MainHeld,
     BacklogScheduler,
     ServerStallWatch,
     BacklogStartPort,

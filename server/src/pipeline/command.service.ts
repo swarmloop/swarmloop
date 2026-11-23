@@ -13,7 +13,7 @@ import type { CommandReceipt, CommandType } from '../contract/command';
 import { barrier } from '../core/barrier';
 import { assertKey } from '../core/pipeline-result';
 import type { PipelineResult } from '../core/pipeline-result';
-import { SwarmloopError } from '../core/swarmloop-error';
+import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { RunStop } from '../agent/run-stop';
 
 interface CommandContext {
@@ -103,6 +103,11 @@ export class CommandService {
       this.schedule(accepted.command, key);
     }
     return accepted;
+  }
+
+  /** The newest command of a run whose idempotency key starts with `prefix`: the record of the last try of an event. */
+  latestByKeyPrefix(runId: number, prefix: string): Promise<CommandEntity | null> {
+    return this.commands.latestByKeyPrefix(runId, prefix);
   }
 
   private async takeOverOf(type: CommandType, actor: string | null | undefined) {
@@ -277,7 +282,13 @@ export class CommandService {
     } catch (error) {
       this.logger.warn(`${command.type} of ${key} failed: ${error instanceof Error ? error.message : String(error)}`);
       await this.commands
-        .finish(command.id, 'failed', { error: { message: error instanceof Error ? error.message : String(error) } })
+        .finish(command.id, 'failed', {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            // The time of the next automatic try, so a caller that waits for an outage knows when to ask again.
+            ...(error instanceof HostUnavailable ? { retryAt: error.retryAt } : {}),
+          },
+        })
         .catch(() => undefined);
       this.runs.notify(key);
       this.settle(command.id, { ok: false, error });

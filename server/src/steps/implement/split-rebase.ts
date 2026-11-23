@@ -9,6 +9,11 @@ const MOVED_NOTE = 'rebased onto the epic: the feature branch moved on';
 /** The start of every note this queue writes on a task, so a pass that refreshes the task keeps it while the task reruns. */
 export const REBASED_PREFIX = 'rebased onto the epic';
 
+/** The words that say why a task was moved onto an epic that took a new main head. */
+export function mainMovedNote(main: string): string {
+  return `${REBASED_PREFIX} after main moved on (${main})`;
+}
+
 /** The words that say why a task was moved onto the feature branch. */
 function rebasedNote(sibling: string, files: string[]): string {
   return `rebased onto the epic after ${sibling} merged${files.length > 0 ? ` (conflict in ${files.join(', ')})` : ''}`;

@@ -79,7 +79,11 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     on('remove', (key) => this.runs.remove(key));
     on('skip', (key, payload) => this.taskCommands.skipTask(key, (payload.taskId as string | undefined) ?? ''));
     on('projects', (key, payload) => this.runs.addProject(key, (payload as AddProjectBody).name ?? ''));
-    on('rebase', (key, payload) => this.rebases.rebase(key, payload.byParent === true));
+    on('rebase', (key, payload) =>
+      typeof payload.main === 'string'
+        ? this.rebases.rebase(key, false, payload.main)
+        : this.rebases.rebase(key, payload.byParent === true),
+    );
     on('chat', (key, payload) => this.chat.speak(key, payload));
     on('rewind', (key, payload) => this.shell.rewind(key, Number(payload.id)));
     on('shell', (key, payload, context) => {
