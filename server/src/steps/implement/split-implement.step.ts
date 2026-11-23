@@ -10,6 +10,7 @@ import { PlanConversation } from '../shared/plan-conversation';
 import { MergeLook } from './merge-look';
 import { REBASED_PREFIX } from './split-rebase';
 import { SplitMerge } from './split-merge';
+import { implementRunner } from './split-or-fix';
 import { SplitNeeds } from './split-needs';
 import { SplitPass } from './split-pass';
 import { StarterInbox } from './starter-inbox';
@@ -117,6 +118,11 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
     if (status !== 'running') return false;
     const carried = task.note?.startsWith(REBASED_PREFIX) ? undefined : task.note;
     return runWaitNote(task, { state, stateReason: reason }) !== carried;
+  }
+
+  /** Who runs the implement of the run now: the agent, or this server pass. */
+  runner(run: RunEntity | null): Promise<'agent' | 'split'> {
+    return implementRunner(this.reader, this.documents, this.subtasks, run);
   }
 
   protected async work(input: StepInput<typeof INPUTS>, ctx: StepContext): Promise<StepResult> {
