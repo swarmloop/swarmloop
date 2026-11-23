@@ -3,6 +3,7 @@ import { BacklogRepository } from '../../../history/backlog.repository';
 import type { BacklogEventRecord, Facts } from '../../../history/backlog-writers';
 import { DocumentRepository } from '../../../history/document.repository';
 import { ARTIFACTS } from '../../../steps/contract/artifacts';
+import { MergeMarks } from '../../../steps/shared/merge-marks';
 import { readStoredQuestions } from '../../../steps/shared/question-parts';
 import { RepositoryHost } from '../../../steps/shared/repository-host';
 
@@ -27,11 +28,15 @@ function reasonOf(error: unknown): string {
 /** Gives each event of a turn the facts the planner needs to act on it, in plain words. Only reads. */
 @Injectable()
 export class EventFacts {
+  private readonly marks: MergeMarks;
+
   constructor(
     private readonly backlogs: BacklogRepository,
     private readonly documents: DocumentRepository,
     private readonly host: RepositoryHost,
-  ) {}
+  ) {
+    this.marks = new MergeMarks(documents);
+  }
 
   /** The event's own facts and, for the kinds that have them, the facts read from the run's documents or the code host. */
   async of(owner: string, event: BacklogEventRecord): Promise<Facts> {
@@ -76,10 +81,12 @@ export class EventFacts {
     const report = (await this.documents.latestBody(runKey, ARTIFACTS.reviewReport.kind))?.trim();
     if (report) facts.report = report;
     const body = await this.documents.latestBody(runKey, ARTIFACTS.reviewRequirementsResult.kind);
-    const marks = body ? ARTIFACTS.reviewRequirementsResult.parse(body).requirements : undefined;
-    if (marks && marks.length > 0) {
-      facts.requirements = marks.map((mark) => `${mark.id} is ${mark.status}: ${mark.note}`).join('\n');
+    const statuses = body ? ARTIFACTS.reviewRequirementsResult.parse(body).requirements : undefined;
+    if (statuses && statuses.length > 0) {
+      facts.requirements = statuses.map((mark) => `${mark.id} is ${mark.status}: ${mark.note}`).join('\n');
     }
+    const marks = await this.marks.taskMarks(runKey, task);
+    if (marks.length > 0) facts.marks = marks.join('\n');
     const commit = (await this.documents.latestBody(runKey, ARTIFACTS.commit.kind))?.trim();
     if (commit) facts.diff = tail(commit, NOTE_LINES, `in the commit note of run ${runKey}`);
     return Object.keys(facts).length > 0 ? facts : { note: 'the run stored no report' };

@@ -290,6 +290,7 @@ export default tseslint.config(
       'server/src/steps/shared/requirements-review.ts', // reads the newest requirements review result and its document id, which names the review for a gap task
       'server/src/steps/shared/merge-summary.ts', // reads the summary a merged task's merge request wrote, for the parent's prompts
       'server/src/steps/shared/merged-files.ts', // reads the files a merged task changed, for the parent's prompts
+      'server/src/steps/shared/merge-marks.ts', // reads the stored review, handoff, merged files and plan of a merged task, for the planner that looks at it
       'server/src/steps/shared/starter-briefing.ts', // reads the parent's tasks, contract and requirements, and its children's results, for a subtask's prompts
       'server/src/steps/shared/briefing-record.ts', // keeps what each chat of a subtask was told as a document of the run, between its visits
       'server/src/steps/shared/rebased-publisher.ts', // records the refs it pushed for the implement step

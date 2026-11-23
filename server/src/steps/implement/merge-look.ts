@@ -3,8 +3,8 @@ import type { AppConfig } from '../../config/env';
 import type { Requirement } from '../../contract/requirement-list';
 import type { Subtask } from '../../contract/subtask';
 import { starterAnswer, type StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
-import { handoffText } from '../shared/handoff';
 import { implementStart } from '../shared/look-start';
+import type { MergeMarks } from '../shared/merge-marks';
 import type { PlanConversation } from '../shared/plan-conversation';
 import { StartRefused } from '../shared/start-refused';
 import { mergedOf } from '../shared/subtask-status';
@@ -37,15 +37,9 @@ interface LookPass {
 interface MergeLookDeps {
   subtasks: SubtaskOps;
   reader: InputReader;
+  marks: MergeMarks;
   config: AppConfig;
   conversation?: PlanConversation;
-}
-
-/** The files outside the planned ones. A planned entry names a file or a folder. */
-function outsidePlan(planned: string[], merged: string[]): string[] {
-  const inside = (file: string) =>
-    planned.some((path) => file === path || file.startsWith(`${path.replace(/\/$/, '')}/`));
-  return merged.filter((file) => !inside(file));
 }
 
 /** The planner's answer is refused when it waits for something, or when its actions are refused as an answer to a subtask is. */
@@ -76,7 +70,7 @@ export class MergeLook {
     let current = { contract, tasks };
     for (const task of due) {
       const child = await this.deps.subtasks.find(run, task.id);
-      const marks = child ? await this.marks(child, task) : [];
+      const marks = child ? await this.deps.marks.subtaskMarks(child.key, task) : [];
       if (marks.length > 0 || this.deps.config.env.EPIC_REPLAN_EVERY_MERGE) {
         const state = { ...current, requirements, asker: task.id };
         const visited = await this.visit(ctx, { task, child, marks }, state);
@@ -96,33 +90,6 @@ export class MergeLook {
 
   private unlooked(tasks: Subtask[], stored: Look[]): Subtask[] {
     return tasks.filter((task) => task.status === 'merged' && !stored.some((look) => look.task === task.id));
-  }
-
-  /** What differs from the plan of a merged task, from what the server already has of its run. */
-  private async marks(child: RunEntity, task: Subtask): Promise<string[]> {
-    const { reader } = this.deps;
-    const review = await reader.reread(child.key, ARTIFACTS.reviewRequirementsResult);
-    const unmet = (review?.requirements ?? []).filter(
-      (mark) => mark.status !== 'met' && (task.covers ?? []).includes(mark.id),
-    );
-    const handoff = handoffText(await reader.reread(child.key, ARTIFACTS.handoff));
-    const notBuilt = handoff
-      .split('\n')
-      .map((line) => line.replace(/^[-*\s]+/, '').trim())
-      .filter((line) => line.startsWith('not built:') && line !== 'not built: nothing');
-    const reports = JSON.parse((await reader.reread(child.key, ARTIFACTS.starterReport)) || '[]') as {
-      decisions: unknown[];
-      outOfScope: unknown[];
-    }[];
-    const merged = ((await reader.reread(child.key, ARTIFACTS.mergedFiles)) ?? '').split('\n').filter(Boolean);
-    const outside = task.files.length > 0 ? outsidePlan(task.files, merged) : [];
-    return [
-      ...unmet.map((mark) => `requirement ${mark.id} is ${mark.status}: ${mark.note}`),
-      ...notBuilt,
-      ...(reports.some((report) => report.decisions.length > 0) ? ['it reported decisions for other tasks'] : []),
-      ...(reports.some((report) => report.outOfScope.length > 0) ? ['it left parts out of its scope'] : []),
-      ...(outside.length > 0 ? [`its merge request changed files outside its plan: ${outside.join(', ')}`] : []),
-    ];
   }
 
   /** One visit of the parent's planner for a merged task. Null, with nothing changed, when it gave no usable answer; the refusal when the door did not start it. */

@@ -24,6 +24,17 @@ describe('the backlog-plan skill', () => {
     expect(skill).toContain(`\`${section}\``);
   });
 
+  it('reads the marks of every merge, whether or not the task covers a requirement, and adds a fix task for a real miss', () => {
+    const section = skill.slice(skill.indexOf('## After a merge'), skill.indexOf('## Before anything starts'));
+    expect(section).toContain(
+      'Whether or not the task covers a milestone requirement, read its marks against its brief',
+    );
+    expect(section).toContain('`not built:` lines');
+    expect(section).toContain('outside its files or its plan');
+    expect(section).toContain('A real miss gets a fix task in the same milestone, with a one-line reason in the chat');
+    expect(section).toContain('No change is the usual answer.');
+  });
+
   it('lists the pass-on action among the run actions it hands back', () => {
     expect(skill).toContain("pass a run's question to the person");
   });
