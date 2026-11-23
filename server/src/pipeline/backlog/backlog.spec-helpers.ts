@@ -28,6 +28,9 @@ import { BacklogEvents } from './backlog-events';
 import { BacklogQueries } from './backlog-queries';
 import { BacklogTaskActions } from './backlog-task-actions';
 import { BacklogMerge } from './backlog-merge';
+import { EpicMainMoves } from './epic-main-moves';
+import type { MainHeld } from './main-held';
+import type { RunRebase } from '../../steps/run-rebase';
 import { BacklogScheduler } from './backlog-scheduler';
 import { BacklogStartPort, type BacklogStart } from './backlog-start-port';
 
@@ -87,13 +90,28 @@ export async function backlogHarness(parallel = 3) {
   const documents = db.app.get(DocumentRepository);
   const accepts: { type: string; key: string; idempotencyKey?: string }[] = [];
   const rebase = { refusal: null as string | null };
+  /** The commands as stored: what each ended as is what the next ones are made with, until the spec changes it. */
+  const stored: { id: string; runId: number; idempotencyKey: string; state: string; result: string | null }[] = [];
+  const ending = { state: 'succeeded', result: null as string | null };
   const commands = {
     accept: async (type: string, key: string, _payload: unknown, options: { idempotencyKey?: string }) => {
       if (rebase.refusal !== null) throw new Error(rebase.refusal);
-      const replayed = accepts.some((seen) => seen.idempotencyKey === options.idempotencyKey);
-      if (!replayed) accepts.push({ type, key, idempotencyKey: options.idempotencyKey });
-      return { replayed };
+      const seen = stored.find((command) => command.idempotencyKey === options.idempotencyKey);
+      if (seen) return { replayed: true, command: seen };
+      accepts.push({ type, key, idempotencyKey: options.idempotencyKey });
+      const run = await runs.findRun(key);
+      const command = {
+        id: `command-${stored.length + 1}`,
+        runId: run?.id ?? 0,
+        idempotencyKey: options.idempotencyKey as string,
+        ...ending,
+      };
+      stored.push(command);
+      return { replayed: false, command };
     },
+    latestByKeyPrefix: async (runId: number, prefix: string) =>
+      [...stored].reverse().find((command) => command.runId === runId && command.idempotencyKey.startsWith(prefix)) ??
+      null,
   } as unknown as CommandService;
   const events = new BacklogEvents(
     backlogs,
@@ -105,6 +123,19 @@ export async function backlogHarness(parallel = 3) {
     holdServices(db.app, db.clock).holds,
   );
   const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands, events);
+  const epics = { idle: true, held: new Set<string>() };
+  const epicMoves = new EpicMainMoves(
+    backlogs,
+    runs,
+    { subtasksIdle: async () => epics.idle } as unknown as RunRebase,
+    {
+      holds: async (_key: string, repo: string, sha: string) => epics.held.has(`${repo}@${sha}`),
+    } as unknown as MainHeld,
+    host,
+    commands,
+    events,
+    db.clock,
+  );
   const starts: BacklogStart[] = [];
   const mode = { current: 'ok' as StartMode };
   const port = new BacklogStartPort();
@@ -133,6 +164,7 @@ export async function backlogHarness(parallel = 3) {
       config,
       db.clock,
       db.app.get(BacklogChatRepository),
+      epicMoves,
     );
   let current = make();
 
@@ -171,6 +203,13 @@ export async function backlogHarness(parallel = 3) {
         'no-pipeline': null,
       };
       fake.setPipeline(project, snapshots[style]);
+    },
+    /** What the epics' worktrees hold: whether their subtasks are idle, and the `<repo>@<head>` they already contain. */
+    epics,
+    /** What the commands sent from now on are stored as: `succeeded`, or `failed` with the result a failure leaves. */
+    endCommandsAs(state: 'succeeded' | 'failed', result: string | null = null) {
+      ending.state = state;
+      ending.result = result;
     },
     /** Every command the merge sends from now on is refused with this message. */
     refuseRebase(message: string | null) {
@@ -254,6 +293,13 @@ export async function backlogHarness(parallel = 3) {
       const run = await runs.findRun(key);
       if (!run) throw new Error(`no run ${key}`);
       writeRunState(run, change);
+      await runs.saveRun(run);
+    },
+    /** Marks the run an epic that splits into subtasks. */
+    async markSplit(key: string) {
+      const run = await runs.findRun(key);
+      if (!run) throw new Error(`no run ${key}`);
+      run.split = true;
       await runs.saveRun(run);
     },
     /** The task as stored now. */

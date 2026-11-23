@@ -29,6 +29,25 @@ async function app(name: string, env: Record<string, string> = {}) {
 const started = { key: 'proj-1', status: 'started' };
 
 describe('CommandService', () => {
+  it('finds the newest command of a run by the start of its idempotency key, whatever characters the key holds', async () => {
+    const testApp = await app('prefix');
+    try {
+      const run = await save(testApp.get(RunRepository), 'proj-1', 'implement', 'waiting');
+      const commands = testApp.get(CommandService);
+      commands.register('resume', async () => started);
+      for (const idempotencyKey of ['epic-main-my_repo@100%-a', 'epic-main-myXrepo@100%-b']) {
+        await commands.submit('resume', 'proj-1', {}, { idempotencyKey });
+      }
+
+      const found = await commands.latestByKeyPrefix(run.id, 'epic-main-my_repo@100%');
+
+      expect(found?.idempotencyKey).toBe('epic-main-my_repo@100%-a');
+      expect(await commands.latestByKeyPrefix(run.id, 'epic-main-other')).toBeNull();
+    } finally {
+      await testApp.close();
+    }
+  });
+
   it('gives one command for two Resume calls with one idempotency key', async () => {
     const testApp = await app('idem');
     try {

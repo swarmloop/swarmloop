@@ -126,6 +126,18 @@ export class CommandRepository {
     await this.commands.update({ id }, { state, result: JSON.stringify(result ?? null), updatedAt: this.clock.iso() });
   }
 
+  /** The newest command of a run whose idempotency key starts with `prefix`; null when none. */
+  async latestByKeyPrefix(runId: number, prefix: string): Promise<CommandEntity | null> {
+    const escaped = prefix.replace(/[\\%_]/g, (char) => `\\${char}`);
+    const found = await this.commands
+      .createQueryBuilder('command')
+      .where('command.runId = :runId', { runId })
+      .andWhere("command.idempotencyKey LIKE :pattern ESCAPE '\\'", { pattern: `${escaped}%` })
+      .orderBy('command.createdAt', 'DESC')
+      .getMany();
+    return found.find((command) => command.idempotencyKey?.startsWith(prefix)) ?? null;
+  }
+
   /** The commands a process took and has not finished. */
   listExecuting(): Promise<CommandEntity[]> {
     return this.commands.find({ where: { state: 'executing' }, order: { createdAt: 'ASC' } });

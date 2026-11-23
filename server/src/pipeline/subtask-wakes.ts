@@ -1,5 +1,4 @@
 import type { Logger } from '@nestjs/common';
-import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import { TIMED_RETRY_CODES } from '../contract/run-state';
 import { isSubtask } from '../contract/subtask';
 import type { RunEntity } from '../history/entities';
@@ -9,6 +8,7 @@ import { storedState } from '../history/run-state';
 import type { VisitRepository } from '../history/visit.repository';
 import type { CommandService } from './command.service';
 import type { StartGate } from './start-gate';
+import { betweenPasses } from '../steps/shared/epic-between-passes';
 
 /** The document of an epic that lists, one task key a line, the tasks its Stop stopped. Empty once a Resume used it. */
 const EPIC_STOPPED_TASKS = 'epic_stopped_tasks';
@@ -113,12 +113,6 @@ export class SubtaskWakes {
 
   /** Between passes: the parent waits for its subtasks, or a blocked subtask stopped it. */
   passDue(parent: RunEntity): boolean {
-    const { state, reason } = storedState(parent);
-    const code = reason?.code ?? '';
-    return (
-      parent.currentStep === 'implement' &&
-      ((state === 'waiting' && SUBTASK_WAIT_CODES.some((wait) => wait === code)) ||
-        (state === 'blocked' && code === ERROR_CODES.SUBTASK_BLOCKED))
-    );
+    return betweenPasses(parent);
   }
 }

@@ -45,6 +45,8 @@ export class FakeCodeHost {
   /** How many times the server asked the host to open a request, refused or not. */
   openAsks = 0;
   private mainPasses = false;
+  /** The branch `readDefaultHead` reads; the feature branch unless a spec names the repository's own default. */
+  private defaultBranch: string | null = null;
   private settings: FakeHostSettings = {};
   /** For each merge: the head that landed, the feature tip it landed on, and whether its CI passed on top of that tip. */
   readonly landed: { iid: number; head: string; tip: string; testedOnTop: boolean }[] = [];
@@ -94,6 +96,11 @@ export class FakeCodeHost {
   /** The default branch reads green: every head `readDefaultHead` returns and every commit a merge makes has a passing pipeline. Nothing is scripted until a spec calls it. */
   defaultBranchPasses(): void {
     this.mainPasses = true;
+  }
+
+  /** The default branch of the repository is `name`, not the feature branch: its head is what main reads as. */
+  defaultBranchIs(name: string): void {
+    this.defaultBranch = name;
   }
 
   /** The request is closed without a merge, as a person does on the host. */
@@ -216,9 +223,10 @@ export class FakeCodeHost {
   readDefaultHead(): Answer<'readDefaultHead'> {
     this.guard();
     git(this.clone, ['fetch', 'origin']);
-    const sha = git(this.clone, ['rev-parse', `origin/${this.feature}`]);
+    const branch = this.defaultBranch ?? this.feature;
+    const sha = git(this.clone, ['rev-parse', `origin/${branch}`]);
     if (this.mainPasses) this.ci.pass(sha);
-    return Promise.resolve({ branch: this.feature, sha, httpCalls: [] });
+    return Promise.resolve({ branch, sha, httpCalls: [] });
   }
 
   readBranchHead(ref: PipelineRef): Answer<'readBranchHead'> {

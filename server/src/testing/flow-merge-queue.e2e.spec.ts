@@ -8,6 +8,7 @@ import { ConflictException } from '@nestjs/common';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { FlowRepository } from '../history/flow.repository';
 import { DocumentRepository } from '../history/document.repository';
+import { VisitRepository } from '../history/visit.repository';
 import { RunRepository } from '../history/run.repository';
 import { storedState, writeRunState } from '../history/run-state';
 import { CommandService } from '../pipeline/command.service';
@@ -314,5 +315,41 @@ describe('the feature branch stays green: every merge is of a task tested on top
 
     await pass();
     expect(sent).toHaveLength(2);
+  });
+
+  it('starts a task blocked by a check on its checks again when a merge moved it', async () => {
+    realRebases = true;
+    await seedEpic([task('a'), task('b')]);
+    await deliver('a', 'src/a.ts', 'export const a = 1;\n');
+    const second = await deliver('b', 'src/b.ts', 'export const b = 1;\n', 'failed');
+    const blocked = (await runs().findRun(second.run.key))!;
+    writeRunState(blocked, {
+      status: 'blocked',
+      currentStep: 'checks',
+      reason: { code: ERROR_CODES.CHECK_FAILED, message: 'a check failed' },
+    });
+    await runs().saveRun(blocked);
+    // The host says the merge request of b conflicts now, while its squash applies cleanly.
+    const read = flow.host.readMergeRequest.bind(flow.host);
+    jest
+      .spyOn(flow.host, 'readMergeRequest')
+      .mockImplementation(async (project, iid) => ({ ...(await read(project, iid)), conflicts: iid === second.iid }));
+
+    await pass();
+
+    const note = 'rebased onto the epic after a merged';
+    expect(rebases.map((sent) => sent.key)).toEqual([second.run.key]);
+    const moved = (await runs().findRun(second.run.key))!;
+    expect(moved.currentStep).toBe('checks');
+    // The harness holds the start of a task run: b was started again at its checks, and it made no implement visit.
+    expect(flow.launched).toContain(second.run.key);
+    const visits = await flow.app.app.get(VisitRepository).listStats(moved.id);
+    expect(visits.map((visit) => visit.step)).not.toContain('implement');
+    // The harness holds the start; the held checks step then runs on the new head and the task is no longer blocked.
+    await flow.app.pipeline.step('checks', second.run.key);
+    const after = await flow.app.app.get(VisitRepository).listStats(moved.id);
+    expect(after.slice(visits.length).map((visit) => visit.step)).toEqual(['checks']);
+    expect(storedState((await runs().findRun(second.run.key))!).state).not.toBe('blocked');
+    expect(handoffText(await documents().latestBody(second.run.key, 'handoff'))).toContain(note);
   });
 });

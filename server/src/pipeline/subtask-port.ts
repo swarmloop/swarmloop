@@ -309,8 +309,8 @@ export class SubtaskPort extends SubtaskOps {
     return this.rebases.applyPendingRebase(key);
   }
 
-  rebaseOpen(parent: RunEntity): Promise<void> {
-    return this.rebases.rebaseOpen(parent);
+  rebaseOpen(parent: RunEntity, event?: RebaseEvent): Promise<void> {
+    return this.rebases.rebaseOpen(parent, event);
   }
 
   /** The open merge requests of a subtask run a person skips. */

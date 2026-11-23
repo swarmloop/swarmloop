@@ -6,6 +6,7 @@ import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import type { RunEntity } from '../history/entities';
 
 const PAST_GUARD = 'past the guard';
+const SUBTASK_BLOCKED = 'SUBTASK_BLOCKED';
 
 /** Each state a stored run can derive to without extra facts, with the stored row that gives it. */
 const ROWS: {
@@ -29,6 +30,8 @@ const ROWS: {
 function rebaseOf(run: RunEntity, backToDraft: () => Promise<void> = async () => undefined): RunRebase {
   const runs = {
     findRun: async () => run,
+    children: async () => [],
+    held: () => false,
     bumpGeneration: async () => {
       throw new Error(PAST_GUARD);
     },
@@ -42,6 +45,7 @@ function rebaseOf(run: RunEntity, backToDraft: () => Promise<void> = async () =>
     {} as never,
     {} as never,
     drafts as never,
+    {} as never,
     {} as never,
     {} as never,
     {} as never,
@@ -89,6 +93,27 @@ describe('run rebase', () => {
     } else {
       await expect(rebase).rejects.toThrow(new ConflictException(`f36-1 is ${state}`).message);
     }
+  });
+
+  it.each([
+    ['a split epic blocked by a subtask', { split: true }, SUBTASK_BLOCKED, true, PAST_GUARD],
+    [
+      'a split epic blocked by a subtask, sent by a person',
+      { split: true },
+      SUBTASK_BLOCKED,
+      false,
+      'f36-1 is blocked',
+    ],
+    ['a blocked run that is not split', { split: false }, SUBTASK_BLOCKED, true, 'f36-1 is blocked'],
+    ['a split epic blocked for another reason', { split: true }, REASON.ciNotRun, true, 'f36-1 is blocked'],
+  ])('takes a main move of %s', async (_name, link, code, byMain, outcome) => {
+    const run = { ...runOf({ state: 'blocked', status: 'blocked', code }), ...link };
+    await expect(rebaseOf(run).rebase('f36-1', false, false, byMain)).rejects.toThrow(outcome);
+  });
+
+  it('refuses a main move of an epic that runs', async () => {
+    const run = { ...runOf({ state: 'running', status: 'running' }), split: true };
+    await expect(rebaseOf(run).rebase('f36-1', false, false, true)).rejects.toThrow('f36-1 is running');
   });
 
   it('rebases a stopped run, which Rebase is offered to', async () => {

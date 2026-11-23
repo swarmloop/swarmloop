@@ -372,6 +372,7 @@ const WRITER_FILES = [
   'steps/pipeline/pipeline.step.ts',
   'steps/requirements/requirements-visit.ts',
   'steps/requirements/requirements.step.ts',
+  'steps/run-rebase.ts',
   'steps/shared/spend-limit.ts',
   'steps/shared/start-refused.ts',
   'pipeline/run-driver.ts',

@@ -69,7 +69,9 @@ export class SubtaskRebases {
       : ['failed', 'done', 'waiting', 'idle'];
     if (!states.includes(state)) return false;
     if (state === 'waiting' && (reason?.code === ERROR_CODES.SUBTASK_WAITING || (await this.asking(run)))) return false;
-    return (await this.mergeRequests(run)).length > 0;
+    if ((await this.mergeRequests(run)).length > 0) return true;
+    // A subtask moved by an event has worktrees to move even before it made a merge request.
+    return byEvent && !!(await this.documents.latestBody(run.key, ARTIFACTS.repos.kind));
   }
 
   private async queueRebase(run: RunEntity, note: string): Promise<void> {
@@ -104,14 +106,14 @@ export class SubtaskRebases {
     return moved?.currentStep ?? null;
   }
 
-  /** Sends a Rebase to every subtask of the parent that is not merged or skipped. */
-  async rebaseOpen(parent: RunEntity): Promise<void> {
+  /** Sends a Rebase to every subtask of the parent that is not merged or skipped; with an event, each is moved for that event. */
+  async rebaseOpen(parent: RunEntity, event?: RebaseEvent): Promise<void> {
     const open = parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND)).filter(
       (task) => !settled(task),
     );
     for (const task of open) {
       const child = await this.runs.findSubtask(parent, task.id);
-      if (child) await this.rebase(child);
+      if (child) await this.rebase(child, event);
     }
   }
 }
