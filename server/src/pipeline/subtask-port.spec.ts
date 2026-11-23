@@ -17,6 +17,7 @@ import { renderQuestions } from '../steps/research/research-record';
 import { planChangesOf } from '../steps/shared/plan-changes';
 import { ReportRefresh } from '../steps/shared/report-refresh';
 import { RunReport } from '../steps/shared/run-report';
+import { AgentDoor } from '../steps/shared/agent-door';
 import { StartGate } from './start-gate';
 import { SubtaskPlannerAnswer } from './subtask-planner-answer';
 import { launchingDoor } from '../testing/agent-door.spec-helpers';
@@ -588,6 +589,8 @@ describe('SubtaskPort rerun', () => {
     /** The first read, before the documents are written, sees the run going; every later read sees it stopped. */
     let stopAfter = Infinity;
     const runs = { findRun: async () => (reads++ >= stopAfter ? stoppedRun : run), children: async () => [run] };
+    const none = undefined as never;
+    const door = new AgentDoor(none, runs as never, none, none, none, none, none, none, none);
     const commands = {
       accept: async (...call: unknown[]) => {
         accepted.push(call);
@@ -608,7 +611,7 @@ describe('SubtaskPort rerun', () => {
       {} as never,
       new AppConfig(testEnv({ SWARMLOOP_ROOT: tmpdir() })),
       new FakeClock(),
-      new StartGate(commands as never, runs as never, {} as never, {} as never, {} as never),
+      new StartGate(commands as never, {} as never, {} as never, door),
     );
     return {
       port,

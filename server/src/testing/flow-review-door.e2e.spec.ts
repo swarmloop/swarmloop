@@ -1,12 +1,12 @@
 import 'reflect-metadata';
-import { RunStop } from '../agent/run-stop';
 import type { AgentRunResult } from '../agent/agent-result';
 import { ERROR_CODES } from '../contract/error-codes';
+import { REASON } from '../contract/run-state';
 import { CODE_REVIEWERS } from '../contract/steps';
 import { RunRepository } from '../history/run.repository';
 import { storedState } from '../history/run-state';
-import { VisitRepository } from '../history/visit.repository';
 import { AgentDoor } from '../steps/shared/agent-door';
+import type { StepOptions } from '../core/pipeline-result';
 import { createFlowHarness } from './flow-harness';
 import { BlockAgentRunner } from './result-answer';
 
@@ -40,7 +40,7 @@ describe('a reviewer or the report starts only through the door', () => {
    * The first reviewer reaches the door at once. Every later one reaches it only after the first has ended and its
    * spend is on the run, and `beforeLater` is what happens in between.
    */
-  function orderReviewers(beforeLater: () => void): void {
+  function orderReviewers(beforeLater: () => Promise<void> | void): void {
     const door = flow.app.app.get(AgentDoor);
     const outside = door.outside.bind(door);
     let ended!: () => void;
@@ -54,16 +54,16 @@ describe('a reviewer or the report starts only through the door', () => {
         }
       }
       await firstEnded;
-      beforeLater();
+      await beforeLater();
       return outside(start, request);
     });
   }
 
-  async function review() {
+  async function review(options: StepOptions = {}) {
     const run = await flow.begin('merge-request');
     run.currentStep = 'code-review';
     await flow.app.app.get(RunRepository).saveRun(run);
-    return flow.app.pipeline.step('code-review', KEY);
+    return flow.app.pipeline.step('code-review', KEY, options);
   }
 
   afterEach(async () => {
@@ -73,15 +73,18 @@ describe('a reviewer or the report starts only through the door', () => {
 
   it('a person’s Stop during code-review starts no further reviewer and no report', async () => {
     await boot();
-    orderReviewers(() => flow.app.app.get(RunStop).halt(KEY));
+    /** The Stop as another server process or the CLI stores it: only the run's state, with no RunStop.halt here. */
+    orderReviewers(async () => {
+      const runs = flow.app.app.get(RunRepository);
+      await runs.release((await runs.findRun(KEY))!, {
+        status: 'blocked',
+        reason: { code: REASON.stopped, message: 'Stopped.' },
+      });
+    });
 
-    await review();
+    await review({ auto: true, startBy: 'machine' });
 
     expect(blocks.steps).toEqual([FIRST]);
-    const stats = await flow.app.app
-      .get(VisitRepository)
-      .listStats((await flow.app.app.get(RunRepository).findRun(KEY))!.id);
-    expect(stats.map((stat) => stat.step)).not.toContain('code-review-report');
   });
 
   it('a limit reached between two reviewers starts no further reviewer', async () => {

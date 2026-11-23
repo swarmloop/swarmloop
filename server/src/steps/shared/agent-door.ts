@@ -59,6 +59,9 @@ export interface OutsideStart {
   admitted?: (startId: string) => void;
 }
 
+/** The visit a same-input check found: its number and its stored stat. */
+type SameDecision = { visit: number; statId: number };
+
 /** A step's visit that launches an agent. */
 interface StepVisit {
   opened: OpenedStep;
@@ -113,42 +116,21 @@ export class AgentDoor {
       const rerunUnfinished = decision.kind === 'new' && decision.rerunUnfinished;
       return { kind: 'admitted', start: { agent: true, digest, rerunUnfinished, reason } };
     }
-    const startLevel = by === 'planner' ? (options.level ?? 0) + 1 : 0;
-    const who = startLevel === 0 ? 'the planner of this run' : "the epic's planner";
-    const message = refusalLine(decision.visit, who);
+    const refusal = await this.sameInputRefusal(step, by, options.level, undefined, decision);
     await this.runs.release(run, {
       status: 'waiting',
       currentStep: step,
-      reason: { code: REASON.sameInput, message },
+      reason: { code: REASON.sameInput, message: refusal.message },
       stepStartedAt: null,
     });
-    const [last] = (await this.visits.listExchanges([decision.statId])).slice(-1);
-    return {
-      kind: 'refused',
-      message,
-      question: refusalQuestion(step, decision.visit, last?.responseText ?? ''),
-      startLevel,
-    };
+    return { kind: 'refused', ...refusal };
   }
 
   /** Records how the hop's visit was started, once its step is open. */
   async noteStep(key: string, step: StepName, start: AdmittedStart, options: StepOptions): Promise<void> {
     const run = start.agent ? await this.runs.findRun(key) : null;
     if (!run?.activeAttempt) return;
-    const by = options.startBy ?? 'person';
-    await this.starts.note({
-      runId: run.id,
-      step,
-      attemptId: run.activeAttempt,
-      startedBy: by,
-      level: by === 'planner' ? (options.level ?? null) : null,
-      inputDigest: start.digest,
-      startReason: start.reason,
-      rerunUnfinished: start.rerunUnfinished,
-      outside: false,
-      statId: null,
-      createdAt: this.clock.iso(),
-    });
+    await this.noteVisit(run, step, run.activeAttempt, options, start);
   }
 
   /**
@@ -167,18 +149,10 @@ export class AgentDoor {
         if (decision.kind === 'same' && by !== 'person') {
           await this.refuse(step, by, options.level, undefined, decision, run.key);
         }
-        await this.starts.note({
-          runId: run.id,
-          step,
-          attemptId: opened.attemptId,
-          startedBy: by,
-          level: by === 'planner' ? (options.level ?? null) : null,
-          inputDigest: digest,
-          startReason: reason,
+        await this.noteVisit(run, step, opened.attemptId, options, {
+          digest,
+          reason,
           rerunUnfinished: decision.kind === 'new' && decision.rerunUnfinished,
-          outside: false,
-          statId: null,
-          createdAt: this.clock.iso(),
         });
       }
     }
@@ -281,24 +255,58 @@ export class AgentDoor {
     by: StartBy,
     level: number | null | undefined,
     plannerLevel: number | undefined,
-    decision: { visit: number; statId: number },
+    decision: SameDecision,
     key: string,
   ): Promise<never> {
-    const startLevel = plannerLevel !== undefined ? plannerLevel + 1 : by === 'planner' ? (level ?? 0) + 1 : 0;
-    const who = startLevel === 0 ? 'the planner of this run' : "the epic's planner";
-    const message = refusalLine(decision.visit, who);
-    const [last] = (await this.visits.listExchanges([decision.statId])).slice(-1);
-    const refusal = {
-      message,
-      question: refusalQuestion(step, decision.visit, last?.responseText ?? ''),
-      startLevel,
-    };
+    const refusal = await this.sameInputRefusal(step, by, level, plannerLevel, decision);
     this.refusals.set(key, refusal);
     throw StartRefused.sameInput(refusal);
   }
 
+  /** The words of a same-input refusal: the line, the step's last words as a question, and the level that is asked. */
+  private async sameInputRefusal(
+    step: string,
+    by: StartBy,
+    level: number | null | undefined,
+    plannerLevel: number | undefined,
+    decision: SameDecision,
+  ): Promise<ChainRefusal> {
+    const startLevel = plannerLevel !== undefined ? plannerLevel + 1 : by === 'planner' ? (level ?? 0) + 1 : 0;
+    const who = startLevel === 0 ? 'the planner of this run' : "the epic's planner";
+    const [last] = (await this.visits.listExchanges([decision.statId])).slice(-1);
+    return {
+      message: refusalLine(decision.visit, who),
+      question: refusalQuestion(step, decision.visit, last?.responseText ?? ''),
+      startLevel,
+    };
+  }
+
+  /** Writes the row of a step's visit the door admitted. */
+  private async noteVisit(
+    run: RunEntity,
+    step: StepName,
+    attemptId: string,
+    options: StepOptions,
+    start: Pick<AdmittedStart, 'digest' | 'reason' | 'rerunUnfinished'>,
+  ): Promise<void> {
+    const by = options.startBy ?? 'person';
+    await this.starts.note({
+      runId: run.id,
+      step,
+      attemptId,
+      startedBy: by,
+      level: by === 'planner' ? (options.level ?? null) : null,
+      inputDigest: start.digest,
+      startReason: start.reason,
+      rerunUnfinished: start.rerunUnfinished,
+      outside: false,
+      statId: null,
+      createdAt: this.clock.iso(),
+    });
+  }
+
   /** Whether a person stopped the run. The run is read again, so a copy from before the Stop does not count. */
-  private async stopped(run: Pick<RunEntity, 'key'>): Promise<boolean> {
+  async stopped(run: Pick<RunEntity, 'key'>): Promise<boolean> {
     const stored = await this.runs.findRun(run.key);
     return stored?.status === 'blocked' && storedState(stored).reason?.code === REASON.stopped;
   }
