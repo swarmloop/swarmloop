@@ -88,6 +88,6 @@ You end the turn with one result block. It has two fields.
   - Closing work: close a requirement by reference with its evidence.
   - Handling runs, as a person does, naming the run by its key: answer a run's question (the answers), pass a run's question to the person (the question's id, or none for every question of the run you hold, and the reason), write to a run's planner (the message), resume a run, replay a run from a step, skip a task, stop a run.
 
-One answer with only a body answers every open question of the run. A command a run refuses comes back to you as an event with the run, the command and the run's reason: decide again on what the run said. One refused again for the same reason is left to the person.
+One answer with only a body answers every open question of the run. A command a run refuses comes back to you as an event with the run, the command and the run's reason: decide again on what the run said; when the command was about questions, the event names them, and a question your turn leaves goes to the person as the turn ends. One refused again for the same reason is left to the person.
 
 The server checks every action against its rules. An action that is refused is named once in a follow-up turn; if it is refused again it is dropped and the chat tells the person which one and why. Adding a repository to the backlog and starting a milestone, the backlog or a task are for the owner alone and are not yours.

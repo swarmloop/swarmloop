@@ -94,7 +94,7 @@ export async function plannerTurnsHarness(
     calls,
     port,
     db.clock,
-    new LeftQuestions(chat, calls, holds, passOn, h.runs, h.backlogs, db.clock),
+    new LeftQuestions(chat, holds, passOn, h.runs, h.backlogs, db.clock),
   );
   const agent = processOf(config, db.clock) as ScriptedTurnAgent;
   const failover = new LimitFailover(

@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import type { BacklogTurnAction } from '../../../agent-result/definitions/backlog-turn';
 import { DocumentRepository } from '../../../history/document.repository';
 import { storedState } from '../../../history/run-state';
@@ -96,5 +97,45 @@ describe('LeftQuestions', () => {
       expect(await passed()).toEqual([]);
       expect(await h.lines(backlogId)).toEqual([]);
       expect((await h.backlogs.events(backlogId, 100)).map((event) => event.kind)).not.toContain('command-refused');
+    }));
+  const answer = turnResult('', { action: 'answerRun', run: 'going-1', answers: [{ body: 'in memory' }] });
+  const LEFT_CHAT = 'My turn ended without answering the question of going-1, so it now goes to you.';
+
+  it('carries a question whose answer the run refused to the next turn, which passes it on as it ends', () =>
+    withPlanner(async (h) => {
+      const { backlogId, passed, reason } = await asking(h);
+      h.failNext(new ConflictException('going-1 is not running'));
+      await h.turns.apply('alpha', 'turn-1', answer);
+
+      expect(await reason()).toBe('ASKS_PLANNER');
+      expect(await passed()).toEqual([]);
+      const refused = (await h.backlogs.events(backlogId, 100)).filter((event) => event.kind === 'command-refused');
+      expect(refused.map((event) => event.facts)).toMatchObject([
+        { run: 'going-1', reason: 'going-1 is not running', questions: QUESTION },
+      ]);
+
+      const taken = await h.chat.takeInto(backlogId, 'turn-2');
+      expect(taken.events.map((event) => event.kind)).toEqual(['command-refused']);
+      await h.turns.apply('alpha', 'turn-2', turnResult(''));
+
+      expect(await reason()).toBe('NEEDS_ANSWERS');
+      expect((await passed()).map((entry) => entry.question)).toEqual([QUESTION]);
+      expect((await h.lines(backlogId)).filter((line) => line === LEFT_CHAT)).toHaveLength(1);
+    }));
+
+  it('passes the question on at once when the next answer is refused for the same reason', () =>
+    withPlanner(async (h) => {
+      const { backlogId, passed, reason } = await asking(h);
+      h.failNext(new ConflictException('going-1 is not running'));
+      await h.turns.apply('alpha', 'turn-1', answer);
+      await h.chat.takeInto(backlogId, 'turn-2');
+      h.failNext(new ConflictException('going-1 is not running'));
+      await h.turns.apply('alpha', 'turn-2', answer);
+
+      expect(await reason()).toBe('NEEDS_ANSWERS');
+      expect((await passed()).map((entry) => entry.question)).toEqual([QUESTION]);
+      expect((await h.lines(backlogId)).filter((line) => line === LEFT_CHAT)).toHaveLength(1);
+      const refused = (await h.backlogs.events(backlogId, 100)).filter((event) => event.kind === 'command-refused');
+      expect(refused).toHaveLength(1);
     }));
 });
