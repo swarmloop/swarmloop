@@ -24,7 +24,7 @@ swarmloop takes a ticket or a prompt and walks a coding agent through requiremen
 
 Every step runs in a locked container. Every prompt, diff, review, token, and dollar is stored. Cursor, Claude, or Codex is one line in `.env`.
 
-![A swarmloop run. The flow across the top, the selected step underneath, with its spend, tokens, CPU, and memory.](swarmloop.png)
+![swarmloop over 30 days: 286 runs, 99% merged, and work sent back 922 times by checks, reviewers and CI before a person had to look.](swarmloop.png)
 
 | Feature | What you get |
 | --- | --- |
