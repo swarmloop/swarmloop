@@ -22,6 +22,7 @@ import { openQuestions } from '../shared/answers';
 import { keepOpen } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
 import type { SubtaskOps } from '../shared/subtask-ops';
+import { refusedRoute } from '../shared/start-refused';
 import { skippedByEpic } from '../shared/subtask-skip-reason';
 import { mergedOf, taskStatusOf } from '../shared/subtask-status';
 import type { StepContext } from '../base-step';
@@ -105,7 +106,8 @@ export class SplitPass {
     const unmoved = [followed.unmoved, mergeNote].filter(Boolean).join('; ') || null;
     const requirements = (await ctx.reread(ARTIFACTS.requirementList)) ?? [];
     const looked = await this.deps.look.run(ctx, merged, needed.contract, requirements);
-    const tasks = await this.explain(run, await this.start(run, looked.tasks));
+    // A refused look holds the dependents back: they start after the planner has seen the merge.
+    const tasks = await this.explain(run, looked.refused ? looked.tasks : await this.start(run, looked.tasks));
     const taken =
       gapped.taken === null ? [] : [{ artifact: ARTIFACTS.starterTaken, value: JSON.stringify(gapped.taken) }];
     const outputs: StepResult['outputs'] = [
@@ -119,7 +121,9 @@ export class SplitPass {
       ...taken,
     ];
     await this.closeSkipped(run, withStatuses(subtasks), tasks);
-    const result = await this.route(ctx, tasks, open, outputs, { refusal, unfetched });
+    const result = looked.refused
+      ? { route: refusedRoute(looked.refused), summary: `${startedAt} ${looked.refused.message}`, outputs }
+      : await this.route(ctx, tasks, open, outputs, { refusal, unfetched });
     const noted = unmoved ? this.withUnmoved(result, unmoved) : result;
     return own.committed ? { ...noted, summary: `${noted.summary}; ${own.committed}` } : noted;
   }
