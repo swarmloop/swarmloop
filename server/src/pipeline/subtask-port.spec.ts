@@ -135,8 +135,8 @@ describe('the result prompt of the planner answer', () => {
     await again();
 
     const [first, second] = prompts(launch);
-    expect(first).toContain('- decision (string, required)');
-    expect(second).not.toContain('- decision (string, required)');
+    expect(first).toContain('- decision (string, optional)');
+    expect(second).not.toContain('- decision (string, optional)');
     expect(second).toContain('End with the result block as before.');
   });
 
@@ -145,7 +145,7 @@ describe('the result prompt of the planner answer', () => {
     receive('plan');
     await again();
 
-    expect(prompts(launch)[1]).toContain('- decision (string, required)');
+    expect(prompts(launch)[1]).toContain('- decision (string, optional)');
   });
 
   it('asks in full after plan-improve changed the shared chat definition', async () => {
@@ -153,7 +153,7 @@ describe('the result prompt of the planner answer', () => {
     receive('plan_improve');
     await again();
 
-    expect(prompts(launch)[1]).toContain('- decision (string, required)');
+    expect(prompts(launch)[1]).toContain('- decision (string, optional)');
     expect(prompts(launch)[1]).not.toContain('End with the result block as before.');
   });
 
@@ -163,7 +163,7 @@ describe('the result prompt of the planner answer', () => {
     await again();
 
     expect(prompts(launch)[1]).toContain('End with the result block as before.');
-    expect(prompts(launch)[1]).not.toContain('- decision (string, required)');
+    expect(prompts(launch)[1]).not.toContain('- decision (string, optional)');
   });
 
   it('answers with the whole decision field', async () => {

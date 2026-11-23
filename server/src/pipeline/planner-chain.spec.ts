@@ -6,6 +6,7 @@ import { storedState } from '../history/run-state';
 import { handoffText } from '../steps/shared/handoff';
 import { holdServices, seedBacklogTask } from '../steps/shared/question-holds.spec-helpers';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
+import type { Escalated } from '../steps/shared/subtask-ops';
 import { PlannerChain } from './planner-chain';
 
 const AT = '2026-01-01T00:00:00.000Z';
@@ -20,7 +21,8 @@ async function setup() {
   const documents = db.app.get(DocumentRepository);
   const chat = new PlanChatStore(runs, documents);
   const turns: Turn[] = [];
-  const epicAnswers: (string | null)[] = [];
+  const epicAnswers: (string | Escalated | null)[] = [];
+  const words: (string | undefined)[] = [];
   const conversation = {
     chat,
     clock: { iso: () => AT, now: () => Date.parse(AT) },
@@ -33,7 +35,8 @@ async function setup() {
     {
       askAbout: () => Promise.resolve(epicAnswers.shift() ?? null),
       // What the real hand-up leaves: the task's question among the questions of its parent's implement step.
-      handUp: async (parent, _task, text) => {
+      handUp: async (parent, _task, text, said) => {
+        words.push(said);
         await documents.putDocument(parent, 'subtask_questions', `- ${text}\n`);
       },
     },
@@ -45,7 +48,7 @@ async function setup() {
   const epic = await runs.openWaiting('EPIC-1', '/target');
   const task = await runs.openSubtask('EPIC-1-a', epic.id, 'a');
   const alone = await runs.openWaiting('ALONE-1', '/target');
-  return { db, runs, documents, chat, turns, epicAnswers, chain, epic, task, alone };
+  return { db, runs, documents, chat, turns, epicAnswers, words, chain, epic, task, alone };
 }
 
 describe('PlannerChain', () => {
@@ -101,6 +104,22 @@ describe('PlannerChain', () => {
       const asked = await h.chain.askUp(h.alone, question, 0);
 
       expect(asked).toEqual({ asked: 'starter', level: 1, answer: null });
+    } finally {
+      await h.db.close();
+    }
+  });
+
+  it('sends an escalation of an epic-level planner straight to the starter with its words', async () => {
+    const h = await setup();
+    try {
+      h.epicAnswers.push({ escalate: 'The person picks the retry policy.' }, 'Never asked.');
+
+      const asked = await h.chain.askUp(h.task, question, 1);
+
+      expect(asked).toEqual({ asked: 'starter', level: 2, answer: null });
+      expect(h.words).toEqual(['The person picks the retry policy.']);
+      expect(h.epicAnswers).toEqual(['Never asked.']);
+      expect(handoffText(await h.documents.latestBody('EPIC-1-a', 'handoff'))).toBe('');
     } finally {
       await h.db.close();
     }

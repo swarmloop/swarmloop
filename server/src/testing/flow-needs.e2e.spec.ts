@@ -202,6 +202,22 @@ describe('a task that needs a sibling waits for it', () => {
     expect(asked.items[0].label.startsWith('Subtask a asks: a needs zzz: something')).toBe(true);
   });
 
+  it('puts a refused need to the person with the words of an escalation, and does not rerun the task', async () => {
+    await seedEpic([task('a'), task('b', ['a'])]);
+    jest
+      .spyOn(flow.app.app.get(SubtaskPort), 'askAbout')
+      .mockResolvedValue({ escalate: 'The person picks which of a and b goes first.' });
+    await needs('a', 'implement', '- b: its result');
+
+    await pass(false);
+
+    expect(relaunched('a')).toEqual([]);
+    expect(await handoff()).not.toContain('b cannot go first');
+    const asked = await view();
+    expect(asked.items).toHaveLength(1);
+    expect(asked.items[0].label).toContain('The person picks which of a and b goes first.');
+  });
+
   it('reruns a task that needs a sibling that depends on it once, with the reason in its handoff', async () => {
     await seedEpic([task('a'), task('b', ['a'])]);
     jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue(null);
