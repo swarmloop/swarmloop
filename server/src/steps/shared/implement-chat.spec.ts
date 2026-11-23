@@ -6,7 +6,7 @@ import type { AppConfig } from '../../config/env';
 import type { RunEntity } from '../../history/entities';
 import { sessionFileName, sessionHome } from '../../history/session-group';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
-import type { AgentLauncher } from './agent-launcher';
+import type { AgentDoor } from './agent-door';
 import type { AgentLaunchRequest } from './agent-launch-request';
 import { ImplementChat } from './implement-chat';
 import { result } from '../plan/plan.step.spec-helpers';
@@ -19,12 +19,12 @@ describe('implement chat', () => {
   let requests: AgentLaunchRequest[];
   let answer: Record<string, unknown>;
 
-  const launcher = {
-    launch: async (request: AgentLaunchRequest) => {
+  const door = {
+    outside: async (_start: unknown, request: AgentLaunchRequest) => {
       requests.push(request);
       return { ...result(''), ...answer };
     },
-  } as unknown as AgentLauncher;
+  } as unknown as AgentDoor;
 
   function chat(): ImplementChat {
     const config = {
@@ -40,7 +40,7 @@ describe('implement chat', () => {
         IMPLEMENT_TIMEOUT_MS: 1000,
       },
     } as unknown as AppConfig;
-    return new ImplementChat(launcher, config);
+    return new ImplementChat(door, config);
   }
 
   function storeImplementChat(): void {

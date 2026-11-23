@@ -17,7 +17,7 @@ import { GitRulesWriter } from '../shared/git-rules-writer';
 import { withEnvironment } from '../../environment/environment-note';
 import { withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
-import { AgentLauncher } from '../shared/agent-launcher';
+import { AgentDoor } from '../shared/agent-door';
 import { returnedNotes, textDocument, withHandoff } from '../shared/handoff';
 import { currentPlan } from '../shared/current-plan';
 import { projectRules } from '../shared/project-rules';
@@ -65,13 +65,13 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
   constructor(
     kernel: StepKernel,
     sandbox: SandboxService,
-    launcher: AgentLauncher,
+    door: AgentDoor,
     private readonly environments: EnvironmentService,
     private readonly runNames: RunNames,
     private readonly gitRules: GitRulesWriter,
     @Optional() private readonly planChat?: PlanChatStore,
   ) {
-    super(kernel, sandbox, launcher);
+    super(kernel, sandbox, door);
   }
 
   protected profile(env: SwarmloopEnv, run?: RunEntity | null): AgentProfile {

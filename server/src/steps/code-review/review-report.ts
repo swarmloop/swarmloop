@@ -34,6 +34,8 @@ import { resultPromptFor } from '../../agent-result/result-prompt';
 import { storedReview } from '../../agent-result/stored-review';
 import { LABELS } from '../shared/reviewer-labels';
 import { ResultInvalid } from '../shared/answer-errors';
+import { StartRefused } from '../shared/start-refused';
+import { StepStopped } from '../../agent/step-stopped';
 import { answerErrorsDocument } from '../shared/stored-answer-errors';
 
 export function reviewBrief(
@@ -71,8 +73,8 @@ export async function writeReport(
   answerErrors?: string[],
   exchanges?: ReadonlyMap<string, Exchange>,
 ): Promise<
-  | { documents: DocumentDraft[]; exchange: ExchangeDraft; usage: Usage }
-  | { error: string; exchange: ExchangeDraft | null; usage: Usage; documents: DocumentDraft[] }
+  | { documents: DocumentDraft[]; exchange: ExchangeDraft; usage: Usage; startId?: string }
+  | { error: string; exchange: ExchangeDraft | null; usage: Usage; documents: DocumentDraft[]; startId?: string }
 > {
   const names = mounts.map((mount) => basename(mount.hostPath));
   const brief = reviewBrief(opinions, exchanges);
@@ -98,32 +100,38 @@ export async function writeReport(
     ? appendImpact(reportFollowUp(brief, implementation, list ? requirementsSection(list) : null), impact)
     : full;
   const empty: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] };
+  let startId: string | undefined;
   try {
     const directory = join(deps.root, 'data');
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, `${key}-code-review-report-output.txt`), 'starting\n');
     deps.onReportStart?.();
-    const result = await deps.launcher.launch({
-      root: deps.root,
-      run: opened.run,
-      key,
-      step: 'code-review-report',
-      mode: 'ask',
-      tools: 'read',
-      ...asked,
-      timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
-      prompt,
-      failover: true,
-      brief: full,
-      briefFor: fullFor,
-      workspace: mounts[0]?.containerPath ?? '/work',
-      mounts,
-      auto,
-      resume: false,
-      continuePrompt: REPORT_CONTINUE,
-      result: reviewReport,
-      answerErrors,
-    });
+    const { by, level } = deps.start;
+    const input = { visitOf: 'code-review' as const, prompt: deps.start.prompt, texts: [brief] };
+    const result = await deps.door.outside(
+      { step: 'code-review-report', by, level, input, admitted: (id) => (startId = id) },
+      {
+        root: deps.root,
+        run: opened.run,
+        key,
+        step: 'code-review-report',
+        mode: 'ask',
+        tools: 'read',
+        ...asked,
+        timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
+        prompt,
+        failover: true,
+        brief: full,
+        briefFor: fullFor,
+        workspace: mounts[0]?.containerPath ?? '/work',
+        mounts,
+        auto,
+        resume: false,
+        continuePrompt: REPORT_CONTINUE,
+        result: reviewReport,
+        answerErrors,
+      },
+    );
     const { runtime, model, ...effort } = result.agent ?? asked;
     const exchange: ExchangeDraft = { runtime, ...effortFields(effort), ...agentExchange(result, model, prompt) };
     const spent: Usage = {
@@ -134,10 +142,10 @@ export async function writeReport(
     };
     const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
-      return { error: failure, exchange, usage: spent, documents: [] };
+      return { error: failure, exchange, usage: spent, documents: [], startId };
     }
     if (!result.resultValue) {
-      return { error: 'code-review report is empty', exchange, usage: spent, documents: [] };
+      return { error: 'code-review report is empty', exchange, usage: spent, documents: [], startId };
     }
     const parts = result.resultValue as ReviewReportResult;
     const round = opinions.map((opinion) => ({
@@ -145,9 +153,9 @@ export async function writeReport(
       result: opinion.result,
     }));
     const text = await deps.runReport.renderParts(opened.run, parts, round);
-    return { documents: reportDocuments(text, parts), exchange, usage: spent };
+    return { documents: reportDocuments(text, parts), exchange, usage: spent, startId };
   } catch (error) {
-    if (error instanceof RuntimeLimit) {
+    if (error instanceof RuntimeLimit || error instanceof StartRefused || error instanceof StepStopped) {
       throw error;
     }
     const message = reportFailure('code-review', error).message;
@@ -156,6 +164,7 @@ export async function writeReport(
       exchange: null,
       usage: empty,
       documents: error instanceof ResultInvalid ? [answerErrorsDocument(error.errors)] : [],
+      startId,
     };
   }
 }
@@ -175,7 +184,7 @@ export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Fi
         ? 'done'
         : 'failed';
   const exchange = exchangeOf(item);
-  await deps.visits.finishVisit(opened.run, {
+  const stat = await deps.visits.finishVisit(opened.run, {
     step: `code-review-${item.reviewer.name}`,
     runtime: item.runtime,
     model: item.model,
@@ -201,6 +210,7 @@ export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Fi
     ],
     resumed: result.resumed,
   });
+  if (item.startId) await deps.door.linkVisit(item.startId, stat.id);
 }
 
 /** Adds each opinion's handoff summary to the handoff record, in the order given. */
@@ -250,6 +260,7 @@ export function closeReview(
     line,
     moveTo,
     ...(route.to === 'wait' ? { code: route.code, limit: route.limit } : {}),
+    ...(route.to === 'block' ? { code: route.code } : {}),
     visit: {
       step: 'code-review',
       runtime: exchanges.find((exchange) => exchange.runtime)?.runtime ?? null,

@@ -16,7 +16,7 @@ import { RunAuthor } from '../shared/run-author';
 import { GitRulesWriter } from '../shared/git-rules-writer';
 import { isChecksReturn, isPipelineReturn, withAddedRepos } from '../follow-up';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
-import { AgentLauncher } from '../shared/agent-launcher';
+import { AgentDoor } from '../shared/agent-door';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import {
   pipelineAnswers,
@@ -104,7 +104,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     kernel: StepKernel,
     sandbox: SandboxService,
     private readonly publisher: RebasedPublisher,
-    launcher: AgentLauncher,
+    door: AgentDoor,
     private readonly environments: EnvironmentService,
     private readonly split: SplitImplementStep,
     private readonly runNames: RunNames,
@@ -112,7 +112,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     private readonly gitRules: GitRulesWriter,
     @Optional() private readonly planChat?: PlanChatStore,
   ) {
-    super(kernel, sandbox, launcher);
+    super(kernel, sandbox, door);
   }
 
   /**

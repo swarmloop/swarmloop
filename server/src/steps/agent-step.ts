@@ -21,7 +21,8 @@ import { ERROR_CODES } from '../contract/error-codes';
 import type { ErrorCode } from '../contract/error-codes';
 import { waitingEnd } from './step-error-end';
 import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './shared/agent-result';
-import type { AgentLauncher } from './shared/agent-launcher';
+import type { AgentDoor } from './shared/agent-door';
+import { StartRefused, refusedRoute } from './shared/start-refused';
 import { limitRoute } from './shared/limit-failover';
 import { recordHandoff } from './shared/handoff';
 import { modelVisit } from './shared/model-visit';
@@ -56,6 +57,7 @@ export function instructionsInput(step: StepName): { artifact: Artifact; need: '
 interface ModelRun {
   key: string;
   opened: OpenedStep;
+  options: StepOptions;
   profile: AgentProfile;
   auto?: boolean;
   /** The errors of the answer the step's last visit failed on, told to the agent on the first launch. */
@@ -78,7 +80,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
   constructor(
     kernel: StepKernel,
     protected readonly sandbox: SandboxService,
-    private readonly launcher: AgentLauncher,
+    private readonly door: AgentDoor,
   ) {
     super(kernel);
   }
@@ -123,6 +125,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     const run: ModelRun = {
       key: opened.run.key,
       opened,
+      options,
       profile: this.profile(env, opened.run),
       auto: options.auto,
       answerErrors: options.answerErrors,
@@ -148,6 +151,9 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     } catch (error) {
       if (error instanceof RuntimeLimit) {
         return this.limited(run, error);
+      }
+      if (error instanceof StartRefused) {
+        return this.refused(run, error);
       }
       if (error instanceof GitAuthError) {
         return {
@@ -186,6 +192,16 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
   private limited(run: ModelRun, error: RuntimeLimit): StepResult {
     return {
       route: limitRoute(error),
+      summary: `${run.opened.startedAt} ${error.message}`,
+      outputs: [],
+      visit: this.modelVisitOf(run, 'waiting', 0),
+    };
+  }
+
+  /** The door refused the start: the step blocks on a limit and waits on the same input, as a refused hop does. */
+  private refused(run: ModelRun, error: StartRefused): StepResult {
+    return {
+      route: refusedRoute(error),
       summary: `${run.opened.startedAt} ${error.message}`,
       outputs: [],
       visit: this.modelVisitOf(run, 'waiting', 0),
@@ -275,37 +291,40 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     // Only the first launch of the visit is told: later launches of the step are other chats.
     const answerErrors = run.answerErrors;
     run.answerErrors = undefined;
-    const result = await this.launcher
-      .launch({
-        root: root(this.config),
-        run: run.opened.run,
-        key: run.key,
-        step: launch.label ? `${this.name}-${launch.label}` : this.name,
-        liveStep: this.name,
-        mode: run.profile.mode,
-        tools: run.profile.tools,
-        runtime: run.profile.runtime,
-        model: run.profile.model,
-        ...effortFields(run.profile),
-        timeLimitMs: run.profile.timeLimitMs,
-        auto: run.auto,
-        prompt,
-        workspace: run.workspace,
-        mounts: launch.mounts,
-        allowHosts: launch.allowHosts,
-        manifestHosts: launch.manifestHosts,
-        resume: launch.resume,
-        continuePrompt: launch.continuePrompt,
-        freshPrompt: launch.freshPrompt === undefined ? undefined : fullPrompt(launch.freshPrompt),
-        failover: true,
-        brief: fullPrompt(launch.freshPrompt ?? launch.prompt),
-        briefFor: launch.briefFor && ((runtime) => fullPrompt(launch.briefFor?.(runtime) ?? launch.prompt)),
-        result: launch.result,
-        check: launch.check,
-        answerErrors,
-        project: launch.project,
-        projectFor: launch.projectFor,
-      })
+    const result = await this.door
+      .inVisit(
+        { opened: run.opened, step: this.name, options: run.options },
+        {
+          root: root(this.config),
+          run: run.opened.run,
+          key: run.key,
+          step: launch.label ? `${this.name}-${launch.label}` : this.name,
+          liveStep: this.name,
+          mode: run.profile.mode,
+          tools: run.profile.tools,
+          runtime: run.profile.runtime,
+          model: run.profile.model,
+          ...effortFields(run.profile),
+          timeLimitMs: run.profile.timeLimitMs,
+          auto: run.auto,
+          prompt,
+          workspace: run.workspace,
+          mounts: launch.mounts,
+          allowHosts: launch.allowHosts,
+          manifestHosts: launch.manifestHosts,
+          resume: launch.resume,
+          continuePrompt: launch.continuePrompt,
+          freshPrompt: launch.freshPrompt === undefined ? undefined : fullPrompt(launch.freshPrompt),
+          failover: true,
+          brief: fullPrompt(launch.freshPrompt ?? launch.prompt),
+          briefFor: launch.briefFor && ((runtime) => fullPrompt(launch.briefFor?.(runtime) ?? launch.prompt)),
+          result: launch.result,
+          check: launch.check,
+          answerErrors,
+          project: launch.project,
+          projectFor: launch.projectFor,
+        },
+      )
       .catch((error: unknown) => {
         if (error instanceof ResultInvalid) run.refusal = refusedWrite(error.output) ?? run.refusal;
         throw error;

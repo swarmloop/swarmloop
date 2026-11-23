@@ -11,7 +11,7 @@ import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { AgentStep, instructionsInput, lateInput, ModelStepContext, REQUIREMENTS_INPUT } from '../agent-step';
 import { projectRules } from '../shared/project-rules';
-import { AgentLauncher } from '../shared/agent-launcher';
+import { AgentDoor } from '../shared/agent-door';
 import { appendImpact, assumptions, withHandoff, withImpact } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { unanswered } from '../shared/answers';
@@ -70,11 +70,11 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
   constructor(
     kernel: StepKernel,
     sandbox: SandboxService,
-    launcher: AgentLauncher,
+    door: AgentDoor,
     @Optional() private readonly planChat?: PlanChatStore,
     @Optional() private readonly conversation?: PlanConversation,
   ) {
-    super(kernel, sandbox, launcher);
+    super(kernel, sandbox, door);
   }
 
   protected profile(env: SwarmloopEnv, run?: RunEntity | null): AgentProfile {

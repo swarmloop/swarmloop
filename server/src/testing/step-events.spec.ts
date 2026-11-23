@@ -208,7 +208,7 @@ describe('step events', () => {
         golden.stepEvents,
       ),
       golden.sandbox,
-      golden.launcher,
+      golden.door,
     );
     await step.execute('E-1');
     const events = await eventsOf('E-1');
@@ -315,7 +315,7 @@ describe('step events', () => {
         golden.stepEvents,
       ),
       golden.sandbox,
-      golden.launcher,
+      golden.door,
     );
     await step.execute('E-1');
     const events = await eventsOf('E-1');
@@ -365,7 +365,7 @@ describe('step events', () => {
         golden.stepEvents,
       ),
       golden.sandbox,
-      golden.launcher,
+      golden.door,
     );
     await step.execute('E-1').catch(() => undefined);
     const events = await eventsOf('E-1');

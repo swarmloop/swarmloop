@@ -59,7 +59,7 @@ async function improve(agent: jest.Mock, tasks: Subtask[] = []) {
       golden.stepEvents,
     ),
     golden.sandbox,
-    golden.launcher,
+    golden.door,
   );
   return { golden, step };
 }

@@ -19,7 +19,10 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import { reportFailure } from '../shared/step-failure';
 import { RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
 import { reviewContinue, reviewResume } from './code-review.prompts';
-import type { AgentLauncher } from '../shared/agent-launcher';
+import type { AgentDoor } from '../shared/agent-door';
+import { StartRefused } from '../shared/start-refused';
+import { StepStopped } from '../../agent/step-stopped';
+import type { StartBy } from '../../core/pipeline-result';
 import { ResultInvalid } from '../shared/answer-errors';
 import { agentFailure, refusedWrite, withRefusal } from '../shared/agent-result';
 import { opinionOf } from './code-review-record';
@@ -52,6 +55,10 @@ export interface Finished extends EffortFields {
   asked?: string;
   /** The reviewer read the planner's answer in this launch, so its decision is final for the round. */
   heard?: boolean;
+  /** The id of the start the door admitted for this launch, also when the launch then threw. */
+  startId?: string;
+  /** The door refused this reviewer's start, or a person's Stop held it: the round ends on it once the others are recorded. */
+  refused?: StartRefused | StepStopped;
 }
 
 /** One reviewer launch. `briefFor` is the full prompt for another runtime, whatever `prompt` is. */
@@ -84,7 +91,9 @@ export interface ReviewDeps {
   documents: DocumentRepository;
   visits: VisitRepository;
   root: string;
-  launcher: AgentLauncher;
+  door: AgentDoor;
+  /** How the code-review visit was started, which every reviewer and the report start as. */
+  start: { by: StartBy; level: number | null; prompt: string };
   runReport: RunReport;
   chat?: PlanChatStore;
   /** What a subtask's chats are told of their starter; one instance, so its record writes go one after another. */
@@ -184,11 +193,12 @@ async function one(
   fresh = false,
 ): Promise<Finished> {
   let refused: string | null = null;
+  let startId: string | undefined;
   try {
     const directory = join(deps.root, 'data');
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, `${key}-code-review-${job.reviewer.name}-output.txt`), 'starting\n');
-    const result = await launchReview(deps, opened, key, env, job, auto, fresh);
+    const result = await launchReview(deps, opened, key, env, job, auto, fresh, (id) => (startId = id));
     // A reviewer that took over from a limited agent is recorded and priced as the agent that ran.
     const agent = result.agent ?? job;
     const ran = {
@@ -198,6 +208,7 @@ async function one(
       ...effortFields(agent),
       prompt: job.prompt,
       ...(job.answer ? { heard: true } : {}),
+      startId,
     };
     refused = refusedWrite(result.output);
     const failure = agentFailure(result, 'code-review', 'ask');
@@ -228,6 +239,8 @@ async function one(
       error: message,
       ...(error instanceof ResultInvalid ? { answerErrors: error.errors } : {}),
       ...(error instanceof RuntimeLimit ? { limit: error } : {}),
+      ...(error instanceof StartRefused || error instanceof StepStopped ? { refused: error } : {}),
+      startId,
     };
   }
 }
@@ -240,31 +253,38 @@ async function launchReview(
   job: ReviewLaunch,
   auto?: boolean,
   fresh = false,
+  admitted?: (startId: string) => void,
 ): Promise<LaunchResult> {
-  return deps.launcher.launch({
-    root: deps.root,
-    run: opened.run,
-    key,
-    step: `code-review-${job.reviewer.name}`,
-    mode: 'ask',
-    tools: 'read',
-    runtime: job.runtime,
-    model: job.model,
-    ...effortFields(job),
-    timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
-    prompt: job.prompt,
-    continuePrompt: reviewContinue(job.reviewer.name),
-    workspace: job.mounts[0]?.containerPath ?? '/work',
-    mounts: job.mounts,
-    auto,
-    resume: fresh ? false : undefined,
-    failover: true,
-    brief: job.briefFor(job.runtime),
-    // A resumed chat the CLI no longer has starts again from the whole prompt, with the whole result text.
-    freshPrompt: job.briefFor(job.runtime),
-    briefFor: job.briefFor,
-    result: job.answering ? reviewAnswerDefinition(job.reviewer.name) : reviewDefinition(job.reviewer.name),
-    answerErrors: job.answerErrors,
-    check: job.check,
-  });
+  const step = `code-review-${job.reviewer.name}`;
+  const { by, level, prompt } = deps.start;
+  const input = { visitOf: 'code-review' as const, prompt, texts: [job.reviewer.name] };
+  return deps.door.outside(
+    { step, by, level, input, admitted },
+    {
+      root: deps.root,
+      run: opened.run,
+      key,
+      step,
+      mode: 'ask',
+      tools: 'read',
+      runtime: job.runtime,
+      model: job.model,
+      ...effortFields(job),
+      timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
+      prompt: job.prompt,
+      continuePrompt: reviewContinue(job.reviewer.name),
+      workspace: job.mounts[0]?.containerPath ?? '/work',
+      mounts: job.mounts,
+      auto,
+      resume: fresh ? false : undefined,
+      failover: true,
+      brief: job.briefFor(job.runtime),
+      // A resumed chat the CLI no longer has starts again from the whole prompt, with the whole result text.
+      freshPrompt: job.briefFor(job.runtime),
+      briefFor: job.briefFor,
+      result: job.answering ? reviewAnswerDefinition(job.reviewer.name) : reviewDefinition(job.reviewer.name),
+      answerErrors: job.answerErrors,
+      check: job.check,
+    },
+  );
 }
