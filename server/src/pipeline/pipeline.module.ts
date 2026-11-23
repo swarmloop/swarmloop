@@ -54,6 +54,7 @@ import { EnvironmentService } from '../environment/environment.service';
 import { DiskGuard } from './disk-guard';
 import { Housekeeping } from './housekeeping';
 import { OwnUseMeter } from './own-use-meter';
+import { RunFolders } from './run-folders';
 import { RunRetention } from './run-retention';
 import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
@@ -118,6 +119,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     SubtaskRequestCloser,
     GitRulesWriter,
     WorkspaceGuard,
+    RunFolders,
     RunRetention,
     DiskGuard,
     OwnUseMeter,
@@ -194,6 +196,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
   ],
   exports: [
     PipelineService,
+    RunFolders,
     CommandService,
     StartGate,
     Reconciler,

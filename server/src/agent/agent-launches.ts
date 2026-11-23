@@ -2,10 +2,11 @@ import { existsSync, readFileSync } from 'fs';
 import { appendFile, mkdir, readFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { stepOutput } from '../core/attempt-output';
+import { runFileName } from '../core/run-files';
 
 /** One line per process. The first line also keeps launches already visible in the log. */
 export async function recordLaunch(outputFile: string, runKey: string, step: string): Promise<void> {
-  const file = join(dirname(outputFile), `${runKey}-${step}-launches.txt`);
+  const file = join(dirname(outputFile), runFileName(runKey, step, 'launches'));
   await mkdir(dirname(file), { recursive: true });
   if (!existsSync(file)) {
     const seen = launchesInLog(await readFile(outputFile, 'utf8').catch(() => ''));
@@ -31,7 +32,7 @@ export function launchOpen(root: string, key: string, step: string, attemptId: s
 }
 
 function recordedLaunches(root: string, key: string, step: string): number | null {
-  const file = join(root, 'data', `${key}-${step}-launches.txt`);
+  const file = join(root, 'data', runFileName(key, step, 'launches'));
   if (!existsSync(file)) {
     return null;
   }

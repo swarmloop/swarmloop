@@ -8,6 +8,7 @@ import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
 import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { PipelineResult } from '../../core/pipeline-result';
+import { runFileName } from '../../core/run-files';
 import { visitStatus } from '../../core/pipeline-result';
 import { reportFailure } from '../shared/step-failure';
 import { RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
@@ -104,7 +105,7 @@ export async function writeReport(
   try {
     const directory = join(deps.root, 'data');
     mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, `${key}-code-review-report-output.txt`), 'starting\n');
+    writeFileSync(join(directory, runFileName(key, 'code-review-report', 'output')), 'starting\n');
     deps.onReportStart?.();
     const { by, level } = deps.start;
     const input = { visitOf: 'code-review' as const, prompt: deps.start.prompt, texts: [brief] };

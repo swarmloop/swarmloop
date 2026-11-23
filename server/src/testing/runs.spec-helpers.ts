@@ -28,7 +28,7 @@ import { QuestionHolds } from '../steps/shared/question-holds';
 import { QuestionPassOn } from '../pipeline/question-pass-on';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { StepRegistry } from '../steps/step.registry';
-import { PrepareStep } from '../steps/prepare/prepare.step';
+import { RunFolders } from '../pipeline/run-folders';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
 import { SubtaskClose } from '../api/subtask-close';
@@ -61,7 +61,7 @@ export async function boot(
   pipeline: { startDetached: jest.Mock; stop?: jest.Mock; replay?: jest.Mock; claimed?: (key: string) => boolean } = {
     startDetached: jest.fn(),
   },
-  prepare: { removeWorktrees: jest.Mock } = { removeWorktrees: jest.fn().mockResolvedValue(undefined) },
+  folders?: { remove: jest.Mock },
   env: Record<string, string> = {},
 ) {
   await writeEnvOverrides(root, {
@@ -121,7 +121,19 @@ export async function boot(
         },
       },
       { provide: ProjectAppendService, useValue: { add: jest.fn(), flush: jest.fn() } },
-      { provide: PrepareStep, useValue: prepare },
+      folders
+        ? { provide: RunFolders, useValue: folders }
+        : {
+            provide: RunFolders,
+            // No checkout lists a worktree, so every worktree folder goes through the plain removal.
+            useFactory: (config: AppConfig, runs: RunRepository) =>
+              new RunFolders(
+                runs,
+                { registered: async () => false, removeWorktree: async () => undefined } as never,
+                config,
+              ),
+            inject: [AppConfig, RunRepository],
+          },
       {
         provide: ISSUE_TRACKER,
         useValue: { fetch: jest.fn(), ticketKeys: async (text: string) => text.match(/PROJ-\d+/g) ?? [] },

@@ -7,12 +7,12 @@ import {
   attemptIdsOf,
   knownAttempts,
   hasFinalResult,
-  isOutputFileOf,
   outputFileFor,
   OutputFiles,
   stepOutput,
   stepOutputPath,
 } from './attempt-output';
+import { runFileOwner } from './run-files';
 import { FIXTURE_KEYS, outputNameFixture, referenceIsOutputFileOf } from './attempt-output.spec-helpers';
 
 function rootWith(files: Record<string, string>): string {
@@ -22,13 +22,18 @@ function rootWith(files: Record<string, string>): string {
   return root;
 }
 
+/** True when the one matcher takes the name as an output file of this run. */
+function isOutputOf(name: string, key: string): boolean {
+  return runFileOwner(name, new Set([key]))?.kind === 'output';
+}
+
 describe('attempt output', () => {
   it('knows the output files of a run, for every output step', () => {
-    expect(isOutputFileOf('K-1-plan-output.txt', 'K-1')).toBe(true);
-    expect(isOutputFileOf('K-1-chat-abc-output.txt', 'K-1')).toBe(true);
-    expect(isOutputFileOf('K-1-code-review-report-output.txt', 'K-1')).toBe(true);
-    expect(isOutputFileOf('K-1-plan-output.txt', 'K-2')).toBe(false);
-    expect(isOutputFileOf('swarmloop.sqlite', 'K-1')).toBe(false);
+    expect(isOutputOf('K-1-plan-output.txt', 'K-1')).toBe(true);
+    expect(isOutputOf('K-1-chat-abc-output.txt', 'K-1')).toBe(true);
+    expect(isOutputOf('K-1-code-review-report-output.txt', 'K-1')).toBe(true);
+    expect(isOutputOf('K-1-plan-output.txt', 'K-2')).toBe(false);
+    expect(isOutputOf('swarmloop.sqlite', 'K-1')).toBe(false);
   });
 
   it("names the file of an attempt, and keeps today's name for a launch without one", () => {
@@ -137,7 +142,7 @@ describe('attempt output', () => {
     expect(names.length).toBeGreaterThanOrEqual(2000);
     for (const key of FIXTURE_KEYS) {
       for (const name of names) {
-        expect([name, isOutputFileOf(name, key)]).toEqual([name, referenceIsOutputFileOf(name, key)]);
+        expect([name, isOutputOf(name, key)]).toEqual([name, referenceIsOutputFileOf(name, key)]);
       }
     }
   });

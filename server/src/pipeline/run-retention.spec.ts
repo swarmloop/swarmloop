@@ -5,12 +5,12 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunEntity } from '../history/entities';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { checkOutputPath } from '../core/check-output';
 import { MergeWatch } from './merge-watch';
 import { RunRetention } from './run-retention';
-import { ageRun, clean, freshRun, leaveFiles, makeWorld, seedRun, type World } from './workspace.spec-helpers';
+import { DAY_MS, ageRun, clean, freshRun, leaveFiles, makeWorld, seedRun, type World } from './workspace.spec-helpers';
 import { git } from '../steps/prepare/prepare.step.spec-helpers';
 import { WorkspaceGuard } from './workspace-guard';
 
@@ -49,6 +49,7 @@ describe('RunRetention', () => {
       mkdirSync(folder, { recursive: true });
       writeFileSync(join(folder, 'scratch'), 'x');
     }
+    await seedRun(world.app, 'PROJ-2', 'running', 0);
     await age(world, 10);
 
     await world.app.get(RunRetention).apply(3);
@@ -314,5 +315,120 @@ describe('RunRetention', () => {
     await clean(world);
 
     expect(await world.app.get(RunRetention).apply(3)).toEqual([]);
+  });
+
+  /** What a run leaves: a worktree folder, agent state, a /tmp folder, an output, a setup output, a log folder and a session. */
+  function leave(key: string): Record<'worktree' | 'state' | 'tmp' | 'output' | 'setup' | 'logs' | 'session', string> {
+    const data = join(world.swarm, 'data');
+    const files = leaveFiles(world.swarm, key);
+    const paths = {
+      worktree: join(world.swarm, 'worktrees', key, 'demo'),
+      state: files.state,
+      tmp: join(world.swarm, 'worktrees', '.tmp', key, 'implement'),
+      output: files.output,
+      setup: join(data, `${key}-setup-output.txt`),
+      logs: join(data, 'run-logs', key),
+      session: files.session,
+    };
+    for (const folder of [paths.worktree, paths.tmp, paths.logs]) {
+      mkdirSync(folder, { recursive: true });
+    }
+    writeFileSync(paths.setup, 'setup\n');
+    writeFileSync(join(paths.logs, 'checks-a-command-0-log.txt'), 'log\n');
+    return paths;
+  }
+
+  const left = (paths: ReturnType<typeof leave>) =>
+    Object.fromEntries(Object.entries(paths).map(([name, path]) => [name, existsSync(path)]));
+
+  it('frees and cleans each kind of finished run by the one rule, and keeps a run that is not finished', async () => {
+    world = await makeWorld('PROJ-1');
+    const table = world.app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
+    const rows: [string, string, Partial<RunEntity>][] = [
+      ['PROJ-1', 'done', { state: 'merged' }],
+      ['PROJ-2', 'done', { state: 'closed' }],
+      ['PROJ-3', 'done', { state: 'done' }],
+      ['PROJ-4', 'done', { state: 'merged' }],
+      ['PROJ-4-a', 'failed', { state: 'failed' }],
+      ['PROJ-4-b', 'blocked', { state: 'skipped', workspace: 'removed' }],
+      ['PROJ-5', 'blocked', { state: 'blocked' }],
+    ];
+    const ageAll = async (days: number) => {
+      const updatedAt = new Date(Date.now() - days * DAY_MS).toISOString();
+      for (const [key] of rows) {
+        await table.update({ key }, { updatedAt });
+      }
+    };
+    for (const [key, status, fields] of rows) {
+      if (key !== 'PROJ-1') {
+        await seedRun(world.app, key, status, 1);
+      }
+      await table.update({ key }, fields);
+    }
+    const epic = (await table.findOneBy({ key: 'PROJ-4' }))!;
+    await table.update({ key: 'PROJ-4-a' }, { parentRunId: epic.id });
+    await table.update({ key: 'PROJ-4-b' }, { parentRunId: epic.id });
+    const paths = Object.fromEntries(rows.map(([key]) => [key, leave(key)]));
+    // The workspace of the skipped subtask was freed by its epic's close: no folders are left, only files.
+    for (const folder of ['worktree', 'state', 'tmp'] as const) {
+      rmSync(paths['PROJ-4-b'][folder], { recursive: true, force: true });
+    }
+    const everything = { worktree: true, state: true, tmp: true, output: true, setup: true, logs: true, session: true };
+    const freed = { ...everything, worktree: false, state: false, tmp: false };
+    const cleaned = { ...freed, output: false, setup: false, logs: false };
+    await ageAll(1);
+
+    await world.app.get(RunRetention).apply(3);
+
+    expect(left(paths['PROJ-1'])).toEqual(freed);
+    expect(left(paths['PROJ-2'])).toEqual(freed);
+    expect(left(paths['PROJ-3'])).toEqual(everything);
+    expect(left(paths['PROJ-4'])).toEqual(freed);
+    expect(left(paths['PROJ-4-a'])).toEqual(everything);
+    expect(left(paths['PROJ-4-b'])).toEqual({ ...everything, worktree: false, state: false, tmp: false });
+    expect(left(paths['PROJ-5'])).toEqual(everything);
+
+    await ageAll(10);
+    await world.app.get(RunRetention).apply(3);
+
+    for (const key of ['PROJ-1', 'PROJ-2', 'PROJ-3', 'PROJ-4', 'PROJ-4-a']) {
+      expect([key, left(paths[key])]).toEqual([key, cleaned]);
+    }
+    expect(left(paths['PROJ-4-b'])).toEqual(cleaned);
+    expect(left(paths['PROJ-5'])).toEqual(everything);
+    for (const [key] of rows) {
+      expect(existsSync(paths[key].session)).toBe(true);
+    }
+  });
+
+  it('removes a setup output, also an older one named by repository, with an old done run', async () => {
+    world = await makeWorld('PROJ-1');
+    await seedRun(world.app, 'PROJ-1-sub', 'running', 10);
+    await age(world, 10);
+    const data = join(world.swarm, 'data');
+    for (const name of ['PROJ-1-setup-output.txt', 'PROJ-1-demo-setup-output.txt', 'PROJ-1-sub-setup-output.txt']) {
+      writeFileSync(join(data, name), 'setup\n');
+    }
+
+    await world.app.get(RunRetention).apply(3);
+
+    expect(existsSync(join(data, 'PROJ-1-setup-output.txt'))).toBe(false);
+    expect(existsSync(join(data, 'PROJ-1-demo-setup-output.txt'))).toBe(false);
+    expect(existsSync(join(data, 'PROJ-1-sub-setup-output.txt'))).toBe(true);
+  });
+
+  it('removes a /tmp folder whose run no longer exists and keeps one whose run does', async () => {
+    world = await makeWorld('PROJ-1');
+    const gone = join(world.swarm, 'worktrees', '.tmp', 'GONE-1', 'implement');
+    const live = join(world.swarm, 'worktrees', '.tmp', 'PROJ-1', 'implement');
+    for (const days of [3, 0]) {
+      mkdirSync(gone, { recursive: true });
+      mkdirSync(live, { recursive: true });
+
+      await world.app.get(RunRetention).apply(days);
+
+      expect(existsSync(gone)).toBe(false);
+      expect(existsSync(live)).toBe(true);
+    }
   });
 });

@@ -4,6 +4,7 @@ import { basename, dirname, join } from 'path';
 import { SAMPLE_MS } from '../core/awake-time';
 import type { Clock } from '../core/clock';
 import { markedInterval } from '../core/entered-marks';
+import { runFileName } from '../core/run-files';
 import { markedTail, runLogPath } from '../core/run-logs';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { startCommandSpan } from '../core/step-event-scope';
@@ -95,7 +96,7 @@ export async function runShell(
     }
   };
   show(true);
-  const outputFile = join(root, 'data', `${input.key}-${phase}-output.txt`);
+  const outputFile = join(root, 'data', runFileName(input.key, phase, 'output'));
   const finish = startCommandSpan({
     actor: 'server',
     repo: basename(mount.hostPath),

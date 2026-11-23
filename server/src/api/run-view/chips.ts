@@ -2,6 +2,7 @@ import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { liveLogFinished, logStillOpen } from '../../agent/live-output';
 import type { OutputFiles } from '../../core/attempt-output';
+import { runFileName } from '../../core/run-files';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { launchCount } from '../../agent/agent-launches';
 import { CODE_REVIEWERS, isReviewStep, pipelineStepOf, requireReviewer } from '../../contract/steps';
@@ -171,7 +172,7 @@ export function chipAttempts(
   if (last === 0) {
     return 0;
   }
-  const recorded = join(outputs.root, 'data', `${run.key}-${name}-launches.txt`);
+  const recorded = join(outputs.root, 'data', runFileName(run.key, name, 'launches'));
   if (!existsSync(recorded) || launchCount(outputs.root, run.key, name, run.activeAttempt) === 0) {
     return 0;
   }

@@ -7,9 +7,9 @@ type BootArguments = Parameters<typeof boot>;
 export async function seededBoot(
   root: string,
   pipeline?: BootArguments[1],
-  prepare?: BootArguments[2],
+  folders?: BootArguments[2],
   env?: BootArguments[3],
 ) {
   seedMigratedDatabase(root);
-  return boot(root, pipeline, prepare, env);
+  return boot(root, pipeline, folders, env);
 }
