@@ -18,6 +18,8 @@ The task is the Work tickets together with the Instructions. The Instructions ad
 
 Tests: a test must fail when the change is reverted. It checks behavior through the public interface the tree already tests, not private calls or mock call counts. It does not restate the implementation. It does not snapshot a large output where one value is what matters.
 
+Test a behavior at the cheapest level that proves it, and extend the test that already covers that code before writing a new one. A test that fails only on a busy machine and passes alone is not yours unless the plan names it: name it in the summary and do not change it.
+
 Do not start a service, a database, or the application. Do not run `git commit`, `git push`, or `git add -A`. Do not create a branch.
 
 If a command is rejected, stop and say so. Do not search the machine. Do not read the home directory, `/opt`, `/proc`, or CLI config. Do not change permissions.
