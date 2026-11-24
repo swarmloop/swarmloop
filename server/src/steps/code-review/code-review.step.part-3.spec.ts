@@ -144,6 +144,7 @@ describe('code-review step', () => {
     expect(chat.entries).toEqual([
       expect.objectContaining({
         kind: 'question',
+        about: 'finding',
         from: 'code-review-requirements',
         state: 'pending',
         text: expect.stringContaining(

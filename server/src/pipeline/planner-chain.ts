@@ -10,7 +10,7 @@ import { ARTIFACTS } from '../steps/contract/artifacts';
 import { mergeHandoff } from '../steps/shared/handoff';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import type { QuestionHolds } from '../steps/shared/question-holds';
-import type { ChainAsked, ChainQuestion } from '../steps/shared/subtask-ops';
+import { isEscalated, type ChainAsked, type ChainQuestion, type Escalated } from '../steps/shared/subtask-ops';
 import { normalizedText } from '../steps/shared/visit-input';
 import type { OpenedStep } from '../steps/step-run';
 import { escalateToPerson, releaseAsked } from './escalation';
@@ -23,9 +23,12 @@ const ENTRY_PREFIX = 'up-';
 
 /** What the chain needs of the levels above a subtask: its parent's planner, and its parent's questions for the person. */
 interface ChainAncestors {
-  askAbout(opened: OpenedStep, task: Subtask, question: string, contract: string): Promise<string | null>;
-  /** Puts a question of a task of `parent` among the questions of `parent` for whoever started the run. */
-  handUp(parent: RunEntity, taskId: string, text: string): Promise<void>;
+  askAbout(opened: OpenedStep, task: Subtask, question: string, contract: string): Promise<string | Escalated | null>;
+  /**
+   * Puts a question of a task of `parent` among the questions of `parent` for whoever started the run, followed by the
+   * planner's `words` of what must be decided when it escalated.
+   */
+  handUp(parent: RunEntity, taskId: string, text: string, words?: string): Promise<void>;
 }
 
 /** The key of the entry a question has in the plan chat: the same question is the same entry. */
@@ -33,8 +36,8 @@ function entryKey(question: ChainQuestion): string {
   return `${ENTRY_PREFIX}${createHash('sha1').update(normalizedText(question.text)).digest('hex').slice(0, 10)}`;
 }
 
-/** What one level gave: an answer, an escalation that goes straight to the person, or nothing usable. */
-type Reply = { kind: 'answered'; text: string } | { kind: 'escalated' } | { kind: 'none' };
+/** What one level gave: an answer, an escalation that goes straight to the person with the planner's words if it has them, or nothing usable. */
+type Reply = { kind: 'answered'; text: string } | { kind: 'escalated'; words?: string } | { kind: 'none' };
 
 /**
  * A question of a run climbs the planners' chain: the run's own planner, the planner of each epic above it, and last
@@ -63,9 +66,11 @@ export class PlannerChain {
     const levels = await this.levels(run);
     const done = levels[key] ?? [];
     let level = Math.min(starter, Math.max(startLevel, done.length > 0 ? Math.max(...done) + 1 : 0));
+    let words: string | undefined;
     for (; level < starter; level++) {
       const reply = level === 0 ? await this.own(run, question) : await this.epic(run, above, level, question);
       if (reply.kind === 'escalated') {
+        words = reply.words;
         level = starter;
         break;
       }
@@ -75,7 +80,7 @@ export class PlannerChain {
       }
     }
     if (!done.includes(starter)) {
-      await this.toStarter(run, above[0] ?? null, question);
+      await this.toStarter(run, above[0] ?? null, question, words);
       await this.remember(run, levels, key, starter);
     }
     return { asked: 'starter', level: starter, answer: null };
@@ -140,6 +145,7 @@ export class PlannerChain {
     const contract = (await this.documents.latestBody(epic.key, CONTRACT_KIND)) ?? '';
     const decision = await this.ancestors.askAbout(openedFor(epic, this.clock), task, question.text, contract);
     if (!decision) return { kind: 'none' };
+    if (isEscalated(decision)) return { kind: 'escalated', words: decision.escalate };
     const handoff = await this.documents.latestBody(run.key, ARTIFACTS.handoff.kind);
     await this.documents.putDocument(run, ARTIFACTS.handoff.kind, mergeHandoff(handoff, question.from, decision));
     return { kind: 'answered', text: decision };
@@ -149,10 +155,15 @@ export class PlannerChain {
    * The person who started the run is asked, through the backlog's planner when the run is a backlog's. A subtask's question goes among the questions of its parent, which the
    * person's answer reaches the task from. A run of no parent puts it among its own, as the planner's escalation does.
    */
-  private async toStarter(run: RunEntity, parent: RunEntity | null, question: ChainQuestion): Promise<void> {
+  private async toStarter(
+    run: RunEntity,
+    parent: RunEntity | null,
+    question: ChainQuestion,
+    words?: string,
+  ): Promise<void> {
     const waiting = parent ?? run;
     if (parent) {
-      if (parent.status === 'waiting') await this.ancestors.handUp(parent, run.taskId ?? run.key, question.text);
+      if (parent.status === 'waiting') await this.ancestors.handUp(parent, run.taskId ?? run.key, question.text, words);
     } else {
       const escalation: PlanChatEntry = {
         key: `escalate-${entryKey(question)}`,

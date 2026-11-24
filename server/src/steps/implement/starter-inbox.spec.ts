@@ -4,6 +4,7 @@ import type { StarterAnswerResult } from '../../agent-result/definitions/starter
 import { readContract } from '../shared/contract-items';
 import type { StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { Escalated } from '../shared/subtask-ops';
 import { StarterInbox } from './starter-inbox';
 import type { PlanChange } from './starter-actions';
 
@@ -30,7 +31,7 @@ function world(options: {
   reports?: Record<string, unknown>;
   asking?: string[];
   needs?: string[];
-  answers?: (task: Subtask) => StarterAnswerResult | null;
+  answers?: (task: Subtask) => StarterAnswerResult | Escalated | null;
   taken?: string[];
 }) {
   const documents: Record<string, string> = {
@@ -165,6 +166,25 @@ describe('StarterInbox asks', () => {
     expect(pass.asks).toHaveLength(1);
     expect(pass.asks[0].question).toContain('Subtask a asks:');
     expect(pass.tasks).toEqual(tasks());
+  });
+
+  it('holds an escalation with the words of the planner, applies no decision and asks the task no more while it is open', async () => {
+    const { inbox, asked, revisions } = world({
+      asking: ['epic-a'],
+      answers: () => ({ escalate: 'Should the api use numbers or text for ids?' }),
+    });
+
+    const pass = await inbox.take(ctx, tasks(), '- api (owner a): the api\n', []);
+
+    expect(pass.asks).toHaveLength(1);
+    expect(pass.asks[0].question).toContain('Subtask a asks:');
+    expect(pass.asks[0].question).toContain('Should the api use numbers or text for ids?');
+    expect(pass.contract).toBe('- api (owner a): the api\n');
+    expect(pass.tasks).toEqual(tasks());
+    expect(revisions).toEqual([]);
+
+    await inbox.take(ctx, tasks(), '', ['a']);
+    expect(asked).toEqual(['epic-a']);
   });
 
   it('keeps a started task as it is when the answer would change it', async () => {

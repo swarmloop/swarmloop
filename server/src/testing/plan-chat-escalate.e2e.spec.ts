@@ -139,7 +139,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
       implement: [done, keeps],
       'code-review-requirements': reviews,
     });
-    flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', realReview: true });
+    flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', realReview: true, implementCommits: true });
     const documents = flow.app.app.get(DocumentRepository);
     const run = await remember(flow.app.app.get(RunRepository), documents, KEY, 'plan', 'waiting');
     await documents.putDocument(run, 'requirement_list', JSON.stringify([{ id: 'R1', text: requirement }]) + '\n');
@@ -154,7 +154,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
   const asked = async () => (await flow.app.app.get(PlanChatStore).read(KEY)).entries.filter((e) => e.kind);
 
   it('goes to the planner first and not to the person', async () => {
-    await start([block({ reply: 'The plan removes that field.' })]);
+    await start([block({ reply: 'The plan removes that field.', finding: 'holds' })]);
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 
@@ -175,7 +175,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
         ...(reason ? { reason } : {}),
         requirements: [{ id: 'R1', status: 'missing', note: OLD_ROWS }],
       });
-    await start([block({ reply: HELD_DECISION })], {
+    await start([block({ reply: HELD_DECISION, finding: 'holds' })], {
       requirement: `${GOAL}; ${STOP_FIRST}`,
       reviews: [old(), old('Old stopped rows still do not say how they read.')],
     });
@@ -196,7 +196,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
   });
 
   it('reaches the person only when the planner escalates', async () => {
-    await start([escalates]);
+    await start([block({ reply: 'This is a product decision.', escalate: DECIDE, finding: 'holds' })]);
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 
@@ -304,7 +304,7 @@ describe('a subtask asks the planner of its parent', () => {
 
     expect(prompts[0]).toContain(`The contract now:\n- names are camelCase\n- ${STOP_FIRST}`);
     expect(prompts[0]).toContain(skillSection('plan', 'Decide what you hold'));
-    expect(prompts[0]).not.toContain('escalate');
+    expect(prompts[0]).toContain(skillSection('plan', 'Escalate what you do not hold'));
     expect(await documents.latestBody(PARENT, 'contract')).toContain(`- subtask a at`);
     expect(await documents.latestBody(PARENT, 'contract')).toContain(HELD_DECISION);
     expect(await documents.latestBody(PARENT, 'subtask_questions')).toBeNull();

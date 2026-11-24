@@ -55,7 +55,6 @@ import { ARTIFACTS } from '../contract/artifacts';
 import type { StepSnapshot } from '../step';
 import type { PipelineResult } from '../../core/pipeline-result';
 import { SplitImplementStep } from './split-implement.step';
-import { implementRunner } from './split-or-fix';
 
 /** The follow-ups a checks return gets in one visit while its failed commands are still red. */
 const MAX_CHECK_FOLLOW_UPS = 2;
@@ -122,14 +121,14 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
    */
   override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
     const run = await this.runs.findRun(key);
-    return (await implementRunner(this.reader, this.documents, run)) === 'agent'
+    return (await this.split.runner(run)) === 'agent'
       ? super.execute(key, options, snapshot)
       : this.split.execute(key, options, snapshot);
   }
 
   /** The split pass launches no agent, so it is not an agent start. */
   async launchesAgent(key: string): Promise<boolean> {
-    return (await implementRunner(this.reader, this.documents, await this.runs.findRun(key))) === 'agent';
+    return (await this.split.runner(await this.runs.findRun(key))) === 'agent';
   }
 
   override missingInput(key: string): Promise<string | null> {

@@ -4,6 +4,7 @@ import type { RunEntity } from '../../history/entities';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { InputReader } from '../contract/input-reader';
 import { openQuestions } from '../shared/answers';
+import type { SubtaskOps } from '../shared/subtask-ops';
 import { returnedNotes } from '../shared/handoff';
 import { gapOf, gapTaken } from './review-gaps';
 
@@ -15,6 +16,7 @@ import { gapOf, gapTaken } from './review-gaps';
 export async function implementRunner(
   reader: InputReader,
   documents: DocumentRepository,
+  subtasks: Pick<SubtaskOps, 'settledAt'>,
   run: RunEntity | null,
 ): Promise<'agent' | 'split'> {
   const tasks = run?.split ? await reader.reread(run.key, ARTIFACTS.subtasks) : null;
@@ -22,7 +24,7 @@ export async function implementRunner(
   const { key } = run;
   const marker = ((await reader.reread(key, ARTIFACTS.rebaseConflict)) ?? '').trim();
   const taken = JSON.parse((await reader.reread(key, ARTIFACTS.starterTaken)) || '[]') as string[];
-  const gap = await gapOf(documents, key, taken);
+  const gap = await gapOf(documents, subtasks, run, tasks, taken);
   const settledAll = withStatuses(tasks).every(settled);
   const closed = settledAll && (await gapTaken(documents, run, taken));
   const asking = openQuestions((await reader.reread(key, ARTIFACTS.subtaskQuestions)) ?? '', []).length > 0;

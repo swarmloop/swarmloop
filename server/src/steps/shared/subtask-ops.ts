@@ -25,6 +25,16 @@ export interface ChainAsked {
   answer: string | null;
 }
 
+/** What a planner gives instead of a decision when it cannot settle a part's question: what whoever started the run must decide. */
+export interface Escalated {
+  escalate: string;
+}
+
+/** True for the planner's escalation, and false for its decision: an answer with `escalate` is never read as a decision. */
+export function isEscalated(answer: unknown): answer is Escalated {
+  return typeof answer === 'object' && answer !== null && typeof (answer as Partial<Escalated>).escalate === 'string';
+}
+
 /** One merge request of a subtask: the repository it is for, and where the host has it. */
 export interface SubtaskMergeRequest {
   repo: string;
@@ -103,7 +113,8 @@ export abstract class SubtaskOps {
    * Asks the planner of the parent, in the parent's own chat, the open questions of a subtask run. With `plan` the
    * planner may act on the task list, and a refused action goes back to it in the same visit. The run is sent the
    * decision, or, when the answer has `waitFor`, made to wait for those tasks. Returns the answer. Null means the
-   * planner gave no usable answer and nothing was sent.
+   * planner gave no usable answer and nothing was sent. An escalation means it could not settle the question: it is
+   * handed up with the planner's words, and nothing is sent to the run.
    */
   abstract answer(
     opened: OpenedStep,
@@ -112,7 +123,7 @@ export abstract class SubtaskOps {
     contract: string,
     plan?: StarterPlan,
     start?: LookStart,
-  ): Promise<StarterAnswerResult | null>;
+  ): Promise<StarterAnswerResult | Escalated | null>;
   /** Sends a subtask run the answer again that it refused, so the planner is not asked twice. Null while it is refused. */
   abstract resend(child: RunEntity): Promise<StarterAnswerResult | null>;
   /** Writes the changes of an answer as plan revisions with their reasons, in the parent's chat and in the chat of each changed task. */
@@ -134,8 +145,16 @@ export abstract class SubtaskOps {
    * message) asks.
    */
   abstract rerun(run: RunEntity, lines: string[], start?: SubtaskStart): Promise<void>;
-  /** Asks the planner of the parent, in the parent's own chat, a question about a task. Null when it gave no usable answer. */
-  abstract askAbout(opened: OpenedStep, task: Subtask, question: string, contract: string): Promise<string | null>;
+  /**
+   * Asks the planner of the parent, in the parent's own chat, a question about a task. Null when it gave no usable
+   * answer; an escalation when it could not settle the question.
+   */
+  abstract askAbout(
+    opened: OpenedStep,
+    task: Subtask,
+    question: string,
+    contract: string,
+  ): Promise<string | Escalated | null>;
   /**
    * Puts a question of a run to the planners above it, from `startLevel` up, one level higher for each answer that
    * changed nothing. The run is never started: the caller does that, as a planner start of the returned level.

@@ -34,6 +34,7 @@ import { approvedPlan, foreignReviewOf, storedCheckout } from './review-input';
 import { closeReview, failed } from './review-report';
 import { othersOpen, reportDue, runRound } from './review-round';
 import { settleAsked } from './review-ask';
+import { ReviewPlannerAnswers } from './review-planner-answers';
 import { ReviewSettle } from './review-settle';
 import { onlyReviewer } from './reviewer';
 import { prepareReview, type PrepareDeps } from './review-prepare';
@@ -79,6 +80,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   override readonly capabilities: StepCapabilities = { path: true };
 
   private readonly settling: ReviewSettle;
+  private readonly answers: ReviewPlannerAnswers;
   private readonly briefing: StarterBriefing;
 
   constructor(
@@ -93,6 +95,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   ) {
     super(kernel);
     this.settling = new ReviewSettle(this.documents, events, planChat);
+    this.answers = new ReviewPlannerAnswers(this.documents, events, planChat);
     this.briefing = new StarterBriefing(this.runs, this.documents);
   }
 
@@ -200,22 +203,13 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       briefing: this.briefing,
       onReportStart: () => this.openRounds?.reportStarted(key),
     };
-    const {
-      requirements,
-      thirdParty,
-      mounts,
-      only,
-      fresh,
-      retry,
-      same,
-      exchanges,
-      returned,
-      diff,
-      fingerprint,
-      kept,
-      pending,
-      recovered,
-    } = await ctx.activity('Preparing', () => prepareReview(this.prepareDeps(), notes, ctx));
+    const prepared = await ctx.activity('Preparing', () => prepareReview(this.prepareDeps(), notes, ctx));
+    const { requirements, thirdParty, mounts, only, fresh, retry, exchanges, returned, diff, fingerprint } = prepared;
+    const answered = await this.answers.settle(ctx, prepared);
+    if ('closed' in answered) {
+      return answered.closed;
+    }
+    const { kept, pending, recovered } = answered;
     this.openRounds?.open(key, {
       reviewers: pending.map((item) => item.name),
       reportDue: reportDue(only, kept, pending) && !(only !== undefined && othersOpen(only, kept)),
@@ -272,7 +266,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       retry,
       exchanges,
     });
-    return this.settling.settle({
+    const closed = await this.settling.settle({
       ctx,
       deps,
       env,
@@ -289,7 +283,9 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       exchanges,
       fresh,
       thirdParty,
-      same,
     });
+    // The answers are taken once the visit that used them is closed, so a visit that dies settles again from them.
+    await this.answers.take(key, answered.taken);
+    return closed;
   }
 }

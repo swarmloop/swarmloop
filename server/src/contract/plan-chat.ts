@@ -27,6 +27,12 @@ export interface PlanChatEntry {
   kind?: 'question' | 'answer' | 'escalation' | 'info';
   /** The step that asked, for a `question`, its `answer` and its `escalation`. */
   from?: string;
+  /** A `question` about a reviewer's finding: the planner's answer to it carries `finding` and may carry `instruction`. */
+  about?: 'finding';
+  /** The planner's typed decision on the reviewer's finding, for an `answer` to a question about a finding. */
+  finding?: 'holds' | 'ruled-out';
+  /** What implement does now, a change of the plan included, for an `answer` to a question about a finding. */
+  instruction?: string;
   /** The subtask planner's reply, for an `info`. */
   reply?: string;
   /** The key of the subtask run the `info` is about. */

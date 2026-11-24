@@ -82,6 +82,8 @@ interface QuestionAsk {
   attemptId: string;
   startedAt: string;
   question: string;
+  /** What the question is about, when it is about a reviewer's finding. */
+  about?: 'finding';
 }
 
 /**
@@ -97,7 +99,13 @@ export async function waitForPlanner(run: RunEntity, ask: QuestionAsk): Promise<
     text: ask.question.trim(),
     at: ask.clock.iso(),
     state: 'pending',
+    ...(ask.about ? { about: ask.about } : {}),
   });
+  return plannerWait(run, ask);
+}
+
+/** The wait of a step whose question is with the planner: its route and the line of its visit. */
+export function plannerWait(run: RunEntity, ask: Pick<QuestionAsk, 'step' | 'startedAt' | 'question'>): StepResult {
   const reason = `${ask.step} ${ASKS_PLANNER_WORDS}`;
   return {
     route: {

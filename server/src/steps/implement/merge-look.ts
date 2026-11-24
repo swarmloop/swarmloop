@@ -2,7 +2,7 @@ import type { RunEntity } from '../../history/entities';
 import type { AppConfig } from '../../config/env';
 import type { Requirement } from '../../contract/requirement-list';
 import type { Subtask } from '../../contract/subtask';
-import { starterAnswer, type StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
+import { starterAnswerWithoutEscalate, type StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
 import { implementStart } from '../shared/look-start';
 import type { MergeMarks } from '../shared/merge-marks';
 import type { PlanConversation } from '../shared/plan-conversation';
@@ -113,7 +113,7 @@ export class MergeLook {
       conversation.visit(
         ctx.opened,
         (received) => mergeLookPrompt({ task, summary, marks }, state.contract, notStarted, received),
-        starterAnswer,
+        starterAnswerWithoutEscalate,
         (value) => lookErrors(state, value as StarterAnswerResult, startedAt, source),
         [task.id, task.title, ...commits, summary, ...marks],
         implementStart(ctx.options),
