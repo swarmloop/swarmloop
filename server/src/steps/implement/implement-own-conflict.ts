@@ -13,7 +13,9 @@ import { ARTIFACTS } from '../contract/artifacts';
 import type { StepResult } from '../contract/step-contract';
 import type { ModelStepContext } from '../agent-step';
 import { ownConflictPrompt } from './implement.prompts';
-import { failConflict, resolvedResult, type RebaseDeps } from './rebase-resolved';
+import type { PlanChatEntry } from '../../contract/plan-chat';
+import { askConflict, resolvedResult, type RebaseDeps } from './rebase-resolved';
+import { takeAnswer } from './implement-question';
 
 /** True while git holds a rebase in the worktree: it stopped at a conflict and waits for the files. */
 function rebasing(cwd: string): Promise<boolean> {
@@ -46,24 +48,26 @@ export async function settleOwnConflict(
   names: string[],
   branch: string,
   conflict: string,
+  answer: PlanChatEntry | null = null,
 ): Promise<StepResult> {
   const { run } = ctx.opened;
   const mounts = mountsForStep(root(deps.config), run.key, names, run.targetPath);
   const place = { run, key: run.key, step: deps.step, mounts, runtime: deps.runtime, samples: ctx.samples };
   const sent = new Set<string>();
+  let carried = answer;
   for (const repo of names) {
     const cwd = worktreePath(root(deps.config), run.key, repo);
     while (await rebasing(cwd)) {
       const files = await withWorktree(cwd, () => unmergedPaths(cwd));
       const id = `${repo}\0${files.slice().sort().join('\0')}`;
       if (files.length === 0 || sent.has(id)) {
-        return failConflict(deps, ctx, { kind: 'conflict', repo, files, stderr: '', base: '', commit: '' });
+        return askConflict(deps, ctx, { kind: 'conflict', repo, files, stderr: '', base: '', commit: '' });
       }
       sent.add(id);
       const workplace = await agentWorkplace(
         deps.environments,
         place,
-        `${ownConflictPrompt({ repo, files, conflict, requirements, handoff: await ctx.reread(ARTIFACTS.handoff) })}\n`,
+        `${ownConflictPrompt({ repo, files, conflict, requirements, handoff: await ctx.reread(ARTIFACTS.handoff), answer: carried })}\n`,
       );
       const resolved = await ctx.launch({
         ...workplace,
@@ -72,6 +76,8 @@ export async function settleOwnConflict(
         resume: false,
         result: rebaseResolution,
       });
+      await takeAnswer(deps.chat, run.key, carried);
+      carried = null;
       await ctx.write(ARTIFACTS.rebaseResolutionResult, resolved.resultValue as RebaseResolutionResult);
       await continueRebase(cwd, repo, await deps.author.of(run));
     }
