@@ -70,18 +70,17 @@ describe('code-review step and a provider limit', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-switch-'));
     await envWith(root, 'claude:m-claude,codex:m-codex');
     gitWorktree(join(root, 'worktrees', 'PROJ-301', 'billing-api'));
-    // Both limited reviewers start on claude before either limit is recorded: the cooldown one limit stores must not
-    // reach the other reviewer's choice of agent, which races with its own start-up reads.
-    const started: (() => void)[] = [];
-    const answer = answers(
-      (input) => input.runtime === 'claude' && /quality|regressions/.test(input.step) && !input.step.endsWith('report'),
-    );
+    const limitedOn = (input: AgentRunInput) =>
+      input.runtime === 'claude' && /quality|regressions/.test(input.step) && !input.step.endsWith('report');
+    const answer = answers(limitedOn);
+    // Both limited reviewers are on claude before either limit is known, whatever the timing of their launches.
+    let startedLimited = 0;
+    let bothStarted!: () => void;
+    const started = new Promise<void>((resolve) => (bothStarted = resolve));
     const agent = jest.fn(async (input: AgentRunInput) => {
-      if (input.runtime === 'claude' && /quality|regressions/.test(input.step) && !input.step.endsWith('report')) {
-        await new Promise<void>((resolve) => {
-          started.push(resolve);
-          if (started.length === 2) started.forEach((release) => release());
-        });
+      if (limitedOn(input)) {
+        if (++startedLimited === 2) bothStarted();
+        await started;
       }
       return answer(input);
     });
