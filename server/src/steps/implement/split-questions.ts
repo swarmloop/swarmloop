@@ -7,19 +7,22 @@ import type { SubtaskOps } from '../shared/subtask-ops';
 
 const PREFIX = /^Subtask (\S+) asks: /;
 
+const flat = (text: string): string => text.trim().replace(/\s*\n\s*/g, ' ');
+
 /**
  * The question of a subtask that the planner of the parent could not answer, in one line for the person who started
- * the run. `askedAt` is the start of the pass, so each ask is its own event and an old answer never matches a new ask.
+ * the run. With the planner's `words` of what must be decided, they follow the question. `askedAt` is the start of the pass, so each ask is its own event and an old answer never matches a new ask.
  */
-export function questionFor(taskId: string, question: string, askedAt: string): string {
-  const text = question.trim().replace(/\s*\n\s*/g, ' ');
-  return `Subtask ${taskId} asks: ${text} The planner gave no answer. (asked ${askedAt})`;
+export function questionFor(taskId: string, question: string, askedAt: string, words?: string): string {
+  const text = flat(question);
+  const said = words === undefined ? 'The planner gave no answer.' : `The planner cannot settle it: ${flat(words)}`;
+  return `Subtask ${taskId} asks: ${text} ${said} (asked ${askedAt})`;
 }
 
 /** The question of a subtask with its parts, stored next to the text. */
-export function askedQuestion(taskId: string, question: string, askedAt: string): StoredQuestion {
+export function askedQuestion(taskId: string, question: string, askedAt: string, words?: string): StoredQuestion {
   return {
-    question: questionFor(taskId, question, askedAt),
+    question: questionFor(taskId, question, askedAt, words),
     parts: askedParts(question, askedAt, { asker: `subtask:${taskId}` }),
   };
 }

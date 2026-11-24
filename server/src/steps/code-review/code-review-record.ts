@@ -32,6 +32,11 @@ export function opinionOf(kind: string, result: ReviewResult): Opinion {
   return { kind, decision: result.decision, body: renderReview(result), result };
 }
 
+/** A reviewer's return the planner ruled out, as the ok review it stands for, with the planner's reason. */
+export function ruledOutOpinion(kind: string, review: ReviewResult, answer: string): Opinion {
+  return opinionOf(kind, { ...review, decision: 'ok', reason: `The planner ruled the finding out: ${answer.trim()}` });
+}
+
 /** The documents a reviewer's round stores: the rendered review and the result it was rendered from. */
 export function reviewDocuments(opinion: Opinion): DocumentDraft[] {
   const stored = reviewResultOf(opinion.kind.slice(REVIEWS.prefix.length));

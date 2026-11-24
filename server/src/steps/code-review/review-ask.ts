@@ -10,6 +10,14 @@ import { reviewParts, type StoredQuestion } from '../shared/question-parts';
 import { askedReviewer } from '../shared/reviewer-labels';
 import { issueOf, returnNotes, textDocument } from '../shared/handoff';
 import type { Exchange } from './review-exchange';
+import { REVIEWERS } from './reviewer';
+import { opinionOf, reviewDocuments, ruledOutOpinion, type Opinion } from './code-review-record';
+import { routeReview } from './review-round';
+import { latestReview } from '../../agent-result/stored-review';
+import type { PlanChatEntry } from '../../contract/plan-chat';
+import type { EventRepository } from '../../history/event.repository';
+import type { PlanChatStore } from '../../history/plan-chat.store';
+import { reviewAnswerKey } from '../shared/review-answer-key';
 import { closeReview } from './review-report';
 import type { Finished, Usage } from './reviewer';
 
@@ -21,24 +29,18 @@ function questionFor(reviewer: string, exchange: Exchange, askedAt: string): str
 }
 
 /**
- * One ask per reviewer that saw an answer of implement and decided return again in this round, on a diff that did not change.
- * A kept or recovered opinion is not asked about: only a decision this round made counts, and a reviewer that read
- * a planner's answer in this round is not asked again.
+ * One ask per reviewer that saw an answer of implement and decided return again in this round, on any head.
+ * A kept or recovered opinion is not asked about: only a decision this round made counts.
  */
 export function reviewAsks(
   exchanges: ReadonlyMap<string, Exchange>,
   finished: Finished[],
-  same: boolean,
   askedAt: string,
 ): StoredQuestion[] {
-  if (!same) {
-    return [];
-  }
   return finished.flatMap((item) => {
     const exchange = exchanges.get(item.reviewer.name);
     const result = item.parsed?.decision === 'return' ? item.parsed.result : null;
-    // A reviewer that read the planner's answer in this round is not asked again: its return stands.
-    return exchange && result && !item.heard
+    return exchange && result
       ? [
           {
             question: questionFor(item.reviewer.name, exchange, askedAt),
@@ -76,14 +78,75 @@ export function askPerson(
  * Runs first. Null when the review holds no question; otherwise the result of settling the questions it holds.
  * It reads the stored documents of the run, so a review that holds no question reads nothing but them.
  */
-export async function settleAsked(ctx: StepContext, documents: DocumentRepository): Promise<PipelineResult | null> {
+export async function settleAsked(
+  ctx: StepContext,
+  documents: DocumentRepository,
+  planner?: SubtaskPlanner,
+): Promise<PipelineResult | null> {
   const stored = await documents.listDocuments(ctx.opened.run.id);
-  const latest = (kind: string): string => [...stored].reverse().find((item) => item.kind === kind)?.body ?? '';
+  const newest = (kind: string) => [...stored].reverse().find((item) => item.kind === kind);
+  const latest = (kind: string): string => newest(kind)?.body ?? '';
   const asked = latest(ARTIFACTS.reviewQuestions.kind);
   if (!asked.trim()) {
     return null;
   }
-  return settleAnswers(ctx, asked, latest(ARTIFACTS.answers.kind));
+  return settleAnswers(
+    ctx,
+    { body: asked, id: newest(ARTIFACTS.reviewQuestions.kind)?.id ?? 0 },
+    latest(ARTIFACTS.answers.kind),
+    documents,
+    planner,
+  );
+}
+
+/** What a subtask's review settles with besides the person's answers: the chat of its planner's typed answers, and the events. */
+interface SubtaskPlanner {
+  chat: PlanChatStore;
+  events: EventRepository;
+}
+
+/** The epic planner's typed answer to these questions, when it gave one that is not taken yet. */
+async function typedAnswer(key: string, askId: number, chat?: PlanChatStore): Promise<PlanChatEntry | null> {
+  if (!chat) return null;
+  const answerKey = reviewAnswerKey(askId);
+  const { entries } = await chat.read(key);
+  return entries.find((entry) => entry.key === answerKey && entry.state === 'pending' && entry.finding) ?? null;
+}
+
+/**
+ * The planner ruled out the findings it was asked about: those returns stand as ok reviews with its reason and the
+ * questions close. A return of a reviewer that asked nothing stays a return and goes to implement; with none left the
+ * round goes on as an ok round.
+ */
+async function closeRuledOut(
+  ctx: StepContext,
+  documents: DocumentRepository,
+  planner: SubtaskPlanner,
+  answer: PlanChatEntry,
+  asked: ReadonlySet<string | null>,
+): Promise<PipelineResult> {
+  const { key } = ctx.opened.run;
+  const opinions: Opinion[] = [];
+  for (const reviewer of REVIEWERS) {
+    const review = await latestReview(documents, key, reviewer.name);
+    if (!review) continue;
+    opinions.push(
+      review.decision === 'return' && asked.has(reviewer.name)
+        ? ruledOutOpinion(reviewer.kind, review, answer.text)
+        : opinionOf(reviewer.kind, review),
+    );
+  }
+  const closed = await routeReview(
+    planner.events,
+    ctx,
+    opinions,
+    [textDocument(ARTIFACTS.reviewQuestions.kind, ''), ...opinions.flatMap(reviewDocuments)],
+    [],
+    false,
+    { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] },
+  );
+  await planner.chat.markTaken(key, [answer.key]);
+  return closed;
 }
 
 /**
@@ -91,7 +154,14 @@ export async function settleAsked(ctx: StepContext, documents: DocumentRepositor
  * decision goes into the requirements as an instruction a person added, the questions are closed, and the run goes
  * back to implement with the finding and the decision.
  */
-async function settleAnswers(ctx: StepContext, questionsBody: string, answersBody: string): Promise<PipelineResult> {
+async function settleAnswers(
+  ctx: StepContext,
+  asked: { body: string; id: number },
+  answersBody: string,
+  documents: DocumentRepository,
+  planner?: SubtaskPlanner,
+): Promise<PipelineResult> {
+  const questionsBody = asked.body;
   const stored = answered(answersBody);
   const questions = openQuestions(questionsBody, []);
   if (questions.some((question) => !(stored.get(question) ?? '').trim())) {
@@ -102,6 +172,10 @@ async function settleAnswers(ctx: StepContext, questionsBody: string, answersBod
       [],
       [],
     );
+  }
+  const typed = await typedAnswer(ctx.opened.run.key, asked.id, planner?.chat);
+  if (typed?.finding === 'ruled-out' && planner) {
+    return closeRuledOut(ctx, documents, planner, typed, new Set(questions.map((question) => askedReviewer(question))));
   }
   let requirements = (await ctx.reread(ARTIFACTS.requirements)) ?? '';
   const issues = questions.map((question) => {
@@ -114,7 +188,7 @@ async function settleAnswers(ctx: StepContext, questionsBody: string, answersBod
     const reviewer = askedReviewer(question) ?? 'code-review';
     return issueOf(reviewer, `${reviewer} returned the change`, `${question}\nThe person decided: ${decision}`);
   });
-  return closeReview(
+  const closed = await closeReview(
     ctx,
     { to: 'return', step: 'implement', issues },
     `${ctx.opened.startedAt} code-review waiting\n${questions.length} questions answered`,
@@ -126,4 +200,6 @@ async function settleAnswers(ctx: StepContext, questionsBody: string, answersBod
     ],
     [],
   );
+  if (typed && planner) await planner.chat.markTaken(ctx.opened.run.key, [typed.key]);
+  return closed;
 }

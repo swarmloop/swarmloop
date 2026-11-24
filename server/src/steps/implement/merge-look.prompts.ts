@@ -1,5 +1,5 @@
 import type { Subtask } from '../../contract/subtask';
-import { starterAnswer } from '../../agent-result/definitions/starter-answer';
+import { starterAnswerWithoutEscalate } from '../../agent-result/definitions/starter-answer';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { STARTER_ACTIONS, taskLines } from '../plan/plan.prompts';
 
@@ -45,6 +45,6 @@ export function mergeLookPrompt(
     '',
     STARTER_ACTIONS,
     '',
-    resultPromptFor(starterAnswer, received),
+    resultPromptFor(starterAnswerWithoutEscalate, received),
   ].join('\n');
 }

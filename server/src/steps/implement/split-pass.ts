@@ -144,7 +144,9 @@ export class SplitPass {
   private async gaps(ctx: StepContext, answered: InboxPass): Promise<InboxPass> {
     const { run, startedAt } = ctx.opened;
     const stored = answered.taken ?? (JSON.parse((await ctx.reread(ARTIFACTS.starterTaken)) || '[]') as string[]);
-    const gap = answered.tasks.every(settled) ? await gapOf(this.deps.documents, run.key, stored) : null;
+    const gap = answered.tasks.every(settled)
+      ? await gapOf(this.deps.documents, this.deps.subtasks, run, answered.tasks, stored)
+      : null;
     if (!gap) return answered;
     const requirements = (await ctx.reread(ARTIFACTS.requirementList)) ?? [];
     const gapped = takeGap(

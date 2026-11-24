@@ -9,7 +9,7 @@ import { assertInsideWork, workRoots } from '../../sandbox/allowed-path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { StepContext } from '../base-step';
 import type { CheckoutService } from '../shared/checkout.service';
-import { gateCounts, checkoutFingerprint, worktreesFingerprint } from '../shared/gate';
+import { checkoutFingerprint, gateCounts, worktreesFingerprint } from '../shared/gate';
 import { returnedNotes } from '../shared/handoff';
 import { ARTIFACTS } from '../contract/artifacts';
 import { reviewDiffSection } from './review-diff';
@@ -18,7 +18,6 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import type { DocumentDraft } from '../../history/visit';
 import type { Opinion } from './code-review-record';
 import { reviewExchanges, type Exchange } from './review-exchange';
-import { sameReviewedDiff } from './review-round';
 import { onlyReviewer, type Reviewer } from './reviewer';
 import { selectReviewers } from './review-select';
 
@@ -40,8 +39,6 @@ interface Preparation {
   only: string | undefined;
   fresh: boolean;
   retry: boolean;
-  /** The diff is the one the reviewers last saw. */
-  same: boolean;
   exchanges: Map<string, Exchange>;
   returned: string | null;
   diff: Awaited<ReturnType<typeof reviewDiffSection>>;
@@ -79,17 +76,15 @@ export async function prepareReview(deps: PrepareDeps, notes: string | null, ctx
   const attemptId = retry ? await interruptedAttempt(deps.visits, opened) : null;
   const returned = await returnedNotes(deps.documents, opened.run.id);
   const diff = await reviewDiffSection(mounts, [], opened.run.prompt);
-  const same = sameReviewedDiff(root(deps.config), key, diff.patch);
-  // A person's checkout may be a subdirectory of a repository: it keeps the name-only fingerprint. The run's own worktrees need a tree.
-  const fingerprintOf = opened.run.targetPath ? checkoutFingerprint : worktreesFingerprint;
-  const fingerprint = await fingerprintOf(mounts.map((mount) => mount.hostPath));
+  const fingerprint = await (opened.run.targetPath ? checkoutFingerprint : worktreesFingerprint)(
+    mounts.map((mount) => mount.hostPath),
+  );
   const { kept, pending, recovered } = await selectReviewers(deps.documents, root(deps.config), {
     key,
     only,
     fresh,
     retry,
     attemptId,
-    same,
     counts: (kind) => gateCounts(deps.documents, opened.run, kind, fingerprint),
   });
   return {
@@ -99,7 +94,6 @@ export async function prepareReview(deps: PrepareDeps, notes: string | null, ctx
     only,
     fresh,
     retry,
-    same,
     exchanges: await reviewExchanges(deps.documents, opened.run.id, returned),
     returned,
     diff,

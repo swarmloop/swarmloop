@@ -5,6 +5,7 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/run.entity';
 import { readPlanChat, PLAN_CHAT_KIND } from '../../contract/plan-chat';
 import type { StepName } from '../../contract/steps';
+import { changeFingerprint } from '../../git/change-fingerprint';
 import { git } from '../../git/worktree-tree';
 import { mountsForRun } from '../../sandbox/sandbox-launch';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -21,6 +22,8 @@ export interface VisitInputParts {
   returns: string[];
   findings: string[];
   instruction: string;
+  /** The fingerprint of the tree a review judges, work not yet committed included. Unset for a step that reads heads only. */
+  tree?: string;
 }
 
 const ISO_TIME = /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?/g;
@@ -62,6 +65,7 @@ export function visitInput(parts: VisitInputParts): string {
     listOf(parts.returns),
     listOf(parts.findings),
     normalizedText(parts.instruction),
+    ...(parts.tree === undefined ? [] : [parts.tree]),
   ].join(PART_END);
   return createHash('sha256').update(text).digest('hex');
 }
@@ -78,8 +82,13 @@ function takes(artifact: Reader, step: string): boolean {
   return (artifact.readers as readonly string[]).includes(step);
 }
 
-async function headsOf(deps: VisitInputDeps, run: Pick<RunEntity, 'targetPath'>): Promise<VisitInputParts['heads']> {
+/** The head of each work tree among the run's mounts, and the host path it was read at. */
+async function headsOf(
+  deps: VisitInputDeps,
+  run: Pick<RunEntity, 'targetPath'>,
+): Promise<{ heads: VisitInputParts['heads']; paths: string[] }> {
   const heads: VisitInputParts['heads'] = [];
+  const paths: string[] = [];
   for (const mount of mountsForRun(deps.worktrees, run.targetPath)) {
     // A mount that is not a work tree (a bare remote, no repository) or has no commit yet has no head to read.
     const [inside, head] = await git(mount.hostPath, ['rev-parse', '--is-inside-work-tree', 'HEAD']).then(
@@ -88,9 +97,10 @@ async function headsOf(deps: VisitInputDeps, run: Pick<RunEntity, 'targetPath'>)
     );
     if (inside === 'true' && head) {
       heads.push({ repo: basename(mount.hostPath), commit: head });
+      paths.push(mount.hostPath);
     }
   }
-  return heads;
+  return { heads, paths };
 }
 
 function findingsOf(body: string | null): string[] {
@@ -98,13 +108,35 @@ function findingsOf(body: string | null): string[] {
   return issues.map((issue) => `${issue.source}\n${issue.title}\n${issue.body}`);
 }
 
+/**
+ * The steps whose input is the tree and the brief only. The tree is each head plus a read-only fingerprint of the
+ * uncommitted changes by their bytes, since implement's fix stays uncommitted until the commit step after review. What planners say between review rounds
+ * is not a review's input: a round on the same tree, brief and instructions is the same round, whatever was answered
+ * in between.
+ */
+const TREE_AND_BRIEF_STEPS: readonly string[] = ['code-review'];
+
 /** Gathers the parts of the input of one step's visit from the run's documents, its plan chat and its worktrees. */
 export async function readVisitInput(
   deps: VisitInputDeps,
-  run: Pick<RunEntity, 'key' | 'targetPath'>,
+  run: Pick<RunEntity, 'key' | 'targetPath' | 'prompt'>,
   step: string,
   instruction = '',
 ): Promise<string> {
+  if (TREE_AND_BRIEF_STEPS.includes(step)) {
+    const { heads, paths } = await headsOf(deps, run);
+    const changes = await Promise.all(paths.map((path) => changeFingerprint(path)));
+    return visitInput({
+      heads,
+      tree: heads.map((head, at) => `${normalizedText(head.repo)}=${changes[at]}`).join(ITEM_END),
+      checklist: [],
+      handoff: '',
+      answers: [],
+      returns: [],
+      findings: [],
+      instruction: `${run.prompt ?? ''}${instruction}`,
+    });
+  }
   const { documents } = deps;
   const stored = (artifact: Reader & { kind: string }) =>
     takes(artifact, step) ? documents.latestBody(run.key, artifact.kind) : Promise.resolve(null);
@@ -120,7 +152,7 @@ export async function readVisitInput(
     .entries.filter((entry) => entry.kind === undefined || entry.kind === 'answer')
     .map((entry) => entry.text);
   return visitInput({
-    heads: await headsOf(deps, run),
+    heads: (await headsOf(deps, run)).heads,
     checklist: plan?.items ?? [],
     handoff: handoffText(handoff),
     answers: [...(answers ? [answers] : []), ...messages],
@@ -147,7 +179,7 @@ export interface StartInputParts {
  */
 export async function startInput(
   deps: VisitInputDeps,
-  run: Pick<RunEntity, 'key' | 'targetPath'>,
+  run: Pick<RunEntity, 'key' | 'targetPath' | 'prompt'>,
   input: StartInputParts,
 ): Promise<string | null> {
   let base = '';

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { DocumentRepository } from '../../history/document.repository';
@@ -65,7 +65,7 @@ describe('readVisitInput', () => {
   let root: string;
   let stored: Map<string, string>;
   let documents: DocumentRepository;
-  const run = { key: 'run-1', targetPath: null };
+  const run = { key: 'run-1', targetPath: null, prompt: 'Build it.' };
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'visit-input-'));
@@ -137,5 +137,45 @@ describe('readVisitInput', () => {
     const before = await readVisitInput({ documents, worktrees: root }, target, 'checks');
     stored.set(ARTIFACTS.answers.kind, 'Use the old way.');
     expect(await readVisitInput({ documents, worktrees: root }, target, 'checks')).toBe(before);
+  });
+
+  it("leaves the code-review input the same after a planner's answer and changes it on a new head or an added instruction", async () => {
+    const { clone } = copyMainWithOrigin(root, 'main');
+    const deps = { documents, worktrees: root };
+    const target = { ...run, targetPath: clone };
+    const first = await readVisitInput(deps, target, 'code-review');
+
+    chat({ key: 'answer-1', role: 'planner', text: 'The return stands.', at: 't', state: 'taken', kind: 'answer' });
+    stored.set(ARTIFACTS.answers.kind, 'Use the old way.');
+    expect(await readVisitInput(deps, target, 'code-review')).toBe(first);
+
+    expect(
+      await readVisitInput(deps, { ...target, prompt: 'Build it.\n\nAlso mind the cache.' }, 'code-review'),
+    ).not.toBe(first);
+    git(clone, ['commit', '--allow-empty', '-m', 'next']);
+    expect(await readVisitInput(deps, target, 'code-review')).not.toBe(first);
+  });
+
+  it('changes the code-review input for an uncommitted change or an untracked file, and no other step reads it', async () => {
+    const { clone } = copyMainWithOrigin(root, 'main');
+    const deps = { documents, worktrees: root };
+    const target = { ...run, targetPath: clone };
+    const review = await readVisitInput(deps, target, 'code-review');
+    const checks = await readVisitInput(deps, target, 'checks');
+
+    writeFileSync(join(clone, 'fix.txt'), 'fixed\n');
+    const untracked = await readVisitInput(deps, target, 'code-review');
+    expect(untracked).not.toBe(review);
+    git(clone, ['add', 'fix.txt']);
+    writeFileSync(join(clone, 'fix.txt'), 'fixed again\n');
+    expect(await readVisitInput(deps, target, 'code-review')).not.toBe(untracked);
+    expect(await readVisitInput(deps, target, 'checks')).toBe(checks);
+  });
+
+  it('reads a run with no prompt as an empty prompt, not the word null', async () => {
+    const { clone } = copyMainWithOrigin(root, 'main');
+    const deps = { documents, worktrees: root };
+    const none = await readVisitInput(deps, { ...run, targetPath: clone, prompt: null }, 'code-review');
+    expect(none).toBe(await readVisitInput(deps, { ...run, targetPath: clone, prompt: '' }, 'code-review'));
   });
 });

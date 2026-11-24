@@ -16,6 +16,8 @@ interface TaskDrop {
 /** What the planner of a run hands back to a run it started: a decision, and optionally the actions that follow from it. */
 export interface StarterAnswerResult {
   decision: string;
+  /** For a question about a reviewer's finding: whether the finding holds or is ruled out. */
+  finding?: 'holds' | 'ruled-out';
   waitFor?: Need[];
   addTask?: SplitTask[];
   changeTask?: TaskChange[];
@@ -24,10 +26,28 @@ export interface StarterAnswerResult {
 
 const reason = Joi.string().required().description('Why');
 
-export const starterAnswer = defineResult(
-  'starter_answer',
-  Joi.object({
-    decision: Joi.string().required().description('The decision the task follows, written to the contract'),
+const escalate = Joi.string().description(
+  'What whoever started the run must decide, when you cannot settle it. Never invent a product decision',
+);
+
+const finding = Joi.string()
+  .valid('holds', 'ruled-out')
+  .description(
+    "Only when the question is about a reviewer's finding: 'holds' when the finding stands and implement fixes it, 'ruled-out' when it does not hold; leave out otherwise",
+  );
+
+/** The schema of the answer. With `escalate` a decision is not needed; without it a decision is always required. */
+function starterSchema(withEscalate: boolean): Joi.ObjectSchema {
+  const decision = Joi.string().description(
+    withEscalate
+      ? 'The decision the task follows, written to the contract; leave out only when you escalate'
+      : 'The decision the task follows, written to the contract',
+  );
+  return Joi.object({
+    decision: withEscalate
+      ? decision.when('escalate', { is: Joi.exist(), otherwise: Joi.required() })
+      : decision.required(),
+    ...(withEscalate ? { escalate, finding } : {}),
     waitFor: planKeys.needs.description('Tasks the asking task waits for; leave out when none'),
     addTask: Joi.array().items(taskSchema()).description('Tasks to add; leave out when none'),
     changeTask: Joi.array()
@@ -47,5 +67,11 @@ export const starterAnswer = defineResult(
     dropTask: Joi.array()
       .items(Joi.object({ id: Joi.string().required().description('A task that has not started'), reason }))
       .description('Tasks that have not started and are dropped; leave out when none'),
-  }),
-);
+  });
+}
+
+/** The answer to a part's question: a decision, or an escalation of what the planner cannot settle. */
+export const starterAnswer = defineResult('starter_answer', starterSchema(true));
+
+/** The same answer without `escalate`, for a reader that answers no part's question and has nothing to hand up. */
+export const starterAnswerWithoutEscalate = defineResult('starter_answer', starterSchema(false));
