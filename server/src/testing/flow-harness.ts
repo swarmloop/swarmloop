@@ -27,7 +27,7 @@ import { FakeCodeHost } from './fake-code-host';
 import type { FakeHostSettings } from './fake-host-rules';
 import { FakeSandbox, holdDetachedStarts } from './fake-runtime';
 import { featureWorktree, git, remember } from './runs.spec-helpers';
-import type { BlockAgentRunner } from './result-answer';
+import { BlockAgentRunner } from './result-answer';
 import { createTestApp, type FakeAgentRunner, type TestApp } from './test-app';
 
 const REPO = 'demo';
@@ -35,6 +35,30 @@ const PROJECT = 'group/demo';
 const ORIGIN = `https://gitlab.example/${PROJECT}.git`;
 /** The shipped `RECONCILE_MS`, which the test env keeps. */
 const RECONCILE_MS = Number(readDefaultSettings().RECONCILE_MS);
+
+/**
+ * A fake agent whose conflict launches (the implement step's agent, given a rebase conflict) run `onConflict` on the
+ * prompt, as the agent edits the worktree. Every other launch is answered as `BlockAgentRunner` answers it.
+ */
+export class ConflictAgent extends BlockAgentRunner {
+  constructor(
+    private readonly onConflict: (prompt: string) => void,
+    scripts: ConstructorParameters<typeof BlockAgentRunner>[0] = {},
+  ) {
+    super(scripts);
+  }
+
+  /** The prompts of the conflict launches, in order. */
+  get conflicts(): string[] {
+    return this.prompts.filter((launch) => launch.step === 'rebase').map((launch) => launch.prompt);
+  }
+
+  override run(input: Parameters<BlockAgentRunner['run']>[0]): ReturnType<BlockAgentRunner['run']> {
+    const answered = super.run(input);
+    if (this.steps.at(-1) === 'rebase') this.onConflict(input.prompt ?? '');
+    return answered;
+  }
+}
 
 /** One whole-flow world: the real pipeline driver and reconciler on a fake code host, a fake sandbox and a fake clock. */
 interface FlowHarness {

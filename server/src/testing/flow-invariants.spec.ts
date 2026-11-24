@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON, type StateReason } from '../contract/run-state';
 import { AgentExchangeEntity, StepStatEntity } from '../history/entities';
+import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { VisitStartRepository } from '../history/visit-start.repository';
@@ -208,6 +209,76 @@ describe('assertInvariants', () => {
     it('passes for a visit that ended on a provider limit and for one with no exchange', async () => {
       await seed({ attemptId: 'a-1', status: 'interrupted', killReason: ERROR_CODES.RUNTIME_LIMIT });
       await seed({ attemptId: 'a-2', exchange: false });
+      await expect(assertInvariants(app)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('a rebase conflict', () => {
+    const journalOf = (checkpoint: string, generation: number) =>
+      JSON.stringify({ demo: { path: '/w', branch: 'b', checkpoint, generation } });
+    const seed = async (options: {
+      status: string;
+      reason?: StateReason;
+      marker?: string;
+      checkpoint: string;
+      step?: string;
+    }) => {
+      const runs = app.app.get(RunRepository);
+      const run = await save(runs, 'PROJ-903', options.step ?? 'implement', options.status);
+      writeRunState(run, { status: options.status, currentStep: options.step ?? 'implement', reason: options.reason });
+      await runs.saveRun(run);
+      const documents = app.app.get(DocumentRepository);
+      if (options.marker) await documents.putDocument(run, 'rebase_conflict', options.marker);
+      await documents.putDocument(run, 'rebase_journal', journalOf(options.checkpoint, run.generation));
+      return run;
+    };
+    const conflictBlock: StateReason = {
+      code: ERROR_CODES.REBASE_CONFLICT,
+      message: 'demo conflicts with main; Replay starts the work again',
+    };
+
+    it('throws for a run blocked REBASE_CONFLICT on a conflict parked for implement', async () => {
+      const run = await seed({
+        status: 'blocked',
+        reason: conflictBlock,
+        marker: 'pending-implement\n',
+        checkpoint: 'conflict',
+      });
+      await expect(assertInvariants(app)).rejects.toThrow(
+        `${run.key} is blocked on a rebase conflict that implement or a planner holds`,
+      );
+    });
+
+    it('throws for a run failed at implement on a parked conflict', async () => {
+      const run = await seed({ status: 'failed', marker: 'pending\n', checkpoint: 'conflict' });
+      await expect(assertInvariants(app)).rejects.toThrow(
+        `${run.key} is failed on a rebase conflict that implement or a planner holds`,
+      );
+    });
+
+    it('passes for a run that waits for its planner with a parked conflict', async () => {
+      await seed({
+        status: 'waiting',
+        reason: { code: REASON.asksPlanner, message: 'implement asked its planner' },
+        marker: 'pending-implement\n',
+        checkpoint: 'conflict',
+      });
+      await expect(assertInvariants(app)).resolves.toBeUndefined();
+    });
+
+    it('passes for the block of a recreated worktree, whose journal is at applying', async () => {
+      await seed({ status: 'blocked', reason: conflictBlock, checkpoint: 'applying' });
+      await expect(assertInvariants(app)).resolves.toBeUndefined();
+    });
+
+    it('passes for a task blocked under its own code with a parked conflict', async () => {
+      await seed({
+        status: 'blocked',
+        reason: { code: ERROR_CODES.PIPELINE_UNFIXED, message: 'the pipeline stays red; Resume tries again' },
+        marker: 'pending-implement\n',
+        checkpoint: 'conflict',
+        step: 'pipeline',
+      });
       await expect(assertInvariants(app)).resolves.toBeUndefined();
     });
   });
