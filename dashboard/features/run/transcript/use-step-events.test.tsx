@@ -126,6 +126,23 @@ describe('useStepEvents', () => {
     expect(screen.getByText('1')).toBeInTheDocument();
   });
 
+  it('reads again after a reconnect, and nothing extra on the first connect', async () => {
+    vi.mocked(getStepEvents).mockResolvedValueOnce({ events: [done(1)], next: null });
+    render(<Probe cursor={1} />, { wrapper: Wrapper });
+    await screen.findByText('1');
+
+    act(() => receive('connect'));
+    await act(async () => {});
+    expect(getStepEvents).toHaveBeenCalledTimes(1);
+
+    vi.mocked(getStepEvents).mockResolvedValueOnce({ events: [done(2)], next: null });
+    act(() => receive('disconnect'));
+    act(() => receive('connect'));
+
+    expect(await screen.findByText('1,2')).toBeInTheDocument();
+    expect(getStepEvents).toHaveBeenLastCalledWith('run-1', 'implement', 1);
+  });
+
   describe('with the socket down', () => {
     async function polling(running: boolean) {
       vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });

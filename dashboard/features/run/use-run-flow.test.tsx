@@ -240,4 +240,40 @@ describe('useRunFlow', () => {
       vi.useRealTimers();
     }
   });
+
+  it('applies a usage event to its own flow once, for its run and for a task run, never to another run', async () => {
+    const withTask = flowView({
+      tasks: [
+        {
+          id: 'a',
+          index: 0,
+          title: 'a',
+          files: [],
+          proof: '',
+          depends: [],
+          status: 'running',
+          run: { key: 'run-1-a', state: 'running', currentStep: 'implement', usd: 1, durationMs: 0 },
+        },
+      ],
+    });
+    vi.mocked(getFlow).mockResolvedValue(withTask);
+    function Numbers() {
+      const { flow } = useRunFlow('run-1');
+      return flow ? (
+        <p>
+          {flow.metrics.usd}/{flow.metrics.tokens}/{flow.tasks?.[0]?.run?.usd}
+        </p>
+      ) : null;
+    }
+    render(<Numbers />, { wrapper: LiveBridgeProvider });
+    await screen.findByText('0/0/1');
+
+    act(() => receive('usage', { key: 'run-1', tokens: 40, usd: 2, cpuPeak: 0, memPeak: 0 }));
+    expect(await screen.findByText('2/40/1')).toBeInTheDocument();
+    act(() => receive('usage', { key: 'run-1-a', tokens: 5, usd: 4, cpuPeak: 0, memPeak: 0 }));
+    expect(await screen.findByText('2/40/4')).toBeInTheDocument();
+    act(() => receive('usage', { key: 'other', tokens: 1, usd: 9, cpuPeak: 0, memPeak: 0 }));
+
+    expect(screen.getByText('2/40/4')).toBeInTheDocument();
+  });
 });

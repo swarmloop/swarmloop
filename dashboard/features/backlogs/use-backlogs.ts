@@ -12,7 +12,7 @@ interface BacklogsState {
   error: string | null;
 }
 
-/** The backlogs, loaded again when any backlog's stamp moves. */
+/** The backlogs, loaded again when any backlog's stamp moves and after a reconnect. */
 export function useBacklogs(): BacklogsState {
   const stamp = useLiveBridge((snapshot) =>
     Object.values(snapshot.backlogStamps).reduce((sum, value) => sum + value, 0),
@@ -26,6 +26,15 @@ export function useBacklogs(): BacklogsState {
       void client.invalidateQueries({ queryKey: ['backlogs'] });
     }
   }, [client, stamp]);
+  // A reconnect (the socket connected before) may follow missed changes; the first connect reads nothing extra.
+  const connects = useLiveBridge((snapshot) => snapshot.connects);
+  const seenConnects = useRef(connects);
+  useEffect(() => {
+    if (seenConnects.current >= 1 && connects > seenConnects.current) {
+      void client.invalidateQueries({ queryKey: ['backlogs'] });
+    }
+    seenConnects.current = connects;
+  }, [client, connects]);
   return {
     backlogs: query.data ?? [],
     loaded: query.data !== undefined,
