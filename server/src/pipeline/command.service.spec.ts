@@ -195,6 +195,37 @@ describe('CommandService', () => {
     }
   });
 
+  it('accepts Resume of a REBASE_CONFLICT block parked for implement and refuses a recreated worktree', async () => {
+    const testApp = await app('parked');
+    try {
+      const runs = testApp.get(RunRepository);
+      const documents = testApp.get(DocumentRepository);
+      const commands = testApp.get(CommandService);
+      commands.register('resume', jest.fn().mockResolvedValue(started));
+      const block = async (key: string, marker: string | null, checkpoint: string) => {
+        const run = await save(runs, key, 'implement', 'blocked');
+        writeRunState(run, {
+          status: 'blocked',
+          reason: { code: 'REBASE_CONFLICT', message: 'app conflicts with main' },
+        });
+        await runs.saveRun(run);
+        if (marker) await documents.putDocument(run, 'rebase_conflict', marker);
+        const entry = { app: { path: '/w', branch: 'b', checkpoint, generation: run.generation } };
+        await documents.putDocument(run, 'rebase_journal', JSON.stringify(entry));
+      };
+      await block('proj-1', 'pending-implement\n', 'conflict');
+      await block('proj-2', null, 'applying');
+
+      expect((await commands.submit('resume', 'proj-1', {})).value).toEqual(started);
+      await expect(commands.submit('resume', 'proj-2', {})).rejects.toMatchObject({
+        status: 409,
+        response: { message: 'run is blocked' },
+      });
+    } finally {
+      await testApp.close();
+    }
+  });
+
   it('lets the CLI run a block that Resume cannot continue', async () => {
     const testApp = await app('cli-blocked');
     try {

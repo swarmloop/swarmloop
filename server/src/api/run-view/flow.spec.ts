@@ -6,6 +6,7 @@ import { join } from 'path';
 import type { LoopEventEntity } from '../../history/entities';
 import { actionsFor } from '../../contract/run-state';
 import { storedState } from '../../history/run-state';
+import { parkedConflictIn } from '../../pipeline/parked-conflict';
 import { phases, returns } from './flow';
 import { reason, resumeState, sentence } from './flow-waiting';
 
@@ -316,6 +317,36 @@ describe('sentence of a stop with its own next step', () => {
     expect(say(run('blocked', 'prepare', 'DOCKER_UNAVAILABLE'))).toBe(
       'This run is blocked. Another return is not available.',
     );
+  });
+
+  describe('a REBASE_CONFLICT block', () => {
+    const blocked = { ...run('blocked', 'implement', 'REBASE_CONFLICT'), generation: 2 };
+    const journalOf = (checkpoint: string) =>
+      JSON.stringify({ app: { path: '/w', branch: 'b', checkpoint, generation: 2 } });
+    const stored = (marker: string | null, checkpoint: string): DocumentEntity[] =>
+      [
+        ...(marker ? [{ kind: 'rebase_conflict', body: marker }] : []),
+        { kind: 'rebase_journal', body: journalOf(checkpoint) },
+      ] as DocumentEntity[];
+    const said = (documents: DocumentEntity[]) => sentence(blocked, [], documents, [], 3);
+
+    it('offers Resume and says what it does when the rebase is parked for implement', () => {
+      const documents = stored('pending-implement\n', 'conflict');
+      const parked = parkedConflictIn(documents, blocked);
+      expect(parked).toBe(true);
+      expect(actionsFor('blocked', 'REBASE_CONFLICT', { parkedConflict: parked })).toEqual(['resume', 'replay']);
+      expect(resumeState(blocked, [], { parkedConflict: parked })).toBe('ready');
+      expect(said(documents)).toBe(
+        'The rebase stopped at a conflict with the base branch. Resume has the implement agent resolve it; checks and code review judge the resolution, then the open tasks move onto the resolved branch.',
+      );
+    });
+
+    it('keeps Replay only and the old sentence for a recreated worktree', () => {
+      const documents = stored(null, 'applying');
+      expect(parkedConflictIn(documents, blocked)).toBe(false);
+      expect(resumeState(blocked, [], { parkedConflict: false })).toBe('blocked');
+      expect(said(documents)).toBe('This run is blocked. Another return is not available.');
+    });
   });
 });
 

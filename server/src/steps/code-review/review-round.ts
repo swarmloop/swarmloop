@@ -9,6 +9,7 @@ import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import type { StepContext } from '../base-step';
+import type { Route } from '../contract/step-contract';
 import { withReturnNotes } from '../implement/implement-record';
 import {
   issueOf,
@@ -24,9 +25,9 @@ import { resultPromptFor } from '../../agent-result/result-prompt';
 import { skillPrompt } from '../shared/skill-prompt';
 import { REVIEW_DIFF_READ } from './review-diff';
 import type { Requirement } from '../../contract/requirement-list';
-import type { Subtask } from '../../contract/subtask';
+import { settled, type Subtask } from '../../contract/subtask';
 import type { KeepLine } from '../shared/keep-lines';
-import { SUBTASK_PROOF_CHECK, exchangeSection } from './code-review.prompts';
+import { SUBTASK_PROOF_CHECK, conflictResolutionSection, exchangeSection } from './code-review.prompts';
 import { requirementsSection } from '../shared/coverage-correction';
 import { opinionSummary } from './code-review-round-result';
 import { reviewDocuments } from './code-review-record';
@@ -65,6 +66,8 @@ interface RoundInput {
   starter: string;
   subtasks: Subtask[] | null;
   keep: KeepLine[] | null;
+  /** True while an epic's resolution of its own rebase conflict is being judged. */
+  round?: boolean;
   auto: boolean | undefined;
   fresh: boolean;
   retry: boolean;
@@ -165,20 +168,14 @@ export async function routeReview(
   exchanges: ExchangeDraft[],
   thirdParty: boolean,
   usage: Usage,
+  pass: Route = { to: 'next' },
 ): Promise<PipelineResult> {
   const { opened } = ctx;
   const summary = opinionSummary(opinions);
   const line = `${opened.startedAt} code-review waiting\n${summary}`;
   const returning = opinions.filter((item) => item.decision === 'return');
   if (returning.length === 0 || thirdParty) {
-    return closeReview(
-      ctx,
-      { to: 'next' },
-      `${opened.startedAt} code-review done\n${summary}`,
-      documents,
-      exchanges,
-      usage,
-    );
+    return closeReview(ctx, pass, `${opened.startedAt} code-review done\n${summary}`, documents, exchanges, usage);
   }
   opened.run.attemptsReview += 1;
   await events.recordLoop(
@@ -238,7 +235,11 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
     input.subtasks,
     reviewer.name === 'requirements' ? SUBTASK_PROOF_CHECK : undefined,
   );
-  const kept = reviewer.name === 'regressions' ? withKeep(listed, input.keep) : listed;
+  const resolution = input.round
+    ? [conflictResolutionSection((input.subtasks ?? []).filter((task) => !settled(task)))]
+    : [];
+  const withRound = [...listed, ...resolution];
+  const kept = reviewer.name === 'regressions' ? withKeep(withRound, input.keep) : withRound;
   const exchange = input.exchanges.get(reviewer.name);
   const answered = exchange ? exchangeSection(exchange.finding, exchange.answer) : null;
   const exchanged = answered ? [...kept, answered] : kept;

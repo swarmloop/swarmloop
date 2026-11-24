@@ -98,6 +98,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.gitRulesNote,
     ARTIFACTS.starterTaken,
     ARTIFACTS.mergeLook,
+    ARTIFACTS.epicRound,
   ];
 
   constructor(
@@ -117,8 +118,9 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
 
   /**
    * The implement of a run the planner split is the server's passes over its subtasks, not an agent. Once every task
-   * is settled, a defect return from a later step or a rebase conflict is fixed by the agent on the merged feature
-   * branch. A final review that marks requirements missing is the split pass's: it becomes a task of the list.
+   * is settled, a defect return from a later step is fixed by the agent on the merged feature branch. A parked
+   * conflict of the run's own branch, and a return from the round that checks its resolution, go to the agent
+   * whatever the state of the tasks. A final review that marks requirements missing is the split pass's: it becomes a task of the list.
    */
   override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
     const run = await this.runs.findRun(key);
@@ -172,17 +174,32 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
         : []),
       ...planAmendment(await amendmentOf(this.documents, this.visits, ctx.opened.run)),
     ];
-    const answer = await readAnswer(this.planChat, key, this.name);
-    const sections = [
-      ...withHandoff(withReturnNotes([{ heading: 'Plan', body: plan }], notes), await ctx.reread(ARTIFACTS.handoff)),
-      ...merged,
-      ...(answer ? [answerSection(answer)] : []),
-    ];
+    const handoff = await ctx.reread(ARTIFACTS.handoff);
     const branch = await this.runNames.branchOf(ctx.opened.run, names);
     const markerBody = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim();
     const marker = markerBody.split('\n')[0]?.trim() ?? '';
     const storedStderr = markerBody.split('\n').slice(1).join('\n').trim();
     const { runtime } = this.profile(env, ctx.opened.run);
+    const settled = await settleRebase(
+      this.rebaseDeps(runtime),
+      input.requirements,
+      ctx,
+      marker,
+      names,
+      branch,
+      storedStderr,
+      await readAnswer(this.planChat, key, this.name),
+    );
+    if (settled) {
+      return settled;
+    }
+    // A conflict launch took the answer it carried: what is read now is for the checklist.
+    const answer = await readAnswer(this.planChat, key, this.name);
+    const sections = [
+      ...withHandoff(withReturnNotes([{ heading: 'Plan', body: plan }], notes), handoff),
+      ...merged,
+      ...(answer ? [answerSection(answer)] : []),
+    ];
     const subtask = isSubtask(ctx.opened.run);
     const ask = implementAsk(notes, subtask);
     const fullFor = (target: string): string =>
@@ -196,18 +213,6 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       ].join('\n\n');
     const full = fullFor(runtime);
     const added = await ctx.reread(ARTIFACTS.addedRepos);
-    const settled = await settleRebase(
-      this.rebaseDeps(runtime),
-      input.requirements,
-      ctx,
-      marker,
-      names,
-      branch,
-      storedStderr,
-    );
-    if (settled) {
-      return settled;
-    }
     const continued = await resumableChat(root(this.config), key, 'implement', runtime);
     const received = continued?.chatId ? (continued.resultName ?? null) : null;
     const followUp = answer
@@ -336,6 +341,8 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       environments: this.environments,
       step: this.name,
       runtime,
+      chat: this.planChat,
+      clock: this.clock,
     };
   }
 }

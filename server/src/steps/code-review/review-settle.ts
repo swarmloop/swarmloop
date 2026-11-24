@@ -27,6 +27,9 @@ import { closeReview, failed, noteHandoff, writeReport } from './review-report';
 import { openOthers, othersOpen, routeReview, tallyRound } from './review-round';
 import type { Finished, ReviewDeps } from './reviewer';
 import type { Opinion } from './code-review-record';
+import type { FlowRepository } from '../../history/flow.repository';
+import type { EpicRound } from '../shared/epic-round';
+import { ownConflictMarker } from '../implement/own-conflict-marker';
 
 /** What the round left and what the report needs, once the reviewers have answered. */
 interface SettleInput {
@@ -72,6 +75,8 @@ export class ReviewSettle {
     private readonly documents: DocumentRepository,
     private readonly events: EventRepository,
     private readonly chat?: PlanChatStore,
+    private readonly flows?: FlowRepository,
+    private readonly epicRound?: EpicRound,
   ) {}
 
   async settle(input: SettleInput): Promise<PipelineResult> {
@@ -155,18 +160,54 @@ export class ReviewSettle {
       await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
       return asked;
     }
+    const ended = await this.endRound(ctx, opinions, recorded);
     const routed = await routeReview(
       this.events,
       ctx,
       opinions,
-      recorded,
+      ended.documents,
       written.exchange ? [written.exchange] : [],
       thirdParty,
       written.usage,
+      ended.pass,
     );
     await this.linkReport(deps, opened, written.startId);
     await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
     return routed;
+  }
+
+  /**
+   * Ends an open resolution round of a split run that no reviewer returned: its open tasks move, and the pass goes
+   * back to implement, where the split pass leaves the epic waiting. A conflict of the round's own edits goes to
+   * implement as a marker, the round staying open. With no round to end the documents stay and the pass is `next`.
+   */
+  private async endRound(
+    ctx: StepContext,
+    opinions: Opinion[],
+    recorded: DocumentDraft[],
+  ): Promise<{ documents: DocumentDraft[]; pass: Route }> {
+    const { opened } = ctx;
+    const none: { documents: DocumentDraft[]; pass: Route } = { documents: recorded, pass: { to: 'next' } };
+    const pass: Route = { to: 'jump', step: 'implement' };
+    if (!this.epicRound || !opened.run.split || opinions.some((item) => item.decision === 'return')) return none;
+    if ((await ctx.reread(ARTIFACTS.epicRound))?.trim() !== 'open') return none;
+    const { conflict } = await this.epicRound.finish(opened.run, (await ctx.reread(ARTIFACTS.subtasks)) ?? []);
+    if (conflict) {
+      return {
+        documents: [...recorded, textDocument(ARTIFACTS.rebaseConflict.kind, ownConflictMarker(conflict))],
+        pass,
+      };
+    }
+    await this.flows?.noteFlow(opened.run.key, ['implementation', 'checks', 'code-review', 'ci'], 'implement');
+    return {
+      documents: [
+        ...recorded,
+        textDocument(ARTIFACTS.epicRound.kind, ''),
+        textDocument(ARTIFACTS.return.kind, ''),
+        textDocument(ARTIFACTS.issues.kind, ARTIFACTS.issues.format([])),
+      ],
+      pass,
+    };
   }
 
   /** Ends the visit on a start the door refused or a provider limit, once the reviewers that ran are recorded. */

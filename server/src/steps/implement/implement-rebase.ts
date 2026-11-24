@@ -11,12 +11,18 @@ import { mountsForStep, worktreePath } from '../../git/repo-names';
 import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { runJournal } from '../shared/rebase-journal';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
-import { failConflict, resolvedResult, type RebaseDeps } from './rebase-resolved';
+import type { PlanChatEntry } from '../../contract/plan-chat';
+import { answersConflict, askConflict, inRound, resolvedResult, type RebaseDeps } from './rebase-resolved';
 import { settleOwnConflict } from './implement-own-conflict';
 import { ownConflictOf } from './own-conflict-marker';
 import { rebaseConflictPrompt } from './implement.prompts';
+import { takeAnswer } from './implement-question';
 
-/** Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the checklist prompt. */
+/**
+ * Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the
+ * checklist prompt; a run in a round, whose tasks are not settled, has no checklist and goes on like a pending one.
+ * The planner's answer reaches the conflict agent's prompt and is taken after that launch.
+ */
 export async function settleRebase(
   deps: RebaseDeps,
   requirements: string,
@@ -25,6 +31,7 @@ export async function settleRebase(
   names: string[],
   branch: PerRepo<string>,
   storedStderr: string,
+  answer: PlanChatEntry | null = null,
 ): Promise<StepResult | null> {
   const { key } = ctx.opened.run;
   if (marker !== 'pending' && marker !== 'pending-implement') {
@@ -32,7 +39,7 @@ export async function settleRebase(
   }
   const own = ownConflictOf(storedStderr);
   if (marker === 'pending' && own !== null) {
-    return settleOwnConflict(deps, requirements, ctx, names, forRepo(branch, names[0] ?? ''), own);
+    return settleOwnConflict(deps, requirements, ctx, names, forRepo(branch, names[0] ?? ''), own, answer);
   }
   const bases = new Map<string, string>();
   const input = {
@@ -62,13 +69,14 @@ export async function settleRebase(
     return rebaseFeatureRepos(input);
   });
   const seen = new Set<string>();
+  let carried = answersConflict(answer, deps.step) ? answer : null;
   while (outcome.kind === 'conflict') {
     if (!outcome.stderr.trim() && storedStderr) {
       outcome = { ...outcome, stderr: storedStderr };
     }
     const id = `${outcome.repo}\0${outcome.files.slice().sort().join('\0')}`;
     if (seen.has(id)) {
-      return failConflict(deps, ctx, outcome);
+      return askConflict(deps, ctx, outcome);
     }
     seen.add(id);
     const place = {
@@ -88,6 +96,7 @@ export async function settleRebase(
         requirements,
         base: outcome.base,
         commit: outcome.commit,
+        answer: carried,
       })}\n`,
     );
     const resolved = await ctx.launch({
@@ -97,6 +106,8 @@ export async function settleRebase(
       resume: false,
       result: rebaseResolution,
     });
+    await takeAnswer(deps.chat, key, carried);
+    carried = null;
     await ctx.write(ARTIFACTS.rebaseResolutionResult, resolved.resultValue as RebaseResolutionResult);
     const cwd = worktreePath(root(deps.config), key, outcome.repo);
     const { repo } = outcome;
@@ -116,7 +127,7 @@ export async function settleRebase(
     await deps.environments.refreshAfterRebase(ctx.opened.run, mounts, bases);
     await completeRebase(input.journal, key);
   });
-  if (marker === 'pending-implement') {
+  if (marker === 'pending-implement' && !(await inRound(ctx))) {
     await ctx.write(ARTIFACTS.rebaseConflict, 'review\n');
     return null;
   }

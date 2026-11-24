@@ -314,3 +314,18 @@ describe('needsPerson', () => {
     }
   });
 });
+
+describe('actionsFor a blocked rebase conflict', () => {
+  it('offers only Replay without the parked-conflict fact', () => {
+    expect(actionsFor('blocked', ERROR_CODES.REBASE_CONFLICT)).toEqual(['replay']);
+    expect(actionsFor('blocked', ERROR_CODES.REBASE_CONFLICT, { parkedConflict: false })).toEqual(['replay']);
+  });
+
+  it('offers Resume and Replay when the conflict is parked for implement', () => {
+    expect(actionsFor('blocked', ERROR_CODES.REBASE_CONFLICT, { parkedConflict: true })).toEqual(['resume', 'replay']);
+  });
+
+  it('ignores the fact for a block of another code', () => {
+    expect(actionsFor('blocked', ERROR_CODES.GIT_AUTH, { parkedConflict: true })).toEqual(['replay']);
+  });
+});

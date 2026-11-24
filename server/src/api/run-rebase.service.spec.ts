@@ -40,8 +40,13 @@ function startingWith(next: 'resume' | 'start') {
 }
 
 /** A service for a split epic: what its rebase answers, and every call to the rebase and to the subtasks. */
-function splitEpic(next: 'resume' | 'start' | 'stay') {
-  const seen = { rebase: [] as unknown[][], moved: [] as unknown[][], resume: undefined as unknown };
+function splitEpic(next: 'resume' | 'start' | 'stay' | 'resolve') {
+  const seen = {
+    rebase: [] as unknown[][],
+    moved: [] as unknown[][],
+    resume: undefined as unknown,
+    start: undefined as unknown,
+  };
   const run = { key: 'PROJ-1', split: true };
   const service = new RunRebaseService(
     {
@@ -51,8 +56,14 @@ function splitEpic(next: 'resume' | 'start' | 'stay') {
       },
       tipOf: async () => 'demo@abc',
     } as never,
-    {} as never,
     {
+      startDetached: async (_key: string, options: unknown) => {
+        seen.start = options;
+        return { exitCode: 0, message: 'started' };
+      },
+    } as never,
+    {
+      accepted: async (key: string) => ({ key, status: 'started' }),
       resume: async (_key: string, _prompt: unknown, start: unknown) => {
         seen.resume = start;
         return { key: 'PROJ-1', status: 'started' };
@@ -77,9 +88,18 @@ describe('run rebase service', () => {
   });
 
   it('moves no subtask when the epic stayed on its branch after a conflict with main', async () => {
-    const { service, seen } = splitEpic('stay');
+    const { service, seen } = splitEpic('resolve');
     await service.rebase('PROJ-1', false, 'demo at abc123');
     expect(seen.moved).toEqual([]);
+    expect(seen.start).toEqual({ startBy: 'machine' });
+  });
+
+  it("moves no subtask when a person's Rebase of an epic conflicts, and starts the run", async () => {
+    const { service, seen } = splitEpic('resolve');
+    await service.rebase('PROJ-1');
+    expect(seen.moved).toEqual([]);
+    expect(seen.start).toBeUndefined();
+    expect(seen.rebase).toHaveLength(1);
   });
 
   it("sends the open subtasks no event on a person's Rebase of an epic", async () => {

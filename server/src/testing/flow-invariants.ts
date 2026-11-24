@@ -7,8 +7,10 @@ import {
   REASON,
   type StateReason,
 } from '../contract/run-state';
-import type { AgentExchangeEntity, StepStatEntity } from '../history/entities';
+import type { AgentExchangeEntity, RunEntity, StepStatEntity } from '../history/entities';
 import { liveState } from '../history/run-state';
+import { DocumentRepository } from '../history/document.repository';
+import { readParkedConflict } from '../pipeline/parked-conflict';
 import { CommandRepository } from '../history/command.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitStartRepository } from '../history/visit-start.repository';
@@ -26,6 +28,7 @@ export async function assertInvariants(app: TestApp): Promise<void> {
   const visits = app.app.get(VisitRepository);
   const commands = app.app.get(CommandRepository);
   const starts = app.app.get(VisitStartRepository);
+  const documents = app.app.get(DocumentRepository);
   const broken: string[] = [];
   for (const run of await runs.listRuns()) {
     const queued = (await commands.pending(run.id)).some((command) => command.type !== 'stop');
@@ -34,6 +37,7 @@ export async function assertInvariants(app: TestApp): Promise<void> {
     const runStarts = await starts.forRun(run.id);
     broken.push(
       ...stateRules(run.key, state, reason),
+      ...(await conflictRules(documents, run, state, reason)),
       ...visitRules(run.key, state, reason, stats),
       ...startRules(run.key, runStarts),
       ...visitStartRules(run.key, stats, await visits.listExchanges(stats.map((stat) => stat.id)), runStarts),
@@ -53,6 +57,20 @@ function stateRules(key: string, state: RunState, reason: StateReason | null): s
     broken.push(`${key} is ${state} and its reason does not say what happens next`);
   }
   return broken;
+}
+
+/** A run that holds a parked rebase conflict for implement is with implement or a planner: not blocked on it, not failed at implement. */
+async function conflictRules(
+  documents: DocumentRepository,
+  run: RunEntity,
+  state: RunState,
+  reason: StateReason | null,
+): Promise<string[]> {
+  const stopped =
+    (state === 'blocked' && reason?.code === ERROR_CODES.REBASE_CONFLICT) ||
+    (state === 'failed' && run.currentStep === 'implement');
+  if (!stopped || !(await readParkedConflict(documents, run))) return [];
+  return [`${run.key} is ${state} on a rebase conflict that implement or a planner holds`];
 }
 
 /** A started run is not idle without a reason, and every visit that ended has its result. */
