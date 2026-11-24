@@ -25,7 +25,9 @@ vi.mock('../../lib/endpoints', () => ({ getSession: vi.fn(), listProjects: vi.fn
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 vi.mock('../shell', async () => {
   const bridge = await import('../shell/use-live-bridge');
+  const { useOnReconnect } = await import('../shell/use-on-reconnect');
   return {
+    useOnReconnect,
     LiveBridgeProvider: bridge.LiveBridgeProvider,
     useLiveBridge: bridge.useLiveBridge,
     useBacklogStamp: bridge.useBacklogStamp,

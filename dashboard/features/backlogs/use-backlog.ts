@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BacklogView } from '@contract/backlog';
 import type { BacklogChatView } from '@contract/backlog-chat';
 import { getBacklog, getBacklogChat } from '../../lib/backlog-endpoints';
 import { getSession } from '../../lib/endpoints';
-import { useBacklogStamp, useLiveBridge } from '../shell';
+import { useBacklogStamp, useOnReconnect } from '../shell';
 
 interface Loaded {
   view: BacklogView;
@@ -44,15 +44,11 @@ export function useBacklog(name: string): BacklogState {
       void client.invalidateQueries({ queryKey: ['backlog', name] });
     }
   }, [client, name, stamp]);
-  // A reconnect (the socket connected before) may follow missed changes; the first connect reads nothing extra.
-  const connects = useLiveBridge((snapshot) => snapshot.connects);
-  const seenConnects = useRef(connects);
-  useEffect(() => {
-    if (seenConnects.current >= 1 && connects > seenConnects.current) {
+  useOnReconnect(
+    useCallback(() => {
       void client.invalidateQueries({ queryKey: ['backlog', name] });
-    }
-    seenConnects.current = connects;
-  }, [client, name, connects]);
+    }, [client, name]),
+  );
   const keep = (change: Partial<Loaded>): void => {
     client.setQueryData<Loaded>(key, (current) => (current ? { ...current, ...change } : current));
   };

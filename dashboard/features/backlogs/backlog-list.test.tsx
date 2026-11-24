@@ -15,7 +15,8 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 vi.mock('../shell', async () => {
   const bridge = await import('../shell/use-live-bridge');
-  return { LiveBridgeProvider: bridge.LiveBridgeProvider, useLiveBridge: bridge.useLiveBridge };
+  const { useOnReconnect } = await import('../shell/use-on-reconnect');
+  return { LiveBridgeProvider: bridge.LiveBridgeProvider, useLiveBridge: bridge.useLiveBridge, useOnReconnect };
 });
 
 function Wrapper({ children }: { children: ReactNode }) {

@@ -68,7 +68,7 @@ export class HeldRunPage {
     readonly key: string,
   ) {}
 
-  /** What the dashboard reads for the page: GET /runs/:key/flow. */
+  /** What the dashboard reads for the page: GET /runs/:key. */
   async read(): Promise<FlowView> {
     const response = await fetch(`${this.app.url}/runs/${this.key}`, { headers: this.app.auth });
     return (await response.json()) as FlowView;

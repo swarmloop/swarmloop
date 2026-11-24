@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { StepEvent } from '@contract/step-events';
 import { getStepEvents } from '../../../lib/endpoints';
-import { useLiveBridge } from '../../shell';
+import { useLiveBridge, useOnReconnect } from '../../shell';
 
 const POLL_MS = 3000;
 
@@ -48,21 +48,14 @@ export function useStepEvents(
 
   const pushed = useLiveBridge((snapshot) => snapshot.events);
   const connected = useLiveBridge((snapshot) => snapshot.connected);
-  const connects = useLiveBridge((snapshot) => snapshot.connects);
-  const seenConnects = useRef(connects);
   useEffect(refresh, [refresh, cursor]);
   useEffect(() => {
     if (pushed && pushed.key === runKey && (step === null || pushed.step === step)) {
       refresh();
     }
   }, [refresh, pushed, runKey, step]);
-  // A reconnect (the socket connected before) may follow missed events; the first connect reads nothing extra.
-  useEffect(() => {
-    if (seenConnects.current >= 1 && connects > seenConnects.current) {
-      refresh();
-    }
-    seenConnects.current = connects;
-  }, [refresh, connects]);
+  // A reconnect may follow missed events.
+  useOnReconnect(refresh);
   useEffect(() => {
     if (!running || connected) {
       return;

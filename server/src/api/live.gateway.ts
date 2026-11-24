@@ -63,7 +63,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
 
   constructor(
     private readonly hub: LiveHub,
-    private readonly runs: RunQueriesService,
+    runs: RunQueriesService,
     private readonly auth: AuthService,
     private readonly gate: ContainerGate,
     private readonly rows: RunListRows,

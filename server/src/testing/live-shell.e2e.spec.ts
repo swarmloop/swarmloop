@@ -28,6 +28,8 @@ class HeldShell {
   backlogStamps: Record<string, number> = {};
   paused = false;
   active: RunSummary[] = [];
+  /** The title the history page shows, from the held rows. */
+  titles = new Map<string, string>();
   private readonly statuses = new Map<string, string>();
   private readonly labelled = new Map<string, string>();
 
@@ -37,6 +39,7 @@ class HeldShell {
     const socket = await newSocket(this.app, sockets);
     socket.on('runs', (page: RunsPage) => {
       page.runs.forEach((run) => this.statuses.set(run.key, run.status));
+      page.runs.forEach((run) => this.titles.set(run.key, run.title));
       this.counts = page.counts;
       this.active = page.runs;
     });
@@ -53,6 +56,7 @@ class HeldShell {
       change.removed.some((key) => this.statuses.delete(key)) ||
       change.rows.some((run) => this.statuses.get(run.key) !== run.status);
     change.rows.forEach((run) => this.statuses.set(run.key, run.status));
+    change.rows.forEach((run) => this.titles.set(run.key, run.title));
     if (moved) this.statusStamp += 1;
     for (const run of change.rows) {
       if (!run.backlog) continue;
@@ -147,6 +151,26 @@ describe('the shell follows the server', () => {
     expect(shell.active.map((row) => [row.key, row.status])).toEqual(
       (await read('active')).runs.map((row) => [row.key, row.status]),
     );
+  });
+
+  it('follows the title of a run after one batch, and after a reconnect reads what a fresh read shows', async () => {
+    await start();
+    const shell = new HeldShell(app);
+    const socket = await shell.open(sockets);
+
+    const retitle = async (title: string): Promise<void> => {
+      const run = (await runs().findRun(KEY))!;
+      await runs().recordTitle(run, title);
+      await runs().saveRun(run);
+    };
+    await retitle('First title');
+    await pass();
+    expect(shell.titles.get(KEY)).toBe('First title');
+
+    await awayDuring(socket, () => retitle('Second title'));
+    const fresh = (await read('all')).runs.find((row) => row.key === KEY);
+    expect(fresh?.title).toBe('Second title');
+    expect(shell.titles.get(KEY)).toBe(fresh?.title);
   });
 
   describe('a backlog', () => {
