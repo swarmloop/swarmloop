@@ -254,7 +254,7 @@ export async function observeStates(): Promise<Observed['states']> {
     await observe('gap review before the last merge', parent, LATER);
     const gap = `gap-${(await documents.latestDocument(parent.key, reviewResultOf('requirements').kind))!.id}`;
     const newest = (await documents.latestDocument(parent.key, 'return'))!.id;
-    await documents.putDocument(parent, 'starter_taken', JSON.stringify([`${gap}@return-${newest}`]));
+    await documents.putDocument(parent, 'starter_taken', JSON.stringify([gap, `${gap}@return-${newest}`, 'gap-1/R2']));
     await observe('gap taken', parent, LATER);
     await documents.putDocument(parent, 'starter_taken', '[]');
     await documents.putDocument(parent, 'subtask_questions', '- Which policy wins?\n');

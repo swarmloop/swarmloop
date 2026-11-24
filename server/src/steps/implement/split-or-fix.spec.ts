@@ -70,7 +70,7 @@ describe('who runs the implement of a split parent', () => {
     await documents.putDocument(parent, 'return', 'requirements returned the change\n');
     const gap = `gap-${(await documents.latestDocument(parent.key, reviewResultOf('requirements').kind))!.id}`;
     const newest = (await documents.latestDocument(parent.key, 'return'))!.id;
-    await documents.putDocument(parent, 'starter_taken', JSON.stringify([`${gap}@return-${newest}`]));
+    await documents.putDocument(parent, 'starter_taken', JSON.stringify([gap, `${gap}@return-${newest}`, 'gap-1/R2']));
     expect(await runner(LATER)).toBe('split');
   });
 });
