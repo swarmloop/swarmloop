@@ -9,32 +9,9 @@
       "paths": ["server/"]
     },
     {
-      "run": "npm test --prefix server -- --changedSince=origin/main --passWithNoTests",
-      "name": "server tests",
-      "paths": ["server/"]
-    },
-    {
-      "run": "npm test --prefix server",
-      "name": "server tests, all",
-      "paths": ["defaults.env", "skills/", "scripts/jest-slowest-files.mjs", "scripts/slowest-files.mjs"]
-    },
-    {
       "run": "npm run typecheck --prefix dashboard",
       "name": "dashboard types",
       "paths": ["dashboard/", "server/src/contract", "package.json", "package-lock.json", "scripts/ci-tools.sh"]
-    },
-    {
-      "run": "npm test --prefix dashboard",
-      "name": "dashboard tests",
-      "paths": [
-        "dashboard/",
-        "server/src/contract",
-        "package.json",
-        "package-lock.json",
-        "scripts/ci-tools.sh",
-        "scripts/vitest-slowest-files.mjs",
-        "scripts/slowest-files.mjs"
-      ]
     },
     {
       "run": "npx eslint .",
