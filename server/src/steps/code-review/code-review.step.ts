@@ -42,6 +42,7 @@ import { storedImpact } from '../shared/research-reads';
 import { ARTIFACTS, REVIEW_RESULTS } from '../contract/artifacts';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { PlanChatStore } from '../../history/plan-chat.store';
+import { EpicRound } from '../shared/epic-round';
 
 const INPUTS = {
   implementationResult: { artifact: ARTIFACTS.implementationResult, need: 'optional' },
@@ -91,9 +92,10 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     private readonly runReport: RunReport,
     @Optional() private readonly planChat?: PlanChatStore,
     @Optional() private readonly openRounds?: OpenReviewRounds,
+    @Optional() epicRound?: EpicRound,
   ) {
     super(kernel);
-    this.settling = new ReviewSettle(this.documents, events, planChat);
+    this.settling = new ReviewSettle(this.documents, events, planChat, this.flows, epicRound);
     this.briefing = new StarterBriefing(this.runs, this.documents);
   }
 
@@ -249,6 +251,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const starter = await this.briefing.fullText(opened.run);
     const keep = split ? await ctx.reread(ARTIFACTS.keep) : null;
     const subtasks = split ? await ctx.reread(ARTIFACTS.subtasks) : null;
+    const round = split ? (await ctx.reread(ARTIFACTS.epicRound))?.trim() === 'open' : false;
     const finished = await runRound(deps, {
       opened,
       key,
@@ -268,6 +271,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       starter,
       subtasks,
       keep,
+      round,
       auto: options.auto,
       fresh,
       retry,
