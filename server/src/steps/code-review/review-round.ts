@@ -17,7 +17,7 @@ import {
   withImpact,
   withSubtasks,
 } from '../shared/handoff';
-import { reviewAnswerDefinition, reviewDefinition, type ReviewResult } from '../../agent-result/definitions/review';
+import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/definitions/review';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { skillPrompt } from '../shared/skill-prompt';
 import { REVIEW_DIFF_READ } from './review-diff';
@@ -257,11 +257,7 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
         .items.map((item) => item.id)
         .filter(Boolean)
     : [];
-  const marked = input.list && reviewer.name === 'requirements' ? requirementsCheck(input.list, itemIds) : undefined;
-  // A reviewer that asks the planner gives no marks yet: its decision is not taken.
-  const check = marked
-    ? (value: unknown) => (asks && (value as ReviewResult).question?.trim() ? [] : marked(value))
-    : undefined;
+  const check = input.list && reviewer.name === 'requirements' ? requirementsCheck(input.list, itemIds) : undefined;
   return {
     reviewer,
     ...agent,
