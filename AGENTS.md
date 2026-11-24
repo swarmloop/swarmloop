@@ -2,6 +2,12 @@
 
 swarmloop runs coding agents through a fixed flow: requirements, research, plan, implement, checks, code review, merge request, CI. These rules apply to every change in this repository, whoever writes it. Read them before you plan or write code. The lint config, `scripts/structure-rules.json` and `.github/workflows/ci.yml` enforce many of them; write the code so that they never fire.
 
+## Architecture
+
+- `ARCHITECTURE.md` is the model of swarmloop: its concepts, the states of a run and one rule per mechanism, then every process with where the code stands. Read its Part 1, and the section of every process your change touches, before you plan or write code.
+- A change that adds a second way to do something `ARCHITECTURE.md` does once is wrong: a second path for a mechanism, a new state or reason of a run, a new kind of run. Change the one path; when it cannot take the case, change the design and its section.
+- A change to a mechanism updates its section, and its `Today` line, in the same change. A `Today` line that no longer matches the code is a defect.
+
 ## Product code
 
 - Do not assume one project, language, repository name, path, toolchain or ecosystem folder. What one project needs comes from its own files (`.swarmloop.json`, `AGENTS.md`, its skills) or from env, never from code that knows the project, this repository included.
@@ -39,6 +45,8 @@ swarmloop runs coding agents through a fixed flow: requirements, research, plan,
 ## Tests
 
 - A test fails when the change is reverted. It checks behavior through the public interface the tree already tests: no private calls, no mock call counts, no large snapshots where one value matters, fake timers instead of sleeping.
+- Test a behavior at the cheapest level that proves it: a function through its own interface, a component alone. Render a whole page or dialog, or type through one, only to prove its layout or its flow.
+- Extend the test that already covers the code you change before writing a new one: one behavior is proven by one test.
 - Specs wait only on fake time, and start real git, a process or a container only in whole-flow specs or through `server/src/testing/git-fixture.ts` (the lint enforces it).
 - Each test run prints the ten slowest spec files. A change that adds a spec file that shows up in that list names it in implement's account with its time and cause; the performance reviewer reads it.
 - Test helpers live in `*.spec-helpers.ts`, `server/src/testing/` or `dashboard/test/`. Product code never imports a test library.

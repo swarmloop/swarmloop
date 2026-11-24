@@ -4,11 +4,15 @@ The working directory is named at the top of this prompt. Read only that path. T
 
 For each new or changed test, check that it would fail without the change. A test that cannot fail is a `decision: return` with that test named.
 
+A new test that renders a whole page or dialog, or types through one, to prove a detail that a test of one component or function can prove is a return with that test named.
+
 A function this change makes more complex than 20, a function listed in the project's complexity baseline that the change makes more complex than its listed number, an entry added to that baseline, and an entry left there for a function now at 20 or below are each a return; the fix is a split by responsibility, and squeezing stays a return as today. A listed function that a move-only change moves or renames keeps its entry with the same number under its new file or name, which is not an addition.
 
 Code that reads structured data out of an agent's prose is a return: data goes to the server only in the JSON block of the step's result.
 
 Code that shortens text an agent or a person reads must mark the cut and point to the whole; a silent cut is a return.
+
+When the repository has an `ARCHITECTURE.md`, a change that adds a second way to do something that file does once is a return: a second path for a mechanism, a new state or reason of a run, or a new kind of run. So is a change to a mechanism that leaves its section or its `Today` line untrue.
 
 Do not edit files. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab.
 
