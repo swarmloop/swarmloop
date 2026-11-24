@@ -26,8 +26,10 @@ import { handBackErrors } from '../steps/shared/hand-back';
 import { renderNeeds } from '../steps/shared/needs';
 import { keepOpen, readStoredQuestions } from '../steps/shared/question-parts';
 import { askedQuestion } from '../steps/implement/split-questions';
+import { isEscalated, type Escalated } from '../steps/shared/subtask-ops';
 import type { OpenedStep } from '../steps/step-run';
 import type { CommandService } from './command.service';
+import { reviewAnswerKey } from '../steps/shared/review-answer-key';
 import type { StartGate } from './start-gate';
 
 const ASKING_STEPS: string[] = ['research', 'plan', 'code-review', ...SUBTASK_ASKING_STEPS];
@@ -81,7 +83,8 @@ export class SubtaskPlannerAnswer {
 
   /**
    * Asks the planner what a subtask asked, and sends the child its decision, or makes it wait for the tasks the answer
-   * names. Null, with nothing sent, when the planner gave no usable answer.
+   * names. Null, with nothing sent, when the planner gave no usable answer. An escalation is handed up with the
+   * questions the subtask holds, as no usable answer is, and returned: nothing is sent either.
    */
   async answer(
     opened: OpenedStep,
@@ -90,15 +93,15 @@ export class SubtaskPlannerAnswer {
     contract: string,
     plan?: StarterPlan,
     start?: LookStart,
-  ): Promise<StarterAnswerResult | null> {
+  ): Promise<StarterAnswerResult | Escalated | null> {
     const questions = await this.askedBody(child);
     const given = await this.askAbout(opened, task, questions, contract, plan, start);
-    if (given === null) {
+    if (given === null || isEscalated(given)) {
       // The person who started the run is asked next, from the questions the subtask holds.
       if (SUBTASK_ASKING_STEPS.includes(child.currentStep) || (await this.handedUp(child))) {
         await this.documents.putDocument(child, ARTIFACTS.questions.kind, questions);
       }
-      return null;
+      return given;
     }
     if (given.waitFor?.length) {
       await this.waitOn(child, given);
@@ -110,9 +113,10 @@ export class SubtaskPlannerAnswer {
   /**
    * Puts a question of a task among the questions the parent holds for the person who started the run, as the parent's
    * own pass does for a question its planner could not answer. The person's answer reaches the task through that pass.
+   * With the planner's `words` of what must be decided, they follow the question.
    */
-  async handUp(parent: RunEntity, taskId: string, text: string): Promise<void> {
-    const ask = askedQuestion(taskId, text, this.clock.iso());
+  async handUp(parent: RunEntity, taskId: string, text: string, words?: string): Promise<void> {
+    const ask = askedQuestion(taskId, text, this.clock.iso(), words);
     const open = openQuestions(
       (await this.documents.latestBody(parent.key, ARTIFACTS.subtaskQuestions.kind)) ?? '',
       [],
@@ -134,9 +138,30 @@ export class SubtaskPlannerAnswer {
     return given && (await this.reply(child, given)) ? given : null;
   }
 
+  /**
+   * The planner's typed decision on a reviewer's finding, as an answer entry of the subtask's own chat that its
+   * code-review settles by. The key names the ask document it answers, so a resend writes it once.
+   */
+  private async recordFinding(child: RunEntity, given: StarterAnswerResult): Promise<void> {
+    if (!given.finding || child.currentStep !== 'code-review') return;
+    const asked = await this.documents.latestDocument(child.key, ARTIFACTS.reviewQuestions.kind);
+    if (!asked) return;
+    await this.chat.appendEntry(child.key, {
+      key: reviewAnswerKey(asked.id),
+      role: 'planner',
+      kind: 'answer',
+      from: 'code-review',
+      finding: given.finding,
+      text: given.decision.trim(),
+      at: this.clock.iso(),
+      state: 'pending',
+    });
+  }
+
   /** Delivers the decision of the answer to the child. A refusal is kept, so the next pass sends the same answer again. */
   private async reply(child: RunEntity, given: StarterAnswerResult): Promise<boolean> {
     try {
+      await this.recordFinding(child, given);
       await this.give(child, given.decision.trim(), `subtask-answer-${child.key}-${child.revision}`);
     } catch (error) {
       this.undelivered.set(child.key, given);
@@ -234,7 +259,8 @@ export class SubtaskPlannerAnswer {
   /**
    * A follow-up visit of the plan step in the chat of the parent, recorded like any visit of that step. It is a turn of the parent's
    * planner, ordered with the others. With a plan the planner may act on the task list, and a refused action goes back
-   * to it in the same visit. The question and the decision are entries of the parent's chat. Null when the planner gave no usable answer.
+   * to it in the same visit. The question and the decision are entries of the parent's chat; an escalation is an entry
+   * of kind `escalation` instead of the decision. Null when the planner gave no usable answer.
    */
   async askAbout(
     opened: OpenedStep,
@@ -243,7 +269,7 @@ export class SubtaskPlannerAnswer {
     contract: string,
     plan?: StarterPlan,
     start?: LookStart,
-  ): Promise<StarterAnswerResult | null> {
+  ): Promise<StarterAnswerResult | Escalated | null> {
     const turn = { id: `subtask-${task.id}`, at: opened.startedAt, text: questions };
     const state: StarterState | null = plan ? { contract, ...plan, asker: task.id } : null;
     const visit = await this.conversation.ordered(opened.run.key, turn, () =>
@@ -252,7 +278,8 @@ export class SubtaskPlannerAnswer {
         (received) => subtaskAsks(task, questions, contract, received, plan?.tasks),
         starterAnswer,
         (value) => {
-          const given = value as StarterAnswerResult;
+          const given = value as StarterAnswerResult | Escalated;
+          if (isEscalated(given)) return [];
           return state
             ? [...handBackErrors(questions, given), ...applyStarterAnswer(state, given, opened.startedAt).errors]
             : decisionErrors(given, false);
@@ -262,37 +289,41 @@ export class SubtaskPlannerAnswer {
       ),
     );
     if (!visit || 'refused' in visit) return null;
-    const given = visit.value as StarterAnswerResult;
-    await this.documents.putDocument(
-      opened.run,
-      ARTIFACTS.starterAnswerResult.kind,
-      ARTIFACTS.starterAnswerResult.format(given),
-    );
+    const given = visit.value as StarterAnswerResult | Escalated;
+    if (!isEscalated(given)) {
+      await this.documents.putDocument(
+        opened.run,
+        ARTIFACTS.starterAnswerResult.kind,
+        ARTIFACTS.starterAnswerResult.format(given),
+      );
+    }
     await this.record(opened, task, questions, given);
-    return given;
+    return isEscalated(given) ? { escalate: given.escalate } : given;
   }
 
-  /** The question and its decision as entries of the parent's plan chat, so its plan window shows them. */
+  /**
+   * The question and its decision, or its escalation, as entries of the parent's plan chat, so its plan window shows
+   * them. The escalation's key names the ask, so a replay hands it up once.
+   */
   private async record(
     opened: OpenedStep,
     task: Subtask,
     questions: string,
-    given: StarterAnswerResult,
+    given: StarterAnswerResult | Escalated,
   ): Promise<void> {
     const key = opened.run.key;
     const at = this.clock.iso();
     const entry = { role: 'planner', state: 'taken', at } as const;
+    const ask = `ask-${task.id}-${opened.startedAt}`;
     await this.chat.appendEntry(key, {
       ...entry,
-      key: `ask-${task.id}-${opened.startedAt}`,
+      key: ask,
       kind: 'question',
       text: `Subtask ${task.id} asks: ${questions.trim()}`,
     });
-    await this.chat.appendEntry(key, {
-      ...entry,
-      key: `decision-${task.id}-${opened.startedAt}`,
-      kind: 'answer',
-      text: given.decision.trim(),
-    });
+    const answer = isEscalated(given)
+      ? { key: `escalate-${ask}`, kind: 'escalation' as const, text: given.escalate.trim() }
+      : { key: `decision-${task.id}-${opened.startedAt}`, kind: 'answer' as const, text: given.decision.trim() };
+    await this.chat.appendEntry(key, { ...entry, ...answer });
   }
 }

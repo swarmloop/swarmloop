@@ -55,10 +55,10 @@ describe('the planner prompts that carry the rule', () => {
     expect(prompt).toContain(escalation);
   });
 
-  it('gives a subtask question the decide rule and no escalate, with and without the task list', () => {
+  it('gives a subtask question the decide rule and the escalate section, with and without the task list', () => {
     for (const prompt of [subtaskAsks(task, 'Which?', '- c', null), subtaskAsks(task, 'Which?', '- c', null, [task])]) {
       expect(prompt).toContain(section);
-      expect(prompt).not.toContain('escalate');
+      expect(prompt).toContain(escalation);
     }
   });
 });

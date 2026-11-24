@@ -92,6 +92,19 @@ interface FlowHarness {
   close(): Promise<void>;
 }
 
+/** The runner of `blocks`, with a changed file in the run's worktree at each implement launch, as an agent leaves its work. */
+function changing(blocks: BlockAgentRunner, root: () => string): BlockAgentRunner {
+  const run = blocks.run.bind(blocks);
+  let changes = 0;
+  blocks.run = (input) => {
+    if (input.step === 'implement' && input.runKey) {
+      writeFileSync(join(root(), 'worktrees', input.runKey, REPO, `fix-${(changes += 1)}.txt`), 'fixed\n');
+    }
+    return run(input);
+  };
+  return blocks;
+}
+
 /**
  * With `realHost` the merge-request and pipeline steps are the real ones on the fake host, and `begin` is for them.
  * Task runs have no worktree unless `taskWorktrees` says the spec makes them; without them every task is answered as on top of the feature branch.
@@ -116,6 +129,8 @@ export async function createFlowHarness(
     fakeHost?: FakeHostSettings;
     env?: Record<string, string>;
     blocks?: BlockAgentRunner;
+    /** Every implement launch changes a file in the run's worktree, as an agent that fixes a finding does, and the work stays uncommitted, as the commit step runs after review: the review sees a new tree. Without it the tree stays. */
+    implementCommits?: boolean;
     /** The agent process of every real step's launch. */
     runner?: FakeAgentRunner;
     /** Calls of the fake sandbox on top of its own, for a spec whose project has an image. */
@@ -125,16 +140,19 @@ export async function createFlowHarness(
   const sandbox = new FakeSandbox();
   const env = { ...options.env };
   const feature = `feature/${key}-ship-the-field`;
+  let rootOf = '';
+  const blocks = options.implementCommits && options.blocks ? changing(options.blocks, () => rootOf) : options.blocks;
   const first = await createTestApp({
     realImplement: options.realImplement ?? 'all',
     realHost: options.realHost,
     realReview: options.realReview,
     realSteps: options.realSteps,
-    blocks: options.blocks,
+    blocks,
     runner: options.runner,
     env,
     sandbox: { ...sandbox.calls, ...options.sandboxCalls },
   });
+  rootOf = first.root;
   const { tree, clone } = featureWorktree(first.root, key, REPO);
   git(tree, ['push', 'origin', feature]);
   const host = new FakeCodeHost(clone, feature, () => harness.app.clock.now());

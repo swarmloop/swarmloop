@@ -4,7 +4,7 @@ import { withDecisions } from '../plan/plan-tasks';
 import { refusal } from './need-refusal';
 import { withDecision } from '../shared/handoff';
 import type { Need } from '../shared/needs';
-import type { SubtaskOps } from '../shared/subtask-ops';
+import { isEscalated, type SubtaskOps } from '../shared/subtask-ops';
 import type { OpenedStep } from '../step-run';
 import type { StoredQuestion } from '../shared/question-parts';
 import { askedQuestion } from './split-questions';
@@ -128,7 +128,8 @@ export class SplitNeeds {
   /**
    * A need that cannot be waited for goes to the planner as a question. The first refusal of a task reruns it with the
    * reason, and with the planner's answer when there is one. The same task asking again goes up the chain: a usable
-   * answer of the planner goes down as a decision, and with none the question is put to the person who started the run.
+   * answer of the planner goes down as a decision, and with none, or with its escalation, the question is put to the
+   * person who started the run, with the planner's words, and the task is not rerun.
    */
   private async ask(
     opened: OpenedStep,
@@ -142,6 +143,9 @@ export class SplitNeeds {
       .map(({ need, reason }) => `${task.id} needs ${need.id}: ${need.what}. ${reason ?? 'It can be waited for.'}`)
       .join('\n');
     const answer = await this.subtasks.askAbout(opened, task, question, pass.contract);
+    if (isEscalated(answer)) {
+      return { ...pass, asks: [...pass.asks, askedQuestion(task.id, question, opened.startedAt, answer.escalate)] };
+    }
     const refused = reasons.flatMap(({ need, reason }) =>
       reason === null ? [] : [{ need, line: refusalLine(need, reason) }],
     );

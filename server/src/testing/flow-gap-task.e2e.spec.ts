@@ -11,6 +11,7 @@ import { createFlowHarness } from './flow-harness';
 import { save } from './runs.spec-helpers';
 
 const KEY = 'PROJ-480';
+const HOUR = 3_600_000;
 
 const task = (id: string, covers: string[]): Subtask => ({
   id,
@@ -70,7 +71,12 @@ describe('a final review gap becomes a task', () => {
     await documents().putDocument(run, 'repos', 'demo\n');
     const record = { project: 'demo', iid, url: `https://code.example/demo/${iid}`, draft: false, summary: '' };
     await documents().putDocument(run, 'merge_request', renderMergeRequest([record]));
-    writeRunState(run, { status: 'done', currentStep: 'done' });
+    // The task settles after the review stored while it still runs: the fake clock stands still, so the time is set ahead.
+    writeRunState(run, {
+      status: 'done',
+      currentStep: 'done',
+      doneAt: new Date(flow.app.clock.now() + HOUR).toISOString(),
+    });
     await runs().saveRun(run);
   }
 

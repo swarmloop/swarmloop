@@ -6,7 +6,7 @@ import type { OutOfScope, StarterDecision } from '../../agent-result/definitions
 import { withDecision } from '../shared/handoff';
 import type { StoredQuestion } from '../shared/question-parts';
 import { implementStart } from '../shared/look-start';
-import type { SubtaskOps } from '../shared/subtask-ops';
+import { isEscalated, type Escalated, type SubtaskOps } from '../shared/subtask-ops';
 import type { StepContext } from '../base-step';
 import type { InputReader } from '../contract/input-reader';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -106,10 +106,8 @@ export class StarterInbox {
       if (!(await this.deps.subtasks.asking(child))) continue;
       const answer = await this.asked(ctx, child, task, state);
       if (answer === 'held') return idle;
-      if (answer === null) {
-        const asked = child.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
-        const questions = (await this.deps.reader.reread(child.key, asked)) ?? '';
-        return { ...idle, asks: [askedQuestion(task.id, questions, startedAt)] };
+      if (answer === null || isEscalated(answer)) {
+        return { ...idle, asks: [await this.held(child, task, startedAt, answer?.escalate)] };
       }
       const applied = applyStarterAnswer({ contract, tasks, requirements, asker: task.id }, answer, startedAt);
       await this.deps.subtasks.recordRevisions(run, applied.changes, startedAt);
@@ -118,8 +116,15 @@ export class StarterInbox {
     return idle;
   }
 
+  /** The question the subtask holds for the person who started the run, with the planner's words when it escalated. */
+  private async held(child: RunEntity, task: Subtask, at: string, words?: string): Promise<StoredQuestion> {
+    const asked = child.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
+    const questions = (await this.deps.reader.reread(child.key, asked)) ?? '';
+    return askedQuestion(task.id, questions, at, words);
+  }
+
   /**
-   * The planner's answer for a subtask, or null when it gave none. An answer the subtask refused is sent again instead
+   * The planner's answer for a subtask, or its escalation, or null when it gave none. An answer the subtask refused is sent again instead
    * of asked again, and `held` says it is still refused.
    */
   private async asked(
@@ -127,7 +132,7 @@ export class StarterInbox {
     child: RunEntity,
     task: Subtask,
     state: InboxState,
-  ): Promise<StarterAnswerResult | 'held' | null> {
+  ): Promise<StarterAnswerResult | Escalated | 'held' | null> {
     const { subtasks } = this.deps;
     if (subtasks.replyPending(child)) return (await subtasks.resend(child)) ?? 'held';
     const { contract, tasks, requirements } = state;

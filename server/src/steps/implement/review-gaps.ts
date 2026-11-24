@@ -1,4 +1,6 @@
 import type { DocumentRepository } from '../../history/document.repository';
+import type { RunEntity } from '../../history/entities';
+import type { SubtaskOps } from '../shared/subtask-ops';
 import type { Requirement } from '../../contract/requirement-list';
 import type { Subtask } from '../../contract/subtask';
 import type { RequirementMark } from '../../agent-result/definitions/review';
@@ -44,10 +46,33 @@ async function latestGap(documents: DocumentRepository, runKey: string): Promise
   return review.result.decision === 'return' && marks.length > 0 ? { key: `${GAP_PREFIX}${review.id}`, marks } : null;
 }
 
+/**
+ * True when the latest final requirements review came after every task of the run settled, or when a task's settle
+ * time is not known: a task that is done cannot take it, so it is a return for the parent's implement.
+ */
+async function recordedAfterSettling(
+  documents: DocumentRepository,
+  subtasks: Pick<SubtaskOps, 'settledAt'>,
+  run: RunEntity,
+  tasks: Pick<Subtask, 'id'>[],
+): Promise<boolean> {
+  const review = await latestRequirementsReview(documents, run.key);
+  const times = await Promise.all(tasks.map((task) => subtasks.settledAt(run, task.id)));
+  if (!review || times.some((time) => time === null)) return true;
+  return times.every((time) => time !== null && Date.parse(review.createdAt) > Date.parse(time));
+}
+
 /** The gap in the latest final requirements review of the run. Null when it marks none or its key is already taken. */
-export async function gapOf(documents: DocumentRepository, runKey: string, taken: string[]): Promise<Gap | null> {
-  const gap = await latestGap(documents, runKey);
-  return gap && !taken.includes(gap.key) ? gap : null;
+export async function gapOf(
+  documents: DocumentRepository,
+  subtasks: Pick<SubtaskOps, 'settledAt'>,
+  run: RunEntity,
+  tasks: Pick<Subtask, 'id'>[],
+  taken: string[],
+): Promise<Gap | null> {
+  const gap = await latestGap(documents, run.key);
+  if (!gap || taken.includes(gap.key) || (await recordedAfterSettling(documents, subtasks, run, tasks))) return null;
+  return gap;
 }
 
 /** What the parent notes in its taken list with a gap: the return it was taken from, so a later return is not mistaken for it. */

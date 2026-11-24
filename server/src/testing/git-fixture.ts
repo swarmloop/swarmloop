@@ -22,6 +22,11 @@ export function git(cwd: string, args: string[]): string {
   return gitOutput(cwd, args).trim();
 }
 
+/** A named pipe at `path`: a file a read would wait on forever. */
+export function makeFifo(path: string): void {
+  execFileSync('mkfifo', [path]);
+}
+
 /** What a template's commits are made in: a new clone of `name` on `branch`, with an empty bare origin already added. */
 interface TemplateRepo {
   clone: string;

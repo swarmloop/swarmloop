@@ -112,10 +112,12 @@ export function subtaskAsks(
     ...(tasks
       ? ['The tasks now:', taskLines(tasks), '', STARTER_ACTIONS]
       : [
-          'Answer each question as a decision the subtask follows, in `decision`. Do not change the task list. Send the decision only.',
+          'Answer each question as a decision the subtask follows, in `decision`. Do not change the task list. Send the decision only, or escalate what you cannot settle.',
         ]),
     '',
     decideWhatYouHold(),
+    '',
+    escalateWhatYouDoNotHold(),
     '',
     resultPromptFor(starterAnswer, received),
   ].join('\n');

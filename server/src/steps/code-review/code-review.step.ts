@@ -34,6 +34,7 @@ import { approvedPlan, foreignReviewOf, storedCheckout } from './review-input';
 import { closeReview, failed } from './review-report';
 import { othersOpen, reportDue, runRound } from './review-round';
 import { settleAsked } from './review-ask';
+import { ReviewPlannerAnswers } from './review-planner-answers';
 import { ReviewSettle } from './review-settle';
 import { onlyReviewer } from './reviewer';
 import { prepareReview, type PrepareDeps } from './review-prepare';
@@ -81,11 +82,12 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   override readonly capabilities: StepCapabilities = { path: true };
 
   private readonly settling: ReviewSettle;
+  private readonly answers: ReviewPlannerAnswers;
   private readonly briefing: StarterBriefing;
 
   constructor(
     kernel: StepKernel,
-    events: EventRepository,
+    private readonly events: EventRepository,
     private readonly worktrees: CheckoutService,
     private readonly sandbox: SandboxService,
     private readonly door: AgentDoor,
@@ -96,6 +98,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   ) {
     super(kernel);
     this.settling = new ReviewSettle(this.documents, events, planChat, this.flows, epicRound);
+    this.answers = new ReviewPlannerAnswers(this.documents, events, planChat);
     this.briefing = new StarterBriefing(this.runs, this.documents);
   }
 
@@ -189,6 +192,28 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     }
   }
 
+  /** What the reviewers of this round read besides the diff: the handoff, plan, impact and, for a split parent, its epic. */
+  private async roundReads(ctx: StepContext) {
+    const { run } = ctx.opened;
+    const handoff = await ctx.reread(ARTIFACTS.handoff);
+    const requirementList = await ctx.reread(ARTIFACTS.requirementList);
+    const coverage = await ctx.reread(ARTIFACTS.requirementCoverage);
+    const plan = await approvedPlan(this.documents, run.key);
+    const split = run.split;
+    return {
+      handoff,
+      list: requirementList?.length ? requirementList : null,
+      plan,
+      coveredPlan: coverage ? await approvedPlan(this.documents, run.key, coverage) : plan,
+      impact: storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact)),
+      contract: split ? await ctx.reread(ARTIFACTS.contract) : null,
+      starter: await this.briefing.fullText(run),
+      keep: split ? await ctx.reread(ARTIFACTS.keep) : null,
+      subtasks: split ? await ctx.reread(ARTIFACTS.subtasks) : null,
+      round: split ? (await ctx.reread(ARTIFACTS.epicRound))?.trim() === 'open' : false,
+    };
+  }
+
   private async review(notes: string | null, ctx: StepContext, env: SwarmloopEnv): Promise<PipelineResult> {
     const { opened, options } = ctx;
     const { key } = opened.run;
@@ -203,28 +228,23 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       briefing: this.briefing,
       onReportStart: () => this.openRounds?.reportStarted(key),
     };
-    const {
-      requirements,
-      thirdParty,
-      mounts,
-      only,
-      fresh,
-      retry,
-      same,
-      exchanges,
-      returned,
-      diff,
-      fingerprint,
-      kept,
-      pending,
-      recovered,
-    } = await ctx.activity('Preparing', () => prepareReview(this.prepareDeps(), notes, ctx));
+    const prepared = await ctx.activity('Preparing', () => prepareReview(this.prepareDeps(), notes, ctx));
+    const { requirements, thirdParty, mounts, only, fresh, retry, exchanges, returned, diff, fingerprint } = prepared;
+    const answered = await this.answers.settle(ctx, prepared);
+    if ('closed' in answered) {
+      return answered.closed;
+    }
+    const { kept, pending, recovered } = answered;
     this.openRounds?.open(key, {
       reviewers: pending.map((item) => item.name),
       reportDue: reportDue(only, kept, pending) && !(only !== undefined && othersOpen(only, kept)),
       reportStarted: false,
     });
-    const settled = await settleAsked(ctx, this.documents);
+    const settled = await settleAsked(
+      ctx,
+      this.documents,
+      this.planChat ? { chat: this.planChat, events: this.events } : undefined,
+    );
     if (settled) {
       return settled;
     }
@@ -239,19 +259,8 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       );
     }
     writeReviewDiff(root(this.config), key, diff.patch);
-    const handoff = await ctx.reread(ARTIFACTS.handoff);
-    const requirementList = await ctx.reread(ARTIFACTS.requirementList);
-    const list = requirementList?.length ? requirementList : null;
-    const coverage = await ctx.reread(ARTIFACTS.requirementCoverage);
-    const plan = await approvedPlan(this.documents, key);
-    const coveredPlan = coverage ? await approvedPlan(this.documents, key, coverage) : plan;
-    const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
-    const split = opened.run.split;
-    const contract = split ? await ctx.reread(ARTIFACTS.contract) : null;
-    const starter = await this.briefing.fullText(opened.run);
-    const keep = split ? await ctx.reread(ARTIFACTS.keep) : null;
-    const subtasks = split ? await ctx.reread(ARTIFACTS.subtasks) : null;
-    const round = split ? (await ctx.reread(ARTIFACTS.epicRound))?.trim() === 'open' : false;
+    const { handoff, list, plan, coveredPlan, impact, contract, starter, keep, subtasks, round } =
+      await this.roundReads(ctx);
     const finished = await runRound(deps, {
       opened,
       key,
@@ -277,7 +286,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       retry,
       exchanges,
     });
-    return this.settling.settle({
+    const closed = await this.settling.settle({
       ctx,
       deps,
       env,
@@ -294,7 +303,9 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       exchanges,
       fresh,
       thirdParty,
-      same,
     });
+    // The answers are taken once the visit that used them is closed, so a visit that dies settles again from them.
+    await this.answers.take(key, answered.taken);
+    return closed;
   }
 }

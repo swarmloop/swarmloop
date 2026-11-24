@@ -23,7 +23,6 @@ interface SelectInput {
   retry: boolean;
   /** The attempt of the code-review visit that was interrupted. Set when `retry`. */
   attemptId: string | null;
-  same: boolean;
   /** Whether the stored review `kind` counts for this generation and these files. */
   counts: (kind: string) => Promise<boolean>;
 }
@@ -57,7 +56,7 @@ export async function selectReviewers(
   root: string,
   input: SelectInput,
 ): Promise<Selection> {
-  const { key, only, fresh, retry, attemptId, same, counts } = input;
+  const { key, only, fresh, retry, attemptId, counts } = input;
   const round: Selection = { kept: [], pending: [], recovered: [] };
   for (const reviewer of REVIEWERS) {
     if (fresh || only === reviewer.name) {
@@ -66,10 +65,7 @@ export async function selectReviewers(
       }
       continue;
     }
-    const stored =
-      (Boolean(only) || retry || same) && (await counts(reviewer.kind))
-        ? await storedOpinion(documents, key, reviewer)
-        : null;
+    const stored = (await counts(reviewer.kind)) ? await storedOpinion(documents, key, reviewer) : null;
     if (take(round, stored, Boolean(only) || retry || stored?.decision === 'ok')) {
       continue;
     }

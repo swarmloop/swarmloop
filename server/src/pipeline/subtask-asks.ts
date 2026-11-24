@@ -17,7 +17,7 @@ import type { RunRepository } from '../history/run.repository';
 import type { PlanChatStore } from '../history/plan-chat.store';
 import type { PlanChange, StarterPlan } from '../steps/implement/starter-actions';
 import type { StarterAnswerResult } from '../agent-result/definitions/starter-answer';
-import type { SubtaskStart } from '../steps/shared/subtask-ops';
+import { isEscalated, type Escalated, type SubtaskStart } from '../steps/shared/subtask-ops';
 import { buildRevision } from '../steps/shared/plan-revision';
 
 /** The asks of subtask runs and the answers they get, as the port hands them to the implement pass. */
@@ -48,7 +48,7 @@ export class SubtaskAsks {
     contract: string,
     plan?: StarterPlan,
     start?: LookStart,
-  ): Promise<StarterAnswerResult | null> {
+  ): Promise<StarterAnswerResult | Escalated | null> {
     return this.planner.answer(opened, child, task, contract, plan, start);
   }
 
@@ -81,13 +81,20 @@ export class SubtaskAsks {
     return this.planner.deliver(child, text);
   }
 
-  /** The decision of the planner to a question about a task, as text. Null when it gave no usable answer. */
-  async askAbout(opened: OpenedStep, task: Subtask, questions: string, contract: string): Promise<string | null> {
-    return (await this.planner.askAbout(opened, task, questions, contract))?.decision.trim() ?? null;
+  /** The decision of the planner to a question about a task, as text, or its escalation as it is. Null when it gave no usable answer. */
+  async askAbout(
+    opened: OpenedStep,
+    task: Subtask,
+    questions: string,
+    contract: string,
+  ): Promise<string | Escalated | null> {
+    const given = await this.planner.askAbout(opened, task, questions, contract);
+    if (given === null || isEscalated(given)) return given;
+    return given.decision.trim();
   }
 
-  handUp(parent: RunEntity, taskId: string, text: string): Promise<void> {
-    return this.planner.handUp(parent, taskId, text);
+  handUp(parent: RunEntity, taskId: string, text: string, words?: string): Promise<void> {
+    return this.planner.handUp(parent, taskId, text, words);
   }
 
   /** The needs a subtask run waits on, with the questions it asked. */
