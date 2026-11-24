@@ -7,6 +7,8 @@ import type { CommandEntity, RunEntity } from '../history/entities';
 import { CommandRepository, conflict } from '../history/command.repository';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { RunRepository } from '../history/run.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { readParkedConflict } from './parked-conflict';
 import { factColumns, storedState } from '../history/run-state';
 import { actionsFor, SKIPPED_NOTE } from '../contract/run-state';
 import type { CommandReceipt, CommandType } from '../contract/command';
@@ -68,6 +70,7 @@ export class CommandService {
     private readonly config: AppConfig,
     private readonly credentials: PersonalCredentials,
     private readonly userSettings: UserSettingRepository,
+    private readonly documents: DocumentRepository,
   ) {}
 
   register(type: CommandType, handler: CommandHandler): void {
@@ -85,6 +88,7 @@ export class CommandService {
     if (!current && options.create) {
       await this.assertCredentials(options.create);
     }
+    const parked = await this.parkedOf(type, current, !options.run);
     const accepted = await this.commands.accept({
       type,
       key,
@@ -94,7 +98,7 @@ export class CommandService {
       create: options.create,
       actor: options.actor,
       takeOver: await this.takeOverOf(type, options.actor),
-      admit: (run) => this.admit(type, key, run, !options.run),
+      admit: (run) => this.admit(type, key, run, !options.run, parked),
     });
     this.runs.notify(key);
     await barrier('after-accept');
@@ -108,6 +112,12 @@ export class CommandService {
   /** The newest command of a run whose idempotency key starts with `prefix`: the record of the last try of an event. */
   latestByKeyPrefix(runId: number, prefix: string): Promise<CommandEntity | null> {
     return this.commands.latestByKeyPrefix(runId, prefix);
+  }
+
+  /** Whether a blocked run's Resume is checked against a conflict parked for implement, read before the transaction. */
+  private async parkedOf(type: CommandType, run: RunEntity | null, checked: boolean): Promise<boolean> {
+    if (type !== 'resume' || !checked || !run || storedState(run).state !== 'blocked') return false;
+    return readParkedConflict(this.documents, run);
   }
 
   private async takeOverOf(type: CommandType, actor: string | null | undefined) {
@@ -221,7 +231,13 @@ export class CommandService {
   }
 
   /** `checked` is true for an HTTP command: its Resume is checked against the block's stored code. The CLI's run never refused a block. */
-  private admit(type: CommandType, key: string, run: RunEntity | null, checked: boolean): void {
+  private admit(
+    type: CommandType,
+    key: string,
+    run: RunEntity | null,
+    checked: boolean,
+    parkedConflict: boolean,
+  ): void {
     if (!run) return;
     const held = this.runs.held(run);
     if (type !== 'remove' && storedState(run).state === 'skipped') {
@@ -239,7 +255,7 @@ export class CommandService {
       type === 'resume' &&
       checked &&
       state.state === 'blocked' &&
-      !actionsFor(state.state, state.reason?.code ?? null).includes('resume')
+      !actionsFor(state.state, state.reason?.code ?? null, { parkedConflict }).includes('resume')
     ) {
       throw new ConflictException({
         statusCode: 409,

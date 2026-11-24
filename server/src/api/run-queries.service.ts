@@ -16,6 +16,7 @@ import { StepEventLog } from '../history/step-event.log';
 import { root } from '../history/run-paths';
 import { LiveHub } from '../live/live.hub';
 import { ContainerGate } from '../sandbox/container-gate';
+import { parkedConflictIn } from '../pipeline/parked-conflict';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { StepRegistry } from '../steps/step.registry';
 import { isStep } from '../core/pipeline-result';
@@ -133,7 +134,13 @@ export class RunQueriesService {
       documents,
     );
     const shown = shownRun(run, (held) => this.pipeline.claimed(held));
-    const state = await runState(this.commands, shown, open, runPlace(this.gate.agentWait(run.key)));
+    const state = await runState(
+      this.commands,
+      shown,
+      open,
+      parkedConflictIn(documents, run),
+      runPlace(this.gate.agentWait(run.key)),
+    );
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
     const children = await this.runs.children(run);

@@ -62,9 +62,15 @@ export class RunRebase {
    * working run. A blocked subtask is moved and left blocked (`stay`): only a person's Resume, Replay or Skip moves it on.
    * A subtask blocked by a check goes on instead: the move gave it a new tree, so its checks run once on it.
    * `byMain` is the machine bringing a new green main into an epic that waits between passes; it publishes the
-   * rebased branch so the subtasks move onto it, and an epic that conflicts with main is blocked and moves nothing.
+   * rebased branch so the subtasks move onto it. A main move that conflicts goes to implement like every rebase conflict
+   * (`resolve`): the conflict agent resolves it, and the end of its round moves the subtasks.
    */
-  async rebase(key: string, resume = false, byParent = false, byMain = false): Promise<'resume' | 'start' | 'stay'> {
+  async rebase(
+    key: string,
+    resume = false,
+    byParent = false,
+    byMain = false,
+  ): Promise<'resume' | 'start' | 'stay' | 'resolve'> {
     const run = await this.requireRun(key);
     this.assertOffered(run, byParent, byMain);
     const { state, reason } = storedState(run);
@@ -103,8 +109,9 @@ export class RunRebase {
         ARTIFACTS.rebaseConflict.kind,
         unfinished ? 'pending-implement\n' : 'pending\n',
       );
-      if (byMain) return this.blockOnMain(run, stop);
-      return stays ? 'stay' : this.startAtImplement(run);
+      if (stays) return 'stay';
+      await this.startAtImplement(run);
+      return 'resolve';
     }
     if (byMain) await withWorktrees(paths, async () => this.publishMain(key, run, names, stop.leases));
     if (stays) return 'stay';
@@ -170,15 +177,6 @@ export class RunRebase {
     leases: { repo: string; tip: string | null }[],
   ): Promise<void> {
     await this.publisher.publishRebased(key, await this.names.branchOf(run, names), leases);
-  }
-
-  /** An epic that conflicts with main stays on its branch, blocked, until a person replays it. */
-  private async blockOnMain(run: RunEntity, stop: Extract<RebaseStop, { kind: 'conflict' }>): Promise<'stay'> {
-    const fresh = await this.requireRun(run.key);
-    const message = `${stop.repo} conflicts with main in ${stop.files.join(', ')}; the epic stays on its branch until a person replays it`;
-    writeRunState(fresh, { status: 'blocked', reason: { code: ERROR_CODES.REBASE_CONFLICT, message } });
-    await this.runs.saveRun(fresh);
-    return 'stay';
   }
 
   private worktreePaths(run: RunEntity, names: string[]): string[] {
