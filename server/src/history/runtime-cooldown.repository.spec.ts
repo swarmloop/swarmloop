@@ -23,6 +23,23 @@ describe('RuntimeCooldownRepository', () => {
     }
   });
 
+  it('writes two cooldowns of one key started together as one row with the later end', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const cooldowns = db.app.get(RuntimeCooldownRepository);
+      await Promise.all([
+        cooldowns.set(key('claude'), NOW + 60 * MINUTE, false),
+        cooldowns.set(key('claude'), NOW + 180 * MINUTE, true),
+      ]);
+      expect(await cooldowns.earliest([key('claude')])).toEqual({
+        until: NOW + 180 * MINUTE,
+        resumeAt: NOW + 180 * MINUTE + RESUME_AFTER_RESET_MS,
+      });
+    } finally {
+      await db.close();
+    }
+  });
+
   it('resumes at the earliest end, a minute after a named reset and at the end of a default cooldown', async () => {
     const db = await repositoryDatabase();
     try {
