@@ -11,6 +11,10 @@ import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { sessionFileName, sessionHome } from '../../history/session-group';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { EpicRound } from '../shared/epic-round';
+import { SubtaskOps } from '../shared/subtask-ops';
+import { ARTIFACTS } from '../contract/artifacts';
+import { ownConflictMarker } from '../implement/own-conflict-marker';
+import { storedState } from '../../history/run-state';
 import type { Subtask } from '../../contract/subtask';
 import { answerFor, boot, reply, reportReply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
@@ -178,7 +182,13 @@ describe('code review of an epic whose resolution round is open', () => {
   });
 
   /** A split run with two open tasks and a merged one; `round` is the body of its epic_round document. */
-  async function epicReview(key: string, round: string | null, returning: string | null, tasks: Subtask[]) {
+  async function epicReview(
+    key: string,
+    round: string | null,
+    returning: string | null,
+    tasks: Subtask[],
+    conflict: string | null = null,
+  ) {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-round-'));
     await writeEnv(root);
     gitWorktree(join(root, 'worktrees', key, 'billing-api'));
@@ -203,8 +213,9 @@ describe('code review of an epic whose resolution round is open', () => {
       const ended: Subtask[][] = [];
       jest.spyOn(app.get(EpicRound), 'finish').mockImplementation((_parent, moved) => {
         ended.push(moved);
-        return Promise.resolve({ conflict: null });
+        return Promise.resolve({ conflict });
       });
+      const rebase = jest.spyOn(app.get(SubtaskOps), 'rebase');
       const done = await app.get(PipelineService).step('code-review', key);
       const after = (await runs.findRun(key))!;
       const body = (kind: string) => documents.latestBody(key, kind);
@@ -212,6 +223,9 @@ describe('code review of an epic whose resolution round is open', () => {
         done,
         after,
         ended,
+        rebased: rebase.mock.calls.length,
+        state: storedState(after),
+        marker: await body(ARTIFACTS.rebaseConflict.kind),
         prompts: agent.mock.calls.map((call) => call[0]).filter((call) => !call.step.endsWith('report')),
         round: await body('epic_round'),
         notes: await body('return'),
@@ -234,6 +248,18 @@ describe('code review of an epic whose resolution round is open', () => {
     expect(round?.trim()).toBe('');
     expect(notes?.trim()).toBe('');
     expect(JSON.parse(issues ?? '[]')).toEqual([]);
+  });
+
+  it('keeps the round open, parks the own-edits conflict for implement and moves no task when the round cannot finish', async () => {
+    const conflict = 'billing-api: src/field.ts';
+    const { done, after, state, marker, round, rebased } = await epicReview('PROJ-94', 'open\n', null, OPEN, conflict);
+
+    expect(done.exitCode).toBe(0);
+    expect(marker).toBe(ownConflictMarker(conflict));
+    expect(round?.trim()).toBe('open');
+    expect(after.currentStep).toBe('implement');
+    expect(rebased).toBe(0);
+    expect(['blocked', 'failed']).not.toContain(state.state);
   });
 
   it('keeps the round open and moves no task when a reviewer returns', async () => {
