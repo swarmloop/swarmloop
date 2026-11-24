@@ -6,6 +6,7 @@ import type { Clock } from '../../core/clock';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { settled, withStatuses } from '../../contract/subtask';
 import type { PlanChatStore } from '../../history/plan-chat.store';
+import type { PlanChatEntry } from '../../contract/plan-chat';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { worktreeStatus } from '../../git/worktree-git';
 import type { RebaseStop } from '../../git/rebase';
@@ -85,6 +86,13 @@ export async function resolvedResult(
   };
 }
 
+const CONFLICT_ASK = 'conflict-';
+
+/** Whether the planner's answer is to a question askConflict asked, and so belongs to the conflict agent. */
+export function answersConflict(answer: PlanChatEntry | null, step: string): answer is PlanChatEntry {
+  return answer !== null && answer.key.startsWith(`answer-ask-${step}-${CONFLICT_ASK}`);
+}
+
 /**
  * The agent left the same files conflicting: the planner is asked, and the rebase and the marker stay parked for the
  * next visit. A module with no plan chat has no one to ask, and the step fails with the files and git's message.
@@ -106,5 +114,12 @@ export function askConflict(
     ...(stderr ? [stderr] : []),
     'How should these files be resolved?',
   ].join('\n');
-  return waitForPlanner(run, { chat: deps.chat, clock: deps.clock, step: deps.step, attemptId, startedAt, question });
+  return waitForPlanner(run, {
+    chat: deps.chat,
+    clock: deps.clock,
+    step: deps.step,
+    attemptId: `${CONFLICT_ASK}${attemptId}`,
+    startedAt,
+    question,
+  });
 }

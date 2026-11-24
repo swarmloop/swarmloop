@@ -12,7 +12,7 @@ import { agentWorkplace, projectFor } from '../shared/agent-environment';
 import { runJournal } from '../shared/rebase-journal';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
 import type { PlanChatEntry } from '../../contract/plan-chat';
-import { askConflict, inRound, resolvedResult, type RebaseDeps } from './rebase-resolved';
+import { answersConflict, askConflict, inRound, resolvedResult, type RebaseDeps } from './rebase-resolved';
 import { settleOwnConflict } from './implement-own-conflict';
 import { ownConflictOf } from './own-conflict-marker';
 import { rebaseConflictPrompt } from './implement.prompts';
@@ -69,7 +69,7 @@ export async function settleRebase(
     return rebaseFeatureRepos(input);
   });
   const seen = new Set<string>();
-  let carried = answer;
+  let carried = answersConflict(answer, deps.step) ? answer : null;
   while (outcome.kind === 'conflict') {
     if (!outcome.stderr.trim() && storedStderr) {
       outcome = { ...outcome, stderr: storedStderr };

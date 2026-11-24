@@ -147,7 +147,7 @@ describe('implement with a parked conflict of an epic whose tasks are open', () 
       await world.app.get(PipelineService).step('implement', key);
       const chat = world.app.get(PlanChatStore);
       await chat.appendEntry(key, {
-        key: 'answer-1',
+        key: 'answer-ask-implement-conflict-attempt-1',
         role: 'planner',
         kind: 'answer',
         from: 'implement',
@@ -162,6 +162,50 @@ describe('implement with a parked conflict of an epic whose tasks are open', () 
       expect(prompts[0]).toContain('Keep the base version.');
       expect(prompts[1]).toContain('add the field');
       expect(prompts[1]).not.toContain('Keep the base version.');
+      expect(await chat.answerFor(key, 'implement')).toBeNull();
+    } finally {
+      await world.app.close();
+    }
+  });
+
+  it('leaves a planner answer to the checklist question for the checklist prompt, not the conflict agent', async () => {
+    const key = 'PROJ-704-t1';
+    const tree = { path: '' };
+    const tip = { value: '' };
+    const agent = jest.fn(async (input: AgentRunInput) => {
+      if (!IS_CONFLICT(input)) return result(implAnswer(['changed the field'], ['did it']));
+      writeFileSync(join(tree.path, 'src', 'field.ts'), 'export const field = 3;\n');
+      return result(rebaseReply);
+    });
+    const world = await splitWorld(key, agent);
+    tree.path = world.tree;
+    tip.value = git(world.tree, ['rev-parse', `refs/heads/${BRANCH(key)}`]);
+    try {
+      // A task of an epic: not split itself, so its conflict ends at its own checklist.
+      const parent = await world.runs.openWaiting('PROJ-704', '/target');
+      await world.runs.saveRun({
+        ...(await world.runs.findRun(key))!,
+        split: false,
+        parentRunId: parent.id,
+        taskId: 't1',
+      });
+      await world.app.get(PipelineService).step('implement', key);
+      const chat = world.app.get(PlanChatStore);
+      await chat.appendEntry(key, {
+        key: 'answer-ask-implement-attempt-1',
+        role: 'planner',
+        kind: 'answer',
+        from: 'implement',
+        text: 'Keep the base version.',
+        at: '2026-01-01T00:00:00.000Z',
+        state: 'pending',
+      });
+      const before = agent.mock.calls.length;
+      await world.app.get(PipelineService).step('implement', key);
+      const prompts = agent.mock.calls.slice(before).map((call) => call[0].prompt);
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).not.toContain('The commit being replayed is');
+      expect(prompts[0]).toContain('Keep the base version.');
       expect(await chat.answerFor(key, 'implement')).toBeNull();
     } finally {
       await world.app.close();
