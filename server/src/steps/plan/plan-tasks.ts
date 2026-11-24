@@ -3,6 +3,7 @@ import type { RunEntity } from '../../history/entities';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { ArtifactValue } from '../contract/step-contract';
 import type { ContractItem, SplitFields, SplitTask } from '../../agent-result/definitions/split-fields';
+import { isPartId, PART_ID_MAX_LENGTH } from '../../core/pipeline-result';
 import { keepErrors, type KeepLine } from '../shared/keep-lines';
 
 interface TaskGraph {
@@ -186,6 +187,11 @@ function graphErrors(tasks: SplitTask[]): string[] {
     ids.add(task.id);
   }
   for (const task of tasks) {
+    if (!isPartId(task.id)) {
+      errors.push(
+        `task ${task.id}: a task id is a lowercase letter or digit, then lowercase letters, digits and dashes, up to ${PART_ID_MAX_LENGTH} characters; rename it`,
+      );
+    }
     if (!task.proof.trim()) {
       errors.push(`task ${task.id} has no proof`);
     }

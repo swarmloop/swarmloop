@@ -176,11 +176,28 @@ export function settle(
   return { currentStep: step, status: 'failed' };
 }
 
-const JIRA_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
-const RUN_ID = /^[a-z][a-z0-9-]{1,48}$/;
-/** `<parent key>-<task id>`, the key of a subtask of a ticket run. */
-const SUBTASK_KEY = /^[A-Z][A-Z0-9]+-\d+-[a-z0-9][a-z0-9-]{0,40}$/;
-const SESSION_KEY = /^([A-Z][A-Z0-9]+-\d+|[a-z][a-z0-9-]{1,40})--([1-9]\d*)$/;
+const TICKET = '[A-Z][A-Z0-9]+-\\d+';
+const SLUG_RUN = '[a-z][a-z0-9-]{1,48}';
+const SESSION = `(?:${TICKET}|[a-z][a-z0-9-]{1,40})--[1-9]\\d*`;
+const PART_ID = '[a-z0-9][a-z0-9-]{0,40}';
+/** The longest part id: the part of a part's key after its parent's key. */
+export const PART_ID_MAX_LENGTH = 41;
+const JIRA_KEY = new RegExp(`^${TICKET}$`);
+const RUN_ID = new RegExp(`^${SLUG_RUN}$`);
+const SESSION_KEY = new RegExp(`^${SESSION}$`);
+/** `<parent key>-<part id>`: the key of a part of a ticket, slug or session run. */
+const PART_KEY = new RegExp(`^(?:${TICKET}|${SLUG_RUN}|${SESSION})-${PART_ID}$`);
+const PART_ID_FORM = new RegExp(`^${PART_ID}$`);
+
+/** True when `id` is a form a part's key can carry under any parent. */
+export function isPartId(id: string): boolean {
+  return PART_ID_FORM.test(id);
+}
+
+/** The run key of the part `partId` of the run `parentKey`. */
+export function subtaskKey(parentKey: string, partId: string): string {
+  return `${parentKey}-${partId}`;
+}
 
 /** Who asks for a start: a person, a planner of some level, or the machine. A start that names nobody is a person's. */
 export type StartBy = 'person' | 'planner' | 'machine';
@@ -217,7 +234,7 @@ export function continuesSameStep(status: string, currentStep: string, step: str
 }
 
 export function assertKey(key: string): void {
-  if (!JIRA_KEY.test(key) && !RUN_ID.test(key) && !SESSION_KEY.test(key) && !SUBTASK_KEY.test(key)) {
+  if (!JIRA_KEY.test(key) && !RUN_ID.test(key) && !SESSION_KEY.test(key) && !PART_KEY.test(key)) {
     throw new Error(`${key} is not a run id`);
   }
 }
