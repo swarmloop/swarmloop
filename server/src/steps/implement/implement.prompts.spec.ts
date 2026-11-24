@@ -58,3 +58,30 @@ describe('the prompt for a rebase conflict', () => {
     expect(prompt).toContain('Do not run git.');
   });
 });
+
+describe('the planner’s answer in a conflict prompt', () => {
+  const answer = {
+    key: 'answer-1',
+    role: 'planner',
+    kind: 'answer',
+    from: 'implement',
+    text: 'Keep the base version of src/shared.ts.',
+    at: '2026-01-01T00:00:00.000Z',
+    state: 'pending',
+  } as const;
+  const rebase = { repo: 'demo', files: ['src/shared.ts'], requirements: 'r', base: 'abc', commit: 'def' };
+  const own = { repo: 'demo', files: ['src/shared.ts'], conflict: 'c', requirements: 'r', handoff: null };
+
+  it('is carried as the answer section by the rebase prompt and by the own-edits prompt', () => {
+    for (const prompt of [rebaseConflictPrompt({ ...rebase, answer }), ownConflictPrompt({ ...own, answer })]) {
+      expect(prompt).toContain('Answer from the planner:');
+      expect(prompt).toContain(answer.text);
+    }
+  });
+
+  it('leaves both prompts as they were without an answer', () => {
+    for (const prompt of [rebaseConflictPrompt(rebase), ownConflictPrompt(own)]) {
+      expect(prompt).not.toContain('Answer from the planner');
+    }
+  });
+});

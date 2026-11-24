@@ -9,6 +9,15 @@ import { implementationImproveFor } from '../../agent-result/definitions/impleme
 import type { ResultDefinition } from '../../agent-result/result-definition';
 import { rebaseResolution } from '../../agent-result/definitions/rebase-resolution';
 import { resultPromptFor } from '../../agent-result/result-prompt';
+import type { PlanChatEntry } from '../../contract/plan-chat';
+import { answerSection } from './implement-question';
+
+/** The planner's answer to a conflict question, as the lines that end a conflict prompt's body. */
+function answerLines(answer: PlanChatEntry | null | undefined): string[] {
+  if (!answer) return [];
+  const { heading, body } = answerSection(answer);
+  return [`${heading}:`, body];
+}
 
 export function rebaseConflictPrompt(input: {
   repo: string;
@@ -16,6 +25,7 @@ export function rebaseConflictPrompt(input: {
   requirements: string;
   base: string;
   commit: string;
+  answer?: PlanChatEntry | null;
 }): string {
   const files = input.files.length > 0 ? input.files.map((file) => `- ${file}`).join('\n') : '- (none listed)';
   return [
@@ -29,6 +39,7 @@ export function rebaseConflictPrompt(input: {
     "A conflict in a lockfile or another file the package manager writes is not merged by hand: keep the new base's version of it, then run the package manager again for this branch's changes to its manifest.",
     'Do not run git.',
     'Do not push. Do not create a branch.',
+    ...answerLines(input.answer),
     resultPromptFor(rebaseResolution, null),
   ].join('\n');
 }
@@ -43,6 +54,7 @@ export function ownConflictPrompt(input: {
   conflict: string;
   requirements: string;
   handoff: string | null;
+  answer?: PlanChatEntry | null;
 }): string {
   const files = input.files.length > 0 ? input.files.map((file) => `- ${file}`).join('\n') : '- (none listed)';
   return [
@@ -57,6 +69,7 @@ export function ownConflictPrompt(input: {
     handoffText(input.handoff).trim(),
     'Do not run git.',
     'Do not push. Do not create a branch.',
+    ...answerLines(input.answer),
     resultPromptFor(rebaseResolution, null),
   ].join('\n');
 }
