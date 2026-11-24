@@ -16,6 +16,8 @@ interface TaskDrop {
 /** What the planner of a run hands back to a run it started: a decision, and optionally the actions that follow from it. */
 export interface StarterAnswerResult {
   decision: string;
+  /** For a question about a reviewer's finding: whether the finding holds or is ruled out. */
+  finding?: 'holds' | 'ruled-out';
   waitFor?: Need[];
   addTask?: SplitTask[];
   changeTask?: TaskChange[];
@@ -40,6 +42,11 @@ function starterSchema(withEscalate: boolean): Joi.ObjectSchema {
       ? decision.when('escalate', { is: Joi.exist(), otherwise: Joi.required() })
       : decision.required(),
     ...(withEscalate ? { escalate } : {}),
+    finding: Joi.string()
+      .valid('holds', 'ruled-out')
+      .description(
+        "Only when the question is about a reviewer's finding: 'holds' when the finding stands and implement fixes it, 'ruled-out' when it does not hold; leave out otherwise",
+      ),
     waitFor: planKeys.needs.description('Tasks the asking task waits for; leave out when none'),
     addTask: Joi.array().items(taskSchema()).description('Tasks to add; leave out when none'),
     changeTask: Joi.array()

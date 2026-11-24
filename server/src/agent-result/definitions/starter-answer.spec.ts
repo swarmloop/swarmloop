@@ -43,6 +43,15 @@ describe('starter answer', () => {
     expect(readResult(starterAnswer, block({ waitFor: [{ id: 'core', what: 'the helper' }] })).ok).toBe(false);
   });
 
+  it("reads a typed finding of 'holds' or 'ruled-out' and refuses any other value", () => {
+    expect(readResult(starterAnswer, block({ decision: 'x', finding: 'holds' }))).toMatchObject({
+      ok: true,
+      value: { finding: 'holds' },
+    });
+    expect(readResult(starterAnswer, block({ decision: 'x', finding: 'ruled-out' })).ok).toBe(true);
+    expect(readResult(starterAnswer, block({ decision: 'x', finding: 'maybe' })).ok).toBe(false);
+  });
+
   it('has a variant without escalate of the same kind, that refuses an escalation', () => {
     expect(starterAnswerWithoutEscalate.kind).toBe(starterAnswer.kind);
     expect(starterAnswerWithoutEscalate.name).toBe(starterAnswer.name);

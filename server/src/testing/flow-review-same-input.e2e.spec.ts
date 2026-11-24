@@ -14,6 +14,7 @@ const REQUIREMENTS = `${JSON.stringify({
 })}\n`;
 const block = (value: unknown): ScriptedAnswer => ({ block: value });
 const returns = block({ decision: 'return', review: 'The parser drops the last row.', summary: ['one finding'] });
+const ok = block({ decision: 'ok', review: 'Looks right.', summary: ['fine'], reason: 'The fix holds.' });
 const nothing = block({ implementation: [], summary: ['nothing to change'] });
 
 describe('a run whose implement changes nothing after a return', () => {
@@ -61,6 +62,28 @@ describe('a run whose implement changes nothing after a return', () => {
     for (const name of CODE_REVIEWERS) {
       expect(blocks.steps.filter((step) => step === `code-review-${name}`)).toHaveLength(1);
     }
+    await assertInvariants(flow.app);
+  });
+
+  it('reviews again when implement changed a file and left it uncommitted', async () => {
+    const blocks = new BlockAgentRunner({ 'code-review-quality': [returns, ok], implement: [nothing] });
+    flow = await createFlowHarness(KEY, {
+      blocks,
+      realImplement: 'all',
+      realReview: true,
+      realHost: true,
+      implementCommits: true,
+    });
+    flow.fastWaits();
+    const runs = flow.app.app.get(RunRepository);
+    const run = await flow.begin('merge-request');
+    run.currentStep = 'code-review';
+    await flow.app.app.get(DocumentRepository).putDocument(run, 'requirements', REQUIREMENTS);
+    await runs.saveRun(run);
+
+    await flow.app.pipeline.runThrough(KEY, { auto: true });
+
+    expect(blocks.steps.filter((step) => step === 'code-review-quality')).toHaveLength(2);
     await assertInvariants(flow.app);
   });
 });

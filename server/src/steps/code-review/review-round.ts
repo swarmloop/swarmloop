@@ -36,6 +36,7 @@ import { planChangesOf, type PlanChangesSection } from '../shared/plan-changes';
 import { requirementsCheck } from './requirements-check';
 import { readContract } from '../shared/contract-items';
 import { closeReview, recordAngle } from './review-report';
+import type { ReviewResult } from '../../agent-result/definitions/review';
 import type { Finished, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { projectRules } from '../shared/project-rules';
 import { REVIEWERS, runJob } from './reviewer';
@@ -257,7 +258,11 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
         .items.map((item) => item.id)
         .filter(Boolean)
     : [];
-  const check = input.list && reviewer.name === 'requirements' ? requirementsCheck(input.list, itemIds) : undefined;
+  const marked = input.list && reviewer.name === 'requirements' ? requirementsCheck(input.list, itemIds) : undefined;
+  // A reviewer that asks the planner gives no marks yet: its decision is not taken.
+  const check = marked
+    ? (value: unknown) => (asks && (value as ReviewResult).question?.trim() ? [] : marked(value))
+    : undefined;
   return {
     reviewer,
     ...agent,
