@@ -67,7 +67,9 @@ One approach for every test, whoever writes it:
 
 ## Checks and CI
 
-- Every check lives in the one workflow `.github/workflows/ci.yml`, and the checks step runs the same commands from `.swarmloop.json`. A new lint rule or test goes into an existing job. No second workflow, no `paths` or `branches` filter.
+- Before handing over a change, run `bash scripts/autofix.sh origin/main` from the repository root. It runs ESLint's fixers, the strict lint of changed files and Prettier on the files you changed, in seconds. It exits 1 after it changed a file, so run it again until it exits 0; a lint error it cannot fix is yours to fix. The checks step runs the same lint, and a lint error there costs a whole round.
+- Before handing over a change, run the spec files you changed and, for each source file you changed, the specs whose names start with its name without the extension, with `npm test --prefix server -- <spec paths>` and `npm test --prefix dashboard -- <spec paths>`, and the golden specs, with `npm test --prefix server -- golden`, until they pass. The golden specs record the main flows, so they catch a changed flow that the specs of the file miss. The checks step runs no tests; CI runs every test, and a red test there returns the run after its review.
+- Every check lives in the one workflow `.github/workflows/ci.yml`, and the checks step runs the same commands from `.swarmloop.json`, except the tests: the checks step runs the static checks and the build, and CI also runs the server and dashboard tests, the server suite also under the seeds. A new lint rule or test goes into an existing job. No second workflow, no `paths` or `branches` filter.
 - Never raise a timeout, a retry count or a poll limit to make a test pass. Find the cause.
 - No new dependency unless the task needs it and says so.
 
