@@ -44,17 +44,26 @@ swarmloop runs coding agents through a fixed flow: requirements, research, plan,
 
 ## Tests
 
-- A test fails when the change is reverted. It checks behavior through the public interface the tree already tests: no private calls, no mock call counts, no large snapshots where one value matters, fake timers instead of sleeping.
-- Test a behavior at the cheapest level that proves it: a function through its own interface, a component alone. Render a whole page or dialog, or type through one, only to prove its layout or its flow.
-- Extend the test that already covers the code you change before writing a new one: one behavior is proven by one test.
-- Specs wait only on fake time, and start real git, a process or a container only in whole-flow specs or through `server/src/testing/git-fixture.ts` (the lint enforces it).
-- Each test run prints the ten slowest spec files. A change that adds a spec file that shows up in that list names it in implement's account with its time and cause; the performance reviewer reads it.
-- Test helpers live in `*.spec-helpers.ts`, `server/src/testing/` or `dashboard/test/`. Product code never imports a test library.
-- The golden traces in `server/src/testing/golden/` change only when the task names that behavior change.
-- A test gives the same result on every run and under every seed of `server-test-seeds`: it starts every timer and background pass it depends on itself, and a failure under one seed is a race in the code or the test, to be found.
-- Whole-flow tests boot the real application with the defaults the server ships with; a test sets only the setting it is about.
-- Never loosen an assertion, skip or delete a test, or widen a tolerance to make CI green. Change a test only when the test itself is wrong, and say why in the summary.
-- Database changes are additive migrations in `server/src/history/migrations/`.
+One approach for every test, whoever writes it:
+
+1. **Prove each behavior once, at the cheapest level that proves it.**
+   - Logic: a function or class through its own public interface. No DOM, git, process, container or network.
+   - A component: that component alone, with only the props and providers it needs, not the page or dialog around it.
+   - A flow: one whole-flow spec per flow. It boots the real application with the defaults the server ships with, sets only the setting it is about, and asserts the flow's own path. The details along the flow are proven at the levels above.
+   - Before writing a test, extend the one that already covers that code.
+2. **A test proves behavior.** It fails when the change is reverted. It goes through the public interface the tree already tests: no private calls, no mock call counts, no large snapshot where one value matters.
+3. **A test does not depend on time or load.**
+   - It waits only on fake time or on the promise or state it drives, never on a sleep or the wall clock.
+   - It drives a component with the fewest events that prove the behavior: a long value is set in one step, not typed key by key, unless the behavior is about typing.
+   - It starts real git, a process or a container only in a whole-flow spec or through `server/src/testing/git-fixture.ts` (the lint enforces it).
+   - It starts every timer and background pass it depends on itself, and gives the same result on every run, under every seed of `server-test-seeds`, and on a busy machine. A failure under one seed is a race in the code or the test, to be found.
+4. **A slow or load-sensitive test is a broken test: fix its design.** Move it to a cheaper level, split it into smaller tests, or make it wait on fake time. Never raise a timeout, add a retry, skip it, loosen an assertion or widen a tolerance. When a test is split, every assertion moves to the smaller test that proves it and still fails when its code is reverted, and the summary maps each old assertion to its new test. A test is deleted only when its assertions moved this way or the behavior it proves is removed on purpose.
+5. **A red you did not cause is not yours.** A test outside your plan that fails only on a busy machine, or that also fails on the base: name it in your summary and do not change it. Its planner gives that class of failure one task.
+6. Change a test only when the test itself is wrong or your task changes the behavior it proves, and say why in the summary.
+7. Each test run prints the ten slowest spec files. A change that adds a spec file that shows up in that list names it in implement's account with its time and cause; the performance reviewer reads it.
+8. Test helpers live in `*.spec-helpers.ts`, `server/src/testing/` or `dashboard/test/`. Product code never imports a test library.
+9. The golden traces in `server/src/testing/golden/` change only when the task names that behavior change.
+10. Database changes are additive migrations in `server/src/history/migrations/`.
 
 ## Checks and CI
 
