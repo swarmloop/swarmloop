@@ -513,18 +513,16 @@ The text is plain words for a person: no raw JSON and no internal ids. A cut tex
 ## 3.24 Tests, CI and releases
 
 **Target.**
-- **What a test is:**
-  - it fails when the change is reverted;
-  - it checks behaviour through the public interface;
-  - it waits only on fake time;
-  - it starts real git, a process or a container only in a whole-flow spec or through the git fixture;
-  - it gives the same result on every run, under every seed, and on a busy machine.
+- **How a test is written** is defined once, in the Tests section of `AGENTS.md`:
+  - each behavior is proven once, at the cheapest level: logic, a component alone, or one whole-flow spec per flow;
+  - no test depends on time or load;
+  - a slow or load-sensitive test is fixed by its design (a cheaper level, a split, fake time), never by its limit.
 - **Whole-flow specs** boot the real application with the shipped defaults and assert the flow invariants after every tick.
 - **Golden traces** record the exact behaviour of the main flows and change only when a task names that behaviour change.
 - **CI** is one workflow with the same commands as the checks.
 - **A release** tags a version, builds the images, runs a smoke test and publishes.
 
-**Today.** Holds, with the rule-13 gap of 3.6.
+**Today.** The approach is the rule since 24.11. Existing tests that break it time out under load (3.6). steady-vitest fixes them for the dashboard, and steady-agent-limit for the server.
 
 ## 3.25 The server process, health and readiness
 
