@@ -228,7 +228,7 @@ A check runs:
 - only when the change touches its paths;
 - only once per tree: a command that already passed on the same tree and image is not run again.
 
-Each check gets its own cores. Only as many checks run at once as fit with at least four cores each (`CHECKS_PARALLEL`), and agents and setup use cores only after the checks. CI runs the same commands from the one workflow, and the tests besides: a run's checks run the static checks and the build, and only CI runs the server and dashboard tests, the server suite also under the seeds. Before handing over, the implement agent runs every spec in the folder of each file it changed. The tests therefore run once in full, on the code host's runners, not on the machine that runs the agents.
+Each check gets its own cores. Only as many checks run at once as fit with at least four cores each (`CHECKS_PARALLEL`), and agents and setup use cores only after the checks. CI runs the same commands from the one workflow, and the tests besides: a run's checks run the static checks and the build, and only CI runs the server and dashboard tests, the server suite also under the seeds. Before handing over, the implement agent runs the specs of the files it changed and the golden specs. The tests therefore run once in full, on the code host's runners, not on the machine that runs the agents.
 
 **Today.**
 - The above holds: f118 and f119 added the cores, and the passes are recorded.
