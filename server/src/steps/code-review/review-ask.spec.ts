@@ -69,10 +69,10 @@ describe('settling the questions of a subtask review by the epic planner', () =>
         read: async () => ({ entries, revisions: [] }),
         markTaken: async (_key: string, keys: string[]) => void taken.push(...keys),
       },
-      events: { append: async () => undefined },
+      events: { append: async () => undefined, recordLoop: async () => undefined },
     } as never;
     const ctx = {
-      opened: { run: { id: 1, key: 'child' }, startedAt: 't', started: 0 },
+      opened: { run: { id: 1, key: 'child', attemptsReview: 0 }, startedAt: 't', started: 0 },
       clock: { iso: () => 't', now: () => 0 },
       reread: async () => '{"prompt":"Ship it."}',
       end: async (result: unknown) => void ended.push(result),
@@ -103,6 +103,17 @@ describe('settling the questions of a subtask review by the epic planner', () =>
         },
       },
     ]);
+    expect(taken).toEqual([reviewAnswerKey(5)]);
+  });
+
+  it('rules out only the asked return and sends the return of a reviewer that asked nothing to implement', async () => {
+    const other: ReviewResult = { decision: 'return', review: 'The cache leaks.', summary: ['two'] };
+    const { documents, planner, ctx, taken, ended } = setup([entry('ruled-out')], {
+      quality: returned,
+      security: other,
+    });
+    await settleAsked(ctx, documents, planner);
+    expect(ended).toMatchObject([{ moveTo: 'implement' }]);
     expect(taken).toEqual([reviewAnswerKey(5)]);
   });
 

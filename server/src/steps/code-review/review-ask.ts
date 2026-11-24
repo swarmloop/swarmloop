@@ -114,7 +114,8 @@ async function typedAnswer(key: string, askId: number, chat?: PlanChatStore): Pr
 }
 
 /**
- * The planner ruled out the findings: the returns stand as ok reviews with its reason, the questions close and the
+ * The planner ruled out the findings it was asked about: those returns stand as ok reviews with its reason and the
+ * questions close. A return of a reviewer that asked nothing stays a return and goes to implement; with none left the
  * round goes on as an ok round.
  */
 async function closeRuledOut(
@@ -122,6 +123,7 @@ async function closeRuledOut(
   documents: DocumentRepository,
   planner: SubtaskPlanner,
   answer: PlanChatEntry,
+  asked: ReadonlySet<string | null>,
 ): Promise<PipelineResult> {
   const { key } = ctx.opened.run;
   const opinions: Opinion[] = [];
@@ -129,7 +131,7 @@ async function closeRuledOut(
     const review = await latestReview(documents, key, reviewer.name);
     if (!review) continue;
     opinions.push(
-      review.decision === 'return'
+      review.decision === 'return' && asked.has(reviewer.name)
         ? ruledOutOpinion(reviewer.kind, review, answer.text)
         : opinionOf(reviewer.kind, review),
     );
@@ -173,7 +175,7 @@ async function settleAnswers(
   }
   const typed = await typedAnswer(ctx.opened.run.key, asked.id, planner?.chat);
   if (typed?.finding === 'ruled-out' && planner) {
-    return closeRuledOut(ctx, documents, planner, typed);
+    return closeRuledOut(ctx, documents, planner, typed, new Set(questions.map((question) => askedReviewer(question))));
   }
   let requirements = (await ctx.reread(ARTIFACTS.requirements)) ?? '';
   const issues = questions.map((question) => {
