@@ -1,15 +1,18 @@
 import {
+  assertKey,
   autoContinues,
   continues,
   continuesSameStep,
   countedVisits,
   failedAttemptLaunches,
   failedLaunches,
+  isPartId,
   lastVisitStatus,
   loopMark,
   nextStep,
   normalizePhases,
   settle,
+  subtaskKey,
   visitStatus,
 } from './pipeline-result';
 import { PHASES } from '../contract/steps';
@@ -161,5 +164,55 @@ describe('continues', () => {
       ];
       expect(failedAttemptLaunches(stats, 'implement', 3, 'a4')).toBe(1);
     });
+  });
+});
+
+describe('assertKey', () => {
+  it('accepts a part of a slug, ticket or session run, and the keys it accepted before', () => {
+    const slug39 = 'a'.repeat(39);
+    for (const key of [
+      'epic-conflict-implement-mwu2hcx3-implement-conflict',
+      'epic-conflict-implement-mwu2hcx3-main-move-and-stored-block',
+      `${slug39}-mwu2hcx3-${'b'.repeat(41)}`,
+      'ABC-12-main-move-and-stored-block',
+      'ABC-12--2-part',
+      'ABC-12',
+      'run-mwu2hcx3',
+      'ABC-12--2',
+      'fix-login--3',
+    ]) {
+      expect(() => assertKey(key)).not.toThrow();
+    }
+  });
+
+  it('refuses a part id that is too long, upper case or has an underscore, and the keys it refused before', () => {
+    for (const key of [
+      `epic-conflict-implement-mwu2hcx3-${'a'.repeat(42)}`,
+      'epic-x-mwu2hcx3-Main-move',
+      'epic-x-mwu2hcx3-main_move',
+      'a',
+      '',
+      'abc_def',
+      'ABC-12--0',
+    ]) {
+      expect(() => assertKey(key)).toThrow('is not a run id');
+    }
+  });
+});
+
+describe('isPartId', () => {
+  it('takes up to 41 lowercase letters, digits and dashes, not starting with a dash', () => {
+    expect(isPartId('a'.repeat(41))).toBe(true);
+    for (const id of ['Main_Move', 'a'.repeat(42), '-a', '']) {
+      expect(isPartId(id)).toBe(false);
+    }
+  });
+});
+
+describe('subtaskKey', () => {
+  it('joins a parent key and a part id into a key assertKey accepts', () => {
+    const key = subtaskKey('epic-conflict-implement-mwu2hcx3', 'main-move-and-stored-block');
+    expect(key).toBe('epic-conflict-implement-mwu2hcx3-main-move-and-stored-block');
+    expect(() => assertKey(key)).not.toThrow();
   });
 });

@@ -60,6 +60,17 @@ describe('taskErrors', () => {
     ]);
   });
 
+  it('names a task id that is not a part id', () => {
+    const tasks = [
+      { ...column, id: 'Main_Move', depends: [] },
+      { ...api, id: 'a'.repeat(42), depends: [] },
+    ];
+    const rule =
+      'a task id is a lowercase letter or digit, then lowercase letters, digits and dashes, up to 41 characters; rename it';
+    expect(taskErrors(answer(tasks), limits)).toEqual([`task Main_Move: ${rule}`, `task ${'a'.repeat(42)}: ${rule}`]);
+    expect(taskErrors(answer([{ ...column, id: 'a'.repeat(41), depends: [] }]), limits)).toEqual([]);
+  });
+
   it('names a cycle', () => {
     const tasks = [
       { ...column, id: 'a', depends: ['b'] },

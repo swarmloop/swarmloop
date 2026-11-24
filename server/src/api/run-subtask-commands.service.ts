@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { subtaskKey } from '../core/pipeline-result';
 import { phaseNames } from './run-input';
 import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
@@ -30,7 +31,7 @@ export class RunSubtaskCommandsService {
 
   private async subtaskPlan(parent: RunEntity, task: Subtask): Promise<StartPlan> {
     return this.commands.plan({
-      key: `${parent.key}-${task.id}`,
+      key: subtaskKey(parent.key, task.id),
       prompt: await this.promptOf(parent, task),
       projects: storedProjects(parent.projects),
     });
