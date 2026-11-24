@@ -192,6 +192,28 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     }
   }
 
+  /** What the reviewers of this round read besides the diff: the handoff, plan, impact and, for a split parent, its epic. */
+  private async roundReads(ctx: StepContext) {
+    const { run } = ctx.opened;
+    const handoff = await ctx.reread(ARTIFACTS.handoff);
+    const requirementList = await ctx.reread(ARTIFACTS.requirementList);
+    const coverage = await ctx.reread(ARTIFACTS.requirementCoverage);
+    const plan = await approvedPlan(this.documents, run.key);
+    const split = run.split;
+    return {
+      handoff,
+      list: requirementList?.length ? requirementList : null,
+      plan,
+      coveredPlan: coverage ? await approvedPlan(this.documents, run.key, coverage) : plan,
+      impact: storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact)),
+      contract: split ? await ctx.reread(ARTIFACTS.contract) : null,
+      starter: await this.briefing.fullText(run),
+      keep: split ? await ctx.reread(ARTIFACTS.keep) : null,
+      subtasks: split ? await ctx.reread(ARTIFACTS.subtasks) : null,
+      round: split ? (await ctx.reread(ARTIFACTS.epicRound))?.trim() === 'open' : false,
+    };
+  }
+
   private async review(notes: string | null, ctx: StepContext, env: SwarmloopEnv): Promise<PipelineResult> {
     const { opened, options } = ctx;
     const { key } = opened.run;
@@ -237,19 +259,8 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       );
     }
     writeReviewDiff(root(this.config), key, diff.patch);
-    const handoff = await ctx.reread(ARTIFACTS.handoff);
-    const requirementList = await ctx.reread(ARTIFACTS.requirementList);
-    const list = requirementList?.length ? requirementList : null;
-    const coverage = await ctx.reread(ARTIFACTS.requirementCoverage);
-    const plan = await approvedPlan(this.documents, key);
-    const coveredPlan = coverage ? await approvedPlan(this.documents, key, coverage) : plan;
-    const impact = storedImpact(await ctx.reread(ARTIFACTS.researchResult), await ctx.reread(ARTIFACTS.impact));
-    const split = opened.run.split;
-    const contract = split ? await ctx.reread(ARTIFACTS.contract) : null;
-    const starter = await this.briefing.fullText(opened.run);
-    const keep = split ? await ctx.reread(ARTIFACTS.keep) : null;
-    const subtasks = split ? await ctx.reread(ARTIFACTS.subtasks) : null;
-    const round = split ? (await ctx.reread(ARTIFACTS.epicRound))?.trim() === 'open' : false;
+    const { handoff, list, plan, coveredPlan, impact, contract, starter, keep, subtasks, round } =
+      await this.roundReads(ctx);
     const finished = await runRound(deps, {
       opened,
       key,

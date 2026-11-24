@@ -1,11 +1,32 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'fs';
+import {
+  chmodSync,
+  closeSync,
+  ftruncateSync,
+  openSync,
+  writeSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../core/step-event-scope';
 import type { StepEvent } from '../contract/step-events';
 import { git, makeFifo } from '../testing/git-fixture';
+import type * as FsPromises from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { changeFingerprint } from './change-fingerprint';
+
+// A wrapper that records whole-file reads and still performs them, so a revert to readFile is seen by the spec.
+jest.mock('node:fs/promises', () => {
+  const actual = jest.requireActual<typeof FsPromises>('node:fs/promises');
+  return { ...actual, readFile: jest.fn(actual.readFile) };
+});
 
 describe('changeFingerprint', () => {
   let repo: string;
@@ -125,6 +146,20 @@ describe('changeFingerprint', () => {
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  it('hashes a large file in chunks: the same value while unchanged, a new one for one changed byte', async () => {
+    const big = join(repo, 'big.dat');
+    const fd = openSync(big, 'w');
+    ftruncateSync(fd, 64 * 1024 * 1024);
+    closeSync(fd);
+    const first = await changeFingerprint(repo);
+    expect(await changeFingerprint(repo)).toBe(first);
+    const edit = openSync(big, 'r+');
+    writeSync(edit, Buffer.from([1]), 0, 1, 64 * 1024 * 1024 - 1);
+    closeSync(edit);
+    expect(await changeFingerprint(repo)).not.toBe(first);
+    expect(readFile).not.toHaveBeenCalled();
   });
 
   it('writes nothing to the repository', async () => {

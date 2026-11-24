@@ -1,14 +1,18 @@
 import { createHash } from 'node:crypto';
-import { lstat, readFile, readlink, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, readlink, realpath } from 'node:fs/promises';
 import { dirname, join, sep } from 'node:path';
 import { gitUnrecorded } from './git';
 
 const DELETED = '\u0000deleted';
 const LS_TREE_CHUNK = 200;
 
+/** A file on disk as the fingerprint sees it: its mode, its size, a hash of its bytes and the id git gives that blob. */
 interface DiskEntry {
   mode: string;
-  bytes: Buffer;
+  size: number;
+  content: string;
+  blob: string;
 }
 
 interface HeadEntry {
@@ -33,8 +37,22 @@ function hasHead(path: string): Promise<boolean> {
   );
 }
 
-const OUTSIDE: DiskEntry = { mode: 'outside', bytes: Buffer.alloc(0) };
-const SPECIAL: DiskEntry = { mode: 'special', bytes: Buffer.alloc(0) };
+/** The hashes of bytes read in chunks, so a large file is never held whole in memory. */
+async function hashed(
+  mode: string,
+  size: number,
+  chunks: AsyncIterable<Buffer | string> | Iterable<Buffer | string>,
+): Promise<DiskEntry> {
+  const content = createHash('sha256');
+  const blob = createHash('sha1').update(`blob ${size}\0`);
+  for await (const chunk of chunks) {
+    content.update(chunk);
+    blob.update(chunk);
+  }
+  return { mode, size, content: content.digest('hex'), blob: blob.digest('hex') };
+}
+
+const empty = (mode: string) => hashed(mode, 0, []);
 
 /** True when the real folder of the file lies inside the real worktree, so no linked folder leads out of it. */
 async function staysInside(root: string, file: string): Promise<boolean> {
@@ -49,17 +67,27 @@ async function staysInside(root: string, file: string): Promise<boolean> {
  */
 async function diskEntry(path: string, name: string): Promise<DiskEntry | null> {
   const file = join(path, name);
-  if (!(await staysInside(path, file))) return OUTSIDE;
+  if (!(await staysInside(path, file))) return empty('outside');
   const info = await lstat(file).catch(() => null);
   if (!info) return null;
-  if (info.isSymbolicLink()) return { mode: '120000', bytes: Buffer.from(await readlink(file)) };
-  if (info.isDirectory()) return { mode: '160000', bytes: Buffer.alloc(0) };
-  if (!info.isFile()) return SPECIAL;
-  return { mode: info.mode & 0o111 ? '100755' : '100644', bytes: await readFile(file) };
-}
-
-function blobId(bytes: Buffer): string {
-  return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+  if (info.isSymbolicLink()) {
+    const target = Buffer.from(await readlink(file));
+    return hashed('120000', target.length, [target]);
+  }
+  if (info.isDirectory()) return empty('160000');
+  if (!info.isFile()) return empty('special');
+  // O_NOFOLLOW: a file swapped for a link after the lstat is not followed.
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => null);
+  if (!handle) return empty('special');
+  try {
+    return await hashed(
+      info.mode & 0o111 ? '100755' : '100644',
+      info.size,
+      handle.createReadStream({ autoClose: false }),
+    );
+  } finally {
+    await handle.close();
+  }
 }
 
 /** The entries the head commit holds at these paths. */
@@ -79,7 +107,7 @@ async function headEntries(path: string, headed: boolean, tracked: string[]): Pr
 
 /**
  * A fingerprint of the uncommitted changes of a worktree: every tracked path that differs from the head commit and every
- * new file that is not ignored, each by its mode and bytes read from disk (a fixed mark when it is gone), in sorted path
+ * new file that is not ignored, each by its mode, size and a hash of the bytes read from disk in chunks (a fixed mark when it is gone), in sorted path
  * order. Git only lists the paths. Nothing is written to the repository and no command span is recorded. A path git lists
  * only because it was touched, with the content and mode of the head, is left out.
  */
@@ -98,14 +126,14 @@ export async function changeFingerprint(worktreePath: string): Promise<string> {
   for (const name of [...new Set([...tracked, ...names(untracked)])].sort()) {
     const disk = await diskEntry(worktreePath, name);
     const before = head.get(name);
-    if (disk && before && disk.mode === before.mode && disk.mode !== '160000' && blobId(disk.bytes) === before.blob) {
+    if (disk && before && disk.mode === before.mode && disk.mode !== '160000' && disk.blob === before.blob) {
       continue;
     }
     hash.update(`${name}\0`);
     if (!disk) {
       hash.update(DELETED);
     } else {
-      hash.update(`${disk.mode}\0${disk.bytes.length}\0`).update(disk.bytes);
+      hash.update(`${disk.mode}\0${disk.size}\0${disk.content}`);
     }
     hash.update('\n');
   }
