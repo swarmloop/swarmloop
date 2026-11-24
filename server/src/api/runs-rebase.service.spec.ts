@@ -20,7 +20,8 @@ import { REBASE_CONFLICT } from '../git/rebase';
 
 import { RunRebaseService } from './run-rebase.service';
 import { CommandService } from '../pipeline/command.service';
-import { writeRunState } from '../history/run-state';
+import { storedState, writeRunState } from '../history/run-state';
+import type { RunEntity } from '../history/entities';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { FetchFailed } from '../core/swarmloop-error';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
@@ -506,6 +507,59 @@ describe('runs api', () => {
         const before = (await runs.findRun('proj-60'))?.generation;
         await expect(app.get(RunRebaseService).rebase('proj-60')).rejects.toThrow('SUBTASKS_RUNNING');
         expect((await runs.findRun('proj-60'))?.generation).toBe(before);
+        expect(rebased).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('leaves an epic whose own work conflicts with a main move waiting at implement, and moves no subtask', async () => {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-main-conflict-'));
+      const { tree, clone } = featureWorktree(root, 'proj-61');
+      writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+      git(tree, ['add', 'src/field.ts']);
+      git(tree, ['commit', '-m', 'field']);
+      git(clone, ['switch', 'main']);
+      writeFileSync(join(clone, 'src', 'field.ts'), 'export const field = 2;\n');
+      git(clone, ['add', 'src/field.ts']);
+      git(clone, ['commit', '-m', 'base']);
+      git(clone, ['push', 'origin', 'main']);
+      const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-61 started' }) };
+      const app = await seededBoot(root, pipeline);
+      try {
+        const runs = app.get(RunRepository);
+        const documents = app.get(DocumentRepository);
+        const parent = await remember(runs, documents, 'proj-61', 'implement', 'waiting');
+        parent.split = true;
+        writeRunState(parent, {
+          status: 'waiting',
+          currentStep: 'implement',
+          reason: { code: 'SUBTASK_WAITING', message: 'waiting for its subtasks' },
+        });
+        await runs.saveRun(parent);
+        await documents.putDocument(
+          parent,
+          'subtasks',
+          `${JSON.stringify([{ id: 'a', title: 'A', status: 'waiting' }])}\n`,
+        );
+        const child = await runs.openSubtask('proj-61-a', parent.id, 'a');
+        writeRunState(child, { status: 'waiting', currentStep: 'implement' });
+        await runs.saveRun(child);
+        await documents.putDocument(child, 'repos', 'demo\n');
+        const rebased: string[] = [];
+        jest.spyOn(app.get(CommandService), 'accept').mockImplementation((type, key) => {
+          if (type === 'rebase') rebased.push(key);
+          return Promise.resolve({}) as ReturnType<CommandService['accept']>;
+        });
+
+        await app.get(RunRebaseService).rebase('proj-61', false, 'demo at abc123');
+
+        const fresh = await runs.findRun('proj-61');
+        expect(fresh?.status).toBe('waiting');
+        expect(fresh?.currentStep).toBe('implement');
+        expect(storedState(fresh as RunEntity).state).not.toBe('blocked');
+        expect((await documents.latestBody('proj-61', REBASE_CONFLICT))?.trim()).toBe('pending-implement');
+        expect(git(tree, ['diff', '--name-only', '--diff-filter=U'])).toContain('src/field.ts');
         expect(rebased).toEqual([]);
       } finally {
         await app.close();

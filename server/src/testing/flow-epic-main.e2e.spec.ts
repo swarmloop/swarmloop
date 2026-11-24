@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
-import { actionsFor } from '../contract/run-state';
 import type { Subtask } from '../contract/subtask';
 import { branchName, summaryForBranch } from '../git/naming/git-names';
 import { BacklogRepository } from '../history/backlog.repository';
@@ -310,19 +309,14 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
     expect(await documents().latestBody(childKey('a'), 'pending_rebase')).toContain(NOTE);
   });
 
-  it('blocks an epic whose own work conflicts with main, offers only Replay and moves no subtask', async () => {
+  it('sends an epic whose own work conflicts with main to implement and never blocks it with REBASE_CONFLICT', async () => {
     await boot();
     await seedEpic([task('a')], ['src/readme.ts', 'export const readme = 2;\n']);
-    const before = git(bare(), ['rev-parse', FEATURE]);
     landOnMain('src/readme.ts', 'export const readme = 3;\n');
 
     await backlogPass();
 
-    const { state, reason } = await stateOf(KEY);
-    expect(state).toBe('blocked');
-    expect(reason?.code).toBe(ERROR_CODES.REBASE_CONFLICT);
-    expect(actionsFor(state, reason?.code ?? null)).toEqual(['replay']);
-    expect(git(bare(), ['rev-parse', FEATURE])).toBe(before);
-    expect(rebaseKeys()).toEqual([KEY]);
+    const { reason } = await stateOf(KEY);
+    expect(reason?.code).not.toBe(ERROR_CODES.REBASE_CONFLICT);
   });
 });

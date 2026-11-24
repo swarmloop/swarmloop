@@ -6,19 +6,25 @@ import { actionsFor, REASON } from '../../contract/run-state';
 import { parseSubtasks, statusLine, SUBTASKS_KIND } from '../../contract/subtask';
 import type { RunAction, RunState, StateReason } from '../../contract/run-state';
 import type { FlowItem, FlowView } from '../../contract/api';
+import { parkedConflictIn } from '../../pipeline/parked-conflict';
 import { latest } from './status';
 
 /** The honest state of the run and what the server allows in it. */
 export function stateView(
   run: RunEntity,
   live: LiveFacts,
+  stored: { parkedConflict?: boolean } = {},
 ): { state: RunState; reason: StateReason | null; actions: RunAction[] } {
   const { state, reason } = liveState(run, live);
-  return { state, reason, actions: actionsFor(state, reason?.code ?? null) };
+  return { state, reason, actions: actionsFor(state, reason?.code ?? null, stored) };
 }
 
-export function resumeState(run: RunEntity, open: FlowItem[]): FlowView['resume'] {
-  const { state, actions } = stateView(run, {});
+export function resumeState(
+  run: RunEntity,
+  open: FlowItem[],
+  stored: { parkedConflict?: boolean } = {},
+): FlowView['resume'] {
+  const { state, actions } = stateView(run, {}, stored);
   if (state === 'done') {
     return 'done';
   }
@@ -78,8 +84,11 @@ function codeSentence(run: RunEntity, maxReturns: number): string | null {
   return null;
 }
 
-function blockedSentence(run: RunEntity, maxReturns: number): string {
+function blockedSentence(run: RunEntity, maxReturns: number, parkedConflict: boolean): string {
   const code = storedState(run).reason?.code;
+  if (code === ERROR_CODES.REBASE_CONFLICT && parkedConflict) {
+    return 'The rebase stopped at a conflict with the base branch. Resume has the implement agent resolve it; checks and code review judge the resolution, then the open tasks move onto the resolved branch.';
+  }
   if (code === REASON.checkFailed) {
     return 'A required check failed again on unchanged files. Resume returns to implementation with the stored notes.';
   }
@@ -105,7 +114,7 @@ export function sentence(
     return coded;
   }
   if (run.status === 'blocked') {
-    return blockedSentence(run, maxReturns);
+    return blockedSentence(run, maxReturns, parkedConflictIn(documents, run));
   }
   if (run.status === 'waiting' && isLoopStep(run.currentStep)) {
     const visits = countedVisits(stats, run.currentStep, loopMark(latest(documents, 'loop_mark')));
