@@ -74,6 +74,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     ARTIFACTS.reviewQuestions,
     ARTIFACTS.questionParts,
     ARTIFACTS.requirements,
+    ARTIFACTS.epicRound,
   ];
   override readonly usesModel = true;
   override readonly capabilities: StepCapabilities = { path: true };

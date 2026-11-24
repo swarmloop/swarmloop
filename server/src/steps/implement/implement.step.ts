@@ -98,6 +98,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
     ARTIFACTS.gitRulesNote,
     ARTIFACTS.starterTaken,
     ARTIFACTS.mergeLook,
+    ARTIFACTS.epicRound,
   ];
 
   constructor(

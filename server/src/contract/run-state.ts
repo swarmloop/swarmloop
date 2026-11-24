@@ -157,8 +157,19 @@ function waitingActions(reasonCode: string | null): RunAction[] {
     : ['answer', 'replay', 'rebase'];
 }
 
+/** What a run holds besides its state and code that changes which actions it offers. */
+interface ActionFacts {
+  /** The run holds a rebase conflict parked for implement, so Resume has it resolved. */
+  parkedConflict?: boolean;
+}
+
+function blockActions(reasonCode: string | null, facts: ActionFacts): RunAction[] {
+  if (reasonCode === ERROR_CODES.REBASE_CONFLICT && facts.parkedConflict) return ['resume', 'replay'];
+  return reasonCode && RESUMABLE_BLOCKS.includes(reasonCode) ? ['resume', 'replay'] : ['replay'];
+}
+
 /** The one place that says which actions a state allows. Availability follows what the dashboard offered before. */
-export function actionsFor(state: RunState, reasonCode: string | null = null): RunAction[] {
+export function actionsFor(state: RunState, reasonCode: string | null = null, facts: ActionFacts = {}): RunAction[] {
   switch (state) {
     case 'idle':
     case 'failed':
@@ -171,7 +182,7 @@ export function actionsFor(state: RunState, reasonCode: string | null = null): R
     case 'stopping':
       return ['stop'];
     case 'blocked':
-      return reasonCode && RESUMABLE_BLOCKS.includes(reasonCode) ? ['resume', 'replay'] : ['replay'];
+      return blockActions(reasonCode, facts);
     case 'done':
       return ['replay', 'rebase'];
     case 'merged':

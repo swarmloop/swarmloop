@@ -201,6 +201,13 @@ describe('artifact catalog', () => {
     expect(ARTIFACTS.subtaskAnswerResult.kind).toBe('subtask_answer_result');
   });
 
+  it('registers the epic round document for implement and code review', () => {
+    expect(ARTIFACTS.epicRound.kind).toBe('epic_round');
+    expect(ARTIFACTS.epicRound.writers).toEqual(['implement', 'code-review']);
+    expect(ARTIFACTS.epicRound.readers).toEqual(['implement', 'code-review']);
+    expect(ARTIFACTS.epicRound.summarize('open\nmore')).toBe('open');
+  });
+
   it('summarizes a pipeline ref by the branch or commit it watches', () => {
     const summarize = (body: string): string => ARTIFACTS.pipelineRef.summarize(body);
     expect(summarize('project: a\nref: feature/PROJ-300-ship')).toBe('feature/PROJ-300-ship');
