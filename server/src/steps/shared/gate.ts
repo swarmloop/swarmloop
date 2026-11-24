@@ -18,14 +18,6 @@ export function checkoutFingerprint(hostPaths: string[]): Promise<string> {
   return worktreeFingerprint(mountsOf(hostPaths));
 }
 
-/**
- * The fingerprint of the tree a review judges. A person's checkout may be a subdirectory of a repository: it keeps the
- * name-only fingerprint. The run's own worktrees need a tree.
- */
-export function reviewedTreeFingerprint(run: Pick<RunEntity, 'targetPath'>, hostPaths: string[]): Promise<string> {
-  return (run.targetPath ? checkoutFingerprint : worktreesFingerprint)(hostPaths);
-}
-
 /** Stamps the latest document of `kind` for the generation of the run and the files it judged. */
 export function stampGate(
   documents: DocumentRepository,

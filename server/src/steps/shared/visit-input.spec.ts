@@ -171,4 +171,11 @@ describe('readVisitInput', () => {
     expect(await readVisitInput(deps, target, 'code-review')).not.toBe(untracked);
     expect(await readVisitInput(deps, target, 'checks')).toBe(checks);
   });
+
+  it('reads a run with no prompt as an empty prompt, not the word null', async () => {
+    const { clone } = copyMainWithOrigin(root, 'main');
+    const deps = { documents, worktrees: root };
+    const none = await readVisitInput(deps, { ...run, targetPath: clone, prompt: null }, 'code-review');
+    expect(none).toBe(await readVisitInput(deps, { ...run, targetPath: clone, prompt: '' }, 'code-review'));
+  });
 });

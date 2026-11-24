@@ -5,11 +5,11 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/run.entity';
 import { readPlanChat, PLAN_CHAT_KIND } from '../../contract/plan-chat';
 import type { StepName } from '../../contract/steps';
+import { changeFingerprint } from '../../git/change-fingerprint';
 import { git } from '../../git/worktree-tree';
 import { mountsForRun } from '../../sandbox/sandbox-launch';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { Issue } from '../contract/step-contract';
-import { reviewedTreeFingerprint } from './gate';
 import { currentPlan } from './current-plan';
 import { handoffText } from './handoff';
 
@@ -109,8 +109,8 @@ function findingsOf(body: string | null): string[] {
 }
 
 /**
- * The steps whose input is the tree and the brief only. The tree is each head plus the tree value of the work in it,
- * since implement's fix stays uncommitted until the commit step after review. What planners say between review rounds
+ * The steps whose input is the tree and the brief only. The tree is each head plus a read-only fingerprint of the
+ * uncommitted changes by their bytes, since implement's fix stays uncommitted until the commit step after review. What planners say between review rounds
  * is not a review's input: a round on the same tree, brief and instructions is the same round, whatever was answered
  * in between.
  */
@@ -125,15 +125,16 @@ export async function readVisitInput(
 ): Promise<string> {
   if (TREE_AND_BRIEF_STEPS.includes(step)) {
     const { heads, paths } = await headsOf(deps, run);
+    const changes = await Promise.all(paths.map((path) => changeFingerprint(path)));
     return visitInput({
       heads,
-      tree: paths.length > 0 ? await reviewedTreeFingerprint(run, paths) : undefined,
+      tree: heads.map((head, at) => `${normalizedText(head.repo)}=${changes[at]}`).join(ITEM_END),
       checklist: [],
       handoff: '',
       answers: [],
       returns: [],
       findings: [],
-      instruction: `${run.prompt}${instruction}`,
+      instruction: `${run.prompt ?? ''}${instruction}`,
     });
   }
   const { documents } = deps;
