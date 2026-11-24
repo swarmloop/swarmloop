@@ -138,6 +138,16 @@ export class CommandRepository {
     return found.find((command) => command.idempotencyKey?.startsWith(prefix)) ?? null;
   }
 
+  /** The newest command of a run with that type; null when none. */
+  async latestOfType(runId: number, type: CommandType): Promise<CommandEntity | null> {
+    return this.commands
+      .createQueryBuilder('command')
+      .where('command.runId = :runId', { runId })
+      .andWhere('command.type = :type', { type })
+      .orderBy('command.createdAt', 'DESC')
+      .getOne();
+  }
+
   /** The commands a process took and has not finished. */
   listExecuting(): Promise<CommandEntity[]> {
     return this.commands.find({ where: { state: 'executing' }, order: { createdAt: 'ASC' } });

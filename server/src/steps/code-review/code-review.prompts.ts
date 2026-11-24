@@ -2,6 +2,7 @@ import { reviewAnswerDefinition, reviewDefinition } from '../../agent-result/def
 import { reviewReport } from '../../agent-result/definitions/review-report';
 import type { CoveredRequirement } from '../../contract/requirement-list';
 import { resultPromptFor } from '../../agent-result/result-prompt';
+import type { Subtask } from '../../contract/subtask';
 import { REVIEW_DIFF_PATH } from './review-diff';
 
 /** The merge request summary prompt for a new chat: the decisions to copy, and the full result text. */
@@ -124,3 +125,19 @@ export function approvedChecklist(items: string[], coverage: readonly CoveredReq
 /** What the requirements reviewer is asked about the subtasks of a split run. */
 export const SUBTASK_PROOF_CHECK =
   "This run was split into the subtasks below. Check every requirement of the input against the merged diff first. Check every task's proof after that.";
+
+/** What every reviewer is told when the epic's branch was rebased onto its base and a conflict was resolved. */
+export function conflictResolutionSection(open: Pick<Subtask, 'id' | 'title' | 'status'>[]): {
+  heading: string;
+  body: string;
+} {
+  const tasks = open.map((task) => `- ${task.id}: ${task.title} (${task.status})`);
+  return {
+    heading: 'Conflict resolution',
+    body: [
+      "The epic's branch was rebased onto its base and a conflict was resolved. Judge what the resolution changed in the branch.",
+      'The open tasks below still deliver their own requirements. A requirement an open task delivers is not missing in this review and is no reason to return.',
+      ...tasks,
+    ].join('\n'),
+  };
+}
