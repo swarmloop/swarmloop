@@ -45,6 +45,15 @@ export const SPLIT_ARTIFACTS = {
     external: true,
     summarize: firstLine,
   }),
+  /**
+   * `open` while a split run's resolution of its own rebase conflict is checked and reviewed; empty once that round
+   * ended.
+   */
+  epicRound: artifact('epic_round', {
+    writers: ['implement', 'code-review'],
+    readers: ['implement', 'code-review'],
+    summarize: firstLine,
+  }),
   subtasks: artifact(SUBTASKS_KIND, {
     writers: ['plan', 'plan-improve', 'implement'],
     readers: ['plan-improve', 'branch', 'implement', 'implement-improve'],
