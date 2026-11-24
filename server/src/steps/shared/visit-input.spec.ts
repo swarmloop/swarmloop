@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { DocumentRepository } from '../../history/document.repository';
@@ -154,5 +154,21 @@ describe('readVisitInput', () => {
     ).not.toBe(first);
     git(clone, ['commit', '--allow-empty', '-m', 'next']);
     expect(await readVisitInput(deps, target, 'code-review')).not.toBe(first);
+  });
+
+  it('changes the code-review input for an uncommitted change or an untracked file, and no other step reads it', async () => {
+    const { clone } = copyMainWithOrigin(root, 'main');
+    const deps = { documents, worktrees: root };
+    const target = { ...run, targetPath: clone };
+    const review = await readVisitInput(deps, target, 'code-review');
+    const checks = await readVisitInput(deps, target, 'checks');
+
+    writeFileSync(join(clone, 'fix.txt'), 'fixed\n');
+    const untracked = await readVisitInput(deps, target, 'code-review');
+    expect(untracked).not.toBe(review);
+    git(clone, ['add', 'fix.txt']);
+    writeFileSync(join(clone, 'fix.txt'), 'fixed again\n');
+    expect(await readVisitInput(deps, target, 'code-review')).not.toBe(untracked);
+    expect(await readVisitInput(deps, target, 'checks')).toBe(checks);
   });
 });

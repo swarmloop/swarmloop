@@ -435,16 +435,18 @@ describe('the parent finds what a subtask asks at plan and implement', () => {
     const resume = jest.fn().mockResolvedValue('accepted');
     const documents = {
       latestBody: async (_key: string, kind: string) => stored[kind] ?? null,
+      latestDocument: async (_key: string, kind: string) => (kind in stored ? { id: 7, body: stored[kind] } : null),
       putDocument: async () => undefined,
     };
+    const submit = jest.fn().mockResolvedValue(undefined);
     const planner = new SubtaskPlannerAnswer(
       documents as never,
-      {} as never,
+      { submit } as never,
       { resume } as never,
       { chat, clock: new FakeClock() } as never,
       { listStats: async () => [] } as never,
     );
-    return { planner, appended, taken, resume };
+    return { planner, appended, taken, resume, submit };
   }
 
   it("finds a plan's question in the questions of the run", async () => {
@@ -489,6 +491,20 @@ describe('the parent finds what a subtask asks at plan and implement', () => {
     await planner.deliver(run, 'Use a cursor.');
 
     expect(appended).toMatchObject([{ kind: 'answer', text: 'Use a cursor.' }]);
+  });
+
+  it("records the planner's typed finding for the subtask's review next to the answer it sends", async () => {
+    const run = { key: 'child', status: 'waiting', currentStep: 'code-review' } as RunEntity;
+    const stored = { review_questions: renderQuestions(['quality still returns: x. Which holds?']) };
+    const { planner, appended, submit } = answerer(stored, []);
+    jest.spyOn(planner, 'askAbout').mockResolvedValue({ decision: 'It is fine.', finding: 'ruled-out' });
+
+    await planner.answer({} as never, run, { id: 'a' } as never, '');
+
+    expect(appended).toMatchObject([
+      { kind: 'answer', from: 'code-review', finding: 'ruled-out', text: 'It is fine.' },
+    ]);
+    expect(submit).toHaveBeenCalled();
   });
 
   it('does not find a question that waits for the own planner of the subtask', async () => {

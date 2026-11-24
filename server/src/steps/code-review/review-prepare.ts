@@ -9,7 +9,7 @@ import { assertInsideWork, workRoots } from '../../sandbox/allowed-path';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { StepContext } from '../base-step';
 import type { CheckoutService } from '../shared/checkout.service';
-import { gateCounts, checkoutFingerprint, worktreesFingerprint } from '../shared/gate';
+import { gateCounts, reviewedTreeFingerprint } from '../shared/gate';
 import { returnedNotes } from '../shared/handoff';
 import { ARTIFACTS } from '../contract/artifacts';
 import { reviewDiffSection } from './review-diff';
@@ -76,9 +76,10 @@ export async function prepareReview(deps: PrepareDeps, notes: string | null, ctx
   const attemptId = retry ? await interruptedAttempt(deps.visits, opened) : null;
   const returned = await returnedNotes(deps.documents, opened.run.id);
   const diff = await reviewDiffSection(mounts, [], opened.run.prompt);
-  // A person's checkout may be a subdirectory of a repository: it keeps the name-only fingerprint. The run's own worktrees need a tree.
-  const fingerprintOf = opened.run.targetPath ? checkoutFingerprint : worktreesFingerprint;
-  const fingerprint = await fingerprintOf(mounts.map((mount) => mount.hostPath));
+  const fingerprint = await reviewedTreeFingerprint(
+    opened.run,
+    mounts.map((mount) => mount.hostPath),
+  );
   const { kept, pending, recovered } = await selectReviewers(deps.documents, root(deps.config), {
     key,
     only,

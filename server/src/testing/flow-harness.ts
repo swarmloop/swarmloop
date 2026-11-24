@@ -22,7 +22,6 @@ import { BacklogPlanner } from '../pipeline/backlog/planner/backlog-planner';
 import { BacklogStartPort } from '../pipeline/backlog/backlog-start-port';
 import type { RunEntity } from '../history/entities';
 import { putStamped } from '../steps/shared/gate.spec-helpers';
-import { AgentDoor } from '../steps/shared/agent-door';
 import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { FakeCodeHost } from './fake-code-host';
 import type { FakeHostSettings } from './fake-host-rules';
@@ -82,20 +81,6 @@ function changing(blocks: BlockAgentRunner, root: () => string): BlockAgentRunne
   return blocks;
 }
 
-/** What the commit does before a review: the work of implement lands on the branch, so the review sees a new head. */
-function commitBeforeReview(app: TestApp, key: string): void {
-  const door = app.app.get(AgentDoor);
-  const admit = door.admitStep.bind(door);
-  jest.spyOn(door, 'admitStep').mockImplementation((runKey, step, ...rest) => {
-    const tree = join(app.root, 'worktrees', runKey, REPO);
-    if (step === 'code-review' && runKey === key && git(tree, ['status', '--porcelain']).trim()) {
-      git(tree, ['add', '-A']);
-      git(tree, ['commit', '-m', 'fix: the finding']);
-    }
-    return admit(runKey, step, ...rest);
-  });
-}
-
 /**
  * With `realHost` the merge-request and pipeline steps are the real ones on the fake host, and `begin` is for them.
  * Task runs have no worktree unless `taskWorktrees` says the spec makes them; without them every task is answered as on top of the feature branch.
@@ -120,7 +105,7 @@ export async function createFlowHarness(
     fakeHost?: FakeHostSettings;
     env?: Record<string, string>;
     blocks?: BlockAgentRunner;
-    /** Every implement launch changes a file in the run's worktree, as an agent that fixes a finding does, and the work is committed before the next review, so the review sees a new head. Without it the head stays. */
+    /** Every implement launch changes a file in the run's worktree, as an agent that fixes a finding does, and the work stays uncommitted, as the commit step runs after review: the review sees a new tree. Without it the tree stays. */
     implementCommits?: boolean;
     /** The agent process of every real step's launch. */
     runner?: FakeAgentRunner;
@@ -144,7 +129,6 @@ export async function createFlowHarness(
     sandbox: { ...sandbox.calls, ...options.sandboxCalls },
   });
   rootOf = first.root;
-  if (options.implementCommits) commitBeforeReview(first, key);
   const { tree, clone } = featureWorktree(first.root, key, REPO);
   git(tree, ['push', 'origin', feature]);
   const host = new FakeCodeHost(clone, feature, () => harness.app.clock.now());

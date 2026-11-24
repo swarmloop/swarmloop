@@ -85,7 +85,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
 
   constructor(
     kernel: StepKernel,
-    events: EventRepository,
+    private readonly events: EventRepository,
     private readonly worktrees: CheckoutService,
     private readonly sandbox: SandboxService,
     private readonly door: AgentDoor,
@@ -215,7 +215,11 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       reportDue: reportDue(only, kept, pending) && !(only !== undefined && othersOpen(only, kept)),
       reportStarted: false,
     });
-    const settled = await settleAsked(ctx, this.documents);
+    const settled = await settleAsked(
+      ctx,
+      this.documents,
+      this.planChat ? { chat: this.planChat, events: this.events } : undefined,
+    );
     if (settled) {
       return settled;
     }

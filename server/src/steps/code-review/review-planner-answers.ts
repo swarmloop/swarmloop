@@ -12,7 +12,7 @@ import { REVIEWS } from '../contract/artifacts';
 import { plannerWait } from '../implement/implement-question';
 import { gateCounts } from '../shared/gate';
 import { issueOf } from '../shared/handoff';
-import { opinionOf, reviewDocuments, type Opinion } from './code-review-record';
+import { opinionOf, reviewDocuments, ruledOutOpinion, type Opinion } from './code-review-record';
 import { opinionSummary } from './code-review-round-result';
 import { closeReview } from './review-report';
 import { returnToImplement } from './review-round';
@@ -110,13 +110,7 @@ export class ReviewPlannerAnswers {
       return { closed };
     }
     const ruledOut = asked.filter((item) => item.review.decision === 'return');
-    const opinions = ruledOut.map((item) =>
-      opinionOf(item.reviewer.kind, {
-        ...item.review,
-        decision: 'ok',
-        reason: `The planner ruled the finding out: ${item.answer?.text.trim()}`,
-      }),
-    );
+    const opinions = ruledOut.map((item) => ruledOutOpinion(item.reviewer.kind, item.review, item.answer?.text ?? ''));
     const settled = new Set(ruledOut.map((item) => item.reviewer.kind));
     return {
       fingerprint: round.fingerprint,

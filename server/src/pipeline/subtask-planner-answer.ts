@@ -29,6 +29,7 @@ import { askedQuestion } from '../steps/implement/split-questions';
 import { isEscalated, type Escalated } from '../steps/shared/subtask-ops';
 import type { OpenedStep } from '../steps/step-run';
 import type { CommandService } from './command.service';
+import { reviewAnswerKey } from '../steps/shared/review-answer-key';
 import type { StartGate } from './start-gate';
 
 const ASKING_STEPS: string[] = ['research', 'plan', 'code-review', ...SUBTASK_ASKING_STEPS];
@@ -137,9 +138,30 @@ export class SubtaskPlannerAnswer {
     return given && (await this.reply(child, given)) ? given : null;
   }
 
+  /**
+   * The planner's typed decision on a reviewer's finding, as an answer entry of the subtask's own chat that its
+   * code-review settles by. The key names the ask document it answers, so a resend writes it once.
+   */
+  private async recordFinding(child: RunEntity, given: StarterAnswerResult): Promise<void> {
+    if (!given.finding || child.currentStep !== 'code-review') return;
+    const asked = await this.documents.latestDocument(child.key, ARTIFACTS.reviewQuestions.kind);
+    if (!asked) return;
+    await this.chat.appendEntry(child.key, {
+      key: reviewAnswerKey(asked.id),
+      role: 'planner',
+      kind: 'answer',
+      from: 'code-review',
+      finding: given.finding,
+      text: given.decision.trim(),
+      at: this.clock.iso(),
+      state: 'pending',
+    });
+  }
+
   /** Delivers the decision of the answer to the child. A refusal is kept, so the next pass sends the same answer again. */
   private async reply(child: RunEntity, given: StarterAnswerResult): Promise<boolean> {
     try {
+      await this.recordFinding(child, given);
       await this.give(child, given.decision.trim(), `subtask-answer-${child.key}-${child.revision}`);
     } catch (error) {
       this.undelivered.set(child.key, given);
