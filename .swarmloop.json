@@ -9,9 +9,14 @@
       "paths": ["server/"]
     },
     {
-      "run": "npm test --prefix server",
+      "run": "npm test --prefix server -- --changedSince=origin/main --passWithNoTests",
       "name": "server tests",
-      "paths": ["server/", "defaults.env", "skills/", "scripts/jest-slowest-files.mjs", "scripts/slowest-files.mjs"]
+      "paths": ["server/"]
+    },
+    {
+      "run": "npm test --prefix server",
+      "name": "server tests, all",
+      "paths": ["defaults.env", "skills/", "scripts/jest-slowest-files.mjs", "scripts/slowest-files.mjs"]
     },
     {
       "run": "npm run typecheck --prefix dashboard",

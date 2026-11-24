@@ -228,7 +228,7 @@ A check runs:
 - only when the change touches its paths;
 - only once per tree: a command that already passed on the same tree and image is not run again.
 
-Each check gets its own cores. Only as many checks run at once as fit with at least four cores each (`CHECKS_PARALLEL`), and agents and setup use cores only after the checks. CI runs the same commands from the one workflow.
+Each check gets its own cores. Only as many checks run at once as fit with at least four cores each (`CHECKS_PARALLEL`), and agents and setup use cores only after the checks. CI runs the same commands from the one workflow. The one difference is the server tests: a run's checks run only the specs affected by its change, or all of them when an input no import reaches changes (settings, skills); CI runs the whole suite, also under the seeds. The heavy suite therefore runs once, on the code host's runners, not on the machine that runs the agents.
 
 **Today.**
 - The above holds: f118 and f119 added the cores, and the passes are recorded.
@@ -519,7 +519,7 @@ The text is plain words for a person: no raw JSON and no internal ids. A cut tex
   - a slow or load-sensitive test is fixed by its design (a cheaper level, a split, fake time), never by its limit.
 - **Whole-flow specs** boot the real application with the shipped defaults and assert the flow invariants after every tick.
 - **Golden traces** record the exact behaviour of the main flows and change only when a task names that behaviour change.
-- **CI** is one workflow with the same commands as the checks.
+- **CI** is one workflow with the same commands as the checks, and it runs the whole server suite where the checks run only the affected specs (3.6).
 - **A release** tags a version, builds the images, runs a smoke test and publishes.
 
 **Today.** The approach is the rule since 24.11. Existing tests that break it time out under load (3.6). steady-vitest fixes them for the dashboard, and steady-agent-limit for the server.
