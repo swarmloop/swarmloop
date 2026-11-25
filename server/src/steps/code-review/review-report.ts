@@ -11,7 +11,8 @@ import type { PipelineResult } from '../../core/pipeline-result';
 import { runFileName } from '../../core/run-files';
 import { visitStatus } from '../../core/pipeline-result';
 import { reportFailure } from '../shared/step-failure';
-import { RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
+import { HostUnavailable, RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
+import { HOST_VISIT } from '../shared/model-host-unavailable';
 import type { StepContext } from '../base-step';
 import { assertRoute } from '../contract/returns';
 import { routeToEnd } from '../contract/route';
@@ -156,7 +157,12 @@ export async function writeReport(
     const text = await deps.runReport.renderParts(opened.run, parts, round);
     return { documents: reportDocuments(text, parts), exchange, usage: spent, startId };
   } catch (error) {
-    if (error instanceof RuntimeLimit || error instanceof StartRefused || error instanceof StepStopped) {
+    if (
+      error instanceof RuntimeLimit ||
+      error instanceof HostUnavailable ||
+      error instanceof StartRefused ||
+      error instanceof StepStopped
+    ) {
       throw error;
     }
     const message = reportFailure('code-review', error).message;
@@ -177,13 +183,16 @@ export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Fi
     return;
   }
   const parsed = item.parsed;
-  const status = item.error
-    ? 'failed'
-    : item.asked || parsed?.decision === 'return'
-      ? 'waiting'
-      : parsed
-        ? 'done'
-        : 'failed';
+  const status = item.outage
+    ? HOST_VISIT.status
+    : item.error
+      ? 'failed'
+      : item.asked || parsed?.decision === 'return'
+        ? 'waiting'
+        : parsed
+          ? 'done'
+          : 'failed';
+  const broken = item.error !== undefined && !item.outage;
   const exchange = exchangeOf(item);
   const stat = await deps.visits.finishVisit(opened.run, {
     step: `code-review-${item.reviewer.name}`,
@@ -195,8 +204,8 @@ export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Fi
     finishedAt: result.finishedAt,
     durationMs: result.durationMs,
     status,
-    exitCode: item.error ? 1 : 0,
-    killReason: result.killReason ? `process killed: ${result.killReason}` : null,
+    exitCode: broken ? 1 : 0,
+    killReason: item.outage ? HOST_VISIT.killReason : result.killReason ? `process killed: ${result.killReason}` : null,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
     usd: result.usd,
@@ -206,7 +215,7 @@ export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Fi
     document: null,
     documents: [
       ...(parsed ? reviewDocuments(parsed) : []),
-      ...(item.error ? [{ kind: ARTIFACTS.error.kind, fileName: '', body: `${item.error}\n` }] : []),
+      ...(broken ? [{ kind: ARTIFACTS.error.kind, fileName: '', body: `${item.error}\n` }] : []),
       ...(item.answerErrors ? [answerErrorsDocument(item.answerErrors)] : []),
     ],
     resumed: result.resumed,
@@ -260,7 +269,7 @@ export function closeReview(
     exitCode,
     line,
     moveTo,
-    ...(route.to === 'wait' ? { code: route.code, limit: route.limit } : {}),
+    ...(route.to === 'wait' ? { code: route.code, limit: route.limit, retryAt: route.retryAt } : {}),
     ...(route.to === 'block' ? { code: route.code } : {}),
     visit: {
       step: 'code-review',

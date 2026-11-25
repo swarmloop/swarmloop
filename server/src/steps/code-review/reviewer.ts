@@ -14,7 +14,8 @@ import type { OpenedStep } from '../../steps/step-run';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { reportFailure } from '../shared/step-failure';
-import { RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
+import { HostUnavailable, RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
+import { ModelHostUnavailable } from '../shared/model-host-unavailable';
 import { reviewContinue, reviewResume } from './code-review.prompts';
 import type { AgentDoor } from '../shared/agent-door';
 import { StartRefused } from '../shared/start-refused';
@@ -49,6 +50,8 @@ export interface Finished extends EffortFields {
   answerErrors?: string[];
   /** The reviewer's launch ended on a provider limit and no agent of the role was left. */
   limit?: RuntimeLimit;
+  /** The reviewer's launch ended because its model host did not answer: the review waits for the next try. */
+  outage?: HostUnavailable;
   /** The reviewer's question to the planner. Its decision, when it gave one, stays in `parsed`. */
   asked?: string;
   /** The id of the start the door admitted for this launch, also when the launch then threw. */
@@ -226,10 +229,11 @@ async function one(
       model: job.model,
       ...effortFields(job),
       prompt: job.prompt,
-      result: error instanceof ResultInvalid ? (error.result ?? null) : null,
+      result: error instanceof ResultInvalid || error instanceof ModelHostUnavailable ? (error.result ?? null) : null,
       error: message,
       ...(error instanceof ResultInvalid ? { answerErrors: error.errors } : {}),
       ...(error instanceof RuntimeLimit ? { limit: error } : {}),
+      ...(error instanceof HostUnavailable ? { outage: error } : {}),
       ...(error instanceof StartRefused || error instanceof StepStopped ? { refused: error } : {}),
       startId,
     };

@@ -4,6 +4,7 @@ import { CODE_REVIEWERS } from '../contract/steps';
 import { emptyResult } from '../agent/agent-result';
 import type { AgentRunResult } from '../agent/agent-result';
 import type { LimitHit } from '../integrations/agent-runtime/runtime-limit';
+import type { ModelHostOutage } from '../integrations/agent-runtime/runtime-outage';
 import { mkdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { sessionHome } from '../history/session-group';
@@ -87,10 +88,12 @@ function scriptOf(input: { step: string; prompt?: string }): string {
 }
 
 /** One answer of a script: a value that becomes a result block, the raw text of the answer, or a usage limit reached. */
-export type ScriptedAnswer = { block: unknown; prose?: string } | { text: string } | { limit: LimitHit };
+export type ScriptedAnswer =
+  { block: unknown; prose?: string } | { text: string } | { limit: LimitHit } | { outage: ModelHostOutage };
 
 function textOf(answer: ScriptedAnswer): string {
   if ('limit' in answer) return 'limit';
+  if ('outage' in answer) return 'outage';
   return 'text' in answer ? answer.text : resultAnswer(answer.prose ?? 'Done.', answer.block);
 }
 
@@ -146,6 +149,7 @@ export class BlockAgentRunner {
     return Promise.resolve({
       ...emptyResult('time', 0, 1, now),
       ...('limit' in answer ? { limit: answer.limit } : {}),
+      ...('outage' in answer ? { outage: answer.outage } : {}),
       killReason: null,
       tokensIn: 10,
       tokensOut: 5,
