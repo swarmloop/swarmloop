@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { readOnlyTree } from './agent-args';
@@ -118,6 +118,15 @@ describe('spillPrompt', () => {
       { hostPath: join(root, 'briefs'), containerPath: '/work/brief', readonly: true },
     ]);
     expect(readFileSync(join(root, 'briefs', 'code-review-quality.md'), 'utf8')).toBe(prompt);
+  });
+
+  it('keeps a mount point for the run files inside the read-only brief', () => {
+    const spilled = mkdtempSync(join(tmpdir(), 'swarmloop-brief-'));
+    spillPrompt('a'.repeat(100_001), spilled, 'backlog-plan');
+    expect(existsSync(join(spilled, 'briefs', 'attachments'))).toBe(true);
+    const shared = mkdtempSync(join(tmpdir(), 'swarmloop-review-brief-'));
+    reviewBriefMount(shared, 'code-review-quality');
+    expect(existsSync(join(shared, 'briefs', 'attachments'))).toBe(true);
   });
 });
 
