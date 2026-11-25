@@ -39,6 +39,12 @@ describe('git fixture', () => {
     expect(resolves(second.remote, 'work-one')).toBe(false);
   });
 
+  it('git in a copy runs without the upkeep child it starts after each write', () => {
+    const { clone } = copy();
+    expect(git(clone, ['config', '--get', 'maintenance.auto'])).toBe('false');
+    expect(git(clone, ['config', '--get', 'gc.auto'])).toBe('0');
+  });
+
   it('a push reaches the copied origin only', () => {
     const first = copy();
     const second = copy();
