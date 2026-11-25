@@ -83,6 +83,29 @@ describe('VisitRepository', () => {
     }
   });
 
+  it('ends a relaunch of a held copy without setting back a generation written since', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const runs = db.app.get(RunRepository);
+      const begun = await runs.begin('run-held', 'code-review');
+      const note = { at: '2026-11-14T20:29:00.000Z', relaunched: true };
+      const cut = await visits.finalize(begun.activeAttempt, begun, {
+        ...repositoryVisit(),
+        killReason: 'process died',
+        documents: [{ kind: 'interruption', fileName: '', body: JSON.stringify(note) }],
+      });
+      const held = (await runs.findRun('run-held'))!;
+      await runs.bumpGeneration('run-held');
+      held.prompt = 'changed';
+      expect(await visits.endRelaunch(held, cut!, { ...note, relaunched: false, cause: 'start' }, note.at)).toBe(true);
+      expect(await runs.findRun('run-held')).toEqual(expect.objectContaining({ prompt: 'changed', generation: 1 }));
+      expect(held.generation).toBe(1);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('creates a visit with related rows, reads it and updates its stat', async () => {
     const db = await repositoryDatabase();
     try {

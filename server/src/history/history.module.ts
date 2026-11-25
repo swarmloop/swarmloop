@@ -13,6 +13,7 @@ import { CheckCommandRepository } from './check-command.repository';
 import { entities } from './entities';
 import { migrations } from './migrations';
 import { RunRepository } from './run.repository';
+import { RunReadSubscriber } from './run-read';
 import { DocumentRepository } from './document.repository';
 import { VisitRepository } from './visit.repository';
 import { FlowRepository } from './flow.repository';
@@ -58,6 +59,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     database: databaseFile(root),
     entities,
     migrations,
+    subscribers: [RunReadSubscriber],
     synchronize: false,
     migrationsRun: true,
     logging: false,

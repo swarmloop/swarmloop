@@ -7,6 +7,7 @@ import { ERROR_CODES } from '../contract/error-codes';
 import type { InterruptionNote } from '../contract/interruption';
 import { LiveHub } from '../live/live.hub';
 import { insertAcceptedCommand } from './accepted-command';
+import { adoptRow, changedColumns } from './run-read';
 import { releasedColumns } from './run-state';
 import { transaction } from './transaction';
 import { summarizeSamples } from './visit';
@@ -106,13 +107,13 @@ export class VisitRepository {
       if (stored) {
         return stored;
       }
-      const { id, ...fields } = run;
+      const { id } = run;
       const moved = await manager
         .getRepository(RunEntity)
         .createQueryBuilder()
         .update()
         .set({
-          ...fields,
+          ...changedColumns(run),
           ...releasedColumns(),
           stepStartedAt: null,
           updatedAt: visit.finishedAt,
@@ -140,7 +141,7 @@ export class VisitRepository {
     if (!stat) {
       this.logger.warn(`stale attempt ${attemptId} of ${run.key}`);
     }
-    Object.assign(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
+    adoptRow(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
     this.live?.changed(run.key);
     return stat;
   }
@@ -157,12 +158,12 @@ export class VisitRepository {
     at: string,
   ): Promise<boolean> {
     const ended = await transaction(this.dataSource, async (manager) => {
-      const { id, ...fields } = run;
+      const { id } = run;
       const moved = await manager
         .getRepository(RunEntity)
         .createQueryBuilder()
         .update()
-        .set({ ...fields, updatedAt: at, revision: () => 'revision + 1' })
+        .set({ ...changedColumns(run), updatedAt: at, revision: () => 'revision + 1' })
         .where('id = :id AND revision = :revision', { id, revision: run.revision })
         .execute();
       if (!moved.affected) return false;
@@ -171,7 +172,7 @@ export class VisitRepository {
         .update({ stepStatId: stat.id, kind: 'interruption' }, { body: JSON.stringify(note) });
       return true;
     });
-    Object.assign(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
+    adoptRow(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
     return ended;
   }
 
