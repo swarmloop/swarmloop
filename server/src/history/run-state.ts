@@ -20,8 +20,8 @@ export interface StateFacts {
   asksPlanner?: boolean;
   /** The run went back to implementation after a review or pipeline return. */
   returned?: boolean;
-  /** The words of an agent that waits for a free place; live only, never stored. */
-  agentPlace?: string;
+  /** What the agent starts of a running run wait for before their first output: a free place or the server's pause. */
+  startWait?: StateReason;
 }
 
 type StateRow = Pick<RunEntity, 'status'> & { stateReason?: string | null; mergeOutcome?: string | null };
@@ -100,10 +100,7 @@ function deriveState(run: StateRow, facts: StateFacts = {}): { state: RunState; 
     case 'running':
       if (facts.recovering) return { state: 'recovering', reason: stored };
       if (facts.stopping) return { state: 'stopping', reason: null };
-      return {
-        state: 'running',
-        reason: facts.agentPlace ? { code: REASON.agentPlace, message: facts.agentPlace } : null,
-      };
+      return { state: 'running', reason: facts.startWait ?? null };
     case 'done': {
       const outcome = readOutcome(run.mergeOutcome);
       return { state: outcome ? ('merged' in outcome ? 'merged' : 'closed') : 'done', reason: stored };
@@ -126,11 +123,10 @@ export function storedState(run: StoredRow): { state: RunState; reason: StateRea
   return run.state ? { state: run.state as RunState, reason: readReason(run.stateReason) } : deriveState(run);
 }
 
-/** What a run view knows beyond the row: a request in flight and the words of an agent that waits for a place. */
+/** What a run view knows beyond the row: a request in flight. */
 export interface LiveFacts {
   queued?: boolean;
   stopping?: boolean;
-  agentPlace?: string;
 }
 
 /**
@@ -142,8 +138,13 @@ export function liveState(run: StoredRow, live: LiveFacts): { state: RunState; r
   const stored = held.state === 'recovering' ? { state: 'running' as const, reason: null } : held;
   if (live.queued && (stored.state === 'idle' || stored.state === 'waiting')) return { state: 'queued', reason: null };
   if (stored.state !== 'running') return stored;
-  if (live.stopping) return { state: 'stopping', reason: null };
-  return live.agentPlace ? { state: 'running', reason: { code: REASON.agentPlace, message: live.agentPlace } } : stored;
+  return live.stopping ? { state: 'stopping', reason: null } : stored;
+}
+
+/** The state columns of a running run whose agent start waits for `wait`, or waits for nothing. Persist with `recordStartWait`. */
+export function startWaitColumns(wait: StateReason | null): Pick<RunEntity, 'state' | 'stateReason'> {
+  const derived = deriveState({ status: 'running' }, wait ? { startWait: wait } : {});
+  return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };
 }
 
 /**

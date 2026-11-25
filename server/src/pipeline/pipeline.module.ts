@@ -90,6 +90,7 @@ import { EventFacts } from './backlog/planner/event-facts';
 import { RunFacts } from './backlog/planner/run-facts';
 import { StallWatch } from './stall-watch';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
+import { StartWaits } from '../steps/shared/start-waits';
 import { QuestionHolds } from '../steps/shared/question-holds';
 import { QuestionPassOn } from './question-pass-on';
 import { RunSettler } from './run-settler';
@@ -163,6 +164,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     Reconciler,
     StallWatch,
     RunStateRefresh,
+    StartWaits,
     QuestionHolds,
     QuestionPassOn,
     PlannerTurns,

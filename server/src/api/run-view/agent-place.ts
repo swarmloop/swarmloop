@@ -3,11 +3,6 @@ import type { FlowView } from '../../contract/api';
 
 type AgentWait = ReturnType<ContainerGate['agentWait']>;
 
-/** The words of a run whose agents all wait for a free place; none while one of its agents runs. */
-export function runPlace(wait: AgentWait): string | undefined {
-  return wait.steps.length > 0 && wait.running === 0 ? wait.text : undefined;
-}
-
 /** The chips of the steps whose agent waits for a free place read `waiting` with the gate's words. */
 export function withPlaceChips(phases: FlowView['phases'], wait: AgentWait): FlowView['phases'] {
   if (wait.steps.length === 0) return phases;

@@ -1,7 +1,7 @@
 import type { DocumentEntity, RunEntity } from '../../history/entities';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { SUBTASKS_KIND } from '../../contract/subtask';
-import { factColumns } from '../../history/run-state';
+import { factColumns, startWaitColumns } from '../../history/run-state';
 import { listPlans, listStates } from './list-state';
 import { ownStates } from './own-state';
 import { childrenByParent } from './status';
@@ -31,8 +31,6 @@ interface Setup {
   claimed?: string[];
   /** The run ids with a command that is accepted or executing and is not a stop. */
   queued?: number[];
-  /** The words of the runs whose agent waits for a free place, by run key. */
-  places?: Record<string, string>;
 }
 
 /** The documents repository as the list reads it: the latest document of each asked kind of each asked run. */
@@ -48,7 +46,7 @@ function storedDocuments(runs: RunEntity[], plans: Record<string, string>) {
   };
 }
 
-async function states({ runs, plans = {}, claimed = [], queued = [], places = {} }: Setup) {
+async function states({ runs, plans = {}, claimed = [], queued = [] }: Setup) {
   const keys = new Map(runs.map((item) => [item.id, item.key]));
   const childrenOf = childrenByParent(runs);
   const stored = storedDocuments(runs, plans);
@@ -59,12 +57,7 @@ async function states({ runs, plans = {}, claimed = [], queued = [], places = {}
   return listStates(
     runs,
     { keys, childrenOf, plans: await listPlans(stored, runs, childrenOf) },
-    await ownStates(
-      sources,
-      runs,
-      (key) => claimed.includes(key),
-      (key) => places[key],
-    ),
+    await ownStates(sources, runs, (key) => claimed.includes(key)),
   );
 }
 
@@ -120,10 +113,10 @@ describe('listStates', () => {
 
   it('lists a running run whose agent waits for a free place with the words of the wait', async () => {
     const place = 'Waiting for a free agent place (4 of 4 busy)';
+    const waiting = { status: 'running', ...startWaitColumns({ code: 'AGENT_PLACE', message: place }) };
     const result = await states({
-      runs: [run(1, 'A-1'), run(2, 'B-1')],
+      runs: [run(1, 'A-1', waiting), run(2, 'B-1', { status: 'running', ...startWaitColumns(null) })],
       claimed: ['A-1', 'B-1'],
-      places: { 'A-1': place },
     });
     expect(result['A-1']).toMatchObject({ state: 'running', stateReason: { code: 'AGENT_PLACE', message: place } });
     expect(result['B-1']).toMatchObject({ state: 'running', stateReason: null });

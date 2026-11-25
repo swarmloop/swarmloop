@@ -16,9 +16,7 @@ import type { RunWaitEntity } from '../history/run-wait.entity';
 import { RunWaitLog } from '../history/run-wait.log';
 import { LiveHub } from '../live/live.hub';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { ContainerGate } from '../sandbox/container-gate';
 import { epicTotal } from '../steps/shared/epic-total';
-import { runPlace } from './run-view/agent-place';
 import { runName } from './run-view/flow';
 import { listPlans, listStates } from './run-view/list-state';
 import { mergeWaits } from './run-view/merge-wait';
@@ -29,7 +27,7 @@ import { spentUsd } from './run-queries-spend';
 import { EtaSummary } from './eta-summary';
 import { liveRunOf, runViewEta } from './run-view/run-eta';
 
-/** What is read from the database for one run, and the claim and agent place its state was worked out with. */
+/** What is read from the database for one run, and the claim its state was worked out with. */
 interface KeptRun {
   run: RunEntity;
   durationMs: number;
@@ -41,7 +39,6 @@ interface KeptRun {
   waits: RunWaitEntity[];
   label: RunBacklog | undefined;
   claimed: boolean;
-  place: string | undefined;
 }
 
 /** Newest first, like `listRuns`. */
@@ -74,7 +71,6 @@ export class RunListRows implements OnModuleDestroy {
     private readonly waitLog: RunWaitLog,
     private readonly config: AppConfig,
     @Optional() private readonly live?: LiveHub,
-    @Optional() private readonly gate: ContainerGate = new ContainerGate(),
   ) {}
 
   onModuleDestroy(): void {
@@ -116,15 +112,11 @@ export class RunListRows implements OnModuleDestroy {
     }
   }
 
-  /** A run the pipeline now holds, or whose agent now waits for a place, is not the run its state was read for. */
+  /** A run the pipeline now holds is not the run its state was read for. */
   private markMoved(): void {
     for (const [key, entry] of this.kept) {
-      if (entry.claimed !== this.pipeline.claimed(key) || entry.place !== this.placeOf(key)) this.dirty.add(key);
+      if (entry.claimed !== this.pipeline.claimed(key)) this.dirty.add(key);
     }
-  }
-
-  private placeOf(key: string): string | undefined {
-    return runPlace(this.gate.agentWait(key));
   }
 
   private async reread(keys: string[]): Promise<number> {
@@ -152,16 +144,10 @@ export class RunListRows implements OnModuleDestroy {
     for (const run of runs) current.set(run.key, run);
     const childrenOf = childrenByParent([...current.values()]);
     const claimed = new Map(runs.map((run) => [run.key, this.pipeline.claimed(run.key)]));
-    const places = new Map(runs.map((run) => [run.key, this.placeOf(run.key)]));
     const durations = await this.runs.durationByRun(every ? undefined : runs.map((run) => run.id));
     const plans = await listPlans(this.documents, runs, childrenOf);
     const requirements = await requirementBodies(this.documents, runs);
-    const states = await ownStates(
-      { commands: this.commands },
-      runs,
-      (key) => claimed.get(key) ?? false,
-      (key) => places.get(key),
-    );
+    const states = await ownStates({ commands: this.commands }, runs, (key) => claimed.get(key) ?? false);
     const labels = await this.backlogs.labelsFor(runs.map((run) => run.key));
     const waits = await this.waitLog.waitsOf(runs.filter((run) => run.status !== 'done').map((run) => run.id));
     for (const run of runs) {
@@ -174,7 +160,6 @@ export class RunListRows implements OnModuleDestroy {
         waits: waits.get(run.id) ?? [],
         label: labels.get(run.key),
         claimed: claimed.get(run.key) ?? false,
-        place: places.get(run.key),
       });
     }
   }

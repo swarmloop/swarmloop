@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { backlogTurn } from '../../../agent-result/definitions/backlog-turn';
 import type { BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
 import type { AgentRunResult } from '../../../agent/agent-runner';
@@ -7,6 +7,7 @@ import { StepStopped } from '../../../agent/step-stopped';
 import { backlogPlanAgents, backlogReadAgents } from '../../../config/agents';
 import { AppConfig } from '../../../config/env';
 import { effortFields } from '../../../contract/effort';
+import { LiveHub } from '../../../live/live.hub';
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AttachmentStore } from '../../../history/attachment-store';
 import { backlogMessageKey } from '../../../history/backlog-message-key';
@@ -23,6 +24,7 @@ import type { LaunchOwner } from '../../../steps/shared/agent-launch-request';
 import { agentFailure } from '../../../steps/shared/agent-result';
 import { PlannerTurnActions } from './planner-actions';
 import { BacklogTurnPrompt } from './turn-prompt';
+import { turnView } from './planner-views';
 import { waitOf } from './turn-wait';
 import type { TurnOutcome } from './turn-wait';
 import { BacklogTurnWorkspace } from './turn-workspace';
@@ -76,6 +78,7 @@ export class BacklogTurnRunner {
     private readonly config: AppConfig,
     private readonly runStop: RunStop,
     private readonly attachments: AttachmentStore,
+    @Optional() private readonly live?: LiveHub,
   ) {}
 
   /** A usage limit of every agent and a code host outage are not failures: the outcome says when to try again. */
@@ -135,6 +138,13 @@ export class BacklogTurnRunner {
       },
       recordLimit: async (visit) => {
         row = await this.chat.saveTurn(withSpend(row, visit));
+      },
+      // What the turn's start waits for shows in the chat while the turn runs; none clears it.
+      recordStartWait: async (wait) => {
+        const reason = wait?.message ?? '';
+        if (row.status !== 'running' || row.reason === reason) return;
+        row = await this.chat.saveTurn({ ...row, reason });
+        this.live?.backlog({ backlog: backlog.name, turn: turnView(row) });
       },
     };
     const record = async (used: AgentRunResult, ran: { runtime: string; model: string; effort?: string }) => {

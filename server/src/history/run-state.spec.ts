@@ -4,7 +4,16 @@ import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, REASON } from '../contract/run-state';
 import type { RunAction, RunState } from '../contract/run-state';
-import { clearEpic, factColumns, liveState, markEpic, stateColumns, storedState, writeRunState } from './run-state';
+import {
+  clearEpic,
+  factColumns,
+  liveState,
+  markEpic,
+  startWaitColumns,
+  stateColumns,
+  storedState,
+  writeRunState,
+} from './run-state';
 
 const GOLDEN_DIR = join(__dirname, '..', 'testing', 'golden');
 
@@ -100,15 +109,16 @@ describe('deriveState', () => {
   });
 
   it('gives a running run the live words of an agent that waits for a place, and Stop wins over them', () => {
-    const agentPlace = 'Waiting for a free agent place (4 of 4 busy)';
-    expect(liveState({ status: 'running' }, { agentPlace })).toEqual({
-      state: 'running',
-      reason: { code: REASON.agentPlace, message: agentPlace },
-    });
-    expect(liveState({ status: 'running' }, { agentPlace, stopping: true })).toEqual({
+    const message = 'Waiting for a free agent place (4 of 4 busy)';
+    const wait = { code: REASON.agentPlace, message };
+    const columns = startWaitColumns(wait);
+    expect(columns).toEqual({ state: 'running', stateReason: JSON.stringify(wait) });
+    expect(storedState({ status: 'running', ...columns })).toEqual({ state: 'running', reason: wait });
+    expect(liveState({ status: 'running', ...columns }, { stopping: true })).toEqual({
       state: 'stopping',
       reason: null,
     });
+    expect(startWaitColumns(null)).toEqual({ state: 'running', stateReason: null });
   });
 });
 
@@ -344,7 +354,9 @@ describe('liveState', () => {
   });
 
   it('shows the words of an agent that waits for a place', () => {
-    expect(liveState(running, { agentPlace: 'one place free soon' }).reason?.message).toBe('one place free soon');
+    const wait = { code: REASON.agentPlace, message: 'one place free soon' };
+    const stored = { ...running, ...startWaitColumns(wait) };
+    expect(liveState(stored, {}).reason?.message).toBe('one place free soon');
   });
 });
 

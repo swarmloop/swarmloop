@@ -210,5 +210,42 @@ describe('ContainerGate', () => {
       expect(gate.agentWait('one').running).toBe(1);
       gate.drop('two');
     });
+    describe('startWait', () => {
+      const place = 'Waiting for a free agent place (1 of 1 busy)';
+
+      it('gives the words only when an agent of the run waits and none of its agents runs', async () => {
+        const gate = limited(1);
+        const release = await gate.admit(jest.fn(), 'one', hold('plan'));
+        expect(gate.startWait('one')).toBeNull();
+        void gate.admit(jest.fn(), 'two', hold('implement')).catch(() => undefined);
+        await flush();
+        expect(gate.startWait('two')).toEqual({ code: 'AGENT_PLACE', message: place });
+        expect(gate.startWait('one')).toBeNull();
+        release();
+        await flush();
+        expect(gate.startWait('two')).toBeNull();
+        expect(gate.startWait('none')).toBeNull();
+      });
+
+      it('gives the pause while an agent start of the run is held by it or waits in the line, and not for a check', async () => {
+        const gate = limited(1);
+        await gate.admit(jest.fn(), 'one', hold('plan'));
+        void gate.admit(jest.fn(), 'two', hold('implement')).catch(() => undefined);
+        await flush();
+        gate.pause();
+        void gate.admit(jest.fn(), 'three', hold('plan')).catch(() => undefined);
+        void gate.admit(jest.fn(), 'check').catch(() => undefined);
+        await flush();
+        expect(gate.startWait('two')).toMatchObject({ code: 'SERVER_PAUSE' });
+        expect(gate.startWait('three')).toMatchObject({ code: 'SERVER_PAUSE' });
+        expect(gate.startWait('check')).toBeNull();
+        expect(gate.startWait('one')).toBeNull();
+        gate.resume();
+        expect(gate.startWait('two')).toEqual({ code: 'AGENT_PLACE', message: place });
+        gate.drop('two');
+        gate.drop('three');
+        gate.drop('check');
+      });
+    });
   });
 });

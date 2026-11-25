@@ -30,10 +30,20 @@ export class GatedAgents implements FakeAgentRunner {
     this.steps.push(step);
     const runKey = (input as Partial<AgentRunInput>).runKey;
     if (!this.gate || !runKey) return undefined;
-    const release = await this.gate.admit(() => undefined, runKey, {
+    // As AgentLaunch tells its owner: when the start waits, and once more when the spawn is over.
+    const told: Promise<void>[] = [];
+    const tell = (): void => {
+      told.push(input.onStartWait?.() ?? Promise.resolve());
+    };
+    const release = await this.gate.admit(tell, runKey, {
       step: input.liveStep ?? input.step,
-      onWait: (text) => this.waited.push(text),
+      onWait: (text) => {
+        this.waited.push(text);
+        tell();
+      },
     });
+    tell();
+    await Promise.all(told);
     this.running += 1;
     this.peak = Math.max(this.peak, this.running);
     if (this.holding) await new Promise<void>((end) => this.ends.push(end));

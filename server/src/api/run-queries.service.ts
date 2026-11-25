@@ -26,7 +26,7 @@ import { renderProjects, storedProjects } from '../config/checkout-path';
 import type { StepEventPage } from '../contract/step-events';
 import { FlowView, HistoryView, StepView, VisitView } from '../contract/api';
 import type { LiveSample } from '../contract/live';
-import { runPlace, withPlaceChips } from './run-view/agent-place';
+import { withPlaceChips } from './run-view/agent-place';
 import { withRestartWait } from './run-view/restart-wait';
 import { parentOf } from './run-view/merge-wait';
 import { epicTotal } from '../steps/shared/epic-total';
@@ -217,13 +217,7 @@ export class RunQueriesService {
       documents,
     );
     const shown = shownRun(run, (held) => this.pipeline.claimed(held));
-    const state = await runState(
-      this.commands,
-      shown,
-      open,
-      parkedConflictIn(documents, run),
-      runPlace(this.gate.agentWait(run.key)),
-    );
+    const state = await runState(this.commands, shown, open, parkedConflictIn(documents, run));
     return { open, shown, state };
   }
 
@@ -235,7 +229,6 @@ export class RunQueriesService {
       commands: this.commands,
       pipeline: this.pipeline,
       live: this.live,
-      gate: this.gate,
       config: this.config,
       clock: this.clock,
       waitLog: this.waitLog,

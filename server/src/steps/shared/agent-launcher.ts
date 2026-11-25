@@ -26,6 +26,7 @@ import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
 import { withAttachments } from './attachments-section';
 import { withLogReads } from './outside-reads';
 import { promptSections } from './prompt-manifest';
+import { StartWaits } from './start-waits';
 import { LimitFailover } from './limit-failover';
 import { ModelHostUnavailable } from './model-host-unavailable';
 import type { AgentRunInput } from '../../agent/agent-run-input';
@@ -61,6 +62,7 @@ export class AgentLauncher {
     @Optional() private readonly files?: AttachmentStore,
     @Optional() private readonly chatUsage?: ChatUsageRepository,
     @Optional() private readonly attemptUsage?: AttemptChatUsage,
+    @Optional() private readonly startWaits?: StartWaits,
   ) {}
 
   /**
@@ -140,6 +142,7 @@ export class AgentLauncher {
       cut: [],
     });
     recordStepEvent({ kind: 'agent.launched', ...launch });
+    const startWaits = this.startWaits;
     const feed = new AgentWorkFeed([request.workspace, ...request.mounts.map((mount) => mount.containerPath)], () =>
       performance.now(),
     );
@@ -156,6 +159,7 @@ export class AgentLauncher {
       onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(work)),
       // A launch killed mid-tool leaves a block open that would hold back every later launch's events.
       onLaunchEnd: bindToStepScope(() => feed.finish().forEach(work)),
+      onStartWait: startWaits ? () => startWaits.changed(request.key, request.run.recordStartWait) : undefined,
       prompt: withRules(withLogReads(withAttachments(request.prompt, names))),
       freshPrompt:
         request.freshPrompt === undefined

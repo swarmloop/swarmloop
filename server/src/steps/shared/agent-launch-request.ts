@@ -3,6 +3,7 @@ import type { EffortFields } from '../../contract/effort';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { Agent } from '../../config/agents';
+import type { StateReason } from '../../contract/run-state';
 import type { VisitDraft } from '../../history/visit';
 import type { ResultDefinition } from '../../agent-result/result-definition';
 import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';
@@ -24,6 +25,8 @@ export interface LaunchOwner {
   tokensSoFar?: number;
   /** Records a launch that hit a provider limit, instead of a visit row of the run. */
   recordLimit?: (visit: VisitDraft) => Promise<void>;
+  /** Stores what an agent start of this owner waits for (null: nothing), instead of the state of a run. */
+  recordStartWait?: (wait: StateReason | null) => Promise<void>;
 }
 
 export interface AgentLaunchRequest extends EffortFields {

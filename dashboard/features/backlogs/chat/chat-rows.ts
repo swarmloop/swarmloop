@@ -59,6 +59,7 @@ function turnRow(chat: BacklogChatView, owner: boolean): ChatRow | null {
     case 'waiting':
       return { type: 'info', key: 'turn', sentence: waitingSentence(turn) };
     case 'running':
+      return turn.reason ? { type: 'info', key: 'turn', sentence: turn.reason } : { type: 'working', key: 'turn' };
     case 'applied':
       return { type: 'working', key: 'turn' };
     case 'done':

@@ -6,6 +6,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { ContainerGate } from '../sandbox/container-gate';
+import { StartWaits } from '../steps/shared/start-waits';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { RunQueriesService } from '../api/run-queries.service';
 import { planFields, withPlan } from '../steps/plan/plan-record';
@@ -109,9 +110,22 @@ describe('one limit on agents for the whole server', () => {
       expect(agents.open).toBe(4);
 
       const waiting = flow.launched.find((key) => gate.agentWait(key).steps.length > 0) as string;
+      await app.app.get(StartWaits).settled();
       const listed = (await app.app.get(RunQueriesService).list()).runs.find((run) => run.key === waiting);
       expect(listed?.state).toBe('running');
       expect(listed?.stateReason?.message).toBe('Waiting for a free agent place (4 of 4 busy)');
+      const stored = await app.app.get(RunRepository).findRun(waiting);
+      expect(JSON.parse(stored?.stateReason ?? 'null')).toEqual({
+        code: 'AGENT_PLACE',
+        message: 'Waiting for a free agent place (4 of 4 busy)',
+      });
+
+      while (gate.agentWait(waiting).running === 0) {
+        agents.endOldest();
+        await flush();
+      }
+      await app.app.get(StartWaits).settled();
+      expect((await app.app.get(RunRepository).findRun(waiting))?.stateReason).toBeNull();
 
       while (agents.endOldest()) await flush();
       agents.endAll();
