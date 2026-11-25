@@ -1,9 +1,11 @@
+import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { DocumentRepository } from './document.repository';
 import { root, runDir } from './run-paths';
 import { repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { VisitRepository } from './visit.repository';
 
 describe('RunRepository', () => {
@@ -17,7 +19,7 @@ describe('RunRepository', () => {
       expect(runs.held(run)).toBe(false);
       db.clock.advance(1000);
       run.prompt = 'updated';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       expect((await runs.findRun(run.key))?.prompt).toBe('updated');
       expect((await runs.findRun(run.key))?.updatedAt).toBe(db.clock.iso());
       db.config.env.AGENTS_IMPLEMENT = 'codex:gpt-6.1-sol';
@@ -60,10 +62,120 @@ describe('RunRepository', () => {
       await runs.markWorkspaceRemoved('run-1');
       await runs.bumpGeneration('run-1');
       copy.prompt = 'new';
-      const saved = await runs.saveRun(copy);
+      const saved = await storeRun(runs, copy);
       const row = (await runs.findRun('run-1'))!;
       expect(row).toEqual(expect.objectContaining({ prompt: 'new', workspace: 'removed', generation: 1 }));
       expect(saved).toEqual(row);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('changes a run and returns the stored row', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting('run-1', '/target');
+      db.clock.advance(1000);
+      const changed = await runs.change('run-1', (run) => {
+        run.prompt = 'new';
+      });
+      expect(changed).toEqual((await runs.findRun('run-1'))!);
+      expect(changed).toEqual(expect.objectContaining({ prompt: 'new', updatedAt: db.clock.iso() }));
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('writes nothing for a change that changes nothing', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      const opened = await runs.openWaiting('run-1', '/target');
+      db.clock.advance(1000);
+      const same = await runs.change('run-1', (run) => {
+        run.prompt = null;
+      });
+      expect(same.updatedAt).toBe(opened.updatedAt);
+      expect((await runs.findRun('run-1'))!.updatedAt).toBe(opened.updatedAt);
+    } finally {
+      await db.close();
+    }
+  });
+
+  function otherWriter(db: { root: string }, sql: string): void {
+    const other = new Database(join(db.root, 'data', 'swarmloop.sqlite'));
+    try {
+      other.prepare(sql).run();
+    } finally {
+      other.close();
+    }
+  }
+
+  it('applies a change again on the new row when it lost to a write of the same column', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting('run-1', '/target');
+      const seen: Array<string | null> = [];
+      const changed = await runs.change('run-1', (run) => {
+        seen.push(run.prompt);
+        if (seen.length === 1) otherWriter(db, "UPDATE runs SET prompt = 'other'");
+        run.prompt = `${run.prompt ?? ''}+mine`;
+      });
+      expect(seen).toEqual([null, 'other']);
+      expect(changed.prompt).toBe('other+mine');
+      expect((await runs.findRun('run-1'))!.prompt).toBe('other+mine');
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('throws an error naming the run and the columns after three lost tries', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting('run-1', '/target');
+      let calls = 0;
+      await expect(
+        runs.change('run-1', (run) => {
+          calls += 1;
+          otherWriter(db, `UPDATE runs SET prompt = 'other ${calls}'`);
+          run.prompt = 'mine';
+        }),
+      ).rejects.toThrow('run-1: prompt changed under every one of three tries; nothing was written');
+      expect(calls).toBe(3);
+      expect((await runs.findRun('run-1'))!.prompt).toBe('other 3');
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('writes nothing and names the run when its row was deleted', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting('run-1', '/target');
+      await expect(
+        runs.change('run-1', (run) => {
+          otherWriter(db, 'DELETE FROM runs');
+          run.prompt = 'mine';
+        }),
+      ).rejects.toThrow('run-1: the run is gone; nothing was written');
+      expect(await runs.findRun('run-1')).toBeNull();
+      await expect(runs.change('run-1', () => undefined)).rejects.toThrow('run-1: the run is gone');
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('keeps both tips of two recordBaseTips for one run at once', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting('run-1', '/target');
+      await Promise.all([runs.recordBaseTips('run-1', { web: 'aaa' }), runs.recordBaseTips('run-1', { api: 'bbb' })]);
+      expect((await runs.findRun('run-1'))?.baseTips).toEqual({ web: 'aaa', api: 'bbb' });
     } finally {
       await db.close();
     }

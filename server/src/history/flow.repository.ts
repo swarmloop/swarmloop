@@ -23,9 +23,10 @@ export class FlowRepository {
     let run = await this.runRepository.findRun(key);
     if (!run) {
       run = await this.runRepository.begin(key, 'requirements');
-      writeRunState(run, { status: 'waiting' });
-      run.stepStartedAt = null;
-      run = await this.runRepository.saveRun(run);
+      run = await this.runRepository.change(key, (row) => {
+        writeRunState(row, { status: 'waiting' });
+        row.stepStartedAt = null;
+      });
     }
     const existing = await this.listFlows(run.id);
     const recordedFrom = existing.some((row) => row.fromStep === null) ? (fromStep ?? run.currentStep) : fromStep;

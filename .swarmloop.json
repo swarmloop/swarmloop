@@ -46,7 +46,8 @@
         "dashboard/app",
         "server/src/pipeline/worktree-lock.spec.ts",
         "server/src/integrations/agent-runtime/claude/claude-hook.spec.ts",
-        "server/src/sandbox/sandbox-stdin.spec.ts"
+        "server/src/sandbox/sandbox-stdin.spec.ts",
+        "server/src/testing/faults/concurrent-run-change.spec.ts"
       ]
     },
     {
