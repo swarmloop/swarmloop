@@ -24,9 +24,11 @@ async function errorsOf(request: AgentLaunchRequest, text: string): Promise<{ va
   return { value: read.value, errors: (await request.check?.(read.value)) ?? [] };
 }
 
-/** An answer of a clean exit is read; a limit, a kill or a bad exit is handled by the caller as before. */
+/** An answer of a clean exit is read; a limit, an outage of the model host, a kill or a bad exit is handled by the caller. */
 export function answerIsReadable(request: AgentLaunchRequest, result: AgentRunResult): boolean {
-  return Boolean(request.result) && result.exitCode === 0 && !result.limit && !result.backgroundKilled;
+  return (
+    Boolean(request.result) && result.exitCode === 0 && !result.limit && !result.outage && !result.backgroundKilled
+  );
 }
 
 /**

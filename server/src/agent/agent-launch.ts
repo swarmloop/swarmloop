@@ -260,7 +260,7 @@ export class AgentLaunch {
         resultName: input.resultName,
       });
       meter.flush(buffer);
-      const limit = tail.limit(runtime, buffer, this.clock.now());
+      const end = tail.ending(runtime, buffer, this.clock.now());
       const ending =
         finishedByResult || !killReason
           ? `process exited ${finishedByResult ? 0 : exitCode}`
@@ -281,7 +281,7 @@ export class AgentLaunch {
         decided: meter.decided(input.answered),
         backgroundKilled: meter.backgroundKilled(input.answered),
         orphanOnly: meter.orphanOnly(),
-        ...(limit ? { limit } : {}),
+        ...end,
         calls: 1,
         samples: log.samples,
         durationMs: finished - started,

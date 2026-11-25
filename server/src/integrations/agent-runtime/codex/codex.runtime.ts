@@ -10,6 +10,7 @@ import type {
 } from '../agent-runtime';
 import { CodexConnection } from './codex-connection';
 import { CODEX_LIMITS } from './codex-limit';
+import { CODEX_OUTAGES } from './codex-outage';
 
 export const CODEX_KEY_PLACEHOLDER = 'sk-swarmloop-egress-placeholder';
 
@@ -25,6 +26,8 @@ export class CodexRuntime extends AbstractAgentRuntime {
   readonly connection = new CodexConnection();
   readonly credentialNames = ['CODEX_AUTH', 'CODEX_API_KEY'];
   protected readonly limits = CODEX_LIMITS;
+  protected readonly outages = CODEX_OUTAGES;
+  protected readonly modelHost = 'api.openai.com';
 
   secrets(keys: RuntimeKeys): string[] {
     return [keys.codexAuth, keys.codexApiKey].filter(Boolean);
