@@ -2,7 +2,7 @@ import type { RunRepository } from '../history/run.repository';
 import type { RunEntity } from '../history/entities';
 import { adoptRow, changedColumns, wasRead } from '../history/run-read';
 
-/** Test-only replacement for the old `saveRun`: stores the copy and makes it the stored row. Returns the same object. */
+/** Test-only way to store a run copy and make it the stored row. Returns the same object. */
 export async function storeRun(runs: RunRepository, run: RunEntity): Promise<RunEntity> {
   if (wasRead(run)) {
     const changed = changedColumns(run);

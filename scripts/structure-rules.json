@@ -80,6 +80,12 @@
       "pattern": "\\.recordStartWait\\("
     },
     {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/history/"],
+      "pattern": "\\bsaveRun\\b|(InjectRepository|getRepositoryToken|getRepository)\\(RunEntity\\)|\\.(update|insert|into)\\(RunEntity\\)"
+    },
+    {
       "include": "dashboard/",
       "exclude": "\\.test\\.tsx?$|^dashboard/test/",
       "allowFiles": ["dashboard/features/run/run-state-word.tsx"],

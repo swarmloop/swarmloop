@@ -31,7 +31,7 @@
       "paths": ["server/src/", "dashboard/", "server/tsconfig.json", "package.json"]
     },
     {
-      "run": "node --test scripts/ci-tools.test.mjs scripts/check-installed.test.mjs scripts/lint-run-state.test.mjs scripts/lint-git-process.test.mjs scripts/lint-sync-directory.test.mjs scripts/lint-test-imports.test.mjs scripts/lint-spec-rules.test.mjs scripts/complexity-baseline.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs scripts/slowest-files.test.mjs scripts/move-to-volumes.test.mjs docker/egress/proxy.test.mjs",
+      "run": "node --test scripts/ci-tools.test.mjs scripts/check-installed.test.mjs scripts/lint-run-state.test.mjs scripts/lint-run-write.test.mjs scripts/lint-git-process.test.mjs scripts/lint-sync-directory.test.mjs scripts/lint-test-imports.test.mjs scripts/lint-spec-rules.test.mjs scripts/complexity-baseline.test.mjs scripts/changed-files.test.mjs scripts/autofix.test.mjs scripts/slowest-files.test.mjs scripts/move-to-volumes.test.mjs docker/egress/proxy.test.mjs",
       "name": "script tests",
       "paths": [
         "scripts/",
@@ -39,6 +39,7 @@
         "eslint.config.mjs",
         "eslint.spec-rules.mjs",
         "eslint.main-thread-rules.mjs",
+        "eslint.run-write-rules.mjs",
         "eslint.strict.config.mjs",
         "eslint.complexity-baseline.mjs",
         "package.json",

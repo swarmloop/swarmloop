@@ -587,3 +587,12 @@ test('only start-waits records the wait of an agent start', () => {
   assert.deepEqual(check({ 'server/src/steps/shared/start-waits.ts': text }), []);
   assert.deepEqual(check({ 'server/src/steps/shared/start-waits.spec.ts': text }), []);
 });
+
+test('only history writes a run row', () => {
+  const text = '@InjectRepository(RunEntity) private readonly runs: Repository<RunEntity>;\n';
+
+  assert.equal(check({ 'server/src/pipeline/run-writer.ts': text }).length, 1);
+  assert.equal(check({ 'server/src/pipeline/run-writer.ts': 'await runs.saveRun(run);\n' }).length, 1);
+  assert.deepEqual(check({ 'server/src/history/run.repository.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/pipeline/run-writer.spec.ts': text }), []);
+});
