@@ -15,6 +15,7 @@ import {
   specRuleBlocks,
 } from './eslint.spec-rules.mjs';
 import { mainThreadPlugin, SYNC_DIRECTORY_ALLOWLIST } from './eslint.main-thread-rules.mjs';
+import { runWritePlugin } from './eslint.run-write-rules.mjs';
 
 const sourceFiles = ['**/*.{js,mjs,ts,tsx}'];
 const dashboardFiles = ['dashboard/**/*.{js,mjs,ts,tsx}'];
@@ -160,6 +161,13 @@ export default tseslint.config(
     ignores: TEST_FILES,
     plugins: { 'main-thread': mainThreadPlugin },
     rules: { 'main-thread/no-sync-child-process': 'error' },
+  },
+  {
+    // Its own rule key, so a per-folder block that sets no-restricted-syntax cannot replace it.
+    files: ['server/src/**/*.ts'],
+    ignores: [...TEST_FILES, 'server/src/history/**'],
+    plugins: { 'run-write': runWritePlugin },
+    rules: { 'run-write/no-run-write': 'error' },
   },
   {
     // The typescript-eslint rule, because a later block that sets the core no-restricted-imports would replace these options.

@@ -463,11 +463,12 @@ A limit stops the run in a wait that names it (rule 18). Every visit stores only
 - **The database** is one SQLite database in WAL mode. Changes come only through additive migrations, behind a guard that backs up the database before it migrates.
 - **What is written once:** documents, events and stalls are appended and never rewritten. A newer document of a kind supersedes the older one.
 - **A write of a run** sets only the columns its writer changed, so a copy read earlier never sets back a change made since; after the write the copy is the stored row.
+- **A change of a run's row** goes through one door, `RunRepository.change`. It writes the columns its apply changed only while each still holds the value read (c01's record, `history/run-read.ts`, through `history/conditional-write.ts`). A write that lost a race is applied again on the row as it is now, in the same process one at a time and against a CLI process on the same database. Rows are created only by `insertRun`.
 - **The disk guard** stops a step from starting on a disk it may fill. It frees old runs first, then docker leftovers, and only then makes the run wait (`MIN_FREE_GB`).
 - **Retention** removes everything a finished run leaves after `RETAIN_DONE_DAYS`, and deleting a run removes everything of it.
 - **Housekeeping** runs at startup and once a day.
 
-**Today.** Holds (`history/`, a run's row is written by `history/run.repository.ts` and `history/visit.repository.ts` from what the copy read, kept in `history/run-read.ts`; `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
+**Today.** Holds (`history/`, a run's row is written by `history/run.repository.ts` and `history/visit.repository.ts` from what the copy read, kept in `history/run-read.ts`; a change of it goes through `RunRepository.change` and `history/conditional-write.ts`, and the lint rule `run-write/no-run-write` (`eslint.run-write-rules.mjs`, registered in `eslint.config.mjs`) and the structure rule in `scripts/structure-rules.json` fail a second path; `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
 
 ## 3.20 People, access and connections
 
