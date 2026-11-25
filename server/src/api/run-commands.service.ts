@@ -13,7 +13,7 @@ import { SubtaskPort } from '../pipeline/subtask-port';
 import type { SubtaskStart } from '../steps/shared/subtask-ops';
 import { SubtaskClose } from './subtask-close';
 import { storedState, writeRunState } from '../history/run-state';
-import { PhaseName, pipelineStepOf, reviewerOf, STEPS } from '../contract/steps';
+import { PhaseName, pipelineStepOf, STEPS } from '../contract/steps';
 import { REASON, STOP_NOTE } from '../contract/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import { RunFolders } from '../pipeline/run-folders';
@@ -21,15 +21,7 @@ import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { type IssueTracker, runKeys } from '../integrations/issue-tracker/issue-tracker';
 import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
-import {
-  CreateRunBody,
-  TicketKeysBody,
-  TicketKeysView,
-  ProjectsView,
-  RemovedRunView,
-  RunRef,
-  StartStepBody,
-} from '../contract/api';
+import { CreateRunBody, TicketKeysBody, TicketKeysView, ProjectsView, RemovedRunView, RunRef } from '../contract/api';
 import { requireRun, RunQueriesService } from './run-queries.service';
 
 /** What `plan` decided for a new run. It is the payload of the start command. */
@@ -152,24 +144,6 @@ export class RunCommandsService {
       ? await this.pipeline.startDetached(key, { path, phases }, 'code-review')
       : await this.pipeline.startDetached(key, acceptsPrompt ? { prompt, projects, phases } : { projects, phases });
     return this.accepted(key, result);
-  }
-
-  async startStep(key: string, step: string, body: StartStepBody = {}): Promise<RunRef> {
-    const name = pipelineStepOf(step);
-    if (!isStep(name) || name === 'done') {
-      throw new BadRequestException(`${step} is unknown`);
-    }
-    await requireRun(this.runs, key);
-    const prompt = body.prompt?.trim();
-    const path = body.path?.trim();
-    return this.accepted(
-      key,
-      await this.pipeline.startDetached(
-        key,
-        { prompt: prompt || undefined, path: path || undefined, reviewer: reviewerOf(step) },
-        name,
-      ),
-    );
   }
 
   async replay(key: string, step: string, prompt: string, phases?: string[]): Promise<RunRef> {

@@ -43,12 +43,3 @@ export function replayBody(flow: FlowView, step: string): string {
 export function stopAndStartBody(flow: FlowView, step: string): string {
   return `${stepLabel(flow.currentStep)} is running and stops now, then ${step} starts again. ${discarded(flow, step)}`;
 }
-
-/** What running one reviewer again does. */
-export function reviewerBody(step: string): string {
-  return [
-    `The ${stepLabel(step)} review runs again on the current branch.`,
-    'Its earlier answer stays in the history, and the other reviewers keep theirs.',
-    'The review report is written again from the new answers, which cannot be undone.',
-  ].join(' ');
-}

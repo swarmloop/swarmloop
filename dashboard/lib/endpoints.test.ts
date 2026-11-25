@@ -28,7 +28,6 @@ import {
   resumeRun,
   sendPlanChat,
   setRunProjects,
-  startReviewer,
   stopRun,
   uploadFile,
 } from './endpoints';
@@ -134,14 +133,12 @@ describe('endpoints', () => {
     await resumeRun('run-1');
     await stopRun('run-1');
     await rebaseRun('run-1');
-    await startReviewer('run-1', 'code-review-quality');
     await removeRun('run-1');
 
     expect(vi.mocked(api).mock.calls).toEqual([
       ['/runs/run-1/resume', { method: 'POST' }],
       ['/runs/run-1/stop', { method: 'POST' }],
       ['/runs/run-1/rebase', { method: 'POST' }],
-      ['/runs/run-1/steps/code-review-quality', { method: 'POST' }],
       ['/runs/run-1', { method: 'DELETE' }],
     ]);
   });

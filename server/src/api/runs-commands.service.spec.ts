@@ -122,26 +122,6 @@ describe('runs api', () => {
     }
   });
 
-  it('starts a single code reviewer', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-reviewer-'));
-    const pipeline = {
-      startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
-      claimed: () => false,
-    };
-    const app = await seededBoot(root, pipeline);
-    try {
-      await save(app.get(RunRepository), 'proj-reviewer', 'code-review', 'waiting');
-      await app.get(RunCommandsService).startStep('proj-reviewer', 'code-review-quality');
-      expect(pipeline.startDetached).toHaveBeenCalledWith(
-        'proj-reviewer',
-        { prompt: undefined, path: undefined, reviewer: 'quality' },
-        'code-review',
-      );
-    } finally {
-      await app.close();
-    }
-  });
-
   it('replays a chosen step with the new prompt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-replay-'));
     const pipeline = {

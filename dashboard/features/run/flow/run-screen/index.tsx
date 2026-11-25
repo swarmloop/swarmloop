@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import Box from '@mui/material/Box';
@@ -47,11 +47,9 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
     stopRun,
     rebaseRun,
     startReplay,
-    startReviewer,
     resumeRun,
   } = useRunFlow(runKey);
 
-  const [reviewer, setReviewer] = useState<string | null>(null);
   const [wide, setWide] = useWideConversation();
   const sideBySide = useMediaQuery(`(min-width:${SHEET_BELOW_PX}px)`, { noSsr: true });
   useDocumentTitle(flow?.title ?? null);
@@ -147,7 +145,6 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
                 restartedAt={chip?.restartedAt}
                 now={now}
                 planRevision={planWindow ? revision : undefined}
-                onReviewer={setReviewer}
                 onReplay={setReplay}
                 onResume={resumeRun}
               />
@@ -183,9 +180,6 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
         runningElsewhere={runningElsewhere}
         stopRun={stopRun}
         startReplay={startReplay}
-        reviewer={reviewer}
-        setReviewer={setReviewer}
-        startReviewer={startReviewer}
       />
     </Box>
   );

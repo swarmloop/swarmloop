@@ -1,5 +1,5 @@
 import { Injectable, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
-import { AddProjectBody, StartStepBody } from '../contract/api';
+import { AddProjectBody } from '../contract/api';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { startByOf } from '../pipeline/resume-sender';
@@ -11,11 +11,6 @@ import { RunRebaseService } from './run-rebase.service';
 import { AttachmentStore } from '../history/attachment-store';
 import { PlanChatService } from './plan-chat.service';
 
-/** What the step and replay commands carry next to the step name. */
-export interface StepPayload {
-  step: string;
-  body: StartStepBody;
-}
 export interface ReplayPayload {
   step: string;
   prompt: string;
@@ -58,10 +53,6 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
         : this.answering.answers(key, payload),
     );
     on('plan-chat', (key, payload, context) => this.planChat.record(key, payload, context.commandId));
-    on('step', (key, payload) => {
-      const { step, body } = payload as unknown as StepPayload;
-      return this.runs.startStep(key, step, body);
-    });
     on('replay', async (key, payload) => {
       const { step, prompt, phases, attachments } = payload as unknown as ReplayPayload;
       await this.files.claim(key, attachments);
