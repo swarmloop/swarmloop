@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { RunNames } from '../steps/shared/run-names';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -119,10 +120,15 @@ describe('SubtaskPort planner answer', () => {
   });
 
   it('shows no effort for a parent whose agent has none and with the epic setting off', async () => {
-    const { input, visit } = await asked({ EPIC_EFFORT: '' }, true);
+    const levels = jest.spyOn(runtimeFor('claude'), 'efforts').mockReturnValue([]);
+    try {
+      const { input, visit } = await asked({ EPIC_EFFORT: '' }, true);
 
-    expect('effort' in input).toBe(false);
-    expect('effort' in visit).toBe(false);
+      expect('effort' in input).toBe(false);
+      expect('effort' in visit).toBe(false);
+    } finally {
+      levels.mockRestore();
+    }
   });
 });
 
