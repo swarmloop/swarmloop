@@ -122,7 +122,7 @@ The ESLint boundaries enforce these layers: input and output → orchestration �
 
 ## 2.2 Other parts
 
-- **Dashboard** (`dashboard/`, Next.js): Overview, Runs, the Run page (flow board, conversation, history, logs), Backlogs (board, chat with the planner, progress), Stats, Settings (agents, people, API tokens), Connections and Login. It reaches the API only through `lib/api.ts`, and live events only through `features/shell/use-live-bridge.ts`.
+- **Dashboard** (`dashboard/`, Next.js): Overview, Runs, the Run page (flow board, conversation, history, logs), Backlogs (board, chat with the planner, progress), Stats, Settings (agents, API tokens, and the read-only server settings, grouped and described as in `defaults.env` through `DefaultsLayout`), Connections and Login. It reaches the API only through `lib/api.ts`, and live events only through `features/shell/use-live-bridge.ts`.
 - **Skills** (`skills/`): one per agent step, plus `code-review/<reviewer>` and `backlog-plan`.
 - **Images** (`docker/`): `server`, `dashboard`, `egress`, and one agent image per runtime. A project image is built from the project's own config, and the agent CLI is mounted into it.
 - **Data** (`data/`): the database, the run logs, the secret key and backups. The worktrees live in their own volume.
@@ -512,11 +512,11 @@ Adapters are found by folder. A fake of each kind serves the tests.
 - **Runs:** epics grouped with their tasks;
 - **Run page:** the flow board by phase, the conversation with the planner, the history of visits, documents and logs;
 - **Backlogs:** board, chat, progress;
-- **Stats, Settings, Connections.**
+- **Stats, Settings, Connections:** Settings' Server section is read only; its groups, order and descriptions are those of `defaults.env`, read once through `DefaultsLayout`.
 
 The text is plain words for a person: no raw JSON and no internal ids. A cut text says how much is left out and where the whole is.
 
-**Today.** Holds in the main. The board shows no return lines, a muted ×N of agent visits, and plain names. Gaps:
+**Today.** Holds in the main. The board shows no return lines, a muted ×N of agent visits, and plain names. Settings' Server section follows `defaults.env` through `DefaultsLayout`; People and Appearance are not in Settings. Gaps:
 - held runs read as failures (held-run-says-so);
 - several screens are still being reworked in M1 (f121, f131, f132, done-lately, b04, f26).
 
