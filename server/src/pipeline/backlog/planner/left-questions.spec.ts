@@ -51,7 +51,6 @@ describe('LeftQuestions', () => {
 
   const handled: [string, BacklogTurnAction][] = [
     ['an answer', { action: 'answerRun', run: 'going-1', answers: [{ body: 'in memory' }] }],
-    ['a message to the run planner', { action: 'planChat', run: 'going-1', message: 'use memory' }],
     ['a pass-on of its own', { action: 'passQuestion', run: 'going-1', reason: 'Yours.' }],
   ];
 
@@ -65,6 +64,24 @@ describe('LeftQuestions', () => {
       expect((await h.lines(backlogId)).join('\n')).not.toContain('ended without answering');
     }),
   );
+
+  it('passes on a question whose only command in the turn is a message to its run', () =>
+    withPlanner(async (h) => {
+      const { backlogId, passed } = await asking(h);
+
+      await h.turns.apply(
+        'alpha',
+        'turn-1',
+        turnResult('Wrote to it.', { action: 'planChat', run: 'going-1', message: 'use memory' }),
+      );
+
+      expect((await passed()).map((entry) => entry.line)).toEqual([
+        "The planner's turn ended without answering this question, so it goes to you.",
+      ]);
+      expect(await h.lines(backlogId)).toContain(
+        'My turn ended without answering the question of going-1, so it now goes to you.',
+      );
+    }));
 
   it('passes on the question beside the one its turn answered or passed on by id', () =>
     withPlanner(async (h) => {

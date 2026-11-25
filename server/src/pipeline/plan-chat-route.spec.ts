@@ -1,5 +1,5 @@
 import type { RunState } from '../contract/run-state';
-import { messageTurn, type MessageTurn } from './plan-chat-route';
+import { messageTurn, waitingItems, type MessageTurn } from './plan-chat-route';
 
 const turn = (
   place: { step: string; split?: boolean; workspace?: string | null },
@@ -14,7 +14,7 @@ const turn = (
 describe('messageTurn', () => {
   it('routes a subtask by its own state: planning, answer, amend and reopen like any run', () => {
     expect(turn({ step: 'plan' }, 'running', { parentKey: 'p-1' })).toBe('planning');
-    expect(turn({ step: 'implement' }, 'running', { parentKey: 'p-1', openItems: 1 })).toBe('answer');
+    expect(turn({ step: 'implement' }, 'waiting', { parentKey: 'p-1', openItems: 1 })).toBe('answer');
     expect(turn({ step: 'implement' }, 'running', { parentKey: 'p-1' })).toBe('amend');
     expect(turn({ step: 'implement', split: true }, 'running', { parentKey: 'p-1' })).toBe('amend');
     expect(turn({ step: 'checks' }, 'failed', { parentKey: 'p-1' })).toBe('reopen');
@@ -35,6 +35,17 @@ describe('messageTurn', () => {
   it('takes a message as the answer while questions wait for the person', () => {
     expect(turn({ step: 'research' }, 'waiting', { openItems: 2 })).toBe('answer');
     expect(turn({ step: 'implement', split: true }, 'waiting', { openItems: 1 })).toBe('answer');
+  });
+
+  it('never takes a message as the answer while the run runs or no open item waits for its answer', () => {
+    expect(turn({ step: 'research' }, 'running', { openItems: 2 })).toBe('planning');
+    expect(turn({ step: 'implement' }, 'running', { openItems: 1 })).toBe('amend');
+    expect(turn({ step: 'implement', split: true }, 'running', { openItems: 1 })).toBe('add-tasks');
+    expect(turn({ step: 'implement', split: true }, 'waiting', { openItems: 0 })).toBe('add-tasks');
+  });
+
+  it('counts only the items that wait for their answer', () => {
+    expect(waitingItems([{ answer: 'yes' }, { answer: '  ' }, { answer: '' }])).toBe(2);
   });
 
   it('gives planning from requirements to plan-improve, also for a run stopped, failed or blocked there', () => {
