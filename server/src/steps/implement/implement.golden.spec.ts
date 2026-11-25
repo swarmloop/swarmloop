@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { EnvironmentService } from '../../environment/environment.service';
 import { runGit } from '../../git/git-repo.spec-helpers';
@@ -129,7 +130,7 @@ describe('implement step golden traces', () => {
         const runs = app.get(RunRepository);
         const run = (await runs.findRun('PROJ-305'))!;
         run.agentCalls = 20;
-        await runs.saveRun(run);
+        await storeRun(runs, run);
       },
       after: async (app) => {
         const stored = (await app.get(RunRepository).findRun('PROJ-305'))!;

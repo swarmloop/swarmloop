@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, NEEDS_PERSON, REASON } from '../contract/run-state';
 import { storedState, writeRunState } from '../history/run-state';
@@ -56,7 +57,7 @@ describe('a run that needs a person ends in a state the person clears', () => {
       status: 'blocked',
       reason: { code: ERROR_CODES.PIPELINE_UNFIXED, message: 'the pipeline is still red after 6 returns' },
     });
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
     expect(await expectBlockedOn(ERROR_CODES.PIPELINE_UNFIXED)).toContain('still red');
 
     await flow.person('resume');
@@ -150,7 +151,7 @@ describe('research answers in result blocks', () => {
       'research',
       'waiting',
     );
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
   }
 
   afterEach(async () => {

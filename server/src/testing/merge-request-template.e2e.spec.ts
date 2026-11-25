@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { REPORT_END, REPORT_START, reportOf } from '../steps/shared/report-markers';
@@ -63,7 +64,7 @@ describe('the merge request reads like the repository own', () => {
     if (options.note) await documents.putDocument(run, 'git_rules_note', options.note);
     if (options.prompt) {
       const runs = flow.app.app.get(RunRepository);
-      await runs.saveRun({ ...(await runs.findRun(KEY))!, prompt: options.prompt });
+      await storeRun(runs, { ...(await runs.findRun(KEY))!, prompt: options.prompt });
     }
     await flow.app.pipeline.step('merge-request', KEY);
     return (await flow.host.findMergeRequest({ project: '', source: SOURCE })).record?.summary ?? '';

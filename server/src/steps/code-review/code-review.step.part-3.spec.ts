@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { mkdirSync, rmSync } from 'fs';
@@ -79,7 +80,7 @@ describe('code-review step', () => {
     const run = await runs.findRun(key);
     if (subtask) {
       run!.parentRunId = 1;
-      await runs.saveRun(run!);
+      await storeRun(runs, run!);
     }
     await documents.putDocument(
       run!,
@@ -104,7 +105,7 @@ describe('code-review step', () => {
     const waiting = await runs.findRun(key);
     waiting!.currentStep = 'code-review';
     waiting!.status = 'waiting';
-    await runs.saveRun(waiting!);
+    await storeRun(runs, waiting!);
     agent.mockClear();
     const second = await app.get(PipelineService).step('code-review', key);
     expect(second.exitCode).toBe(0);
@@ -177,7 +178,7 @@ describe('code-review step', () => {
     const again = await runs.findRun('PROJ-96');
     again!.currentStep = 'code-review';
     again!.status = 'waiting';
-    await runs.saveRun(again!);
+    await storeRun(runs, again!);
     agent.mockClear();
     await app.get(PipelineService).step('code-review', 'PROJ-96');
     expect(sent('code-review-requirements')?.prompt ?? '').toContain('A person decided on the code review');
@@ -220,7 +221,7 @@ describe('code-review step', () => {
     const again = await runs.findRun('PROJ-99');
     again!.currentStep = 'code-review';
     again!.status = 'failed';
-    await runs.saveRun(again!);
+    await storeRun(runs, again!);
     agent.mockClear();
     const second = await app.get(PipelineService).step('code-review', 'PROJ-99');
     expect(second.exitCode).toBe(0);
@@ -265,7 +266,7 @@ describe('code-review step', () => {
     const runs = app.get(RunRepository);
     const run = await runs.findRun('PROJ-97');
     run!.split = true;
-    await runs.saveRun(run!);
+    await storeRun(runs, run!);
     const documents = app.get(DocumentRepository);
     await documents.putDocument(
       run!,

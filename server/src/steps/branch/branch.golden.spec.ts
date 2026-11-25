@@ -24,6 +24,7 @@ import { RunNames } from '../shared/run-names';
 import { GitRefusal } from '../shared/git-refusal';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { BranchStep } from './branch.step';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const KEY = 'PROJ-30';
 const BRANCH = `feature/${KEY}-ship-the-field`;
@@ -119,7 +120,7 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, trees: Record<string,
   const seeded = await app.get(RunRepository).begin(KEY, 'branch');
   seeded.status = 'waiting';
   seeded.currentStep = 'branch';
-  await app.get(RunRepository).saveRun(seeded);
+  await storeRun(app.get(RunRepository), seeded);
   const documents = app.get(DocumentRepository);
   await documents.putDocument(
     seeded,

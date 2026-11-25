@@ -14,8 +14,9 @@ describe('ProjectAppendService', () => {
     const stats: { step: string; status: string }[] = [];
     const runs = {
       findRun: jest.fn(async () => run),
-      saveRun: jest.fn(async (saved: RunEntity) => {
-        run.projects = saved.projects;
+      change: jest.fn(async (_key: string, apply: (row: RunEntity) => void) => {
+        apply(run);
+        return run;
       }),
     };
     const documents = {

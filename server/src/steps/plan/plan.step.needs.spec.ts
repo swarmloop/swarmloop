@@ -7,6 +7,7 @@ import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { boot, planBlock, result, seed, writeEnv } from './plan.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 describe('plan step with needs', () => {
   it('waits with the needs of a subtask whose plan ends with needs:, stores no plan, and ignores the section in any other run', async () => {
@@ -23,7 +24,7 @@ describe('plan step with needs', () => {
       const parent = await runs.openWaiting('PROJ-49', '/target');
       await seed(app, 'PROJ-49-t1', '');
       const child = await runs.findRun('PROJ-49-t1');
-      await runs.saveRun({ ...child!, parentRunId: parent.id, taskId: 't1' });
+      await storeRun(runs, { ...child!, parentRunId: parent.id, taskId: 't1' });
       await seed(app, 'PROJ-50', '');
 
       await app.get(PipelineService).step('plan', 'PROJ-49-t1');

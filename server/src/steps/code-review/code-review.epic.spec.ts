@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
@@ -32,7 +33,7 @@ async function parentReview(key: string, reviewAgent: string) {
     const runs = app.get(RunRepository);
     const run = (await runs.findRun(key))!;
     run.epicAt = '2026-11-13T10:00:00.000Z';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     const done = await app.get(PipelineService).step('code-review', key);
     return { done, calls: agent.mock.calls.map((call) => call[0]) };
   } finally {
@@ -80,7 +81,7 @@ describe('code review of a subtask', () => {
       const run = (await runs.findRun(key))!;
       run.parentRunId = parent.id;
       run.taskId = 'a';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await app.get(PipelineService).step('code-review', key);
       return agent.mock.calls.map((call) => call[0]).filter((call) => !call.step.endsWith('report'));
     } finally {
@@ -143,7 +144,7 @@ describe('a resumed reviewer chat of a subtask', () => {
       const run = (await runs.findRun(key))!;
       run.parentRunId = parent.id;
       run.taskId = 'a';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       if (seen) await documents.putDocument(run, 'starter_briefing', JSON.stringify({ [CHAT]: seen }));
       await app.get(PipelineService).step('code-review', key);
       const quality = agent.mock.calls.map((call) => call[0]).find((call) => call.step === 'code-review-quality');
@@ -207,7 +208,7 @@ describe('code review of an epic whose resolution round is open', () => {
       const documents = app.get(DocumentRepository);
       const run = (await runs.findRun(key))!;
       run.split = true;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await documents.putDocument(run, 'subtasks', JSON.stringify(tasks));
       if (round !== null) await documents.putDocument(run, 'epic_round', round);
       const ended: Subtask[][] = [];

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -45,7 +46,7 @@ async function recordMerge(app: TestApp, id: string): Promise<void> {
     currentStep: 'done',
     merge: { merged: { demo: { sha: 'abc', by: null, at: '2026-11-19T00:07:10.000Z', url: null } } },
   });
-  await app.app.get(RunRepository).saveRun(run);
+  await storeRun(app.app.get(RunRepository), run);
 }
 
 describe('split implement', () => {
@@ -90,7 +91,7 @@ describe('split implement', () => {
       currentStep: 'implement',
       reason: { code: ERROR_CODES.SUBTASK_WAITING, message: 'waiting for b: withHostRetries' },
     });
-    await app.app.get(RunRepository).saveRun(waiting);
+    await storeRun(app.app.get(RunRepository), waiting);
 
     await pass(app);
 
@@ -204,7 +205,7 @@ describe('split implement', () => {
     await pass(app);
     const failed = await child(app, 'a');
     writeRunState(failed, { status: 'blocked', reason: { code: 'BLOCKED', message: 'review kept returning' } });
-    await app.app.get(RunRepository).saveRun(failed);
+    await storeRun(app.app.get(RunRepository), failed);
 
     await pass(app);
 
@@ -351,7 +352,7 @@ describe('split implement', () => {
       status: 'waiting',
       reason: { code: ERROR_CODES.SUBTASKS_RUNNING, message: 'running' },
     });
-    await runs.saveRun(parent);
+    await storeRun(runs, parent);
     await runs.recordSubtaskFingerprint(parent, await runs.subtaskFingerprint(parent));
 
     await app.app.get(Reconciler).resumeSubtaskParents();
@@ -380,7 +381,7 @@ describe('split implement', () => {
     await pass(app);
     const failed = await child(app, 'a');
     writeRunState(failed, { status: 'blocked', reason: { code: 'BLOCKED', message: 'x' } });
-    await app.app.get(RunRepository).saveRun(failed);
+    await storeRun(app.app.get(RunRepository), failed);
     await pass(app);
     expect((await parentState(app)).reason?.code).toBe(ERROR_CODES.SUBTASK_BLOCKED);
 
@@ -502,7 +503,7 @@ describe('split merge', () => {
     await finish(app, 'a');
     const second = await child(app, 'b');
     writeRunState(second, { status: 'waiting', currentStep: 'code-review' });
-    await app.app.get(RunRepository).saveRun(second);
+    await storeRun(app.app.get(RunRepository), second);
     built.host.conflicts.add(2);
 
     await pass(app);

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import fsPromises, { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -83,7 +84,7 @@ describe('step log api', () => {
       const runs = app.get(RunRepository);
       const run = await save(runs, 'proj-2', 'plan', 'running');
       run.activeAttempt = 'live-1';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await log(root, 'proj-2-plan-live-1-output.txt', 'push ghp_abcdef123456 done\n');
       expect(await queries.stepLog('proj-2', 'plan', 'live-1')).toBe('push *** done\n');
     });

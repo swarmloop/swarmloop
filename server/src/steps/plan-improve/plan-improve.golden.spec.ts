@@ -7,6 +7,7 @@ import type { Subtask } from '../../contract/subtask';
 import { withPlan } from '../plan/plan-record';
 import { goldenApp } from '../shared/model-golden.spec-helpers';
 import { PlanImproveStep } from './plan-improve.step';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const KEY = 'PROJ-50';
 
@@ -40,7 +41,7 @@ async function improve(agent: jest.Mock, tasks: Subtask[] = []) {
   seeded.status = 'waiting';
   seeded.currentStep = 'plan-improve';
   seeded.split = tasks.length > 0;
-  await golden.runs.saveRun(seeded);
+  await storeRun(golden.runs, seeded);
   const unreviewed = { name: '', overview: '', items: ['add the field'], decision: null };
   await golden.seedDocuments.putDocument(seeded, 'requirements', withPlan('{"prompt":"ship the field"}\n', unreviewed));
   await golden.seedDocuments.putDocument(seeded, 'repos', 'billing-api\n');

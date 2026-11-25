@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { actionsFor, NEEDS_PERSON, stateWord } from '../contract/run-state';
@@ -83,7 +84,7 @@ describe('a host refusal of a name', () => {
     // The host's own hook lets the feature branch through, as its merges do; here the work of the run is what it checks.
     if (origin.branch || origin.commit) installOriginHook(join(flow.app.root, 'demo.git'), 'main', origin);
     const run = await flow.begin(step);
-    await flow.app.app.get(RunRepository).saveRun({ ...run, startedBy: null });
+    await storeRun(flow.app.app.get(RunRepository), { ...run, startedBy: null });
     const registry = flow.app.app.get(CodeHostRegistry);
     jest.spyOn(registry, 'forRun').mockResolvedValue(registry);
     jest.spyOn(registry, 'requiredCredentials').mockReturnValue(flow.host.selected());
@@ -181,7 +182,7 @@ describe('a host refusal of a name', () => {
     await start({}, { branch: BRANCH_RULE }, [answerWith({ branch: 'work/{slug}' })]);
     const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
     run.split = true;
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
     await flow.app.app.get(DocumentRepository).putDocument(run, 'subtasks', SUBTASKS);
     git(join(flow.app.root, 'demo.git'), ['branch', '-D', `feature/${KEY}-ship-the-field`]);
     await flow.app.pipeline.step('branch', KEY);

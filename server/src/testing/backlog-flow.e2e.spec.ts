@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
@@ -84,7 +85,7 @@ describe('a backlog with one milestone carries every task to the default branch'
     await documents().putDocument(run, 'pipeline_ref', `project: ${project}\nref: ${branch}\nsha: ${sha}\n`);
     run.codeHost = 'gitlab';
     writeRunState(run, { status: 'done', currentStep: 'done' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   async function setUp() {

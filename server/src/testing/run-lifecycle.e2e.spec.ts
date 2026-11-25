@@ -1,3 +1,4 @@
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { RunStop } from '../agent/run-stop';
@@ -131,7 +132,7 @@ describe('a return is one issue in two windows', () => {
       const run = await app.app.get(RunRepository).begin(KEY, 'prepare');
       run.status = 'waiting';
       run.currentStep = 'implement';
-      await app.app.get(RunRepository).saveRun(run);
+      await storeRun(app.app.get(RunRepository), run);
       await app.app.get(DocumentRepository).putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
 
       await implement.execute(KEY);

@@ -17,23 +17,25 @@ export class RunInstructions {
     const body = renderProjects(names);
     const existing = await this.runs.findRun(key);
     if (existing) {
-      if (!storedProjects(existing.projects).length) {
-        existing.projects = body;
-        await this.runs.saveRun(existing);
-      }
+      await this.runs.change(key, (row) => {
+        if (!storedProjects(row.projects).length) row.projects = body;
+      });
       return;
     }
-    const created = await this.runs.openWaiting(key, '');
-    created.targetPath = null;
-    created.projects = body;
-    await this.runs.saveRun(created);
+    await this.runs.openWaiting(key, '');
+    await this.runs.change(key, (created) => {
+      created.targetPath = null;
+      created.projects = body;
+    });
   }
 
   async storeInstructions(run: RunEntity, step: StepName, text: string): Promise<string> {
-    const prompt = joinPrompt(run.prompt, text);
-    run.prompt = prompt;
-    await this.runs.saveRun(run);
-    await this.documents.putDocument(run, `instructions:${step}`, text);
+    let prompt = '';
+    const stored = await this.runs.change(run.key, (row) => {
+      prompt = joinPrompt(row.prompt, text);
+      row.prompt = prompt;
+    });
+    await this.documents.putDocument(stored, `instructions:${step}`, text);
     const target = this.registry.get(step);
     if (target?.capabilities.prompt) {
       return prompt;
@@ -41,7 +43,7 @@ export class RunInstructions {
     const body = await this.documents.latestBody(run.key, 'requirements');
     if (body) {
       const revise = target?.capabilities.revisesRequirements === true;
-      await this.documents.putDocument(run, 'requirements', withInstructions(body, text, revise));
+      await this.documents.putDocument(stored, 'requirements', withInstructions(body, text, revise));
     }
     return prompt;
   }

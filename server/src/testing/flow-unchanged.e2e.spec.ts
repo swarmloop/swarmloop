@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -53,7 +54,7 @@ describe('an unchanged tree is delivered or returned, never failed', () => {
     const parent = await save(runs(), KEY, 'implement', 'waiting');
     parent.split = true;
     parent.projects = 'demo\n';
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await documents().putDocument(parent, 'requirements', requirements);
     await documents().putDocument(parent, 'repos', 'demo\n');
     await documents().putDocument(parent, 'subtasks', `${JSON.stringify(tasks)}\n`);
@@ -69,7 +70,7 @@ describe('an unchanged tree is delivered or returned, never failed', () => {
     const run = (await runs().findRun(`${KEY}-${id}`))!;
     for (const [kind, text] of Object.entries(body)) await documents().putDocument(run, kind, text);
     writeRunState(run, { status: 'done', currentStep: 'done' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   it('skips a task a sibling already delivered, with the note, and its dependents go on', async () => {
@@ -98,7 +99,7 @@ describe('an unchanged tree is delivered or returned, never failed', () => {
       git(flow.tree, ['push', 'origin', `:${FEATURE}`]);
       const run = (await runs().findRun(KEY))!;
       writeRunState(run, { status: 'waiting', currentStep: 'commit' });
-      await runs().saveRun(run);
+      await storeRun(runs(), run);
     }
 
     it('returns to implement with the issue when the reviews do not say the behavior is in the tree', async () => {
@@ -156,7 +157,7 @@ describe('a run on the real merge request step opens a request only for work', (
     await flow.begin('merge-request');
     const run = (await runs().findRun(KEY))!;
     writeRunState(run, { status: 'waiting', currentStep: 'commit' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     await documents().putDocument(
       run,
       'review_requirements',

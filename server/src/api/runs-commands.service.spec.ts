@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -71,13 +72,13 @@ describe('runs api', () => {
       const long = `${'a'.repeat(120)}bc`;
       const named = await save(runRepository, 'named', 'prepare', 'waiting');
       named.prompt = 'Ship the field\nmore than the first line';
-      await runRepository.saveRun(named);
+      await storeRun(runRepository, named);
       const cut = await save(runRepository, 'cut', 'prepare', 'waiting');
       cut.prompt = `${long}\nrest`;
-      await runRepository.saveRun(cut);
+      await storeRun(runRepository, cut);
       const blank = await save(runRepository, 'blank', 'prepare', 'waiting');
       blank.prompt = '  \n';
-      await runRepository.saveRun(blank);
+      await storeRun(runRepository, blank);
       const listed = await runs.list();
       const byKey = Object.fromEntries(listed.runs.map((run) => [run.key, run.name]));
       expect(byKey.named).toBe('Ship the field');
@@ -149,7 +150,7 @@ describe('runs api', () => {
       const saved = await save(repository, 'proj-14', 'implement', 'blocked');
       saved.split = true;
       writeRunState(saved, { status: 'blocked', reason: { code: REASON.stopped, message: 'Stopped.' } });
-      await repository.saveRun(saved);
+      await storeRun(repository, saved);
       const before = (await repository.findRun('proj-14'))?.generation;
       await expect(
         app.get(RunCommandsService).replay('proj-14', 'implement', 'Try again', undefined, { by: 'planner', level: 0 }),
@@ -175,7 +176,7 @@ describe('runs api', () => {
       const repository = app.get(RunRepository);
       const saved = await save(repository, 'proj-15', 'implement', 'blocked');
       writeRunState(saved, { status: 'blocked', reason: { code: REASON.stopped, message: 'Stopped.' } });
-      await repository.saveRun(saved);
+      await storeRun(repository, saved);
       const start = { by: 'person', level: null } as const;
       await app.get(RunCommandsService).replay('proj-15', 'implement', 'Try again', undefined, start);
       expect(pipeline.replay).toHaveBeenCalledWith('proj-15', 'implement', 'Try again', start);
@@ -274,7 +275,7 @@ describe('runs api', () => {
       const runs = app.get(RunRepository);
       const run = await save(runs, 'proj-loop', 'code-review', 'blocked');
       writeRunState(run, { status: 'blocked', reason: { code: REASON.loopLimit, message: 'blocked' } });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-loop');
       expect(flow.resume).toBe('ready');
@@ -298,7 +299,7 @@ describe('runs api', () => {
       const run = await save(runs, 'proj-fit', 'code-review', 'blocked');
       await documents.putDocument(run, 'error', 'code-review does not fit\n');
       writeRunState(run, { status: 'blocked', reason: { code: REASON.didNotFit, message: 'blocked' } });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-fit');
       expect(flow.resume).toBe('ready');
@@ -324,7 +325,7 @@ describe('runs api', () => {
       await documents.putDocument(run, 'issues', '- the unit test for the field fails\n');
       await documents.putDocument(run, 'error', 'repo: npm test failed again on unchanged files after a relaunch\n');
       writeRunState(run, { status: 'blocked', reason: { code: REASON.checkFailed, message: 'blocked' } });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       runs.notify('proj-check');
       await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-check');
@@ -396,11 +397,11 @@ describe('runs api', () => {
       const runs = app.get(RunRepository);
       const previous = await save(runs, 'PROJ-12', 'code-review', 'failed');
       previous.prompt = 'old brief\n';
-      await runs.saveRun(previous);
+      await storeRun(runs, previous);
       await save(runs, 'PROJ-12--2', 'done', 'done');
       const live = await save(runs, 'PROJ-12--3', 'code-review', 'running');
       live.ownerPid = process.pid;
-      await runs.saveRun(live);
+      await storeRun(runs, live);
       const prompt = 'https://example.atlassian.net/browse/PROJ-12\nbranch: feature/PROJ-12-add-export';
       const started = await app.get(RunCommandsService).start({
         prompt,
@@ -558,7 +559,7 @@ describe('runs api', () => {
       try {
         const parent = await save(app.get(RunRepository), 'PROJ-301', 'implement', 'waiting');
         parent.projects = 'demo\n';
-        await app.get(RunRepository).saveRun(parent);
+        await storeRun(app.get(RunRepository), parent);
         await app.get(DocumentRepository).putDocument(parent, 'requirements', '{"prompt":"Ship"}\n');
         const task: Subtask = {
           id: 't1',
@@ -591,7 +592,7 @@ describe('runs api', () => {
     async function parentRun(app: Awaited<ReturnType<typeof seededBoot>>) {
       const parent = await save(app.get(RunRepository), 'PROJ-300', 'implement', 'waiting');
       parent.projects = 'demo\n';
-      await app.get(RunRepository).saveRun(parent);
+      await storeRun(app.get(RunRepository), parent);
       const documents = app.get(DocumentRepository);
       await documents.putDocument(
         parent,
@@ -696,12 +697,12 @@ describe('runs api', () => {
         const runs = app.get(RunRepository);
         const parent = await save(runs, 'proj-skip', 'implement', 'waiting');
         parent.split = true;
-        await runs.saveRun(parent);
+        await storeRun(runs, parent);
         await app.get(DocumentRepository).putDocument(parent, 'subtasks', `${JSON.stringify(taskList)}\n`);
         const child = await save(runs, 'proj-skip-a', 'implement', status);
         child.parentRunId = parent.id;
         child.taskId = 'a';
-        await runs.saveRun(child);
+        await storeRun(runs, child);
 
         app.get(CommandService).register('stop', async (key) => ({ key, status: 'stopped' }));
         await app.get(RunSubtaskCommandsService).skipTask('proj-skip', 'a');
@@ -729,14 +730,14 @@ describe('runs api', () => {
       const parent = await save(runs, 'proj-pass', 'implement', 'running');
       parent.split = true;
       parent.ownerPid = process.pid;
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       const child = await save(runs, 'proj-pass-a', 'research', 'running');
       child.parentRunId = parent.id;
       child.taskId = 'a';
-      await runs.saveRun(child);
+      await storeRun(runs, child);
       const plain = await save(runs, 'proj-plain', 'implement', 'running');
       plain.ownerPid = process.pid;
-      await runs.saveRun(plain);
+      await storeRun(runs, plain);
       const commands = app.get(RunCommandsService);
 
       await expect(commands.resume('proj-pass')).resolves.toEqual({ key: 'proj-pass', status: 'started' });

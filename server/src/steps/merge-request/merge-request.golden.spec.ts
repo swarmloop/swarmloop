@@ -29,6 +29,7 @@ import { RunNames } from '../shared/run-names';
 import { StaleReview } from '../shared/stale-review';
 import { MergeRequestTemplate } from './merge-request-template';
 import { MergeRequestStep } from './merge-request.step';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const KEY = 'PROJ-200';
 const MR_URL = 'https://gitlab.example/group/demo/-/merge_requests/12';
@@ -160,7 +161,7 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, implementation: boole
   seeded.status = 'waiting';
   seeded.currentStep = 'commit';
   seeded.codeHost = 'gitlab';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(
     seeded,
     'requirements',

@@ -53,8 +53,10 @@ export class StallWatch {
     const run = await this.runs.findRun(seen.key);
     if (run?.state !== 'idle' || run.stateReason !== null) return;
     if ((await this.commands.pending(run.id)).length > 0) return;
-    writeRunState(run, { status: 'waiting', ownerPid: null, reason });
-    await this.runs.saveRun(run);
+    await this.runs.change(seen.key, (row) => {
+      if (row.state !== 'idle' || row.stateReason !== null) return;
+      writeRunState(row, { status: 'waiting', ownerPid: null, reason });
+    });
   }
 
   /** One line in the run's events for the try the server just sent. */

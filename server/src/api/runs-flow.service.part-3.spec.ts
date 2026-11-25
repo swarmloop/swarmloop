@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { writeRunState } from '../history/run-state';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import 'reflect-metadata';
@@ -38,7 +39,7 @@ describe('runs api', () => {
       const hub = app.get(LiveHub);
       const run = await runs.begin('proj-clock', 'research');
       const started = run.stepStartedAt;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       expect((await runs.findRun('proj-clock'))?.stepStartedAt).toBe(started);
       await visits.finishVisit(run, {
         ...visit('prepare', 'done'),
@@ -59,7 +60,7 @@ describe('runs api', () => {
       expect(flow.metrics.cpuPeak).toBe(80);
       expect(flow.metrics.memPeak).toBe(4096);
       run.stepStartedAt = null;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await visits.finishVisit(run, { ...visit('research', 'failed'), durationMs: 4 });
       const later = await app.get(RunQueriesService).flow('proj-clock');
       expect(later.metrics.closedStarts).toEqual([started]);
@@ -81,7 +82,7 @@ describe('runs api', () => {
       const documents = app.get(DocumentRepository);
       const parent = await runs.begin('proj-split', 'implement');
       parent.spentUsd = 1;
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       await documents.putDocument(
         parent,
         'requirements',
@@ -101,7 +102,7 @@ describe('runs api', () => {
       const child = await runs.openSubtask('proj-split-a', parent.id, 'a');
       child.spentUsd = 2.5;
       writeRunState(child, { status: 'done', currentStep: 'ci' });
-      await runs.saveRun(child);
+      await storeRun(runs, child);
 
       const flow = await app.get(RunQueriesService).flow('proj-split');
 
@@ -124,7 +125,7 @@ describe('runs api', () => {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
       const parent = await runs.begin('proj-result', 'implement');
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       await documents.putDocument(
         parent,
         'requirements',
@@ -144,7 +145,7 @@ describe('runs api', () => {
         const child = await runs.openSubtask(`proj-result-${id}`, parent.id, id);
         child.status = status === 'merged' ? 'done' : status;
         child.state = status;
-        await runs.saveRun(child);
+        await storeRun(runs, child);
         if (withRequest) {
           await documents.putDocument(child, 'merge_request', 'https://host/mr/1');
         }
@@ -200,7 +201,7 @@ describe('runs api', () => {
         child.status = 'done';
         child.mergeOutcome =
           id === 'b' ? JSON.stringify({ merged: { demo: { sha: 'abc', by: null, at: 'x', url: null } } }) : null;
-        await runs.saveRun(child);
+        await storeRun(runs, child);
       }
 
       const queries = app.get(RunQueriesService);
@@ -232,7 +233,7 @@ describe('runs api', () => {
       await documents.putDocument(parent, 'subtasks', JSON.stringify([stored]));
       const child = await runs.openSubtask('proj-resumed-b', parent.id, 'b');
       writeRunState(child, { status: 'running', currentStep: 'implement' });
-      await runs.saveRun(child);
+      await storeRun(runs, child);
 
       const queries = app.get(RunQueriesService);
 
@@ -275,7 +276,7 @@ describe('runs api', () => {
         message: 'limit',
         limit: { runtime: 'x', resumesAt: '2026-11-13T10:00:00Z' },
       });
-      await runs.saveRun(child);
+      await storeRun(runs, child);
 
       const shown = (await app.get(RunQueriesService).flow('proj-wait-task')).tasks?.[0];
 
@@ -309,10 +310,10 @@ describe('runs api', () => {
       await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a'), task('b')]));
       const working = await runs.openSubtask('proj-ask-a', parent.id, 'a');
       writeRunState(working, { status: 'running', currentStep: 'implement' });
-      await runs.saveRun(working);
+      await storeRun(runs, working);
       const asking = await runs.openSubtask('proj-ask-b', parent.id, 'b');
       writeRunState(asking, { status: 'waiting', currentStep: 'research' });
-      await runs.saveRun(asking);
+      await storeRun(runs, asking);
       await documents.putDocument(asking, 'questions', '- Which branch?\n');
       runs.notify('proj-ask-b');
       await app.get(RunStateRefresh).settled();
@@ -345,7 +346,7 @@ describe('runs api', () => {
       const documents = app.get(DocumentRepository);
       const parent = await runs.begin('proj-epic', 'implement');
       parent.spentUsd = 1;
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       await documents.putDocument(
         parent,
         'requirements',
@@ -363,10 +364,10 @@ describe('runs api', () => {
       await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a', []), task('b', ['a'])]));
       const child = await runs.openSubtask('proj-epic-a', parent.id, 'a');
       child.spentUsd = 2.5;
-      await runs.saveRun(child);
+      await storeRun(runs, child);
       const alone = await runs.begin('proj-alone', 'implement');
       alone.spentUsd = 4;
-      await runs.saveRun(alone);
+      await storeRun(runs, alone);
 
       const queries = app.get(RunQueriesService);
       const flow = await queries.flow('proj-epic');
@@ -393,7 +394,7 @@ describe('runs api', () => {
       const parent = await runs.begin('proj-owner', 'implement');
       parent.startedBy = 'alice';
       parent.projects = 'demo';
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       await documents.putDocument(
         parent,
         'requirements',
@@ -424,7 +425,7 @@ describe('runs api', () => {
       const runs = app.get(RunRepository);
       const commands = app.get(CheckCommandRepository);
       const run = await runs.begin('proj-rows', 'checks');
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       expect((await app.get(RunQueriesService).flow('proj-rows')).checkCommands).toBeUndefined();
       await commands.add({ runId: run.id, attemptId: 'att-1', repo: 'api', command: 'npm test', commandIndex: 0 });
       const second = await commands.add({

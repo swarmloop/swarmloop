@@ -1,5 +1,6 @@
 import { handoffText } from '../steps/shared/handoff';
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -102,7 +103,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
     parent.split = true;
     parent.projects = 'demo\n';
     parent.codeHost = 'gitlab';
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await documents().putDocument(parent, 'requirements', requirements);
     await documents().putDocument(parent, 'repos', 'demo\n');
     await documents().putDocument(parent, 'subtasks', `${JSON.stringify(list)}\n`);
@@ -137,7 +138,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
     run.prompt = `branch: ${FEATURE}\n`;
     await documents().putDocument(run, 'merge_request', renderMergeRequest([record]));
     writeRunState(run, { status, currentStep: status === 'done' ? 'done' : 'implement' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     return { run, branch, tree, iid: record.iid };
   }
 
@@ -151,7 +152,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
   async function finish(id: string): Promise<void> {
     const run = (await runs().findRun(`${KEY}-${id}`))!;
     writeRunState(run, { status: 'done', currentStep: 'done' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   it('rebases a green task that is behind the feature branch, runs its gates again, and merges it with no return counted', async () => {
@@ -199,7 +200,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
     const run = (await runs().findRun(`${KEY}-b`))!;
     run.codeHost = 'gitlab';
     writeRunState(run, { status: 'running', currentStep: 'pipeline' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     const ref = `project: group/demo\nref: ${second.branch}\nsha: ${git(second.tree, ['rev-parse', 'HEAD'])}\n`;
     await putStamped(flow.app.app, run, 'pipeline_ref', ref, ['demo']);
     await putStamped(flow.app.app, run, 'review_report', '- the field ships\n', ['demo']);
@@ -211,7 +212,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
     expect(returned.attemptsPipeline).toBe(1);
     // The driver would start implement now. The step ended with the run working at implement, as the parent sees it.
     writeRunState(returned, { status: 'running', currentStep: 'implement' });
-    await runs().saveRun(returned);
+    await storeRun(runs(), returned);
     await pass();
     expect([...flow.host.merged.keys()]).toEqual([first.iid]);
     expect(flow.host.landed.every((landing) => landing.testedOnTop)).toBe(true);
@@ -328,7 +329,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
       currentStep: 'checks',
       reason: { code: ERROR_CODES.CHECK_FAILED, message: 'a check failed' },
     });
-    await runs().saveRun(blocked);
+    await storeRun(runs(), blocked);
     // The host says the merge request of b conflicts now, while its squash applies cleanly.
     const read = flow.host.readMergeRequest.bind(flow.host);
     jest

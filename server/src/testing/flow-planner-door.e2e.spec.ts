@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { DocumentRepository } from '../history/document.repository';
@@ -86,7 +87,7 @@ describe('the planner turns of a run pass the door', () => {
     const planLaunches = blocks.prompts.filter((launch) => launch.step === 'plan').length;
     const again = (await runs.findRun(KEY))!;
     again.currentStep = 'code-review';
-    await runs.saveRun(again);
+    await storeRun(runs, again);
     writeFileSync(join(flow.tree, 'src', 'readme.ts'), 'export const readme = 2;\n');
     await flow.app.pipeline.step('code-review', KEY);
     await flow.app.pipeline.runThrough(KEY, { auto: true });

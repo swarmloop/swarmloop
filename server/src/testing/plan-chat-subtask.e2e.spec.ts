@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
@@ -62,7 +63,7 @@ describe("a person writes to a running subtask's planner", () => {
     const run = await remember(runs, documents, KEY, 'plan', 'waiting');
     run.parentRunId = parent.id;
     run.taskId = 'a';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     await documents.putDocument(run, 'requirement_list', '[{"id":"R1","text":"ship the field"}]\n');
   }
 
@@ -132,7 +133,7 @@ describe("a person writes to a running subtask's planner", () => {
     const parent = (await runs.findRun(PARENT))!;
     parent.split = true;
     parent.projects = 'demo\n';
-    await runs.saveRun(parent);
+    await storeRun(runs, parent);
     await documents.putDocument(
       parent,
       'requirements',

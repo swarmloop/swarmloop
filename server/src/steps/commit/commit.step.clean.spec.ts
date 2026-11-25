@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -189,7 +190,7 @@ describe('commit step on a clean tree', () => {
     try {
       await seed(app, 'PROJ-133');
       const runs = app.get(RunRepository);
-      await runs.saveRun({ ...(await runs.findRun('PROJ-133'))!, prompt: 'task\nbranch: feature/PARENT-1-epic\n' });
+      await storeRun(runs, { ...(await runs.findRun('PROJ-133'))!, prompt: 'task\nbranch: feature/PARENT-1-epic\n' });
       const done = await app.get(PipelineService).step('commit', 'PROJ-133');
       expect(done.exitCode).toBe(0);
       expect((await runs.findRun('PROJ-133'))?.currentStep).toBe('implement');

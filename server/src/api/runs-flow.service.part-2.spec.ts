@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { reviewLog } from '../testing/result-answer';
 
 import { utimesSync } from 'fs';
@@ -59,7 +60,7 @@ describe('runs api', () => {
       const run = await save(runRepository, 'proj-32', 'code-review', 'running');
       // A log counts for the open round only when its file is newer than the round start. The kernel stamps files with a coarser clock than the one that stamped the round, so a log written right after the claim can look older. The round began a minute ago.
       run.stepStartedAt = new Date(Date.now() - 60_000).toISOString();
-      await runRepository.saveRun(run);
+      await storeRun(runRepository, run);
       await writeFile(
         join(root, 'data', 'proj-32-code-review-regressions-output.txt'),
         'thinking\nprocess killed: time\nthinking\n',
@@ -144,7 +145,7 @@ describe('runs api', () => {
       const round1 = '2026-10-28T10:00:00.000Z';
       const round2 = '2026-10-28T11:00:00.000Z';
       run.stepStartedAt = round1;
-      await runRepository.saveRun(run);
+      await storeRun(runRepository, run);
       const stored = [
         ['requirements', 'ok', 'done'],
         ['quality', 'return', 'waiting'],
@@ -159,7 +160,7 @@ describe('runs api', () => {
         });
       }
       run.stepStartedAt = round2;
-      await runRepository.saveRun(run);
+      await storeRun(runRepository, run);
       const file = (name: string) => join(root, 'data', `proj-round-code-review-${name}-output.txt`);
       await writeFile(file('quality'), reviewLog('ok'));
       const older = new Date(Date.parse(round2) - 60_000);
@@ -186,7 +187,7 @@ describe('runs api', () => {
       expect(at(running, 'code-review-security')?.status).toBe('running');
 
       run.status = 'waiting';
-      await runRepository.saveRun(run);
+      await storeRun(runRepository, run);
       const held = await chips();
       expect(at(held, 'code-review-requirements')?.attempts).toBe(1);
       expect(at(held, 'code-review-requirements')?.status).toBe('done');
@@ -203,7 +204,7 @@ describe('runs api', () => {
       run.status = 'running';
       run.currentStep = 'code-review';
       run.stepStartedAt = round2;
-      await runRepository.saveRun(run);
+      await storeRun(runRepository, run);
       const next = [
         ['requirements', 'return', 'waiting'],
         ['quality', 'ok', 'done'],
@@ -243,13 +244,13 @@ describe('runs api', () => {
       const visits = app.get(VisitRepository);
       const run = await save(runRepository, 'proj-kill', 'code-review', 'running');
       run.stepStartedAt = '2026-10-28T10:00:00.000Z';
-      await runRepository.saveRun(run);
+      await storeRun(runRepository, run);
       await visits.finishVisit(run, {
         ...visit('code-review-requirements', 'done'),
         documents: [{ kind: 'review_requirements', fileName: '', body: 'round 1\ndecision: ok\n' }],
       });
       run.stepStartedAt = '2026-10-28T11:00:00.000Z';
-      await runRepository.saveRun(run);
+      await storeRun(runRepository, run);
       const path = join(root, 'data', 'proj-kill-code-review-requirements-output.txt');
       await writeFile(path, 'thinking\nprocess killed: time\n');
       const runs = app.get(RunQueriesService);
@@ -340,7 +341,7 @@ describe('runs api', () => {
       run.currentStep = 'done';
       run.ownerPid = null;
       run.stepStartedAt = null;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const short = await runs.begin('proj-duration-short', 'code-review');
       short.stepStartedAt = '2026-10-28T11:00:00.000Z';
       await visits.finishVisit(short, { ...visit('code-review-quality', 'done'), durationMs: 8_000 });
@@ -363,7 +364,7 @@ describe('runs api', () => {
       short.currentStep = 'done';
       short.ownerPid = null;
       short.stepStartedAt = null;
-      await runs.saveRun(short);
+      await storeRun(runs, short);
       const listed = await app.get(RunQueriesService).list({ part: 'all', q: '' });
       const flow = await app.get(RunQueriesService).flow('proj-duration');
       const shortFlow = await app.get(RunQueriesService).flow('proj-duration-short');
@@ -436,7 +437,7 @@ describe('runs api', () => {
       run.status = 'done';
       run.currentStep = 'done';
       run.ownerPid = null;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const listed = await app.get(RunQueriesService).list({ part: 'all', q: '' });
       const flow = await app.get(RunQueriesService).flow('proj-loop');
       expect(listed.runs.find((item) => item.key === 'proj-loop')?.durationMs).toBe(21_000);

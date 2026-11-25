@@ -12,10 +12,10 @@ describe('closeStep', () => {
       return Promise.resolve(null);
     };
     const finishVisit = jest.fn();
-    const saveRun = jest.fn();
+    const change = jest.fn();
     const notify = jest.fn();
     const result = await closeStep({
-      runs: { saveRun, notify } as never,
+      runs: { change, notify } as never,
       visits: { finalize, finishVisit } as never,
       flows: { activePhases: jest.fn().mockResolvedValue(['planning']) } as never,
       root: '/tmp',
@@ -32,7 +32,7 @@ describe('closeStep', () => {
     });
     expect(finalized).toEqual([['attempt-1', run, visit]]);
     expect(finishVisit).not.toHaveBeenCalled();
-    expect(saveRun).not.toHaveBeenCalled();
+    expect(change).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith('K-1');
     expect(result).toEqual({ exitCode: 0, message: 'research done' });
   });

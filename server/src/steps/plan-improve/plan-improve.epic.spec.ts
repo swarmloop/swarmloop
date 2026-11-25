@@ -15,6 +15,7 @@ import { BranchStep } from '../branch/branch.step';
 import { resultAnswer } from '../../testing/result-answer';
 import { withPlan } from '../plan/plan-record';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const task = { title: 'Add the column', description: 'Adds it.', depends: [], files: ['a.ts'], proof: 'a.spec.ts' };
 const stored = [{ ...task, id: 'column', status: 'pending' }];
@@ -52,7 +53,7 @@ async function epicApp(
   seeded.status = 'waiting';
   seeded.currentStep = start;
   seeded.split = true;
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   const unreviewed = { name: '', overview: '', items: ['add the field'], decision: null };
   await documents.putDocument(seeded, 'requirements', withPlan('{"prompt":"ship the field"}\n', unreviewed));
   await documents.putDocument(seeded, 'repos', 'billing-api\n');

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -161,7 +162,7 @@ describe('commit step', () => {
       }
       run.status = 'waiting';
       run.currentStep = 'commit';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       writeFileSync(join(tree, 'src', 'extra.ts'), 'export const extra = 1;\n');
       const second = await app.get(PipelineService).step('commit', 'PROJ-115');
       expect(second.exitCode).toBe(0);
@@ -215,7 +216,7 @@ describe('commit step', () => {
         throw new Error('run is missing');
       }
       run.status = 'waiting';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await app.get(DocumentRepository).putDocument(run, 'commit', 'demo\tsrc/field.ts\n');
       writeFileSync(join(tree, 'src', 'extra.ts'), 'export const extra = 1;\n');
 

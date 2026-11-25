@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { EventEmitter } from 'events';
 
@@ -105,7 +106,7 @@ export async function seed(
   seeded.currentStep = 'implement-improve';
   seeded.attemptsReview = attemptsReview;
   seeded.agentCalls = agentCalls;
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(seeded, 'requirements', `${JSON.stringify({ prompt: 'Ship the field\n' })}\n`);
   await documents.putDocument(seeded, 'repos', 'billing-api\n');
   await documents.putDocument(seeded, 'implementation', '- changed the field parser\n');

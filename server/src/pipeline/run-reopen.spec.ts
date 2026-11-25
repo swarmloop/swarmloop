@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { HostUnavailable } from '../core/swarmloop-error';
 import type { PipelineResult } from '../core/pipeline-result';
 import { DocumentRepository } from '../history/document.repository';
@@ -30,7 +31,7 @@ describe('RunReopen', () => {
     const run = await runs.openWaiting(KEY, '/target');
     run.codeHost = 'gitlab';
     finish(run);
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     await documents.putDocument(run, 'merge_request', ready);
     const started: string[] = [];
     const start = (key: string): Promise<PipelineResult> => {

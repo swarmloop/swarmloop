@@ -6,6 +6,7 @@ import { repositoryDatabase, repositoryVisit } from '../../history/repository.sp
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { closeStep, openStep } from '../../steps/step-run';
+import { storeRun } from '../store-run.spec-helpers';
 
 describe('a step that holds a copy of its run', () => {
   it('keeps the title, the generation and the owner that other writers set while the visit ran', async () => {
@@ -14,7 +15,7 @@ describe('a step that holds a copy of its run', () => {
       const runs = db.app.get(RunRepository);
       const flows = db.app.get(FlowRepository);
       const key = 'run-stale';
-      await runs.saveRun(runs.newWaitingRun(key, null, LEGACY_MACHINE));
+      await storeRun(runs, runs.newWaitingRun(key, null, LEGACY_MACHINE));
       const opened = await openStep(runs, db.clock, key, 'research');
 
       await runs.recordTitle((await runs.findRun(key))!, 'A title');

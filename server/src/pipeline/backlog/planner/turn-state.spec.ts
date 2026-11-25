@@ -1,3 +1,4 @@
+import { storeRun } from '../../../testing/store-run.spec-helpers';
 import { writeRunState, type RunStateChange } from '../../../history/run-state';
 import { SUBTASKS_KIND } from '../../../contract/subtask';
 import { plannerFacts } from './planner-facts.spec-helpers';
@@ -107,7 +108,7 @@ describe('BacklogTurnState', () => {
       const move = async (change: RunStateChange) => {
         const run = (await h.runs.findRun('a-1')) as NonNullable<Awaited<ReturnType<typeof h.runs.findRun>>>;
         writeRunState(run, change);
-        await h.runs.saveRun(run);
+        await storeRun(h.runs, run);
       };
       await move({ status: 'blocked', reason: { code: 'NEEDS_ANSWER', message: 'which library?' } });
       const waiting = (await state.read('alpha', 't1')).active?.tasks[0];

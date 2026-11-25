@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { EventEmitter } from 'events';
 
@@ -134,7 +135,7 @@ export async function seed(
   const seeded = await runs.begin(key, 'implement');
   seeded.status = 'waiting';
   seeded.currentStep = 'implement';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   const plan = decision ? { name: '', overview: '', items: ['add the field'], decision } : null;
   await documents.putDocument(
     seeded,

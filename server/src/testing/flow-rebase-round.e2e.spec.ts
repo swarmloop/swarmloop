@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { RunQueriesService } from '../api/run-queries.service';
 import { RunRebaseService } from '../api/run-rebase.service';
 import { REASON } from '../contract/run-state';
@@ -34,13 +35,13 @@ describe('a relaunch after a rebase starts a new round of returns', () => {
     await pass(app);
     const run = await child(app, 'a');
     writeRunState(run, { status: 'waiting', currentStep: 'checks' });
-    await app.app.get(RunRepository).saveRun(run);
+    await storeRun(app.app.get(RunRepository), run);
     await app.app.get(DocumentRepository).putDocument(run, 'requirements', requirements);
     // The rebase moves the run onto the new head and back to checks, as the real one does for a subtask.
     jest.spyOn(app.app.get(RunRebase), 'rebase').mockImplementation(async (key) => {
       const moved = (await app.app.get(RunRepository).findRun(key))!;
       writeRunState(moved, { status: 'waiting', currentStep: 'checks' });
-      await app.app.get(RunRepository).saveRun(moved);
+      await storeRun(app.app.get(RunRepository), moved);
       return 'start';
     });
     return booted;

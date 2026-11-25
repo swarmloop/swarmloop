@@ -14,6 +14,7 @@ import { resultAnswer } from '../../testing/result-answer';
 import { boot, result, seed, storedTasks } from './plan-improve.step.spec-helpers';
 import { StepEventLog } from '../../history/step-event.log';
 import { PipelineService } from '../../pipeline/pipeline.service';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const improved = (items: string[], extra: Record<string, unknown> = {}): string =>
   resultAnswer('Done.', { summary: ['why'], plan: items, ...extra });
@@ -213,7 +214,7 @@ describe('plan-improve step with split', () => {
       await seed(app, key);
       const runs = app.get(RunRepository);
       const run = (await runs.findRun(key))!;
-      await runs.saveRun({ ...run, split: options.split ?? true });
+      await storeRun(runs, { ...run, split: options.split ?? true });
       if (options.tasks ?? true) {
         const documents = app.get(DocumentRepository);
         await documents.putDocument(run, 'subtasks', `${JSON.stringify(options.stored ?? storedTasks)}\n`);

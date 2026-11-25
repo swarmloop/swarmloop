@@ -7,13 +7,17 @@ import { AppConfig } from '../config/env';
 import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
 import { SERVER_INSTANCE } from '../core/server-instance';
-import { adoptRow, changedColumns, wasRead } from './run-read';
+import { adoptRow, changedColumns, readValue } from './run-read';
 import { claimedColumns, storedState, stateColumns, titleColumns } from './run-state';
+import { claimedRow, waitingRow } from './run-new-rows';
+import { conditionalUpdate } from './conditional-write';
+import { KeyedQueue } from './keyed-queue';
+import { pidAlive } from './pid-alive';
+import { durationByRun } from './run-durations';
 import type { RunStateChange } from './run-state';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { parseSubtasks, SUBTASKS_KIND } from '../contract/subtask';
-import { activeDurationMs, toDurationParts } from './active-duration';
 import { DocumentRepository } from './document.repository';
 import { VisitRepository } from './visit.repository';
 import { root } from './run-paths';
@@ -35,6 +39,8 @@ import {
 
 @Injectable()
 export class RunRepository {
+  private readonly changes = new KeyedQueue();
+
   constructor(
     private readonly config: AppConfig,
     private readonly clock: Clock,
@@ -90,9 +96,53 @@ export class RunRepository {
 
   /** Merges the base tips of some repositories into the run's own, without a run change. A key with no run changes nothing. */
   async recordBaseTips(key: string, tips: Record<string, string>): Promise<void> {
-    const row = await this.runs.findOne({ where: { key }, select: { id: true, baseTips: true } });
-    if (!row) return;
-    await this.runs.update({ id: row.id }, { baseTips: { ...row.baseTips, ...tips } });
+    await this.changes.run(key, () =>
+      this.write(
+        key,
+        (run) => {
+          run.baseTips = { ...run.baseTips, ...tips };
+        },
+        true,
+      ),
+    );
+  }
+
+  /**
+   * The one door for a change to a run's row. `apply` reads the row it is given and only sets columns on it: it
+   * starts nothing and writes nothing else, and it may run again. The changed columns are written on the condition
+   * that each still holds the value `apply` read; a write that lost to another writer applies again on the row as
+   * it is now. Calls for one run go one at a time. Returns the stored row. Nothing is written when nothing changed.
+   */
+  change(key: string, apply: (run: RunEntity) => void): Promise<RunEntity> {
+    return this.changes.run(key, async () => (await this.write(key, apply, false)) as RunEntity);
+  }
+
+  /** The write of `change`. Quiet: no update time and no notice, and a run that is gone changes nothing. */
+  private async write(key: string, apply: (run: RunEntity) => void, quiet: boolean): Promise<RunEntity | null> {
+    const gone = () => new SwarmloopError(`${key}: the run is gone; nothing was written`);
+    let lost: string[] = [];
+    for (let tries = 0; tries < 3; tries++) {
+      const run = await this.findRun(key);
+      if (!run) {
+        if (quiet) return null;
+        throw gone();
+      }
+      apply(run);
+      const changed = changedColumns(run);
+      lost = Object.keys(changed);
+      if (lost.length === 0) return run;
+      const extra = quiet ? {} : { updatedAt: this.clock.iso() };
+      if (!(await conditionalUpdate(this.runs, run.id, changed, (column) => readValue(run, column), extra))) continue;
+      const stored = await this.runs.findOneBy({ id: run.id });
+      if (!stored) {
+        if (quiet) return null;
+        throw gone();
+      }
+      adoptRow(run, stored);
+      if (!quiet) this.live?.changed(key);
+      return run;
+    }
+    throw new SwarmloopError(`${key}: ${lost.join(', ')} changed under every one of three tries; nothing was written`);
   }
 
   /** Stores the title in a single statement and tells the dashboard. */
@@ -119,31 +169,7 @@ export class RunRepository {
     startedBy: string | null = null,
     agents: StoredAgents | null = null,
   ): RunEntity {
-    const env = this.config.env;
-    const now = this.clock.iso();
-    const created = this.runs.create({
-      key,
-      ...stateColumns({ currentStep: 'requirements', ownerInstance: null, activeAttempt: null }, { status: 'waiting' }),
-      runtime: agentFor(env, { agents }, 'implement').runtime,
-      codeHost: '',
-      attemptsReview: 0,
-      attemptsPipeline: 0,
-      attemptsChecks: 0,
-      agentCalls: 0,
-      spentUsd: 0,
-      agents,
-      targetPath,
-      projects: null,
-      prompt: null,
-      createdAt: now,
-      updatedAt: now,
-      stepStartedAt: null,
-      parentRunId: null,
-      taskId: null,
-      split: false,
-      startedBy,
-    });
-    return created;
+    return waitingRow((row) => this.runs.create(row), this.config, this.clock, key, targetPath, startedBy, agents);
   }
 
   /** The waiting row of a subtask, linked to its parent in the same write that creates it. It belongs to the person of its parent. */
@@ -156,18 +182,21 @@ export class RunRepository {
   ): Promise<RunEntity> {
     const run = Object.assign(this.newWaitingRun(key, null, startedBy, agents), { parentRunId, taskId });
     run.runtime = agentFor(this.config.env, run, 'implement').runtime;
-    return this.saveRun(run);
+    return this.insertRun(run);
   }
 
   /** The run row of a split run. The command door may have made it already: then it is marked split. */
   async openSplit(key: string): Promise<RunEntity> {
-    const run = (await this.findRun(key)) ?? this.newWaitingRun(key, null);
-    run.split = true;
-    return this.saveRun(run);
+    if (await this.findRun(key)) {
+      return this.change(key, (run) => {
+        run.split = true;
+      });
+    }
+    return this.insertRun(Object.assign(this.newWaitingRun(key, null), { split: true }));
   }
 
   async openWaiting(key: string, targetPath: string): Promise<RunEntity> {
-    return this.saveRun(this.newWaitingRun(key, targetPath));
+    return this.insertRun(this.newWaitingRun(key, targetPath));
   }
 
   async begin(key: string, step: string): Promise<RunEntity> {
@@ -233,29 +262,9 @@ export class RunRepository {
   }
 
   private async insertClaimed(key: string, step: string): Promise<RunEntity> {
-    const env = this.config.env;
-    const now = this.clock.iso();
-    const created = this.runs.create({
-      key,
-      ...claimedColumns(step, randomUUID()),
-      runtime: agentFor(env, null, 'implement').runtime,
-      codeHost: '',
-      attemptsReview: 0,
-      attemptsPipeline: 0,
-      attemptsChecks: 0,
-      agentCalls: 0,
-      spentUsd: 0,
-      targetPath: null,
-      projects: null,
-      revision: 0,
-      generation: 0,
-      prompt: null,
-      createdAt: now,
-      updatedAt: now,
-      stepStartedAt: now,
-    });
+    const created = claimedRow((row) => this.runs.create(row), this.config, this.clock, key, step, randomUUID());
     try {
-      return await this.saveRun(created);
+      return await this.insertRun(created);
     } catch (error) {
       if (String(error).includes('UNIQUE constraint failed: runs.key')) {
         throw new SwarmloopError(`${key} is already running`);
@@ -264,22 +273,17 @@ export class RunRepository {
     }
   }
 
-  /** Tells the dashboard about a write that bypassed `saveRun`. */
-  notify(key: string): void {
-    this.live?.changed(key);
-  }
-
-  async saveRun(run: RunEntity): Promise<RunEntity> {
-    run.updatedAt = this.clock.iso();
-    const changed = changedColumns(run);
-    if (!wasRead(run)) {
-      await this.runs.save(run);
-    } else if (Object.keys(changed).length > 0) {
-      await this.runs.createQueryBuilder().update(RunEntity).set(changed).where('id = :id', { id: run.id }).execute();
-    }
+  /** Stores a run copy that is not stored yet, makes it the stored row and tells the dashboard. A run row is created only here and in `CommandRepository.accept`, which creates the row of a command for a run that does not exist yet, inside its own transaction. */
+  async insertRun(run: RunEntity): Promise<RunEntity> {
+    await this.runs.save(run);
     adoptRow(run, await this.runs.findOneByOrFail({ id: run.id }));
     this.live?.changed(run.key);
     return run;
+  }
+
+  /** Tells the dashboard about a write that bypassed `change`. */
+  notify(key: string): void {
+    this.live?.changed(key);
   }
 
   /** Raises the generation by one in a single statement, so a restart cannot count the same command twice. */
@@ -336,38 +340,6 @@ export class RunRepository {
 
   /** The active time of every run, or only of the runs with these ids. */
   async durationByRun(runIds?: number[]): Promise<Map<number, number>> {
-    const query = this.stepStats.createQueryBuilder('stat');
-    for (const column of ['id', 'runId', 'step', 'durationMs', 'stepStartedAt', 'startedAt', 'finishedAt']) {
-      query.addSelect(`stat.${column}`, column);
-    }
-    if (runIds) {
-      query.where('stat.runId IN (:...runIds)', { runIds });
-    }
-    // Plain rows: an entity per step row of the whole history is what held the main thread.
-    const stats: StepStatEntity[] = await query.orderBy('stat.id', 'ASC').getRawMany();
-    const reports = await this.visitRepository.codeReviewReportMs(...(runIds ?? []));
-    const byRun = new Map<number, StepStatEntity[]>();
-    for (const stat of stats) {
-      const rows = byRun.get(stat.runId) ?? [];
-      rows.push(stat);
-      byRun.set(stat.runId, rows);
-    }
-    const totals = new Map<number, number>();
-    for (const [runId, rows] of byRun) {
-      totals.set(runId, activeDurationMs(toDurationParts(rows, reports)));
-    }
-    return totals;
-  }
-}
-
-function pidAlive(pid: number | null): boolean {
-  if (pid === null || pid <= 0) {
-    return false;
-  }
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
+    return durationByRun(this.stepStats, this.visitRepository, runIds);
   }
 }

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { ERROR_CODES } from '../contract/error-codes';
 import { writeRunState } from '../history/run-state';
 import { RESUME_AFTER_RESET_MS } from '../history/runtime-cooldown.repository';
@@ -47,7 +48,7 @@ async function setup() {
       currentStep: 'implement',
       reason: { code: ERROR_CODES.RUNTIME_LIMIT, message: 'limited' },
     });
-    return fixture.runs.saveRun(run);
+    return storeRun(fixture.runs, run);
   };
   return { ...fixture, accepted, reconciler, waiting };
 }

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import type { AgentRunResult } from '../agent/agent-result';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/run-state';
@@ -80,7 +81,7 @@ describe('a reviewer or the report starts only through the door', () => {
   async function review(options: StepOptions = {}) {
     const run = await flow.begin('merge-request');
     run.currentStep = 'code-review';
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
     return flow.app.pipeline.step('code-review', KEY, options);
   }
 

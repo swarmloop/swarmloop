@@ -3,6 +3,7 @@ import { RunRepository } from '../../history/run.repository';
 import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { ARTIFACTS } from '../contract/artifacts';
 import { holdServices, seedBacklogTask } from './question-holds.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const QUESTION = 'Which store?';
 
@@ -15,7 +16,7 @@ async function setup() {
   const asking = async (key: string, parent?: { id: number }) => {
     const run = parent ? await runs.openSubtask(key, parent.id, 'task-1') : await runs.openWaiting(key, '/target');
     run.currentStep = 'research';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     await documents.putDocument(run, 'questions', `- ${QUESTION}\n`);
     return (await runs.findRun(key)) ?? run;
   };

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Clock } from '../core/clock';
 import { AttachmentStore } from '../history/attachment-store';
@@ -33,7 +34,7 @@ describe('PlanChatService', () => {
       const parent = await save(runs, 'proj-epic', 'implement', 'waiting');
       const subtask = await runs.openSubtask('proj-epic-a', parent.id, 'a');
       writeRunState(subtask, { status: 'running', currentStep: 'implement' });
-      await runs.saveRun(subtask);
+      await storeRun(runs, subtask);
       const sent = await chat.send('proj-epic-a', 'use a cursor', 'ann');
       const log = await app.get(PlanChatStore).read('proj-epic-a');
       expect(log.entries).toEqual([
@@ -52,7 +53,7 @@ describe('PlanChatService', () => {
         currentStep: 'done',
         merge: { merged: { demo: { sha: 'abc', by: null, at: 'x', url: null } } },
       });
-      await runs.saveRun(subtask);
+      await storeRun(runs, subtask);
       await chat.send('proj-epic-a', 'rename it', 'ann');
       const log = await app.get(PlanChatStore).read('proj-epic');
       expect(log.entries).toEqual([expect.objectContaining({ text: 'About a: rename it', state: 'pending' })]);
@@ -70,14 +71,14 @@ describe('PlanChatService', () => {
       for (const [name, outcome] of Object.entries(outcomes)) {
         const run = await save(runs, `proj-${name}`, 'done', 'done');
         writeRunState(run, { status: 'done', currentStep: 'done', merge: outcome });
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         await expect(chat.send(`proj-${name}`, 'more', 'ann')).rejects.toThrow(
           new ConflictException(`proj-${name} is ${name}: start a follow-up run`),
         );
       }
       const removed = await save(runs, 'proj-removed', 'done', 'done');
       removed.workspace = 'removed';
-      await runs.saveRun(removed);
+      await storeRun(runs, removed);
       await expect(chat.send('proj-removed', 'more', 'ann')).rejects.toThrow(
         new ConflictException('proj-removed is removed: start a follow-up run'),
       );
@@ -159,7 +160,7 @@ describe('PlanChatService', () => {
       const runs = app.get(RunRepository);
       const run = await save(runs, 'proj-5', 'implement', 'running');
       writeRunState(run, { status: 'running', currentStep: 'implement', ownerPid: process.pid });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const sent = await chat.send('proj-5', 'also add a flag', 'ann');
       const log = await app.get(PlanChatStore).read('proj-5');
       expect(log.entries).toEqual([
@@ -196,7 +197,7 @@ describe('PlanChatService', () => {
         const run = await save(runs, 'proj-7', 'done', 'done');
         run.split = true;
         writeRunState(run, { status: 'done', currentStep: 'done' });
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         const takeMessages = jest.fn();
         await splitChat(app, turns, takeMessages).record('proj-7', { message: 'add d' }, 'cmd-1');
         expect(takeMessages).toHaveBeenCalledWith('proj-7');
@@ -208,7 +209,7 @@ describe('PlanChatService', () => {
         const runs = app.get(RunRepository);
         const run = await save(runs, 'proj-8', 'implement', 'waiting');
         run.split = true;
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         const takeMessages = jest.fn();
         await splitChat(app, turns, takeMessages).record('proj-8', { message: 'add d' }, 'cmd-1');
         expect(takeMessages).toHaveBeenCalledWith('proj-8');

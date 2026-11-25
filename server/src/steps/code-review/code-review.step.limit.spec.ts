@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { Test } from '@nestjs/testing';
@@ -139,7 +140,7 @@ describe('code-review step and a provider limit', () => {
       const runs = app.get(RunRepository);
       const parent = (await runs.findRun('PROJ-303'))!;
       parent.epicAt = '2026-11-08T18:00:00.000Z';
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       await app.get(PipelineService).step('code-review', 'PROJ-303');
       const calls = agent.mock.calls.map((call) => call[0]);
       const stats = await app.get(VisitRepository).listStats(parent.id);

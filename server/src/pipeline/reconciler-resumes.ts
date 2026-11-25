@@ -23,6 +23,10 @@ import type { SubtaskPort } from './subtask-port';
 /** The states of a run that is over: none can carry a message waiting for the model host, so its chat is not read. */
 const ENDED_STATES: ReadonlySet<string> = new Set(['done', 'merged', 'closed', 'skipped']);
 
+function stillWaitingOnDocker(run: RunEntity): boolean {
+  return run.status === 'waiting' && storedState(run).reason?.code === ERROR_CODES.DOCKER_UNAVAILABLE;
+}
+
 /** The passes of the reconciler that resume a run by themselves. Each resume goes through the start gate as the machine's. */
 export class ReconcilerResumes {
   private readonly logger = new Logger(ReconcilerResumes.name);
@@ -194,19 +198,24 @@ export class ReconcilerResumes {
   /** Docker is still silent: the next try moves forward. The run is read again, and only a run that still waits is written. */
   private async refreshDockerWait(key: string): Promise<void> {
     const run = await this.runs.findRun(key);
-    if (run?.status !== 'waiting' || storedState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
+    if (!run || !stillWaitingOnDocker(run)) return;
     const { code, message, retryAt } = dockerWait(this.clock, this.config.env);
-    writeRunState(run, { status: 'waiting', ownerPid: null, reason: { code, message, retryAt } });
-    await this.runs.saveRun(run);
+    await this.runs.change(key, (row) => {
+      if (!stillWaitingOnDocker(row)) return;
+      writeRunState(row, { status: 'waiting', ownerPid: null, reason: { code, message, retryAt } });
+    });
   }
 
   /** Docker answered: the run goes back to settling, as if its process had just died. */
   private async settleAnswered(key: string): Promise<void> {
     const run = await this.runs.findRun(key);
-    if (run?.status !== 'waiting' || storedState(run).reason?.code !== ERROR_CODES.DOCKER_UNAVAILABLE) return;
-    writeRunState(run, { status: 'running', ownerPid: null });
-    await this.runs.saveRun(run);
-    await this.reconcile(run);
+    if (!run || !stillWaitingOnDocker(run)) return;
+    let settled = false;
+    const written = await this.runs.change(key, (row) => {
+      settled = stillWaitingOnDocker(row);
+      if (settled) writeRunState(row, { status: 'running', ownerPid: null });
+    });
+    if (settled) await this.reconcile(written);
   }
 
   /** A run that waits for a person to reconnect goes on by itself, once, when their connection is ok again. */

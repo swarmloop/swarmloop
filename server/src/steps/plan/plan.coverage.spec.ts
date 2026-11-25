@@ -8,6 +8,7 @@ import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { resultAnswer } from '../../testing/result-answer';
 import { boot, result, seed, writeChat, writeEnv } from './plan.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const LIST = Array.from({ length: 9 }, (_, index) => ({ id: `R${index + 1}`, text: `requirement ${index + 1}` }));
 const ITEMS = LIST.map((requirement) => `do ${requirement.id} - files: a.ts - proof: a.spec.ts`);
@@ -49,7 +50,7 @@ async function planWith(answers: string[], options: Options = {}) {
     const runs = app.get(RunRepository);
     const run = (await runs.findRun(key))!;
     const parent = options.subtask ? await runs.openWaiting(`${key}-parent`, '/target') : null;
-    await runs.saveRun({
+    await storeRun(runs, {
       ...run,
       split: options.split ?? false,
       ...(parent

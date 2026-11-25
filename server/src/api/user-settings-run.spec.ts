@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -31,7 +32,7 @@ async function world() {
     submit: jest.fn(
       async (_type: string, key: string, _payload: object, options: { create?: SubmitOptions['create'] }) => {
         const create = options.create;
-        await runs.saveRun(runs.newWaitingRun(key, null, create?.startedBy, create?.agents));
+        await storeRun(runs, runs.newWaitingRun(key, null, create?.startedBy, create?.agents));
         return { value: { key, status: 'started' }, receipt: { commandId: 'c', revision: 1, state: 'idle' } };
       },
     ),

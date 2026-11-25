@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { resultAnswer, reviewLog } from '../testing/result-answer';
 
 import { mkdir, mkdtemp, writeFile } from 'fs/promises';
@@ -519,7 +520,7 @@ describe('runs api', () => {
       const runRepository = app.get(RunRepository);
       const run = await save(runRepository, 'proj-chk', 'implement', 'waiting');
       run.attemptsChecks = 1;
-      await runRepository.saveRun(run);
+      await storeRun(runRepository, run);
       const now = new Date().toISOString();
       const stat = await app.get(VisitRepository).finishVisit(run, {
         ...visit('checks', 'waiting'),
@@ -569,7 +570,7 @@ describe('runs api', () => {
       const runRepository = app.get(RunRepository);
       const run = await save(runRepository, 'proj-chk-rerun', 'checks', 'running');
       run.activeAttempt = 'att-2';
-      await runRepository.saveRun(run);
+      await storeRun(runRepository, run);
       const stat = await app.get(VisitRepository).finishVisit(run, visit('checks', 'waiting'));
       stat.attemptId = 'att-1';
       await app.get(VisitRepository).saveStat(stat);

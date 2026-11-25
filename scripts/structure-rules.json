@@ -39,9 +39,51 @@
         "server/src/api/",
         "server/src/cli/",
         "server/src/pipeline/pipeline.service.ts",
-        "server/src/pipeline/run-lifecycle.ts"
+        "server/src/pipeline/run-lifecycle.ts",
+        "server/src/pipeline/planner-own-turn.ts"
       ],
-      "pattern": "\\b(accept|submit)\\(\\s*'resume'|\\bstartDetached\\("
+      "reasons": {
+        "server/src/pipeline/planner-own-turn.ts": "sends through CommandService and StartGate as a person's start (PERSON_RESUME)"
+      },
+      "pattern": "\\b(accept|submit)\\(\\s*'resume'|\\bstartDetached\\(|\\bcommands\\.(accept|submit)\\(\\s*[A-Za-z_$][\\w$.]*\\s*,"
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/pipeline/subtask-rebases.ts"],
+      "pattern": "byParent:\\s*true"
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
+        "server/src/steps/shared/epic-between-passes.ts",
+        "server/src/steps/run-rebase.ts",
+        "server/src/pipeline/backlog/epic-main-moves.ts"
+      ],
+      "pattern": "\\btakesMain\\b"
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
+        "server/src/git/rebase/own-change.ts",
+        "server/src/pipeline/parent-tree-sync.ts",
+        "server/src/pipeline/subtask-worktrees.ts"
+      ],
+      "pattern": "'merge-base',\\s*'HEAD'|'--onto'"
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/steps/shared/start-waits.ts"],
+      "pattern": "\\.recordStartWait\\("
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/history/"],
+      "pattern": "\\bsaveRun\\b|(InjectRepository|getRepositoryToken|getRepository)\\(RunEntity\\)|\\.(update|insert|into)\\(RunEntity\\)"
     },
     {
       "include": "dashboard/",

@@ -241,19 +241,19 @@ export class RunRebase {
   private async startAtChecks(run: RunEntity): Promise<'start'> {
     const checks = (await this.flows.activePhases(run.id)).includes('checks');
     await this.flows.noteFlow(run.key, checks ? ['checks', 'ci'] : ['ci'], checks ? 'checks' : 'commit');
-    const next = await this.requireRun(run.key);
-    writeRunState(next, { status: 'waiting', currentStep: checks ? 'checks' : 'commit' });
-    next.stepStartedAt = null;
-    await this.runs.saveRun(next);
+    await this.runs.change(run.key, (next) => {
+      writeRunState(next, { status: 'waiting', currentStep: checks ? 'checks' : 'commit' });
+      next.stepStartedAt = null;
+    });
     return 'start';
   }
 
   private async startAtReview(key: string): Promise<'start'> {
     await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
-    const next = await this.requireRun(key);
-    writeRunState(next, { status: 'waiting', currentStep: 'code-review' });
-    next.stepStartedAt = null;
-    await this.runs.saveRun(next);
+    await this.runs.change(key, (next) => {
+      writeRunState(next, { status: 'waiting', currentStep: 'code-review' });
+      next.stepStartedAt = null;
+    });
     return 'start';
   }
 
@@ -304,10 +304,10 @@ export class RunRebase {
     if (!phases.includes('implementation')) {
       await this.flows.noteFlow(run.key, ['implementation', 'checks', 'code-review', 'ci'], 'implement');
     }
-    const fresh = await this.requireRun(run.key);
-    writeRunState(fresh, { status: 'waiting', currentStep: 'implement' });
-    fresh.stepStartedAt = null;
-    await this.runs.saveRun(fresh);
+    await this.runs.change(run.key, (fresh) => {
+      writeRunState(fresh, { status: 'waiting', currentStep: 'implement' });
+      fresh.stepStartedAt = null;
+    });
     return 'start';
   }
 

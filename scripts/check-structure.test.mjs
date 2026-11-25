@@ -533,3 +533,66 @@ test('forbidOutside reports a resume accepted or a run started outside the start
   assert.match(violations[0], /^server\/src\/pipeline\/subtask-port\.ts:1:/);
   assert.match(violations[1], /^server\/src\/pipeline\/reconciler-resumes\.ts:1:/);
 });
+
+test('forbidOutside reports a command type passed in a variable outside the start gate, and lets the planner own turn be', () => {
+  const text = 'await this.commands.submit(act.command, key, payload, options);\n';
+
+  assert.equal(check({ 'server/src/pipeline/reconciler-resumes.ts': text }).length, 1);
+  assert.deepEqual(check({ 'server/src/pipeline/planner-own-turn.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/pipeline/reconciler-resumes.spec.ts': text }), []);
+});
+
+test('only subtask-rebases sends a part its move as its parent', () => {
+  const text = 'await this.rebase(part, { byParent: true });\n';
+
+  assert.equal(check({ 'server/src/pipeline/run-driver.ts': text }).length, 1);
+  assert.deepEqual(check({ 'server/src/pipeline/subtask-rebases.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/pipeline/subtask-rebases.spec.ts': text }), []);
+});
+
+test('only the epic main door decides which epic takes main', () => {
+  const text = 'const takes = await this.rebaser.takesMain(epic);\n';
+
+  assert.equal(check({ 'server/src/steps/checks/checks.step.ts': text }).length, 1);
+  for (const door of [
+    'server/src/steps/shared/epic-between-passes.ts',
+    'server/src/steps/run-rebase.ts',
+    'server/src/pipeline/backlog/epic-main-moves.ts',
+    'server/src/steps/run-rebase.spec.ts',
+  ]) {
+    assert.deepEqual(check({ [door]: text }), [], door);
+  }
+});
+
+test('only the own-change files say what a move carries', () => {
+  const onto = "await git(['-C', path, 'rebase', '--onto', base, old]);\n";
+  const mergeBase = "await git(['merge-base', 'HEAD', tip]);\n";
+
+  assert.equal(check({ 'server/src/pipeline/run-driver.ts': onto }).length, 1);
+  assert.equal(check({ 'server/src/pipeline/run-driver.ts': mergeBase }).length, 1);
+  for (const door of [
+    'server/src/git/rebase/own-change.ts',
+    'server/src/pipeline/parent-tree-sync.ts',
+    'server/src/pipeline/subtask-worktrees.ts',
+    'server/src/pipeline/parent-tree-sync.spec.ts',
+  ]) {
+    assert.deepEqual(check({ [door]: onto + mergeBase }), [], door);
+  }
+});
+
+test('only start-waits records the wait of an agent start', () => {
+  const text = 'await this.facts.recordStartWait(run, wait);\n';
+
+  assert.equal(check({ 'server/src/steps/implement/implement.step.ts': text }).length, 1);
+  assert.deepEqual(check({ 'server/src/steps/shared/start-waits.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/steps/shared/start-waits.spec.ts': text }), []);
+});
+
+test('only history writes a run row', () => {
+  const text = '@InjectRepository(RunEntity) private readonly runs: Repository<RunEntity>;\n';
+
+  assert.equal(check({ 'server/src/pipeline/run-writer.ts': text }).length, 1);
+  assert.equal(check({ 'server/src/pipeline/run-writer.ts': 'await runs.saveRun(run);\n' }).length, 1);
+  assert.deepEqual(check({ 'server/src/history/run.repository.ts': text }), []);
+  assert.deepEqual(check({ 'server/src/pipeline/run-writer.spec.ts': text }), []);
+});

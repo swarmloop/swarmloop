@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdirSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -295,7 +296,7 @@ describe('MergeWatch', () => {
     await unfinishedRun('PROJ-15', 'blocked', 'blocked', ['acme/demo']);
     const skipped = await find('PROJ-15');
     writeRunState(skipped, { status: 'blocked', reason: { code: REASON.skipped, message: 'skipped by its epic: x' } });
-    await app.get(RunRepository).saveRun(skipped);
+    await storeRun(app.get(RunRepository), skipped);
     answers.set('acme/demo#1', { state: 'closed', by: 'grace', at: '2026-05-02T08:00:00Z' });
 
     await app.get(MergeWatch).run();

@@ -40,7 +40,7 @@ function storedCode(run: Pick<RunEntity, 'stateReason'>): string | undefined {
 async function closeBlocked(step: StepName, code: string | undefined): Promise<string | undefined> {
   const run = { id: 1, key: 'K-1', status: 'running', currentStep: step } as RunEntity;
   await closeStep({
-    runs: { saveRun: jest.fn(), notify: jest.fn() } as never,
+    runs: { change: jest.fn(), notify: jest.fn() } as never,
     visits: { finalize: jest.fn().mockResolvedValue(null) } as never,
     flows: { activePhases: jest.fn().mockResolvedValue(['planning', 'implementation', 'review', 'ci']) } as never,
     root: '/tmp',
@@ -82,7 +82,7 @@ function storedRun(status: Parameters<typeof writeRunState>[1]['status'], code: 
 function releasing(run: RunEntity): {
   findRun: jest.Mock;
   release: jest.Mock;
-  saveRun: jest.Mock;
+  change: jest.Mock;
   released: RunEntity;
 } {
   const released = run;
@@ -94,7 +94,10 @@ function releasing(run: RunEntity): {
         return released;
       },
     ),
-    saveRun: jest.fn().mockResolvedValue(undefined),
+    change: jest.fn(async (_key: string, apply: (row: RunEntity) => void) => {
+      apply(released);
+      return released;
+    }),
     released,
   };
 }

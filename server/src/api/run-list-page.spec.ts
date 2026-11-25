@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { BadRequestException } from '@nestjs/common';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -24,7 +25,7 @@ async function finishPlain(app: Awaited<ReturnType<typeof seededBoot>>, total: n
   for (let n = 1; n <= total - 4; n++) {
     const run = (await runs.findRun(`plain-${n}`))!;
     writeRunState(run, { status: 'done', currentStep: 'commit' });
-    await runs.saveRun(run);
+    await storeRun(runs, run);
   }
 }
 

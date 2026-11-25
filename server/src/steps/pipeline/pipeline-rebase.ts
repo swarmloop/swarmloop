@@ -23,21 +23,21 @@ export function automaticRebase(input: {
       return { ...ended, resume: next === 'resume' };
     } catch (error) {
       if (error instanceof HostUnavailable) {
-        const fresh = (await runs.findRun(run.key))!;
-        writeRunState(fresh, {
-          status: 'waiting',
-          reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: error.message, retryAt: error.retryAt },
+        await runs.change(run.key, (fresh) => {
+          writeRunState(fresh, {
+            status: 'waiting',
+            reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: error.message, retryAt: error.retryAt },
+          });
+          fresh.stepStartedAt = null;
         });
-        fresh.stepStartedAt = null;
-        await runs.saveRun(fresh);
         return { ...ended, message: error.message };
       }
       const detail = `automatic rebase failed: ${error instanceof Error ? error.message : 'unknown error'}`;
-      const fresh = (await runs.findRun(run.key))!;
-      writeRunState(fresh, { status: 'blocked', reason: { code: ERROR_CODES.REBASE_CONFLICT, message: detail } });
-      fresh.stepStartedAt = null;
       await ctx.write(ARTIFACTS.error, `${detail}\n`);
-      await runs.saveRun(fresh);
+      await runs.change(run.key, (fresh) => {
+        writeRunState(fresh, { status: 'blocked', reason: { code: ERROR_CODES.REBASE_CONFLICT, message: detail } });
+        fresh.stepStartedAt = null;
+      });
       return { exitCode: 1, message: detail };
     }
   };

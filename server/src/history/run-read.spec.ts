@@ -1,4 +1,4 @@
-import { adoptRow, changedColumns, RunReadSubscriber, wasRead } from './run-read';
+import { adoptRow, changedColumns, readValue, RunReadSubscriber, wasRead } from './run-read';
 import type { RunEntity } from './entities';
 
 function loaded(): RunEntity {
@@ -35,5 +35,15 @@ describe('run-read', () => {
     adoptRow(run, { id: 1, key: 'K-1', prompt: 'c', generation: 2, agents: null } as RunEntity);
     expect(run).toEqual(expect.objectContaining({ prompt: 'c', generation: 2 }));
     expect(changedColumns(run)).toEqual({});
+  });
+});
+
+describe('readValue', () => {
+  it('gives the value the copy read, whatever the copy holds now', () => {
+    const run = loaded();
+    run.prompt = 'b';
+    (run.agents as unknown as Record<string, string>).implement = 'y';
+    expect(readValue(run, 'prompt')).toBe('a');
+    expect(readValue(run, 'agents')).toEqual({ implement: 'x' });
   });
 });

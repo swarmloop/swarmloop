@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -87,7 +88,7 @@ describe('a block says why by its code, not by its text', () => {
         currentStep: block.step,
         reason: { code: block.code, message: block.text },
       });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await app.get(DocumentRepository).putDocument(run, 'error', `${block.text}\n`);
       runs.notify(key);
       await app.get(RunStateRefresh).settled();

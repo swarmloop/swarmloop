@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { resultAnswer } from '../../testing/result-answer';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -71,7 +72,7 @@ describe('subtask questions', () => {
   async function ask(id: string, questions: string, step = 'research'): Promise<void> {
     const run = await child(app, id);
     writeRunState(run, { status: 'waiting', currentStep: step });
-    await app.app.get(RunRepository).saveRun(run);
+    await storeRun(app.app.get(RunRepository), run);
     await app.app.get(DocumentRepository).putDocument(run, 'questions', questions);
   }
 

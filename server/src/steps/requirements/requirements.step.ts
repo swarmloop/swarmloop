@@ -113,9 +113,10 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
     const key = opened.run.key;
     const effectivePrompt = prompt ?? opened.prior?.prompt ?? undefined;
     if (effectivePrompt !== undefined) {
-      opened.run.prompt = effectivePrompt;
       try {
-        await this.runs.saveRun(opened.run);
+        opened.run = await this.runs.change(key, (row) => {
+          row.prompt = effectivePrompt;
+        });
       } catch (error) {
         throw new VisitLeftOpen({ exitCode: 1, message: this.failureText(error) });
       }

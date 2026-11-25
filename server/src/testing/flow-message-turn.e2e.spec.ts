@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { basename } from 'path';
 import { PlanChatService } from '../api/plan-chat.service';
 import { RunListRows } from '../api/run-list-rows';
@@ -92,7 +93,7 @@ describe('a person writes to the planner of a run no step drives', () => {
       await flow.app.pipeline.runThrough(KEY, { auto: true });
       const run = (await runOf())!;
       writeRunState(run, change);
-      await flow.app.app.get(RunRepository).saveRun(run);
+      await storeRun(flow.app.app.get(RunRepository), run);
       flow.app.clock.advance(1000);
     }
     await flow.app.app.get(PlanChatService).send(KEY, text, 'ana');
@@ -244,7 +245,7 @@ describe('a person writes to the planner of a run no step drives', () => {
     await start({ 'plan-turn': [block({ reply: 'Going on.', resume: true })] });
     const run = (await runOf())!;
     writeRunState(run, { ...STOPPED, currentStep: 'research' });
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
 
     await writeAt(null, 'Please plan it small');
 
@@ -269,7 +270,7 @@ describe('a person writes to the planner of a run no step drives', () => {
     await flow.app.pipeline.runThrough(KEY, { auto: true });
     const run = (await runOf())!;
     writeRunState(run, STOPPED);
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
     const steps = blocks.steps.length;
 
     await expect(

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 
@@ -113,7 +114,7 @@ describe('runs api', () => {
       const flows = app.get(FlowRepository);
       const run = await remember(runs, documents, 'proj-51', 'done', 'done');
       run.prompt = 'branch: release\n';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await documents.putDocument(run, 'implementation', '- changed the field\n');
       const branch = 'feature/proj-51-ship-the-field';
       git(tree, ['push', '-u', 'origin', branch]);
@@ -343,7 +344,7 @@ describe('runs api', () => {
       const documents = app.get(DocumentRepository);
       const run = await remember(runs, documents, 'proj-57', 'done', 'done');
       run.prompt = 'branch: release\n';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await documents.putDocument(run, 'implementation', '- changed the field\n');
       const result = await app.get(RunRebaseService).rebase('proj-57');
       expect(result).toEqual({ key: 'proj-57', status: 'started' });
@@ -477,7 +478,7 @@ describe('runs api', () => {
       const documents = app.get(DocumentRepository);
       const parent = await remember(runs, documents, 'proj-60', 'implement', 'waiting');
       parent.split = true;
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       await documents.putDocument(
         parent,
         'subtasks',
@@ -485,7 +486,7 @@ describe('runs api', () => {
       );
       const child = await runs.openSubtask('proj-60-a', parent.id, 'a');
       writeRunState(child, { status: subtaskStatus, currentStep: 'implement', ownerPid: process.pid });
-      await runs.saveRun(child);
+      await storeRun(runs, child);
       const records = [{ project: 'demo', iid: 1, url: 'https://code.example/1', draft: false, summary: '' }];
       await documents.putDocument(child, 'repos', 'demo\n');
       await documents.putDocument(child, 'merge_request', renderMergeRequest(records));
@@ -533,7 +534,7 @@ describe('runs api', () => {
           currentStep: 'implement',
           reason: { code: 'SUBTASK_WAITING', message: 'waiting for its subtasks' },
         });
-        await runs.saveRun(parent);
+        await storeRun(runs, parent);
         await documents.putDocument(
           parent,
           'subtasks',
@@ -541,7 +542,7 @@ describe('runs api', () => {
         );
         const child = await runs.openSubtask('proj-61-a', parent.id, 'a');
         writeRunState(child, { status: 'waiting', currentStep: 'implement' });
-        await runs.saveRun(child);
+        await storeRun(runs, child);
         await documents.putDocument(child, 'repos', 'demo\n');
         const rebased: string[] = [];
         jest.spyOn(app.get(CommandService), 'accept').mockImplementation((type, key) => {

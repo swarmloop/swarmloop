@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { agentFor } from '../config/agents';
@@ -125,7 +126,7 @@ describe('the planner of an epic escalates the question of a part', () => {
     const epic = await save(get(RunRepository), KEY, 'implement', 'waiting');
     epic.split = true;
     epic.projects = 'demo\n';
-    await get(RunRepository).saveRun(epic);
+    await storeRun(get(RunRepository), epic);
     await documents().putDocument(epic, 'requirements', requirements);
     await documents().putDocument(epic, 'repos', 'demo\n');
     await documents().putDocument(epic, 'contract', '- api (owner a): the api\n');
@@ -142,7 +143,7 @@ describe('the planner of an epic escalates the question of a part', () => {
     await documents().putDocument(child, 'repos', 'demo\n');
     await documents().putDocument(child, 'questions', `- ${QUESTION}\n`);
     writeRunState(child, { status: 'waiting', currentStep: 'research' });
-    await get(RunRepository).saveRun(child);
+    await storeRun(get(RunRepository), child);
     return child.key;
   }
 

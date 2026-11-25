@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { Logger } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
@@ -32,7 +33,7 @@ describe('pipeline service', () => {
       const runs = app.get(RunRepository);
       const run = await runs.begin('PROJ-79', 'pipeline');
       run.status = 'waiting';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const executed: string[] = [];
       jest.spyOn(app.get(PipelineStep), 'execute').mockImplementation(async () => {
         executed.push('PROJ-79');
@@ -40,7 +41,7 @@ describe('pipeline service', () => {
         const fresh = (await runs.findRun('PROJ-79'))!;
         fresh.currentStep = 'done';
         fresh.status = 'done';
-        await runs.saveRun(fresh);
+        await storeRun(runs, fresh);
         return { exitCode: 0, message: 'CI passed' };
       });
       const result = await app.get(PipelineService).runThrough('PROJ-79');
@@ -83,7 +84,7 @@ describe('pipeline service', () => {
       const seeded = await runs.begin('PROJ-62', 'prepare');
       seeded.status = 'waiting';
       seeded.currentStep = 'prepare';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       await documents.putDocument(
         seeded,
         'requirements',
@@ -107,7 +108,7 @@ describe('pipeline service', () => {
       const seeded = await runs.begin('PROJ-67', 'prepare');
       seeded.status = 'waiting';
       seeded.currentStep = 'prepare';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       const start = jest.spyOn(pipeline, 'startDetached').mockResolvedValue({ exitCode: 0, message: 'started' });
       await pipeline.replay('PROJ-67', 'prepare', 'Narrow the scope', { by: 'planner', level: 0 });
       expect(start.mock.calls[0]?.[1]).toMatchObject({ startBy: 'planner', level: 0 });
@@ -128,7 +129,7 @@ describe('pipeline service', () => {
       const seeded = await runs.begin('PROJ-65', 'prepare');
       seeded.status = 'done';
       seeded.currentStep = 'done';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       await documents.putDocument(
         seeded,
         'requirements',
@@ -162,7 +163,7 @@ describe('pipeline service', () => {
       const seeded = await runs.begin('PROJ-66', 'prepare');
       seeded.status = 'done';
       seeded.currentStep = 'done';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
       const url = 'https://gitlab.example/group/demo/-/merge_requests/3';
       await documents.putDocument(
@@ -188,7 +189,7 @@ describe('pipeline service', () => {
       const seeded = await runs.begin('PROJ-63', 'code-review');
       seeded.status = 'running';
       seeded.currentStep = 'code-review';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       const charge = jest.spyOn(app.get(CodeReviewStep), 'charge').mockResolvedValue(null);
       app.get(CommandService).register('resume', () => Promise.resolve(undefined));
       await app.get(PipelineService).onApplicationBootstrap();
@@ -227,7 +228,7 @@ describe('pipeline service', () => {
         run.status = 'running';
         run.currentStep = 'code-review';
         run.ownerPid = process.pid;
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         throw new Error('push to https://user:pass@host/x failed with ghp_abc123\nsecond line');
       });
       const pipeline = app.get(PipelineService);
@@ -256,10 +257,10 @@ describe('pipeline service', () => {
       const runs = app.get(RunRepository);
       const waiting = await runs.begin('PROJ-81', 'implement');
       writeRunState(waiting, { status: 'waiting', currentStep: 'implement' });
-      await runs.saveRun(waiting);
+      await storeRun(runs, waiting);
       const done = await runs.begin('PROJ-82', 'done');
       writeRunState(done, { status: 'done', currentStep: 'done' });
-      await runs.saveRun(done);
+      await storeRun(runs, done);
       const own = jest.spyOn(app.get(PlannerOwnTurn), 'take').mockResolvedValue();
       const planTurn = jest.spyOn(app.get(PlannerTurns), 'take').mockResolvedValue('none');
       const pipeline = app.get(PipelineService);
@@ -280,7 +281,7 @@ describe('pipeline service', () => {
       const runs = app.get(RunRepository);
       const waiting = await runs.begin('PROJ-83', 'implement');
       writeRunState(waiting, { status: 'waiting', currentStep: 'implement' });
-      await runs.saveRun(waiting);
+      await storeRun(runs, waiting);
       const own = jest.spyOn(app.get(PlannerOwnTurn), 'take').mockResolvedValue();
       app.get(PipelineService).takeMessages('PROJ-83', 'host-message-1-2026-01-01T00:08:00.000Z');
       await app.get(PlannerTurns).idle();

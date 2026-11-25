@@ -39,6 +39,7 @@ import { requirementsBrief } from '../shared/requirements-brief';
 import { save } from '../../testing/runs.spec-helpers';
 
 import { TOKEN, requirementsBody, boot, writeEnv, emptyAgent, listen } from './requirements.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 describe('requirements step', () => {
   it('stores the epic, comments, and a paste, then writes requirements without a model', async () => {
@@ -115,7 +116,7 @@ describe('requirements step', () => {
       const fetch = jest.spyOn(app.get<IssueTracker>(ISSUE_TRACKER), 'fetch');
       const run = await save(app.get(RunRepository), 'PROJ-2', 'requirements', 'waiting');
       run.startedBy = 'ann';
-      await app.get(RunRepository).saveRun(run);
+      await storeRun(app.get(RunRepository), run);
       const result = await app.get(PipelineService).run('PROJ-2', { prompt: 'Do the ticket' });
       expect(result.exitCode).toBe(0);
       expect(fetch).toHaveBeenCalledWith('PROJ-2', expect.any(String), 'ann');
@@ -270,10 +271,12 @@ describe('requirements step', () => {
     const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
     try {
       const runs = app.get(RunRepository);
-      const save = runs.saveRun.bind(runs);
-      jest
-        .spyOn(runs, 'saveRun')
-        .mockImplementation((run) => (run.prompt ? Promise.reject(new Error('disk full')) : save(run)));
+      const change = runs.change.bind(runs);
+      jest.spyOn(runs, 'change').mockImplementation(async (key, apply) => {
+        const run = await change(key, apply);
+        if (run.prompt) throw new Error('disk full');
+        return run;
+      });
       const result = await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
       expect(result).toEqual({
         exitCode: 1,
@@ -292,7 +295,7 @@ describe('requirements step', () => {
     const runs = app.get(RunRepository);
     const seeded = await runs.begin('PROJ-4', 'requirements');
     seeded.status = 'waiting';
-    await runs.saveRun(seeded);
+    await storeRun(runs, seeded);
     const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
     await documents.save(
       documents.create({
@@ -424,7 +427,7 @@ describe('requirements step', () => {
       const runs = app.get(RunRepository);
       const created = await runs.openWaiting('widget', '');
       created.projects = 'billing\n';
-      await runs.saveRun(created);
+      await storeRun(runs, created);
       const result = await app.get(PipelineService).step('requirements', 'widget', { prompt: 'Do it' });
       expect(result.exitCode).toBe(1);
       expect(result.message).toContain('billing is not in SWARMLOOP_REPOS');
@@ -450,7 +453,7 @@ describe('requirements step', () => {
       const created = await runs.openWaiting('widget', '');
       created.projects = 'fresh\nlocal\n';
       created.startedBy = 'ana';
-      await runs.saveRun(created);
+      await storeRun(runs, created);
       const result = await app.get(PipelineService).step('requirements', 'widget', { prompt: 'Do it' });
       expect(result.exitCode).toBe(0);
       expect(clone.mock.calls).toEqual([['fresh', 'ana']]);
@@ -599,7 +602,7 @@ describe('requirements step', () => {
       if (advanced) {
         advanced.currentStep = 'branch';
         advanced.status = 'waiting';
-        await runs.saveRun(advanced);
+        await storeRun(runs, advanced);
       }
       const third = await app.get(PipelineService).step('requirements', 'PROJ-2');
       expect(third.exitCode).toBe(0);

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import type { Socket } from 'socket.io-client';
 import type { FlowView } from '../contract/api';
 import type { RunEntity } from '../history/entities';
@@ -53,7 +54,7 @@ describe('the epic page follows its subtasks', () => {
     await documents().putDocument(parent, 'subtasks', JSON.stringify([task('a', []), task('b', ['a'])]));
     const first = await runs().openSubtask(A, parent.id, 'a');
     writeRunState(first, { status: 'running', currentStep: 'implement' });
-    await runs().saveRun(first);
+    await storeRun(runs(), first);
     await runs().openSubtask(B, parent.id, 'b');
     const page = new HeldRunPage(app, PARENT);
     return { page, socket: await page.open(sockets) };
@@ -87,7 +88,7 @@ describe('the epic page follows its subtasks', () => {
   const move = (status: string, currentStep: string, reason?: object) => async (run: RunEntity) => {
     writeRunState(run, { status, currentStep });
     run.stateReason = reason ? JSON.stringify(reason) : null;
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   };
 
   it("updates a task's step, estimate, note and waits-for, and the epic's estimate, on a subtask's step change alone", async () => {

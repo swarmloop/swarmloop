@@ -1,3 +1,4 @@
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { backlogHarness } from './backlog.spec-helpers';
 
 type Harness = Awaited<ReturnType<typeof backlogHarness>>;
@@ -20,7 +21,7 @@ async function epicBetweenPasses(h: Harness, options: { paused?: boolean } = {})
   const backlog = await h.seedBacklog('one', { owner: 'ada', repositories: ['web'], ...options });
   const milestone = await h.seedMilestone(backlog.id as number, 1);
   const key = 'a-run';
-  await h.runs.saveRun(h.runs.newWaitingRun(key, null, 'ada'));
+  await storeRun(h.runs, h.runs.newWaitingRun(key, null, 'ada'));
   await h.seedTask(backlog.id as number, 'a', { milestoneId: milestone.id as number, runKey: key });
   await h.markSplit(key);
   await h.moveRun(key, { status: 'waiting', currentStep: 'implement', reason: WAITING });

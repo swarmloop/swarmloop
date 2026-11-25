@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -62,7 +63,7 @@ describe('a person’s Stop holds', () => {
     const run = await save(runs(), KEY, 'implement', 'running');
     run.activeAttempt = 'attempt-1';
     run.stepStartedAt = new Date(flow.app.clock.now()).toISOString();
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     flow.dockerSilent(10 * MINUTE);
 
     const result = await flow.app.pipeline.stop(KEY);
@@ -91,7 +92,7 @@ describe('a person’s Stop holds', () => {
     const parent = await save(runs(), KEY, 'implement', 'waiting');
     parent.split = true;
     parent.projects = 'demo\n';
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await documents().putDocument(parent, 'requirements', requirements);
     await documents().putDocument(parent, 'repos', 'demo\n');
     await documents().putDocument(parent, 'subtasks', `${JSON.stringify([task('a')])}\n`);
@@ -104,7 +105,7 @@ describe('a person’s Stop holds', () => {
       currentStep: 'implement',
       reason: { code: REASON.stopped, message: STOP_NOTE },
     });
-    await runs().saveRun(child);
+    await storeRun(runs(), child);
     const launched = flow.launched.length;
     jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue('Build it in this task.');
 

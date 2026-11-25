@@ -1,3 +1,4 @@
+import { storeRun } from '../../../testing/store-run.spec-helpers';
 import type { BacklogTurnAction } from '../../../agent-result/definitions/backlog-turn';
 import { HostUnavailable } from '../../../core/swarmloop-error';
 import { NoFailedTurn } from './backlog-planner';
@@ -270,7 +271,7 @@ describe('BacklogPlanner', () => {
       await h.seedTask(id, 'going', { milestoneId: milestone.id, runKey: 'going-1', status: 'running' });
       const run = (await h.runs.findRun('going-1')) ?? h.runs.newWaitingRun('going-1', null, 'owner');
       writeRunState(run, { status: 'waiting', currentStep: 'research', facts: { asksPlanner: true } });
-      await h.runs.saveRun(run);
+      await storeRun(h.runs, run);
       const documents = h.db.app.get(DocumentRepository);
       await documents.putDocument(run, 'questions', '- Which store?\n');
       const facts = { slug: 'going', runKey: 'going-1', questionId: 'Which store?', question: 'Which store?' };

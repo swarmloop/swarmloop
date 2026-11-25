@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -42,7 +43,7 @@ describe('the review stamps the files it read, and merge-request sends a stale r
   it('fails a review whose git probe fails, stamps nothing, and goes on to a merge request after a retry', async () => {
     const run = await flow.begin('merge-request');
     run.currentStep = 'code-review';
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     failGit(['rev-parse', '--show-toplevel'], { stderr: 'fatal: detected dubious ownership in repository' }, 2);
 
     const failed = await flow.app.pipeline.step('code-review', KEY);

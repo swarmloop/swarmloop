@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { parseSubtasks } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
@@ -94,7 +95,7 @@ describe('a backlog planner turn sends its commands to a run that waits on a que
   async function waitingEpic(): Promise<string> {
     const parent = await epic();
     parent.epicAt = flow.app.clock.iso();
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await review(parent, missing('nothing writes it'));
     await pass();
     await merged('gap-1', 4);
@@ -108,7 +109,7 @@ describe('a backlog planner turn sends its commands to a run that waits on a que
     // The passes above ran the step by hand: the epic waits where its own question was asked.
     const waiting = (await runs().findRun(KEY))!;
     writeRunState(waiting, { status: 'waiting', currentStep: 'implement' });
-    await runs().saveRun(waiting);
+    await storeRun(runs(), waiting);
     return asked;
   }
 

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Subtask } from '../contract/subtask';
@@ -58,7 +59,7 @@ describe('a return to a split parent whose tasks are merged', () => {
     const run = await remember(flow.app.app.get(RunRepository), documents, KEY, 'code-review', 'waiting');
     run.split = true;
     run.projects = 'demo\n';
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
     await documents.putDocument(run, 'requirements', REQUIREMENTS);
     await documents.putDocument(run, 'requirement_list', '[{"id":"R1","text":"ship the field"}]\n');
     await documents.putDocument(run, 'implementation', '- the tasks merged\n');

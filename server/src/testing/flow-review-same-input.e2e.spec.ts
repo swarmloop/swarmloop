@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { CODE_REVIEWERS } from '../contract/steps';
 import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
@@ -32,7 +33,7 @@ describe('a run whose implement changes nothing after a return', () => {
     const run = await flow.begin('merge-request');
     run.currentStep = 'code-review';
     await flow.app.app.get(DocumentRepository).putDocument(run, 'requirements', REQUIREMENTS);
-    await runs.saveRun(run);
+    await storeRun(runs, run);
 
     const ended = await flow.app.pipeline.runThrough(KEY, { auto: true });
 
@@ -79,7 +80,7 @@ describe('a run whose implement changes nothing after a return', () => {
     const run = await flow.begin('merge-request');
     run.currentStep = 'code-review';
     await flow.app.app.get(DocumentRepository).putDocument(run, 'requirements', REQUIREMENTS);
-    await runs.saveRun(run);
+    await storeRun(runs, run);
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 

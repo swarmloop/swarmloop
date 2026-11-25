@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { DocumentRepository } from '../history/document.repository';
@@ -121,7 +122,7 @@ describe('a whole run from requirements to done with every agent step answering 
     const runs = flow.app.app.get(RunRepository);
     const run = await remember(runs, flow.app.app.get(DocumentRepository), KEY, 'requirements', 'waiting');
     run.codeHost = 'gitlab';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     // The scripted commit step pushes nothing and leaves no pipeline ref, so the ref of the pushed head stands for it.
     const ref = `project: group/demo\nref: ${FEATURE}\nsha: ${git(flow.tree, ['rev-parse', 'HEAD'])}\n`;
     await putStamped(flow.app.app, run, 'pipeline_ref', ref, ['demo']);

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { RunQueriesService } from '../api/run-queries.service';
 import { restartWaitSentence } from '../contract/restart-wait';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -61,7 +62,7 @@ describe('a passing outage or a restart heals on the reconciler ticks', () => {
         retryAt,
       },
     });
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
 
     await tickFor(9);
     expect(accept).not.toHaveBeenCalled();

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
@@ -42,7 +43,7 @@ async function splitRun(app: TestApp, key: string): Promise<void> {
   const parent = await save(runs, key, 'implement', 'waiting');
   parent.split = true;
   parent.projects = 'demo\n';
-  await runs.saveRun(parent);
+  await storeRun(runs, parent);
   await documents.putDocument(parent, 'requirements', requirements(key));
   await documents.putDocument(parent, 'repos', 'demo\n');
   await documents.putDocument(parent, 'subtasks', `${JSON.stringify(IDS.map(task))}\n`);
@@ -75,7 +76,7 @@ async function finish(app: TestApp, key: string, iid: number): Promise<void> {
   const record = { project: 'demo', iid, url: `https://code.example/demo/${iid}`, draft: false, summary: '' };
   await documents.putDocument(run, 'merge_request', renderMergeRequest([record]));
   writeRunState(run, { status: 'done', currentStep: 'done' });
-  await runs.saveRun(run);
+  await storeRun(runs, run);
 }
 
 const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));

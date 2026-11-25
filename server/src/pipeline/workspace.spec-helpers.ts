@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -75,7 +76,7 @@ export async function ageRun(app: TestingModule, key: string, status: string, da
   const runs = app.get(RunRepository);
   const run = (await runs.findRun(key))!;
   writeRunState(run, { status, ownerPid: null, activeAttempt: null });
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   const table = app.get<Repository<RunEntity>>(getRepositoryToken(RunEntity));
   await table.update({ key }, { updatedAt: new Date(Date.now() - days * DAY_MS).toISOString() });
   return (await runs.findRun(key))!;

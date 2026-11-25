@@ -299,7 +299,7 @@ When `main` moves while the epic waits, the epic takes it (rule 6). A conflict g
   - a return of an epic does not always reach implement (f124);
   - the epic may read its tasks before their queued move has run (epic-round-moves, not in M1);
   - an epic's plan review may not change a task that has not started (plan-review-waiting-part, not in M1).
-- An epic whose pass waits on a question that its parts or its gaps raised takes a new green main too, with no part running (rule 6; `takesMain` in `steps/shared/epic-between-passes.ts`, read by the main move and by an epic's Rebase). Every open part moves with its epic; a part that waits on a question or a sibling is moved and keeps its wait.
+- An epic whose pass waits on a question that its parts or its gaps raised takes a new green main too, with no part running (rule 6; `takesMain` in `steps/shared/epic-between-passes.ts`, read by the main move and by an epic's Rebase; a structure rule in `scripts/structure-rules.json` fails any other file that names `takesMain`). Every open part moves with its epic; a part that waits on a question or a sibling is moved and keeps its wait.
 - Child runs follow the flow, but several mechanisms have their own code for children (3.11, 3.12).
 
 ## 3.11 Base moves and conflicts
@@ -326,7 +326,7 @@ The journal makes a rebase that a crash cut finish or roll back. Every git opera
 
 Every path that carries a run's change takes the one rule of step 2, `ownChangeBase` in `git/rebase/own-change.ts`. Paths 1, 2, 4, 5, 7 and 8 reach it through `rebaseFeatureRepos` and `squashOffMount` (a squash of `ownBase..HEAD` in a scratch clone, one commit with the run's message; nothing to carry means the worktree is reset to the new base). Path 6 (`catchUp`) and path 3 (`ParentTreeSync.commit`) run `git rebase --onto <new> <ownBase>`. A conflict that the squash from git's merge base parked before this rule (a journal entry with no `ownBase`) is not resolved: the worktree goes back to the head before that move and the move is taken again by the rule (`git/rebase/retake.ts`). A review stands when `sameOwnDiff` finds the carried change equal to the one reviewed, both measured from the same `ownBase`.
 
-Paths 1, 4 and 5 move an epic's open parts through one rule, `pipeline/subtask-rebases.ts` (rule 6). A part that waits on a question or a sibling moves onto the new tip and keeps its wait: the move does not start it. A stopped part stays a person's and is not moved. A clean Rebase of an epic publishes the rebased branch before its parts move, as the main move does. The one-path target above stays with base-moves.
+Paths 1, 4 and 5 move an epic's open parts through one rule, `pipeline/subtask-rebases.ts` (rule 6). A part that waits on a question or a sibling moves onto the new tip and keeps its wait: the move does not start it. A stopped part stays a person's and is not moved. A clean Rebase of an epic publishes the rebased branch before its parts move, as the main move does. The one-path target above stays with base-moves. A structure rule fails any other file that sends a part its move as its parent (`byParent: true`), and another rule fails any file but `own-change.ts`, `parent-tree-sync.ts` and `subtask-worktrees.ts` that says what a move carries (`'merge-base', 'HEAD'` or `--onto`); both are in `scripts/structure-rules.json`.
 
 epic-conflict-implement removed the wait for a person. One path is planned after M1.
 
@@ -361,6 +361,7 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 - passing a backlog run's questions on (`question-pass-on.ts`);
 - question parts and holds;
 - the answers route.
+- f129's message route has no structure rule: `messageTurn` is a pure decision its readers import, and a second decision would carry another name that no pattern catches.
 
 A part's starter answer escalates by the chain of f124 (`starter-answer.ts`, `StarterExchange`).
 Every other planner answer, a step's question and a reply to a message on any path (the plan step's `answerMessages`, f129's own turn), has its `escalate` read by one function (`steps/shared/reply-escalation.ts`). It goes up only through `pipeline/escalation.ts`: `PlannerTurns.raise` puts the entry the plan step wrote to the person or, on a backlog run, to the backlog planner first. A subtask's message escalation is a `StarterExchange` hand-up for its epic's planner. A person's message has no step to read the planner's answer, so that answer is a taken line of the chat.
@@ -380,6 +381,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 **Today.**
 - The backlog planner sends Resume, Replay of a step with its instruction, Rebase, an answer, Stop, Skip and a message on every run of its backlog, an epic's parts included, through `PlannerRunCommands.send`, and reads a run's failed step, check output and failed CI jobs (`pipeline/backlog/planner/run-facts.ts`, cut in `event-facts.ts`).
 - There are 11 command types: `start`, `resume`, `replay`, `rebase`, `answer`, `plan-chat`, `stop`, `step`, `remove`, `skip` and `projects`.
+- The resume rule in `scripts/structure-rules.json` fails a resume or a detached start outside the start gate, the API, the CLI, `pipeline.service.ts` and `run-lifecycle.ts`, also when the command type is passed in a variable (`commands.submit(type, …)`). `planner-own-turn.ts` is on its allow list: it sends through `CommandService` and `StartGate` as a person's start (`PERSON_RESUME`).
 - `step` stays as the type through which the local CLI's `swarmloop step` records its run. A reviewer's `Run again` and its route are gone.
 - A run's planner answers a message in a turn of its own when no step drives the run (`pipeline/planner-own-turn.ts`). It sends Resume, which leaves the message for the resumed run, or Replay of a step with its instruction.
 
@@ -408,7 +410,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
   - child-run waits;
   - a stopped run's pending message in its plan chat, which waits for the model host (`wait` of the entry).
 - The reconciler has eight separate timed resumes: limits, host, CI not started, docker, disk, stalled, git auth and a stopped run's message turn.
-- An agent start that waits before its first output, for a free agent place (with how many are busy) or for the server's pause, stores that wait with its run's state (on its turn row for a backlog planner turn) through `steps/shared/start-waits.ts`, and the run page, the run list and the backlog chat show it. A place comes back when its launch ends, because the launch ends its container in every ending (`agent/agent-launch.ts`).
+- An agent start that waits before its first output, for a free agent place (with how many are busy) or for the server's pause, stores that wait with its run's state (on its turn row for a backlog planner turn) through `steps/shared/start-waits.ts` (a structure rule fails any other file that calls `recordStartWait`), and the run page, the run list and the backlog chat show it. A place comes back when its launch ends, because the launch ends its container in every ending (`agent/agent-launch.ts`).
 - c04 closes this in M1; wait-frees-place and held-run-says-so come after.
 
 ## 3.16 Recovery after a crash or restart
@@ -465,11 +467,12 @@ A limit stops the run in a wait that names it (rule 18). Every visit stores only
 - **The database** is one SQLite database in WAL mode. Changes come only through additive migrations, behind a guard that backs up the database before it migrates.
 - **What is written once:** documents, events and stalls are appended and never rewritten. A newer document of a kind supersedes the older one.
 - **A write of a run** sets only the columns its writer changed, so a copy read earlier never sets back a change made since; after the write the copy is the stored row.
+- **A change of a run's row** goes through one door, `RunRepository.change`. It writes the columns its apply changed only while each still holds the value read (c01's record, `history/run-read.ts`, through `history/conditional-write.ts`). A write that lost a race is applied again on the row as it is now, in the same process one at a time and against a CLI process on the same database. Rows are created in two places inside `history/`: `RunRepository.insertRun`, and `CommandRepository.accept`, which creates the row of a command for a run that does not exist yet inside its own transaction.
 - **The disk guard** stops a step from starting on a disk it may fill. It frees old runs first, then docker leftovers, and only then makes the run wait (`MIN_FREE_GB`).
 - **Retention** removes everything a finished run leaves after `RETAIN_DONE_DAYS`, and deleting a run removes everything of it.
 - **Housekeeping** runs at startup and once a day.
 
-**Today.** Holds (`history/`, a run's row is written by `history/run.repository.ts` and `history/visit.repository.ts` from what the copy read, kept in `history/run-read.ts`; `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
+**Today.** Holds (`history/`, a run's row is written by `history/run.repository.ts` and `history/visit.repository.ts` from what the copy read, kept in `history/run-read.ts`; a change of it goes through `RunRepository.change` and `history/conditional-write.ts`, and the lint rule `run-write/no-run-write` (`eslint.run-write-rules.mjs`, registered in `eslint.config.mjs`) and the structure rule in `scripts/structure-rules.json` fail a second path; `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
 
 ## 3.20 People, access and connections
 

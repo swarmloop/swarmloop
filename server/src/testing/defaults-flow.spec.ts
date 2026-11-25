@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { AppConfig } from '../config/env';
@@ -55,7 +56,7 @@ describe('the defaults the server ships, in a whole flow that sets nothing', () 
     const run = await runs.openSplit(KEY);
     mkdirSync(join(app.root, 'worktrees', KEY, 'billing-api'), { recursive: true });
     run.currentStep = 'plan';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     await documents.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
     await documents.putDocument(run, 'repos', 'billing-api\n');
 

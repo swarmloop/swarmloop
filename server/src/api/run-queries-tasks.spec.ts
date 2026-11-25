@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -17,7 +18,7 @@ describe('RunQueriesService.tasks', () => {
       const runs = app.get(RunRepository);
       const parent = await runs.begin('proj-t1', 'implement');
       parent.spentUsd = 2;
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       await app
         .get(DocumentRepository)
         .putDocument(
@@ -40,7 +41,7 @@ describe('RunQueriesService.tasks', () => {
         const child = await runs.openSubtask(`proj-t1-${id}`, parent.id, id);
         writeRunState(child, { status: 'running', currentStep: 'implement' });
         child.spentUsd = 1;
-        await runs.saveRun(child);
+        await storeRun(runs, child);
       }
 
       const queries = app.get(RunQueriesService);

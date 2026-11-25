@@ -23,6 +23,7 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { PrepareStep } from './prepare.step';
 
 import { boot, seedRequirements, repoWithMain, git, hostFetch, commitFile } from './prepare.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 describe('prepare step', () => {
   it('fails when no project was stored and does not scan other repositories', async () => {
@@ -80,7 +81,7 @@ describe('prepare step', () => {
         throw new Error('run is missing');
       }
       run.projects = 'app\n';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const result = await app.get(PipelineService).step('prepare', 'PROJ-9');
       expect(result.exitCode).toBe(0);
       expect((await runs.findRun('PROJ-9'))?.codeHost).toBe('');
@@ -107,7 +108,7 @@ describe('prepare step', () => {
         throw new Error('run is missing');
       }
       run.projects = 'other\n';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const refused = await app.get(PipelineService).step('prepare', 'PROJ-10');
       expect(refused.exitCode).toBe(1);
       expect(refused.message).toContain('other is not in SWARMLOOP_REPOS');
@@ -118,7 +119,7 @@ describe('prepare step', () => {
         throw new Error('run is missing');
       }
       listed.projects = 'app\n';
-      await runs.saveRun(listed);
+      await storeRun(runs, listed);
       const ok = await app.get(PipelineService).step('prepare', 'PROJ-11');
       expect(ok.exitCode).toBe(0);
       expect(existsSync(join(swarm, 'worktrees', 'PROJ-11', 'app'))).toBe(true);
@@ -477,7 +478,7 @@ describe('prepare step', () => {
       }
       run.currentStep = 'branch';
       run.status = 'waiting';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       await documents.save(
         documents.create({

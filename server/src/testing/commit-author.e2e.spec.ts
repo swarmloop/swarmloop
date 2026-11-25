@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -30,7 +31,7 @@ describe('the person of a run is the author and committer of its commits', () =>
     flow = await createFlowHarness(KEY, { realHost: true, realSteps: ['branch', 'commit'], fakeHost });
     const run = await flow.begin('plan');
     const runs = flow.app.app.get(RunRepository);
-    await runs.saveRun({ ...run, startedBy: person });
+    await storeRun(runs, { ...run, startedBy: person });
     const registry = flow.app.app.get(CodeHostRegistry);
     jest.spyOn(registry, 'forRun').mockResolvedValue(registry);
     jest.spyOn(registry, 'requiredCredentials').mockReturnValue(flow.host.selected());

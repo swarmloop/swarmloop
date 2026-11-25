@@ -21,6 +21,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { resultAnswer } from '../../testing/result-answer';
 import { answer, boot, research, result, seed, writeEnv } from './research.step.spec-helpers';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const REFUSED_WRITE = JSON.stringify({
   type: 'system',
@@ -42,7 +43,7 @@ describe('research step', () => {
     const seeded = await runs.begin('PROJ-20', 'prepare');
     seeded.status = 'waiting';
     seeded.currentStep = 'research';
-    await runs.saveRun(seeded);
+    await storeRun(runs, seeded);
     await documentRepository.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
     try {
       const first = await app.get(PipelineService).step('research', 'PROJ-20');
@@ -80,7 +81,7 @@ describe('research step', () => {
     seeded.status = 'waiting';
     seeded.currentStep = 'research';
     seeded.projects = 'app\n';
-    await runs.saveRun(seeded);
+    await storeRun(runs, seeded);
     await documentRepository.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
     try {
       const done = await app.get(PipelineService).step('research', 'PROJ-22');
@@ -108,7 +109,7 @@ describe('research step', () => {
     const seeded = await runs.begin('PROJ-21', 'prepare');
     seeded.status = 'waiting';
     seeded.currentStep = 'research';
-    await runs.saveRun(seeded);
+    await storeRun(runs, seeded);
     await documents.putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
     try {
       const done = await app.get(PipelineService).step('research', 'PROJ-21');
@@ -141,7 +142,7 @@ describe('research step', () => {
         const seeded = await runs.begin(key, 'prepare');
         seeded.status = 'waiting';
         seeded.currentStep = 'research';
-        await runs.saveRun(seeded);
+        await storeRun(runs, seeded);
         await documents.putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
         expect((await app.get(PipelineService).step('research', key)).exitCode).toBe(0);
       }
@@ -169,7 +170,7 @@ describe('research step', () => {
     child.currentStep = 'research';
     child.parentRunId = parent.id;
     child.taskId = 't1';
-    await runs.saveRun(child);
+    await storeRun(runs, child);
     await documents.putDocument(child, 'requirements', '{"prompt":"ship the field"}\n');
     // It asked once and was answered: a further question is its own choice.
     await documents.putDocument(child, 'answers', 'question: which field is optional?\nanswer: none\n');
@@ -205,12 +206,12 @@ describe('research step', () => {
     child.currentStep = 'research';
     child.parentRunId = parent.id;
     child.taskId = 't1';
-    await runs.saveRun(child);
+    await storeRun(runs, child);
     await documents.putDocument(child, 'requirements', '{"prompt":"ship the field"}\n');
     const plain = await runs.begin('PROJ-25', 'prepare');
     plain.status = 'waiting';
     plain.currentStep = 'research';
-    await runs.saveRun(plain);
+    await storeRun(runs, plain);
     await documents.putDocument(plain, 'requirements', '{"prompt":"ship the field"}\n');
     try {
       await app.get(PipelineService).step('research', 'PROJ-24-t1');
@@ -241,7 +242,7 @@ describe('research step', () => {
     child.currentStep = 'research';
     child.parentRunId = parent.id;
     child.taskId = 't1';
-    await runs.saveRun(child);
+    await storeRun(runs, child);
     await documents.putDocument(child, 'requirements', '{"prompt":"ship the field"}\n');
     await documents.putDocument(child, 'needs', 'needs:\n- t0: the retry policy\n');
     try {
@@ -263,13 +264,13 @@ describe('research step', () => {
       const documents = app.get(DocumentRepository);
       const parent = await runs.openWaiting('PROJ-25', '/target');
       parent.split = true;
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       const child = await runs.begin('PROJ-25-t1', 'prepare');
       child.status = 'waiting';
       child.currentStep = 'research';
       child.parentRunId = parent.id;
       child.taskId = 't1';
-      await runs.saveRun(child);
+      await storeRun(runs, child);
       await documents.putDocument(child, 'requirements', '{"prompt":"ship the field"}\n');
       if (answers) await documents.putDocument(child, 'answers', answers);
       // The parent decides after the subtask was created, and before its research runs.
@@ -319,7 +320,7 @@ describe('research step', () => {
     const seeded = await runs.begin('PROJ-24', 'prepare');
     seeded.status = 'waiting';
     seeded.currentStep = 'research';
-    await runs.saveRun(seeded);
+    await storeRun(runs, seeded);
     await app.get(DocumentRepository).putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
     try {
       await app.get(PipelineService).step('research', 'PROJ-24');
@@ -353,7 +354,7 @@ describe('research step', () => {
         const seeded = await runs.begin(key, 'prepare');
         seeded.status = 'waiting';
         seeded.currentStep = 'research';
-        await runs.saveRun(seeded);
+        await storeRun(runs, seeded);
         await documents.putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
       }
       const asked = await app.get(PipelineService).step('research', 'PROJ-23');

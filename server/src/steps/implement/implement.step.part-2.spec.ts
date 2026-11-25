@@ -1,5 +1,6 @@
 import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -343,7 +344,7 @@ describe('implement step', () => {
       const runs = app.get(RunRepository);
       const run = (await runs.findRun('PROJ-69'))!;
       run.epicAt = '2026-01-01T00:00:00.000Z';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await app.get(DocumentRepository).putDocument(run, REBASE_CONFLICT, 'pending-implement\n');
       await app.get(PipelineService).step('implement', 'PROJ-69');
       const conflict = agent.mock.calls
@@ -582,7 +583,7 @@ describe('implement step', () => {
       const parent = await runs.openWaiting('PROJ-150', '/target');
       await seed(app, 'PROJ-150-t1', 'approve');
       const child = await runs.findRun('PROJ-150-t1');
-      await runs.saveRun({ ...child!, parentRunId: parent.id, taskId: 't1' });
+      await storeRun(runs, { ...child!, parentRunId: parent.id, taskId: 't1' });
       const head = git(tree, ['rev-parse', 'HEAD']);
 
       await app.get(PipelineService).step('implement', 'PROJ-150-t1');

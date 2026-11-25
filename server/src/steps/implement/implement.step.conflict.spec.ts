@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { existsSync, rmSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
@@ -57,7 +58,7 @@ async function splitWorld(key: string, agent: jest.Mock) {
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);
   const run = (await runs.findRun(key))!;
-  await runs.saveRun({ ...run, split: true });
+  await storeRun(runs, { ...run, split: true });
   await documents.putDocument(run, 'subtasks', `${JSON.stringify(TASKS)}\n`);
   await documents.putDocument(run, REBASE_CONFLICT, 'pending-implement\n');
   return { app, tree, root, runs, documents };
@@ -140,7 +141,7 @@ describe('implement with a parked conflict of an epic whose tasks are open', () 
     try {
       // A task of an epic: not split itself, so its conflict ends at its own checklist.
       const parent = await world.runs.openWaiting('PROJ-703', '/target');
-      await world.runs.saveRun({
+      await storeRun(world.runs, {
         ...(await world.runs.findRun(key))!,
         split: false,
         parentRunId: parent.id,
@@ -185,7 +186,7 @@ describe('implement with a parked conflict of an epic whose tasks are open', () 
     try {
       // A task of an epic: not split itself, so its conflict ends at its own checklist.
       const parent = await world.runs.openWaiting('PROJ-704', '/target');
-      await world.runs.saveRun({
+      await storeRun(world.runs, {
         ...(await world.runs.findRun(key))!,
         split: false,
         parentRunId: parent.id,
@@ -260,7 +261,7 @@ describe('implement resuming a part whose move the squash from git merge base pa
         baseSha: newTip,
         checkpoint: 'completed',
       });
-      await runs.saveRun({ ...(await runs.findRun(key))!, parentRunId: parent.id, taskId: 't1' });
+      await storeRun(runs, { ...(await runs.findRun(key))!, parentRunId: parent.id, taskId: 't1' });
       await runJournal(documents, run).put('billing-api', {
         path: tree,
         branch,
