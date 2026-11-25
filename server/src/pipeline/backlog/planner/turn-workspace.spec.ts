@@ -24,7 +24,8 @@ function workspace() {
   const checkouts = join(base, 'checkouts');
   const config = new AppConfig(testEnv({ SWARMLOOP_ROOT: join(base, 'root'), CHECKOUTS_ROOT: checkouts }));
   const clock = new FakeClock();
-  const kernel = { config, clock } as unknown as StepKernel;
+  // A turn is not a run: the store of base tips finds no run for its key and changes nothing.
+  const kernel = { config, clock, runs: { recordBaseTips: async () => undefined } } as unknown as StepKernel;
   const service = new CheckoutService(kernel, CodeHostRegistry.create(config.env, clock));
   return { checkouts, turns: new BacklogTurnWorkspace(service, config), root: join(base, 'root') };
 }

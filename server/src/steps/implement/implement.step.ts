@@ -11,6 +11,7 @@ import { StepOptions } from '../../core/pipeline-result';
 import { REASON } from '../../contract/run-state';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
+import { BaseTips } from '../shared/base-tips';
 import { RunNames } from '../shared/run-names';
 import { RunAuthor } from '../shared/run-author';
 import { GitRulesWriter } from '../shared/git-rules-writer';
@@ -335,6 +336,7 @@ export class ImplementStep extends AgentStep<typeof INPUTS> {
       documents: this.documents,
       flows: this.flows,
       publisher: this.publisher,
+      tips: new BaseTips(this.runs, this.documents),
       names: this.runNames,
       author: this.runAuthor,
       environments: this.environments,

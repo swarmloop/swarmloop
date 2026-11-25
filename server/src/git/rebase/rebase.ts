@@ -1,4 +1,4 @@
-import { existsSync, rmSync, statSync, unlinkSync } from 'fs';
+import { existsSync, rmSync, statSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
@@ -8,10 +8,12 @@ import { allowedPaths, deniedIndexPaths, isDenied, porcelainPaths, stageSelectio
 import { commitIdentity, git, gitStderr, type CommitAuthor } from '../git';
 import { worktreePath } from '../../git/repo-names';
 import { unmergedPaths } from './clone-index';
-import { branchHasAllowedChange, readRebaseState } from './conflict';
+import { branchHasAllowedChange, clearRebaseState, readRebaseState } from './conflict';
 import type { RebaseState } from './conflict';
 import { baseRefFor, publishedTip, squashOffMount } from './squash';
-import { commitAllowed, hideDeniedWorktree, resolveGitPath, restoreHiddenWorktree } from './hidden-worktree';
+import { ownChangeBase } from './own-change';
+import { retakeSquashConflict } from './retake';
+import { commitAllowed, hideDeniedWorktree, restoreHiddenWorktree } from './hidden-worktree';
 import { storedBase } from './fetch';
 import { atOrPast, fingerprintOf, protectRef } from './journal';
 import type { JournalEntry, RebaseJournal } from './journal';
@@ -47,6 +49,7 @@ export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<Rebase
         author: input.author,
         hosts: input.hosts,
         journal: input.journal,
+        tips: input.tips?.[repo] ?? [],
         tip,
         entry,
         onBase: input.onBase,
@@ -61,9 +64,15 @@ export async function rebaseFeatureRepos(input: RebaseRepoInput): Promise<Rebase
 }
 
 /** Parked rebase: the state file is present and the index is still unmerged. */
-export async function parkedConflict(cwd: string, repo: string, prompt: string | null): Promise<RebaseStop | null> {
+export async function parkedConflict(
+  cwd: string,
+  repo: string,
+  prompt: string | null,
+  entry: JournalEntry | undefined,
+): Promise<RebaseStop | null> {
   const state = await readRebaseState(cwd, repo);
-  if (!state) {
+  // A conflict the old squash parked has no `ownBase`: it is taken again by the rule, not handed to an agent.
+  if (!state || (entry && !entry.ownBase)) {
     return null;
   }
   const files = await unmergedPaths(cwd);
@@ -80,7 +89,7 @@ export async function parkedConflict(cwd: string, repo: string, prompt: string |
   };
 }
 
-async function rebaseFeatureRepo(input: {
+interface RepoMove {
   cwd: string;
   repo: string;
   key: string;
@@ -91,10 +100,13 @@ async function rebaseFeatureRepo(input: {
   author?: CommitAuthor | null;
   hosts: RebaseHosts;
   journal: RebaseJournal;
+  tips: string[];
   tip: string | null;
   entry: JournalEntry | undefined;
   onBase?: RebaseRepoInput['onBase'];
-}): Promise<RebaseStop | null> {
+}
+
+async function rebaseFeatureRepo(input: RepoMove): Promise<RebaseStop | null> {
   const { cwd, repo, journal } = input;
   const { entry } = input;
   if (entry && atOrPast(entry, 'applied')) {
@@ -106,13 +118,8 @@ async function rebaseFeatureRepo(input: {
   }
   const state = await readRebaseState(cwd, repo);
   if (state) {
-    input.onBase?.(repo, state.baseSha);
-    if (!entry) {
-      await startEntry(input, { baseSha: state.baseSha, checkpoint: 'conflict' });
-    }
-    const resumed = await resumeRebase({ ...input, state });
-    await journal.advance(repo, 'applied', { fingerprint: await fingerprintOf(cwd) });
-    return resumed;
+    const settled = await settleParked(input, state);
+    if (settled) return settled.stop;
   }
   if (entry?.checkpoint === 'applying' && entry.squashSha && (await headOf(cwd, repo)) === entry.squashSha) {
     // The reset to the squash landed and the checkpoint did not: finish it.
@@ -152,8 +159,10 @@ async function rebaseFeatureRepo(input: {
   if (base !== 'HEAD') {
     input.onBase?.(repo, baseSha);
   }
+  const ownBase = await ownBaseOf(input, baseSha);
   await journal.advance(repo, 'changes_preserved', {
     baseSha,
+    ownBase,
     oldHead: await headOf(cwd, repo),
     fingerprint: await fingerprintOf(cwd),
   });
@@ -163,7 +172,7 @@ async function rebaseFeatureRepo(input: {
   const tmp = join(scratch, 'clone');
   let hidden = true;
   try {
-    const outcome = await squashOffMount({ ...input, base: baseSha, tmp });
+    const outcome = await squashOffMount({ ...input, base: baseSha, ownBase, tmp });
     try {
       await restoreHiddenWorktree(cwd, repo, input.hosts, '');
     } catch (error) {
@@ -191,6 +200,30 @@ async function rebaseFeatureRepo(input: {
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+/**
+ * A rebase state is parked in the worktree. Finishing it ends the move (its stop is returned). A conflict the squash
+ * from git's merge base parked (an entry with no `ownBase`) is cleared instead, and null says the move runs again by the rule.
+ */
+async function settleParked(input: RepoMove, state: RebaseState): Promise<{ stop: RebaseStop | null } | null> {
+  const { cwd, repo, journal, entry } = input;
+  input.onBase?.(repo, state.baseSha);
+  if (!entry) {
+    await startEntry(input, { baseSha: state.baseSha, checkpoint: 'conflict' });
+  }
+  if (entry && !entry.ownBase) {
+    await retakeSquashConflict({ ...input, entry });
+    return null;
+  }
+  const resumed = await resumeRebase({ ...input, state });
+  await journal.advance(repo, 'applied', { fingerprint: await fingerprintOf(cwd) });
+  return { stop: resumed };
+}
+
+/** What a retried move measured the run's own change from stays; a new move measures it from the tips the run stood on. */
+async function ownBaseOf(input: RepoMove, baseSha: string): Promise<string> {
+  return input.entry?.ownBase ?? (await ownChangeBase(input.cwd, input.tips, baseSha));
 }
 
 /** The entry of a rebase that starts now, written before the first change. */
@@ -245,10 +278,7 @@ async function resumeRebase(input: {
     '',
     identity.env,
   );
-  const target = await resolveGitPath(input.cwd, 'swarmloop-rebase');
-  if (target && existsSync(target)) {
-    unlinkSync(target);
-  }
+  await clearRebaseState(input.cwd);
   await restoreHiddenWorktree(input.cwd, input.repo, input.hosts, '');
   return null;
 }

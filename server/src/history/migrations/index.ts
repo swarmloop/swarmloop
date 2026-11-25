@@ -5,6 +5,7 @@ import { BlockedCodes1797100000000 } from './1797100000000-blocked-codes';
 import { ExchangeReportedTotals1797200000000 } from './1797200000000-exchange-reported-totals';
 import { VisitOwnCosts1797200000001 } from './1797200000001-visit-own-costs';
 import { VisitStartLanes1797300000000 } from './1797300000000-visit-start-lanes';
+import { RunBaseTips1797400000000 } from './1797400000000-run-base-tips';
 import { VisitCostDeltas1797000000001 } from './1797000000001-visit-cost-deltas';
 import { IntegrationSecrets1796000000000 } from './1796000000000-integration-secrets';
 import { CredentialCooldowns1796000000001 } from './1796000000001-credential-cooldowns';
@@ -103,4 +104,5 @@ export const migrations = [
   ExchangeReportedTotals1797200000000,
   VisitOwnCosts1797200000001,
   VisitStartLanes1797300000000,
+  RunBaseTips1797400000000,
 ];

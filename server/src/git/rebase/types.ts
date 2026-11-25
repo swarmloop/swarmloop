@@ -8,6 +8,9 @@ export interface RebaseHosts extends CodeHostEnv {
   clock: Clock;
 }
 
+/** Per repository, the commits the run is known to have stood on. */
+export type KnownTips = Record<string, string[]>;
+
 export interface RebaseRepoInput {
   root: string;
   key: string;
@@ -19,6 +22,8 @@ export interface RebaseRepoInput {
   author?: CommitAuthor | null;
   hosts: RebaseHosts;
   journal: RebaseJournal;
+  /** What each repository is known to have stood on. Without it the rule has only the new base to measure from. */
+  tips?: KnownTips;
   onBase?: (repo: string, sha: string) => void;
 }
 

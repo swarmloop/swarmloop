@@ -161,6 +161,9 @@ describe('prepare step', () => {
       const worktree = join(swarm, 'worktrees', 'PROJ-15', 'demo');
       expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(git(clone, ['rev-parse', 'origin/main']));
       expect(existsSync(join(swarm, 'worktrees', 'PROJ-15', 'other'))).toBe(false);
+      expect((await app.get(RunRepository).findRun('PROJ-15'))?.baseTips).toEqual({
+        demo: git(clone, ['rev-parse', 'origin/main']),
+      });
       expect((await checkouts.findOneBy({ name: 'demo' }))?.path).toBe('');
     } finally {
       await app.close();

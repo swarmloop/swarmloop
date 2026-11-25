@@ -192,11 +192,11 @@ describe('runs api', () => {
       const flows = app.get(FlowRepository);
       await remember(runs, documents, 'proj-54', 'done', 'done');
       await flows.noteFlow('proj-54', ['code-review', 'ci'], 'code-review');
-      await expect(app.get(RunRebaseService).rebase('proj-54')).rejects.toThrow('already in the base');
-      expect(pipeline.startDetached).not.toHaveBeenCalled();
+      expect(await app.get(RunRebaseService).rebase('proj-54')).toEqual({ key: 'proj-54', status: 'started' });
+      expect(pipeline.startDetached).toHaveBeenCalledWith('proj-54');
       const fresh = await runs.findRun('proj-54');
-      expect(fresh?.status).toBe('done');
-      expect(fresh?.currentStep).toBe('done');
+      expect(fresh?.status).toBe('waiting');
+      expect(fresh?.currentStep).toBe('implement');
       expect(await documents.latestBody('proj-54', ARTIFACTS.rebaseMergeSkip.kind)).toBeNull();
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-54-ship-the-field');
     } finally {
@@ -214,8 +214,8 @@ describe('runs api', () => {
       const documents = app.get(DocumentRepository);
       const run = await remember(runs, documents, 'proj-55', 'implement-improve', 'failed');
       await documents.putDocument(run, 'implementation', '- changed the field\n');
-      await expect(app.get(RunRebaseService).rebase('proj-55')).rejects.toThrow('already in the base');
-      expect(pipeline.startDetached).not.toHaveBeenCalled();
+      await app.get(RunRebaseService).rebase('proj-55');
+      expect(pipeline.startDetached).toHaveBeenCalledWith('proj-55', {});
       const fresh = await runs.findRun('proj-55');
       expect(fresh?.status).toBe('failed');
       expect(fresh?.currentStep).toBe('implement-improve');
@@ -235,8 +235,8 @@ describe('runs api', () => {
       const documents = app.get(DocumentRepository);
       const run = await remember(runs, documents, 'proj-58', 'implement-improve', 'waiting');
       await documents.putDocument(run, 'implementation', '- changed the field\n');
-      await expect(app.get(RunRebaseService).rebase('proj-58')).rejects.toThrow('already in the base');
-      expect(pipeline.startDetached).not.toHaveBeenCalled();
+      await app.get(RunRebaseService).rebase('proj-58');
+      expect(pipeline.startDetached).toHaveBeenCalledWith('proj-58', {});
       const fresh = await runs.findRun('proj-58');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('implement-improve');
@@ -384,7 +384,6 @@ describe('runs api', () => {
     git(tree, ['reset', '-q', 'HEAD', '--', 'src/readme.ts']);
     git(tree, ['checkout', 'HEAD', '--', 'src/readme.ts']);
     expect(git(tree, ['status', '--porcelain'])).toBe('');
-    const head = git(tree, ['rev-parse', 'HEAD']);
     const common = git(tree, ['rev-parse', '--git-common-dir']);
     const hooks = join(isAbsolute(common) ? common : join(tree, common), 'hooks');
     mkdirSync(hooks, { recursive: true });
@@ -393,18 +392,16 @@ describe('runs api', () => {
       "#!/bin/sh\nprintf 'export const added = 1;\\n' > src/added.ts\nexit 0\n",
       { mode: 0o755 },
     );
-    const pipeline = { startDetached: jest.fn() };
+    const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-59 started' }) };
     const app = await seededBoot(root, pipeline);
     try {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
       await remember(runs, documents, 'proj-59', 'done', 'done');
       const temps = new Set(readdirSync(tmpdir()).filter((name) => name.startsWith('swarmloop-rebase-')));
-      await expect(app.get(RunRebaseService).rebase('proj-59')).rejects.toThrow(/demo rebase failed: empty squash/);
-      expect(pipeline.startDetached).not.toHaveBeenCalled();
-      expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
+      await app.get(RunRebaseService).rebase('proj-59');
+      expect(git(tree, ['rev-parse', 'HEAD'])).toBe(base);
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-59-ship-the-field');
-      expect(isAncestor(tree, base)).toBe(false);
       for (const name of ['rebase-merge', 'rebase-apply']) {
         const printed = git(tree, ['rev-parse', '--git-path', name]);
         expect(existsSync(isAbsolute(printed) ? printed : join(tree, printed))).toBe(false);

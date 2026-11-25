@@ -12,6 +12,7 @@ import { worktreeStatus } from '../../git/worktree-git';
 import type { RebaseStop } from '../../git/rebase';
 import type { EnvironmentService } from '../../environment/environment.service';
 import { textDocument } from '../shared/handoff';
+import type { BaseTips } from '../shared/base-tips';
 import type { RebasedPublisher } from '../shared/rebased-publisher';
 import type { RunAuthor } from '../shared/run-author';
 import type { RunNames } from '../shared/run-names';
@@ -28,6 +29,8 @@ export interface RebaseDeps {
   documents: DocumentRepository;
   flows: FlowRepository;
   publisher: RebasedPublisher;
+  /** What each repository of a run stood on: the base its own change is measured from. */
+  tips: BaseTips;
   names: RunNames;
   author: RunAuthor;
   environments: EnvironmentService;

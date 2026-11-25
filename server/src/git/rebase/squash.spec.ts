@@ -9,7 +9,7 @@ import { featureWorktree, git } from '../../testing/runs.spec-helpers';
 import { git as gitAsync } from '../git';
 import { withWorktree } from '../worktree-lock';
 import { rebaseFeatureRepos } from '.';
-import { completeRebase } from './journal';
+import { completeRebase, fingerprintOf } from './journal';
 import { memoryJournal } from './journal.spec-helpers';
 import * as squash from './squash';
 import * as workflow from './workflow';
@@ -110,6 +110,19 @@ describe('squash from the clone', () => {
     expect(entry).toMatchObject({ checkpoint: 'applied', squashSha: clone.made() });
   });
 
+  it('gives a run on main the tree, parent, message and author of a squash merge of its head', async () => {
+    const run = await setup('proj-f117-m');
+    process.env.SWARMLOOP_ROOT = run.root;
+    const merged = git(run.tree, ['merge-tree', '--write-tree', run.base, run.oldHead]);
+    await run.rebase();
+    expect(git(run.tree, ['rev-parse', 'HEAD^{tree}'])).toBe(merged);
+    expect(git(run.tree, ['rev-parse', 'HEAD^'])).toBe(run.base);
+    expect(git(run.tree, ['log', '-1', '--format=%s'])).toBe('feat(proj-f117-m): Ship the field');
+    expect(git(run.tree, ['log', '-1', '--format=%an %ae'])).toBe(
+      git(run.tree, ['log', '-1', '--format=%an %ae', run.oldHead]),
+    );
+  });
+
   it('ignores a fetch of another ref that lands before the reset', async () => {
     const run = await setup('proj-f117-b');
     process.env.SWARMLOOP_ROOT = run.root;
@@ -175,5 +188,120 @@ describe('squash from the clone', () => {
     await Promise.all([held, run.rebase()]);
     expect(gitStartedWhileHeld).toBe(0);
     expect((await run.journal.entry('demo'))?.oldHead).toBe(run.oldHead);
+  });
+});
+
+describe('a move after the base branch was rewritten', () => {
+  let previousRoot: string | undefined;
+
+  beforeEach(() => {
+    previousRoot = process.env.SWARMLOOP_ROOT;
+  });
+
+  afterEach(() => {
+    if (previousRoot === undefined) {
+      delete process.env.SWARMLOOP_ROOT;
+    } else {
+      process.env.SWARMLOOP_ROOT = previousRoot;
+    }
+  });
+
+  /** A part standing on the old tip of an epic branch, which origin then got again on a moved main with another `epic.ts`. */
+  async function rewritten(key: string): Promise<Setup & { epicTip: string; newTip: string }> {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-squash-rewritten-'));
+    process.env.SWARMLOOP_ROOT = root;
+    const { tree, clone } = featureWorktree(root, key);
+    writeFileSync(join(tree, 'epic.ts'), 'epic v1\n');
+    git(tree, ['add', 'epic.ts']);
+    git(tree, ['commit', '-m', 'epic']);
+    const epicTip = git(tree, ['rev-parse', 'HEAD']);
+    git(tree, ['push', 'origin', 'HEAD:refs/heads/epic-ship']);
+    git(clone, ['switch', 'main']);
+    writeFileSync(join(clone, 'moved.ts'), 'export const moved = 1;\n');
+    git(clone, ['add', 'moved.ts']);
+    git(clone, ['commit', '-m', 'moved']);
+    git(clone, ['push', 'origin', 'main']);
+    git(clone, ['switch', '-c', 'epic-rewritten', 'main']);
+    writeFileSync(join(clone, 'epic.ts'), 'epic v2\n');
+    git(clone, ['add', 'epic.ts']);
+    git(clone, ['commit', '-m', 'epic rewritten']);
+    git(clone, ['push', '--force', 'origin', 'epic-rewritten:refs/heads/epic-ship']);
+    const newTip = git(clone, ['rev-parse', 'HEAD']);
+    const journal = memoryJournal();
+    return {
+      root,
+      key,
+      tree,
+      oldHead: epicTip,
+      base: newTip,
+      epicTip,
+      newTip,
+      journal,
+      rebase: () =>
+        rebaseFeatureRepos({
+          root,
+          key,
+          repos: ['demo'],
+          branch: `feature/${key}-ship-the-field`,
+          prompt: 'branch: epic-ship\n',
+          denied: [],
+          message: `feat(${key}): Ship the field`,
+          hosts,
+          journal,
+          tips: { demo: [epicTip] },
+        }),
+    };
+  }
+
+  it('stands a part with no commit of its own on the new tip, with no commit and no parked conflict', async () => {
+    const run = await rewritten('proj-f129-a');
+
+    const stop = await run.rebase();
+
+    expect(stop.kind).toBe('clean');
+    expect(git(run.tree, ['rev-parse', 'HEAD'])).toBe(run.newTip);
+    expect(existsSync(join(run.tree, git(run.tree, ['rev-parse', '--git-path', 'swarmloop-rebase'])))).toBe(false);
+    expect(git(run.tree, ['status', '--porcelain'])).toBe('');
+  });
+
+  it('carries only the own commit of a part onto the new tip', async () => {
+    const run = await rewritten('proj-f129-b');
+    writeFileSync(join(run.tree, 'part.ts'), 'part\n');
+    git(run.tree, ['add', 'part.ts']);
+    git(run.tree, ['commit', '-m', 'part']);
+
+    await run.rebase();
+
+    expect(git(run.tree, ['rev-parse', 'HEAD~1'])).toBe(run.newTip);
+    expect(git(run.tree, ['diff', '--name-only', 'HEAD~1', 'HEAD'])).toBe('part.ts');
+    expect(git(run.tree, ['log', '-1', '--format=%s'])).toBe('feat(proj-f129-b): Ship the field');
+  });
+
+  it('takes again a conflict the squash from git merge base parked, and stands on the new tip', async () => {
+    const run = await rewritten('proj-f129-c');
+    // What the old squash left: the worktree at the new tip with the old epic's files, parked, and a journal entry with no ownBase.
+    git(run.tree, ['update-ref', `refs/swarmloop/pre-rebase/feature/${run.key}-ship-the-field`, run.epicTip]);
+    await run.journal.put('demo', {
+      path: run.tree,
+      branch: `feature/${run.key}-ship-the-field`,
+      oldHead: run.epicTip,
+      fingerprint: '',
+      protectRef: `refs/swarmloop/pre-rebase/feature/${run.key}-ship-the-field`,
+      expectedRemoteTip: null,
+      baseSha: run.newTip,
+      checkpoint: 'conflict',
+    });
+    git(run.tree, ['reset', '--hard', run.newTip]);
+    writeFileSync(join(run.tree, 'epic.ts'), 'conflicting\n');
+    const gitDir = git(run.tree, ['rev-parse', '--absolute-git-dir']);
+    writeFileSync(join(gitDir, 'swarmloop-rebase'), `${run.newTip}\nfeat(${run.key}): Ship the field\n`);
+    await run.journal.advance('demo', 'conflict', { fingerprint: await fingerprintOf(run.tree) });
+
+    const stop = await run.rebase();
+
+    expect(stop.kind).toBe('clean');
+    expect(git(run.tree, ['rev-parse', 'HEAD'])).toBe(run.newTip);
+    expect(git(run.tree, ['status', '--porcelain'])).toBe('');
+    expect(existsSync(join(gitDir, 'swarmloop-rebase'))).toBe(false);
   });
 });

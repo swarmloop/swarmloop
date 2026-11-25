@@ -38,6 +38,7 @@ describe('rebase journal', () => {
     const branch = 'feature/proj-90-ship-the-field';
     git(tree, ['push', '-u', 'origin', branch]);
     const tip = git(tree, ['rev-parse', 'HEAD']);
+    const ownBase = git(tree, ['merge-base', 'HEAD', 'main']);
     const base = moveBase(clone, 'base.ts', 'export const base = 1;\n');
     const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'proj-90 started' }) };
     const app = await seededBoot(root, pipeline);
@@ -57,6 +58,7 @@ describe('rebase journal', () => {
         protectRef: `refs/swarmloop/pre-rebase/${branch}`,
         expectedRemoteTip: tip,
         baseSha: base,
+        ownBase,
         checkpoint: 'completed',
         squashSha: git(tree, ['rev-parse', 'HEAD']),
         generation: 1,
