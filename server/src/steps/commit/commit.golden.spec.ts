@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { RunStop } from '../../agent/run-stop';
 import { StepKernel } from '../step-kernel';
 import { writeFileSync } from 'fs';
@@ -123,7 +124,7 @@ async function seed(app: Awaited<ReturnType<typeof boot>>): Promise<void> {
   const seeded = await runs.begin(KEY, 'commit');
   seeded.status = 'waiting';
   seeded.currentStep = 'code-review';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(
     seeded,
     'requirements',

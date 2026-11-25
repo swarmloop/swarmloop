@@ -1,3 +1,4 @@
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { parseSubtasks, type Subtask } from '../../contract/subtask';
 import type { StepOptions } from '../../core/pipeline-result';
 import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
@@ -58,7 +59,7 @@ export async function seedParent(app: TestApp, tasks: Subtask[]) {
   const parent = await save(runs, KEY, 'implement', 'waiting');
   parent.split = true;
   parent.projects = 'demo\n';
-  await runs.saveRun(parent);
+  await storeRun(runs, parent);
   const documents = app.app.get(DocumentRepository);
   await documents.putDocument(parent, 'requirements', requirements);
   await documents.putDocument(parent, 'subtasks', `${JSON.stringify(tasks)}\n`);
@@ -96,13 +97,13 @@ export async function child(app: TestApp, id: string) {
 export async function work(app: TestApp, id: string): Promise<void> {
   const run = await child(app, id);
   writeRunState(run, { status: 'running', currentStep: 'research', ownerPid: process.pid });
-  await app.app.get(RunRepository).saveRun(run);
+  await storeRun(app.app.get(RunRepository), run);
 }
 
 export async function finish(app: TestApp, id: string): Promise<void> {
   const run = await child(app, id);
   writeRunState(run, { status: 'done', currentStep: 'done' });
-  await app.app.get(RunRepository).saveRun(run);
+  await storeRun(app.app.get(RunRepository), run);
 }
 
 export async function parentState(app: TestApp) {
@@ -200,7 +201,7 @@ export async function opened(app: TestApp, host: FakeHost, id: string, requests:
 export async function seedMergeParent(app: TestApp, tasks: Subtask[]) {
   const parent = await seedParent(app, tasks);
   parent.codeHost = 'github';
-  await app.app.get(RunRepository).saveRun(parent);
+  await storeRun(app.app.get(RunRepository), parent);
   await app.app.get(DocumentRepository).putDocument(parent, 'repos', 'demo\n');
   await pass(app);
   return parent;

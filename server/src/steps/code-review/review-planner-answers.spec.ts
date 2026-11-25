@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { mkdtemp } from 'fs/promises';
 import { rmSync, writeFileSync } from 'fs';
@@ -87,7 +88,7 @@ describe('a code-review round settled by the answers of the planner', () => {
     const run = (await runs().findRun(key))!;
     run.currentStep = 'code-review';
     run.status = status;
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     return app.get(PipelineService).step('code-review', key);
   }
 

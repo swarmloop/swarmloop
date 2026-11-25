@@ -1,5 +1,6 @@
 import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -504,7 +505,7 @@ async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, repos = 
   const seeded = await runs.begin(key, 'implement-improve');
   seeded.status = 'waiting';
   seeded.currentStep = 'implement-improve';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(
     seeded,
     'requirements',

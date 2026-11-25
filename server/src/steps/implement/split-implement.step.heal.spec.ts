@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { parseSubtasks } from '../../contract/subtask';
 import { DocumentRepository } from '../../history/document.repository';
@@ -29,7 +30,7 @@ async function store(app: TestApp, id: string, status: 'waiting' | 'blocked', co
   const run = await child(app, id);
   const reason = { code, message: `${code} message`, ...(retryAt ? { retryAt } : {}) };
   writeRunState(run, { status, currentStep: 'pipeline', reason });
-  await app.app.get(RunRepository).saveRun(run);
+  await storeRun(app.app.get(RunRepository), run);
 }
 
 describe('split implement, subtasks that heal or block', () => {
@@ -112,7 +113,7 @@ describe('split implement, subtasks that heal or block', () => {
     app = (await world()).app;
     const parent = await seedParent(app, [task('a'), { ...task('b'), files: ['src/a.ts'] }, task('c')]);
     parent.codeHost = 'github';
-    await app.app.get(RunRepository).saveRun(parent);
+    await storeRun(app.app.get(RunRepository), parent);
     const documents = app.app.get(DocumentRepository);
     await documents.putDocument(parent, 'repos', 'demo\n');
     await pass(app);
@@ -128,7 +129,7 @@ describe('split implement, subtasks that heal or block', () => {
       await documents.putDocument(run, 'merge_request', renderMergeRequest([record]));
       const stopped = id === 'c' ? { reason: { code: REASON.stopped, message: 'stopped' } } : {};
       writeRunState(run, { status, currentStep: 'implement', ...stopped });
-      await app.app.get(RunRepository).saveRun(run);
+      await storeRun(app.app.get(RunRepository), run);
     }
     const host = {
       readMergeRequest: (_project: string, iid: number) =>

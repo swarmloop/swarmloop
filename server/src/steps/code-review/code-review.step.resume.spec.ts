@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
@@ -46,7 +47,7 @@ describe('code-review step after an interruption', () => {
     const run = await runs.findRun(key);
     run!.status = 'failed';
     run!.currentStep = 'code-review';
-    await runs.saveRun(run!);
+    await storeRun(runs, run!);
     for (const name of ['requirements', 'quality', 'regressions', 'performance']) {
       await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
     }

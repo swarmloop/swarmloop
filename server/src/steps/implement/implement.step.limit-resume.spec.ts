@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { mkdtemp, readFile, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -38,7 +39,7 @@ async function world(name: string, agents: string, agent: jest.Mock) {
       currentStep: 'implement',
       reason: { code: ERROR_CODES.RUNTIME_LIMIT, message: 'limited' },
     });
-    await runs.saveRun(run);
+    await storeRun(runs, run);
   }
   // The automatic resume reaches the same code a person's Resume does; the test runs it in place of the queue.
   jest

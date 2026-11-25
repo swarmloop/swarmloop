@@ -1,3 +1,4 @@
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { Test } from '@nestjs/testing';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
@@ -39,7 +40,7 @@ export async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, c
   seeded.status = 'waiting';
   seeded.currentStep = 'code-review';
   seeded.codeHost = codeHost;
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(
     seeded,
     'requirements',
