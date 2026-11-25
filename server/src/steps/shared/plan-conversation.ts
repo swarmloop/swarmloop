@@ -170,7 +170,7 @@ export class PlanConversation {
       if (error instanceof StepStopped) throw error;
       if (error instanceof StartRefused) return { refused: error };
       const kept = keptOf(error, result);
-      ({ result, hostWait, answerErrors } = { result: kept.result, ...kept.rest });
+      ({ result, hostWait, answerErrors } = kept);
       failure = error instanceof SwarmloopError ? error.message : 'plan failed';
     }
     const value = failure ? undefined : result?.resultValue;
@@ -345,12 +345,12 @@ export class PlanConversation {
 /** What a failed launch leaves with the visit: its cost, the model host that did not answer, or the answer's errors. */
 function keptOf(error: unknown, result: LaunchResult | null) {
   if (error instanceof ModelHostUnavailable) {
-    return { result: error.result, rest: { hostWait: error, answerErrors: null } };
+    return { result: error.result, hostWait: error, answerErrors: null };
   }
   if (error instanceof ResultInvalid) {
-    return { result: error.result ?? result, rest: { hostWait: null, answerErrors: error.errors } };
+    return { result: error.result ?? result, hostWait: null, answerErrors: error.errors };
   }
-  return { result, rest: { hostWait: null, answerErrors: null } };
+  return { result, hostWait: null, answerErrors: null };
 }
 
 /** The plan result with the whole task list of the merged graph, as the planner writes tasks. */

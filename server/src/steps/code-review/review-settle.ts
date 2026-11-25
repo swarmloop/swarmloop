@@ -8,7 +8,6 @@ import type { PipelineResult } from '../../core/pipeline-result';
 import type { OpenedStep } from '../step-run';
 import { HostUnavailable, RuntimeLimit } from '../../core/swarmloop-error';
 import { ModelHostUnavailable, hostRoute } from '../shared/model-host-unavailable';
-import type { AgentRunResult } from '../../agent/agent-result';
 import { StartRefused, refusedRoute } from '../shared/start-refused';
 import type { Requirement } from '../../contract/requirement-list';
 import { isResultKind } from '../../agent-result/result-definition';
@@ -25,9 +24,9 @@ import { waitForPlanner } from '../implement/implement-question';
 import { isSubtask } from '../../contract/subtask';
 import { askedReviewer } from '../shared/reviewer-labels';
 import type { Exchange } from './review-exchange';
-import { closeReview, failed, noteHandoff, writeReport } from './review-report';
+import { closeReview, failed, noteHandoff, usageOf, writeReport } from './review-report';
 import { openOthers, othersOpen, routeReview, tallyRound } from './review-round';
-import type { Finished, ReviewDeps, Usage } from './reviewer';
+import type { Finished, ReviewDeps } from './reviewer';
 import type { Opinion } from './code-review-record';
 import type { FlowRepository } from '../../history/flow.repository';
 import type { EpicRound } from '../shared/epic-round';
@@ -72,10 +71,6 @@ function plannerQuestions(
   }
   for (const item of disagreed) add(askedReviewer(item.question) ?? 'code-review', item.question);
   return [...texts].map(([reviewer, parts]) => ({ reviewer, question: parts.join('\n\n') }));
-}
-
-function usageOf(result: AgentRunResult): Usage {
-  return { tokensIn: result.tokensIn, tokensOut: result.tokensOut, usd: result.usd, samples: result.samples };
 }
 
 /** The route a report launch ends the visit on when a provider limit or the door stopped it; null for any other error, and a Stop. */

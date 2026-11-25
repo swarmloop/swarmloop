@@ -87,7 +87,7 @@ function scriptOf(input: { step: string; prompt?: string }): string {
   return input.step === 'implement' && resolving ? 'rebase' : input.step;
 }
 
-/** One answer of a script: a value that becomes a result block, the raw text of the answer, or a usage limit reached. */
+/** One answer of a script: a value that becomes a result block, the raw text of the answer, a usage limit reached, or a model host that did not answer. */
 export type ScriptedAnswer =
   { block: unknown; prose?: string } | { text: string } | { limit: LimitHit } | { outage: ModelHostOutage };
 

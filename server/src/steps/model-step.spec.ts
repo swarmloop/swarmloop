@@ -433,9 +433,12 @@ describe('agent step failure', () => {
 });
 
 describe('agent step during a passing outage', () => {
-  async function waitingRun(
-    thrown: Error,
-  ): Promise<{ stateReason: string | null; status: string; stats: string[]; retryAt: string }> {
+  async function waitingRun(thrown: Error): Promise<{
+    stateReason: string | null;
+    status: string;
+    stats: { status: string; usd: number; tokensIn: number }[];
+    retryAt: string;
+  }> {
     const golden = await goldenApp('agent-outage', {
       agent: jest.fn().mockRejectedValue(thrown),
       worktrees: ['PROJ-32/billing-api'],
@@ -462,7 +465,7 @@ describe('agent step during a passing outage', () => {
       return {
         stateReason: stored?.stateReason ?? null,
         status: stored?.status ?? '',
-        stats: stats.map((item) => item.status),
+        stats: stats.map((item) => ({ status: item.status, usd: item.usd, tokensIn: item.tokensIn })),
         retryAt,
       };
     } finally {
@@ -479,8 +482,8 @@ describe('agent step during a passing outage', () => {
       message: `api.github.com did not answer: HTTP 503; next try at ${retryAt}`,
       retryAt,
     });
-    expect(ended.stats).toEqual(['waiting']);
-    expect(failedLaunches([{ id: 1, step: 'research', status: ended.stats[0] }], 'research', 0)).toBe(0);
+    expect(ended.stats.map((item) => item.status)).toEqual(['waiting']);
+    expect(failedLaunches([{ id: 1, step: 'research', status: ended.stats[0]?.status ?? '' }], 'research', 0)).toBe(0);
   });
 
   it("waits with the model host and its next try, and stores the try's cost as HOST_VISIT", async () => {
@@ -493,7 +496,7 @@ describe('agent step during a passing outage', () => {
       message: thrown.message,
       retryAt: thrown.retryAt,
     });
-    expect(ended.stats).toEqual([HOST_VISIT.status]);
+    expect(ended.stats).toEqual([{ status: HOST_VISIT.status, usd: 0.5, tokensIn: 7 }]);
   });
 
   it('waits with DOCKER_UNAVAILABLE when docker is down, one tick ahead', async () => {
@@ -506,7 +509,7 @@ describe('agent step during a passing outage', () => {
       message: `docker did not answer; next try at ${ended.retryAt}`,
       retryAt: ended.retryAt,
     });
-    expect(ended.stats).toEqual(['waiting']);
+    expect(ended.stats.map((item) => item.status)).toEqual(['waiting']);
   });
 });
 

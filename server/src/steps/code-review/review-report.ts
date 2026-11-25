@@ -2,6 +2,7 @@ import { effortFields } from '../../contract/effort';
 import { agentFor } from '../../config/agents';
 import { mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
+import type { AgentRunResult } from '../../agent/agent-result';
 import type { SwarmloopEnv } from '../../config/env';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
@@ -21,7 +22,7 @@ import { agentFailure } from '../shared/agent-result';
 import { projectRules } from '../shared/project-rules';
 import { appendImpact, mergeHandoff, textDocument, withImpact } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
-import { agentExchange } from '../shared/model-visit';
+import { agentExchange, visitKillReason } from '../shared/model-visit';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
 import { reportDocuments, reviewDocuments, summaryNote } from './code-review-record';
 import type { Opinion } from './code-review-record';
@@ -39,6 +40,10 @@ import { ResultInvalid } from '../shared/answer-errors';
 import { StartRefused } from '../shared/start-refused';
 import { StepStopped } from '../../agent/step-stopped';
 import { answerErrorsDocument } from '../shared/stored-answer-errors';
+
+export function usageOf(result: AgentRunResult): Usage {
+  return { tokensIn: result.tokensIn, tokensOut: result.tokensOut, usd: result.usd, samples: result.samples };
+}
 
 export function reviewBrief(
   opinions: { kind: string; decision: 'ok' | 'return'; body: string }[],
@@ -136,12 +141,7 @@ export async function writeReport(
     );
     const { runtime, model, ...effort } = result.agent ?? asked;
     const exchange: ExchangeDraft = { runtime, ...effortFields(effort), ...agentExchange(result, model, prompt) };
-    const spent: Usage = {
-      tokensIn: result.tokensIn,
-      tokensOut: result.tokensOut,
-      usd: result.usd,
-      samples: result.samples,
-    };
+    const spent = usageOf(result);
     const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
       return { error: failure, exchange, usage: spent, documents: [], startId };
@@ -205,7 +205,7 @@ export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Fi
     durationMs: result.durationMs,
     status,
     exitCode: broken ? 1 : 0,
-    killReason: item.outage ? HOST_VISIT.killReason : result.killReason ? `process killed: ${result.killReason}` : null,
+    killReason: item.outage ? HOST_VISIT.killReason : result.killReason ? visitKillReason(result.killReason) : null,
     tokensIn: result.tokensIn,
     tokensOut: result.tokensOut,
     usd: result.usd,

@@ -25,8 +25,11 @@ class CostlyRunner extends BlockAgentRunner {
 
 /** The first reviewer's first launch ends with the model host's API error, at the fake clock's now. */
 class DownRunner extends BlockAgentRunner {
-  constructor(private readonly now: () => number) {
-    super({ [FIRST]: [{ outage: { host: 'api.anthropic.com', detail: 'API Error: 502' } }] });
+  constructor(
+    private readonly now: () => number,
+    others: ConstructorParameters<typeof BlockAgentRunner>[0] = {},
+  ) {
+    super({ ...others, [FIRST]: [{ outage: { host: 'api.anthropic.com', detail: 'API Error: 502' } }] });
   }
 
   override async run(input: Parameters<BlockAgentRunner['run']>[0]): Promise<AgentRunResult> {
@@ -160,5 +163,22 @@ describe('a reviewer or the report starts only through the door', () => {
     expect(blocks.steps.filter((step) => step === FIRST)).toHaveLength(2);
     expect(blocks.steps.filter((step) => step === 'code-review-report')).toHaveLength(1);
     expect((await flow.app.app.get(RunRepository).findRun(KEY))!.status).not.toBe('blocked');
+  });
+
+  it('keeps the answer of a reviewer that returned while another one’s model host did not answer', async () => {
+    const other = `code-review-${CODE_REVIEWERS[1]}`;
+    const returned = { decision: 'return', review: 'needs work', summary: ['needs work'] };
+    await boot({}, new DownRunner(() => flow.app.clock.now(), { [other]: [{ block: returned }] }));
+
+    await review({ auto: true, startBy: 'machine' });
+    expect(storedState((await flow.app.app.get(RunRepository).findRun(KEY))!).reason?.code).toBe(
+      ERROR_CODES.HOST_UNAVAILABLE,
+    );
+
+    flow.app.clock.advance(HOST_RETRY_MS);
+    await flow.app.pipeline.step('code-review', KEY, { auto: true, startBy: 'machine' });
+
+    expect(blocks.steps.filter((step) => step === other)).toHaveLength(1);
+    expect(blocks.steps.filter((step) => step === 'code-review-report')).toHaveLength(1);
   });
 });
