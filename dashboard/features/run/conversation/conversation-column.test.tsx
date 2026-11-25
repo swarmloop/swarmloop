@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FlowView } from '@contract/api';
 import type { PlanChatEntry } from '@contract/plan-chat';
@@ -70,6 +70,12 @@ beforeEach(() => {
   vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(uploadFile).mockImplementation((_file, name) => Promise.resolve({ id: `id-${name}`, name, size: 3 }));
 });
+
+// One paste is one change event; typing it key by key re-renders the column per character.
+async function pasteMessage(user: UserEvent, box: HTMLElement, text: string): Promise<void> {
+  await user.click(box);
+  await user.paste(text);
+}
 
 describe('ConversationColumn on a wide window', () => {
   mediaWidth(1280);
@@ -190,7 +196,7 @@ describe('ConversationColumn on a wide window', () => {
     const box = screen.getByRole('textbox', { name: 'Message to the planner' });
 
     expect(screen.getByText('goes into the plan')).toBeInTheDocument();
-    await user.type(box, 'split it');
+    await pasteMessage(user, box, 'split it');
     await user.keyboard('{Control>}{Enter}{/Control}');
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(next));
@@ -203,7 +209,7 @@ describe('ConversationColumn on a wide window', () => {
     vi.mocked(sendPlanChat).mockRejectedValue(new Error('the run is busy'));
     render(column(flowWith()), { wrapper: Wrapper });
 
-    await user.type(screen.getByRole('textbox', { name: 'Message to the planner' }), 'hi');
+    await pasteMessage(user, screen.getByRole('textbox', { name: 'Message to the planner' }), 'hi');
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('the run is busy');
@@ -214,7 +220,7 @@ describe('ConversationColumn on a wide window', () => {
     vi.mocked(sendPlanChat).mockResolvedValue(flowWith());
     render(column(flowWith()), { wrapper: Wrapper });
     const box = screen.getByRole('textbox', { name: 'Message to the planner' });
-    await user.type(box, 'see');
+    await pasteMessage(user, box, 'see');
 
     fireEvent.paste(box, { clipboardData: { files: [new File(['a'], 'shot.png', { type: 'image/png' })] } });
     expect(await screen.findByText('shot.png')).toBeVisible();
@@ -262,7 +268,7 @@ describe('ConversationColumn on a wide window', () => {
     render(column(flowWith({ composer: 'follow-up' }, { status: 'done' })), { wrapper: Wrapper });
 
     expect(screen.getByText('starts a follow-up run')).toBeInTheDocument();
-    await user.type(screen.getByRole('textbox', { name: 'Message to the planner' }), 'also add logging');
+    await pasteMessage(user, screen.getByRole('textbox', { name: 'Message to the planner' }), 'also add logging');
     await user.click(screen.getByRole('button', { name: 'Start a follow-up run' }));
 
     const dialog = await screen.findByRole('dialog');

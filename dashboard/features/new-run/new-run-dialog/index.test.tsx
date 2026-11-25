@@ -22,6 +22,11 @@ async function pastePrompt(user: UserEvent, text: string): Promise<void> {
   await user.paste(text);
 }
 
+async function attachShot(user: UserEvent): Promise<void> {
+  await user.upload(screen.getByTestId('composer-file-input'), new File(['abc'], 'shot.png', { type: 'image/png' }));
+  await screen.findByText('shot.png');
+}
+
 async function pickProject(user: UserEvent, name: string): Promise<void> {
   await user.click(screen.getByRole('combobox', { name: 'Projects' }));
   await user.click(within(await screen.findByRole('listbox')).getByRole('option', { name }));
@@ -121,25 +126,26 @@ describe('NewRunDialog', () => {
     expect(onSubmit).toHaveBeenCalledWith('Ship it', allPhases);
   });
 
-  it('sends the upload ids with a new run and with onSubmit', async () => {
+  it('sends the upload ids with a new run', async () => {
     const user = userEvent.setup({ delay: null });
     vi.mocked(uploadFile).mockResolvedValue({ id: 'u1', name: 'shot.png', size: 3 });
-    const onSubmit = vi.fn().mockResolvedValue(undefined);
-    const { unmount } = render(<NewRunDialog open onClose={vi.fn()} />);
+    render(<NewRunDialog open onClose={vi.fn()} />);
     await pastePrompt(user, 'Ship it');
     await pickProject(user, 'swarmloop');
-    await user.upload(screen.getByTestId('composer-file-input'), new File(['abc'], 'shot.png', { type: 'image/png' }));
-    await screen.findByText('shot.png');
+    await attachShot(user);
     await user.click(screen.getByRole('button', { name: 'Start' }));
     await waitFor(() => expect(createRun).toHaveBeenCalled());
     expect(vi.mocked(createRun).mock.lastCall![0]).toMatchObject({ attachments: ['u1'] });
-    unmount();
+  });
 
+  it('sends the upload ids with onSubmit', async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.mocked(uploadFile).mockResolvedValue({ id: 'u1', name: 'shot.png', size: 3 });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<NewRunDialog open onClose={vi.fn()} onSubmit={onSubmit} />);
     await pastePrompt(user, 'Again');
     await pickProject(user, 'swarmloop');
-    await user.upload(screen.getByTestId('composer-file-input'), new File(['abc'], 'shot.png', { type: 'image/png' }));
-    await screen.findByText('shot.png');
+    await attachShot(user);
     await user.click(screen.getByRole('button', { name: 'Start' }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Again', allPhases, ['u1']));
   });
