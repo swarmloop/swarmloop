@@ -28,7 +28,6 @@ export interface AgentRunInput {
   manifestHosts?: ManifestHosts;
   mode?: string;
   timeLimitMs?: number;
-  approveMcps?: boolean;
   auto?: boolean;
   /** The chat's previous reported session totals. A session total is taken against them. */
   prior?: ChatUsage;

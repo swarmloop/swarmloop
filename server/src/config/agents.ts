@@ -48,13 +48,7 @@ type AgentRun = object & {
 
 /** Everything that launches or prices an agent: the steps of a run, and the work done outside the pipeline. */
 type AgentUse =
-  | StepName
-  | 'code-review-report'
-  | `code-review-${(typeof CODE_REVIEWERS)[number]}`
-  | 'chat'
-  | 'shell'
-  | 'rebase'
-  | 'backlog-plan';
+  StepName | 'code-review-report' | `code-review-${(typeof CODE_REVIEWERS)[number]}` | 'rebase' | 'backlog-plan';
 
 /** The one table from a step to its role. A step without an agent has none. */
 export const ROLE_OF_STEP = {
@@ -78,8 +72,6 @@ export const ROLE_OF_STEP = {
   'code-review-regressions': 'review',
   'code-review-security': 'review',
   'code-review-performance': 'review',
-  chat: 'implement',
-  shell: 'implement',
   rebase: 'implement',
   'backlog-plan': 'plan',
 } as const satisfies Record<AgentUse, Role | null>;
@@ -123,7 +115,7 @@ function assertListLoaded(name: string, { runtime, model, effort }: Agent): void
 }
 
 /** The parts of an entry, without asking the runtime whether it supports the level. */
-export function splitAgent(name: string, entry: string): Agent {
+function splitAgent(name: string, entry: string): Agent {
   const text = entry.trim();
   const colon = text.indexOf(':');
   const runtime = colon < 0 ? text : text.slice(0, colon).trim();

@@ -29,17 +29,9 @@ export type {
   ResumeBody,
   AnswersBody,
   AddProjectBody,
-  ChatBody,
-  OpenShellBody,
-  LockShellBody,
-  RewindBody,
   SkipTaskBody,
   RemovedRunView,
-  ShellStatusView,
-  SnapshotsView,
-  RewindView,
 } from './api-bodies';
-export type { CloneOriginsView, ShellFeature, ShellMatch, ShellMount } from './shell';
 
 export interface RunSummary {
   key: string;
@@ -394,10 +386,6 @@ export interface CreateRepositoryBody {
 export interface ProjectsView {
   projects: string[];
   applied: boolean;
-}
-
-export interface ChatView {
-  text: string;
 }
 
 /** A host where a person signs in by pasting a personal access token: where it is made. */

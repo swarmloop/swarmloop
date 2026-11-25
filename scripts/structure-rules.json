@@ -156,7 +156,6 @@
         "server/src/api/run-view/flow.ts",
         "server/src/api/run-view/chips.ts",
         "server/src/api/run-view/reviewer-steps.ts",
-        "server/src/api/chat.service.ts",
         "server/src/pipeline/run-settler.ts",
         "server/src/steps/shared/agent-door.ts"
       ],
@@ -223,10 +222,6 @@
     {
       "file": "compose.yml",
       "pattern": "pull_policy:\\s*build"
-    },
-    {
-      "file": "compose.yml",
-      "pattern": "^\\s*sloop:"
     },
     {
       "file": "compose.yml",

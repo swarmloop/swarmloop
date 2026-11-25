@@ -10,7 +10,7 @@ const liveLogCurrent = (root: string, key: string, step: string): boolean => log
 
 describe('live log files', () => {
   it('reads a per-repo implement file and skips implement-improve', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'sloop-log-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-log-'));
     mkdirSync(join(root, 'data'));
     writeFileSync(join(root, 'data', 'run-1-implement-swarmloop-output.txt'), 'implement\n');
     writeFileSync(join(root, 'data', 'run-1-implement-improve-swarmloop-output.txt'), 'review\n');
@@ -19,7 +19,7 @@ describe('live log files', () => {
   });
 
   it('keeps each code reviewer on its own file', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'sloop-review-log-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-log-'));
     mkdirSync(join(root, 'data'));
     writeFileSync(join(root, 'data', 'run-1-code-review-quality-output.txt'), 'quality\n');
     writeFileSync(join(root, 'data', 'run-1-code-review-security-output.txt'), 'security\n');
@@ -39,7 +39,7 @@ describe('live log files', () => {
   });
 
   it('keeps every open reviewer current while they run together', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'sloop-current-log-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-current-log-'));
     const directory = join(root, 'data');
     mkdirSync(directory);
     const older = join(directory, 'run-1-code-review-security-output.txt');
@@ -61,7 +61,7 @@ describe('live log files', () => {
   });
 
   it('replaces a log with the latest body and leaves no temp file', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'sloop-replace-log-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-replace-log-'));
     const directory = join(root, 'data');
     mkdirSync(directory);
     const file = join(directory, 'run-1-code-review-quality-output.txt');
@@ -72,7 +72,7 @@ describe('live log files', () => {
   });
 
   it('finishes an attempt with one ending line and writes the whole body', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'sloop-attempt-log-'));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-attempt-log-'));
     const directory = join(root, 'data');
     mkdirSync(directory);
     const file = join(directory, 'run-1-code-review-quality-output.txt');

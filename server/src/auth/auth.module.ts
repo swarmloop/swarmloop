@@ -4,8 +4,6 @@ import { AppConfig } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { Clock } from '../core/clock';
 import { HistoryModule } from '../history/history.module';
-import { CliLoginController } from './cli-login.controller';
-import { CliLogins } from './cli-logins';
 import { PeopleController } from './people.controller';
 import { TokensController } from './tokens.controller';
 import { AuthController } from './auth.controller';
@@ -28,7 +26,7 @@ import { SignInService } from './sign-in.service';
 
 @Module({
   imports: [HistoryModule],
-  controllers: [AuthController, ConnectionsController, TokensController, PeopleController, CliLoginController],
+  controllers: [AuthController, ConnectionsController, TokensController, PeopleController],
   providers: [
     SessionService,
     CheckoutRepos,
@@ -42,7 +40,6 @@ import { SignInService } from './sign-in.service';
     PersonalCredentials,
     PersonalTokens,
     PeopleService,
-    CliLogins,
     {
       provide: SecretBox,
       useFactory: (config: AppConfig) =>

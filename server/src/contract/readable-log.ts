@@ -18,13 +18,6 @@ export function logFinished(raw: string): boolean {
   return line.startsWith('{"type":"result"') || line.startsWith('process exited') || line.startsWith('process killed:');
 }
 
-/** Turns a stored agent stream into text a person can read. The stored body stays unchanged. */
-export function readableLog(raw: string): string {
-  return logMessages(raw)
-    .map((message) => render(message))
-    .join('\n\n');
-}
-
 /** One block per stream message, so the panel can separate them. */
 export function logMessages(raw: string): LogMessage[] {
   const writer = new LogWriter();
@@ -254,14 +247,6 @@ function jsonText(text: string): boolean {
   } catch {
     return false;
   }
-}
-
-function render(block: Block): string {
-  const body = block.text
-    .split('\n')
-    .map((line) => (line === '' ? '' : `    ${line}`))
-    .join('\n');
-  return body ? `${block.type}\n${body}` : block.type;
 }
 
 function plainType(line: string): string {

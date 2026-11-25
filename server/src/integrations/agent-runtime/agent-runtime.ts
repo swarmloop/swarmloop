@@ -26,7 +26,6 @@ export interface AgentPrintInput {
   resumeChatId: string | null;
   mode?: string;
   tools: AgentTools;
-  approveMcps?: boolean;
 }
 
 /** A file a launch needs in the CLI home, relative to the state directory. */

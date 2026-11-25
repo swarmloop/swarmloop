@@ -51,34 +51,6 @@ describe('buildAgentArgs', () => {
     expect(args).toContain('--force');
   });
 
-  it('approves mcp servers when the ide attached them', () => {
-    const args = buildAgentArgs('agent', {
-      model: 'from-env',
-      prompt: 'read the worktrees',
-      mounts,
-      resumeChatId: null,
-      mode: 'agent',
-      tools: 'write',
-      approveMcps: true,
-    });
-    expect(args).toContain('--approve-mcps');
-    expect(args.at(-1)).toBe('read the worktrees');
-  });
-
-  it('approves mcp servers when the ide attached them', () => {
-    const args = buildAgentArgs('agent', {
-      model: 'from-env',
-      prompt: 'read the worktrees',
-      mounts,
-      resumeChatId: null,
-      mode: 'agent',
-      tools: 'write',
-      approveMcps: true,
-    });
-    expect(args).toContain('--approve-mcps');
-    expect(args.at(-1)).toBe('read the worktrees');
-  });
-
   it('does not pass cursor mode to claude', () => {
     const args = buildAgentArgs('claude', {
       model: 'grok-4.7',

@@ -40,15 +40,3 @@ services:
     build:
       context: .
       dockerfile: docker/dashboard/Dockerfile
-
-  # PhpStorm starts bin/sloop on the host. That script needs server/dist, which the image build does not leave on disk.
-  sloop:
-    image: swarmloop-server
-    pull_policy: never
-    command: ['sh', '-c', 'mkdir -p /out && cp -a /app/server/dist/. /out/ && chown -R ${UID:-1000} /out']
-    volumes:
-      - ./server/dist:/out
-    restart: 'no'
-    depends_on:
-      server:
-        condition: service_started

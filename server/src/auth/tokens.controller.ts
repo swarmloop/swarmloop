@@ -13,7 +13,6 @@ import {
   Post,
 } from '@nestjs/common';
 import type {
-  CliLoginView,
   CreatedTokenView,
   CreateTokenBody,
   CurrentTokenView,
@@ -23,7 +22,6 @@ import type {
 } from '../contract/people';
 import { Actor, ActorVia } from './actor.decorator';
 import { bearerOf, type Via } from './auth.service';
-import { CliLogins } from './cli-logins';
 import { PersonalTokens } from './personal-tokens.service';
 
 const LIFETIMES = [30, 90, null];
@@ -54,13 +52,10 @@ function checked(body: CreateTokenBody): CreateTokenBody {
   return { name, expiresInDays: body.expiresInDays };
 }
 
-/** A person's own API tokens, and the approval of a CLI login. */
+/** A person's own API tokens. */
 @Controller('tokens')
 export class TokensController {
-  constructor(
-    private readonly tokens: PersonalTokens,
-    private readonly logins: CliLogins,
-  ) {}
+  constructor(private readonly tokens: PersonalTokens) {}
 
   @Get()
   async list(@Actor() actor: string | null): Promise<TokensView> {
@@ -105,28 +100,6 @@ export class TokensController {
   ): Promise<void> {
     const login = tokenPerson(actor, via);
     await this.tokens.revoke(login, (await this.ownToken(authorization)).id);
-  }
-
-  @Get('cli/:code')
-  viewLogin(@Param('code') code: string): CliLoginView {
-    const view = this.logins.view(code);
-    if (!view) {
-      throw new NotFoundException('this code is unknown or has expired: start the login again');
-    }
-    return view;
-  }
-
-  @Post('cli/:code/approve')
-  @HttpCode(204)
-  async approve(
-    @Actor() actor: string | null,
-    @ActorVia() via: Via | null,
-    @Param('code') code: string,
-  ): Promise<void> {
-    const login = sessionPerson(actor, via);
-    if (!(await this.logins.approve(code, login))) {
-      throw new NotFoundException('this code is unknown or has expired: start the login again');
-    }
   }
 
   @Delete(':id')

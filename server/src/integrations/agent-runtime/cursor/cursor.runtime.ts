@@ -91,8 +91,5 @@ export class CursorRuntime extends AbstractAgentRuntime {
     } else {
       args.push('--force', '--sandbox', 'disabled');
     }
-    if (input.approveMcps) {
-      args.push('--approve-mcps');
-    }
   }
 }

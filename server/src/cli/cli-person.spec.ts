@@ -15,7 +15,7 @@ import { RunCommand } from './run.command';
 import { StepCommand } from './step.command';
 
 const NO_PERSON_MESSAGE =
-  'run and step act as a person: create a token in Settings → API tokens (or run `sloop login`) and set SWARMLOOP_TOKEN';
+  'run and step act as a person: create a token in Settings → API tokens and set SWARMLOOP_TOKEN';
 
 const ROLE = [{ runtime: 'claude', model: 'm-claude' }];
 const AGENTS = { main: { implement: ROLE }, subtask: { implement: ROLE } } as unknown as StoredAgents;

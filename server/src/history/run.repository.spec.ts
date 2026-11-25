@@ -25,7 +25,6 @@ describe('RunRepository', () => {
       expect(started.status).toBe('running');
       expect(started.runtime).toBe('codex');
       expect(runs.held(started)).toBe(true);
-      expect(await db.app.get(DocumentRepository).latestBody(run.key, 'shell_resume')).toBe('clear\n');
       await expect(runs.begin(run.key, 'research')).rejects.toThrow('run-1 is already running');
       expect(root(db.config)).toBe(db.root);
       expect(runDir(db.config, run.key)).toBe(join(db.root, 'runs', run.key));

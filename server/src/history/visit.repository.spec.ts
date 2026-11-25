@@ -97,7 +97,6 @@ describe('VisitRepository', () => {
       expect(await visits.listExchanges([stat.id])).toEqual([
         expect.objectContaining({ stepStatId: stat.id, chatId: 'chat-1' }),
       ]);
-      expect(await visits.latestChatId(run.id)).toBe('chat-1');
       expect(await visits.tokenTotal(run.id)).toBe(5);
       expect(await visits.codeReviewReportMs(run.id)).toEqual(new Map([[stat.id, 1000]]));
       expect(await runs.durationByRun()).toEqual(new Map([[run.id, 1000]]));
@@ -111,7 +110,6 @@ describe('VisitRepository', () => {
       expect(await db.app.get(DocumentRepository).listDocuments(run.id)).toHaveLength(1);
       expect(await visits.listSamples([])).toEqual([]);
       expect(await visits.listExchanges([])).toEqual([]);
-      expect(await visits.latestChatId(0)).toBeNull();
     } finally {
       await db.close();
     }

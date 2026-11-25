@@ -53,8 +53,6 @@ export async function withAnswerRoutes(test: (parts: AnswerRoutes) => Promise<vo
       app.get(RunAnswersService),
       app.get(RunSubtaskCommandsService),
       app.get(RunRebaseService),
-      {} as never,
-      {} as never,
       app.get(SubtaskPort),
       chat,
       app.get(AttachmentStore),

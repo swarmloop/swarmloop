@@ -192,11 +192,8 @@ export class RunRepository {
         .where('key = :key AND revision = :revision', { key, revision: existing.revision })
         .execute();
       if (claimed.affected) {
-        // Only the winner touches the live spend and the resume note; a loser must not disturb the run it lost to.
+        // Only the winner touches the live spend; a loser must not disturb the run it lost to.
         this.live?.clearSpend(key);
-        if (existing.runtime !== runtime) {
-          await this.documentRepository.putDocument(existing, 'shell_resume', 'clear\n');
-        }
         const claimedRun = await this.runs.findOneByOrFail({ key });
         this.notify(key);
         return claimedRun;
@@ -206,7 +203,7 @@ export class RunRepository {
   }
 
   /**
-   * Gives the run back after a hold that stored no visit (a chat, a shell lock), if it is still the holder's.
+   * Gives the run back after a hold that stored no visit, if it is still the holder's.
    * Another writer that took the run in between keeps it. Either way the row in the database is returned.
    */
   async release(run: RunEntity, change: RunStateChange & { stepStartedAt?: string | null }): Promise<RunEntity> {

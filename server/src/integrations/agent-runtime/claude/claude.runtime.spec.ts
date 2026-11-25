@@ -49,7 +49,6 @@ describe('ClaudeRuntime', () => {
         resumeChatId: 'chat-1',
         mode: 'agent',
         tools: 'write',
-        approveMcps: true,
       }),
     ).toEqual([
       '--print',

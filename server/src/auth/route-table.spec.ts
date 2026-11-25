@@ -5,7 +5,6 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { SettingsController } from '../api/settings.controller';
 import { AuthController } from './auth.controller';
-import { CliLoginController } from './cli-login.controller';
 import { AuthGuard } from './auth.guard';
 import { ConnectionsController } from './connections.controller';
 import { AuthModule } from './auth.module';
@@ -82,14 +81,5 @@ describe('the route table', () => {
   it('opens no controller under another path', () => {
     const names = controllers.filter(open).map((controller) => controller.name);
     expect(names.sort()).toEqual(['AuthController', 'HealthController']);
-  });
-
-  it('opens the CLI login controller under auth/ only, and registers it in AuthModule', () => {
-    expect(open(CliLoginController)).toBe(true);
-    expect(routes(CliLoginController)).not.toHaveLength(0);
-    for (const route of routes(CliLoginController)) {
-      expect(route.startsWith('auth/')).toBe(true);
-    }
-    expect(Reflect.getMetadata('controllers', AuthModule)).toContain(CliLoginController);
   });
 });

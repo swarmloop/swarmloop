@@ -15,25 +15,15 @@ import {
 import {
   AddProjectBody,
   AnswersBody,
-  ChatBody,
-  ChatView,
   CreateRunBody,
   FlowView,
   HistoryView,
-  LockShellBody,
-  OpenShellBody,
   ProjectsView,
   RemovedRunView,
   ReplayBody,
   ResumeBody,
-  RewindBody,
   SkipTaskBody,
-  RewindView,
   RunRef,
-  ShellFeature,
-  ShellMatch,
-  ShellStatusView,
-  SnapshotsView,
   StartStepBody,
   StepView,
   TicketKeysBody,
@@ -45,11 +35,10 @@ import type { CommandInput, CommandReceipt } from '../contract/command';
 import type { StepEventPage } from '../contract/step-events';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { CommandService } from '../pipeline/command.service';
-import type { ReplayPayload, ShellPayload, StepPayload } from './command-handlers';
+import type { ReplayPayload, StepPayload } from './command-handlers';
 import { dispatchCommand } from './run-command-dispatch';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
-import { ShellService } from './shell.service';
 
 /** A started run is accepted; anything else the run answers with is OK. */
 export function httpStatus(result: RunRef): number {
@@ -62,7 +51,6 @@ export class RunsController {
     private readonly queries: RunQueriesService,
     private readonly runs: RunCommandsService,
     private readonly commands: CommandService,
-    private readonly shell: ShellService,
     private readonly settings: UserSettingRepository,
   ) {}
 
@@ -119,71 +107,6 @@ export class RunsController {
     return this.runs.ticketKeys(body, actor);
   }
 
-  @Post('runs/shell')
-  async openShell(
-    @Body() body: OpenShellBody,
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ): Promise<(ShellFeature | { matches: ShellMatch[] }) & Partial<CommandReceipt>> {
-    const found = await this.shell.locate(body.path ?? '');
-    if ('matches' in found) {
-      return found;
-    }
-    const payload: ShellPayload = { op: 'open', path: found.cwd };
-    return dispatchCommand(this.commands, 'shell', found.key, payload, idempotencyKey, {
-      create: found.created ? { targetPath: found.cwd } : undefined,
-    });
-  }
-
-  @Get('runs/:key/shell')
-  shellFeature(@Param('key') key: string): Promise<ShellFeature> {
-    return this.shell.describe(key);
-  }
-
-  @Post('runs/:key/shell/lock')
-  lockShell(
-    @Param('key') key: string,
-    @Body() body: LockShellBody,
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ): Promise<ShellStatusView & CommandReceipt> {
-    return dispatchCommand(
-      this.commands,
-      'shell',
-      key,
-      { op: 'lock', container: body.container ?? '', userId: body.userId },
-      idempotencyKey,
-      {
-        expectedRevision: body.expectedRevision,
-      },
-    );
-  }
-
-  @Post('runs/:key/shell/unlock')
-  unlockShell(
-    @Param('key') key: string,
-    @Body() body?: CommandInput,
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ): Promise<ShellStatusView & CommandReceipt> {
-    return dispatchCommand(this.commands, 'shell', key, { op: 'unlock' }, idempotencyKey, {
-      expectedRevision: body?.expectedRevision,
-    });
-  }
-
-  @Get('runs/:key/snapshots')
-  snapshots(@Param('key') key: string): Promise<SnapshotsView> {
-    return this.shell.snapshots(key);
-  }
-
-  @Post('runs/:key/rewind')
-  rewind(
-    @Param('key') key: string,
-    @Body() body: RewindBody,
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ): Promise<RewindView & CommandReceipt> {
-    return dispatchCommand(this.commands, 'rewind', key, { id: body.id }, idempotencyKey, {
-      expectedRevision: body.expectedRevision,
-    });
-  }
-
   @Post('runs')
   async create(
     @Body() body: CreateRunBody,
@@ -218,16 +141,6 @@ export class RunsController {
       expectedRevision: body.expectedRevision,
       actor,
     });
-  }
-
-  @Post('runs/:key/chat')
-  chatWith(
-    @Param('key') key: string,
-    @Body() body: ChatBody,
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ): Promise<ChatView & CommandReceipt> {
-    const { expectedRevision, ...payload } = body;
-    return dispatchCommand(this.commands, 'chat', key, payload, idempotencyKey, { expectedRevision });
   }
 
   @Post('runs/:key/steps/:step')

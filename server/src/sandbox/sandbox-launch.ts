@@ -53,17 +53,6 @@ export function modelApiHosts(runtime: RuntimeName): string[] {
   return [...runtimeFor(runtime).apiHosts];
 }
 
-export function modelCredential(
-  runtime: RuntimeName,
-  cursorKey: string,
-  anthropicKey: string,
-  oauthToken: string,
-  codexAuth = '',
-  codexApiKey = '',
-): { name: string; value: string } {
-  return runtimeFor(runtime).credential({ cursorKey, anthropicKey, oauthToken, codexAuth, codexApiKey });
-}
-
 /** The agent image of a runtime. */
 export function agentImage(runtime: RuntimeName): string {
   return imageName(runtimeFor(runtime).component);

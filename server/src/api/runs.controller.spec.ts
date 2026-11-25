@@ -5,14 +5,12 @@ import type { RunCommandsService } from './run-commands.service';
 import type { RunQueriesService } from './run-queries.service';
 import { httpStatus, RunsController } from './runs.controller';
 import type { UserSettingRepository } from '../history/user-setting.repository';
-import type { ShellService } from './shell.service';
 
 function controllerWith(runs: object = {}, commands: object = {}, settings: object = {}): RunsController {
   return new RunsController(
     {} as RunQueriesService,
     runs as RunCommandsService,
     commands as CommandService,
-    {} as ShellService,
     { read: jest.fn().mockResolvedValue(null), ...settings } as unknown as UserSettingRepository,
   );
 }
@@ -36,20 +34,6 @@ describe('httpStatus', () => {
 });
 
 describe('RunsController', () => {
-  it('keeps the shell uid in the command submitted by the lock route', async () => {
-    const submitted: unknown[] = [];
-    const commands = {
-      submit: async (_kind: string, _key: string, payload: unknown) => {
-        submitted.push(payload);
-        return { value: { status: 'running' }, receipt: { commandId: 'c-1', revision: 4, state: 'running' } };
-      },
-    };
-    expect(
-      await controllerWith({}, commands).lockShell('proj-1', { container: 'proj-1-shell', userId: 501 }),
-    ).toMatchObject({ status: 'running' });
-    expect(submitted).toEqual([{ op: 'lock', container: 'proj-1-shell', userId: 501 }]);
-  });
-
   it('answers 400 when part, q or cursor is given twice', () => {
     const controller = controllerWith();
     for (const repeated of [
@@ -69,7 +53,6 @@ describe('RunsController', () => {
       queries as unknown as RunQueriesService,
       {} as RunCommandsService,
       {} as CommandService,
-      {} as ShellService,
       {} as UserSettingRepository,
     );
     expect(await controller.events('proj-1', 'commit', '4', '50')).toBe(page);
@@ -82,7 +65,6 @@ describe('RunsController', () => {
       queries as unknown as RunQueriesService,
       {} as RunCommandsService,
       {} as CommandService,
-      {} as ShellService,
       {} as UserSettingRepository,
     );
     expect(await controller.stepLog('proj-1', 'plan', 'a-1')).toBe('log');

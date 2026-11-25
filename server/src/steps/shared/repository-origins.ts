@@ -1,8 +1,7 @@
 import { existsSync } from 'fs';
 import { join, sep } from 'path';
 import { Injectable } from '@nestjs/common';
-import { CHECKOUT_NAME, listGitProjects, resolveCheckoutPath, resolveCheckoutsRoot } from '../../config/checkout-path';
-import type { CloneOriginsView } from '../../contract/shell';
+import { CHECKOUT_NAME, resolveCheckoutPath, resolveCheckoutsRoot } from '../../config/checkout-path';
 import { AppConfig } from '../../config/env';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { originUrl } from '../../git/git';
@@ -33,21 +32,5 @@ export class RepositoryOrigins {
       throw new SwarmloopError(`${repo} has no origin`);
     }
     return { origin, project: remoteProject(origin).project };
-  }
-
-  /** The clones of the checkouts root with their server path and origin; a clone without an origin is left out. */
-  async list(): Promise<CloneOriginsView['clones']> {
-    const base = root(this.config);
-    const checkouts = this.config.env.CHECKOUTS_ROOT;
-    const clones: CloneOriginsView['clones'] = [];
-    for (const name of listGitProjects(base, checkouts, this.config.env.SWARMLOOP_REPOS)) {
-      const path = resolveCheckoutPath(base, checkouts, name, '');
-      const origin = await originUrl(path, name, 'origin failed');
-      if (origin !== null) {
-        const { host, project } = remoteProject(origin);
-        clones.push({ name, path, origin: `https://${host}/${project}.git` });
-      }
-    }
-    return clones;
   }
 }

@@ -24,10 +24,8 @@ import { REASON } from '../contract/run-state';
 import { isSubtask } from '../contract/subtask';
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
-import { root } from '../history/run-paths';
 import { assertInsideWork, workRoots } from '../sandbox/allowed-path';
 import { flagError } from './flag-error';
-import { snapshotRun } from './worktree-snapshot';
 import { storedState, writeRunState } from '../history/run-state';
 import type { RunGuards } from './run-guards';
 import type { AgentDoor } from '../steps/shared/agent-door';
@@ -264,13 +262,7 @@ export class RunDriver {
     const step = this.registry.get(name);
     if (step) {
       const answerErrors = options.answerErrors ?? (await this.answerErrorsOf(key, name));
-      return step.execute(key, answerErrors ? { ...options, answerErrors } : options, async (run, completedStep) => {
-        await snapshotRun(
-          { documents: this.documents, visits: this.visits, root: root(this.config) },
-          this.clock,
-          run,
-          completedStep,
-        );
+      return step.execute(key, answerErrors ? { ...options, answerErrors } : options, async (run) => {
         await this.reportRefresh?.refresh(run);
       });
     }

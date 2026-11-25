@@ -63,12 +63,9 @@ export const mainThreadPlugin = {
 
 // The product files that still do sync directory work, each with the reason it has not moved to the async form.
 export const SYNC_DIRECTORY_ALLOWLIST = {
-  'server/src/acp/cli-token.ts': 'runs in the CLI process, not the server',
-  'server/src/acp/skills.ts': 'runs in the CLI process, not the server',
   'server/src/agent/agent-args.ts': 'builds the argument list of one launch in a sync function',
   'server/src/agent/chat-mode.ts': 'reads the skill folders while it builds a prompt in a sync function',
   'server/src/agent/skill-briefs.ts': 'reads the skill folders while it builds a prompt in a sync function',
-  'server/src/api/mcp-config.ts': 'writes the MCP config of one launch in a sync function',
   'server/src/config/checkout-path.ts': 'resolves a checkout path at start-up',
   'server/src/core/attempt-output.ts':
     'one listing for a run from before attempts, which has no attempt rows to look up',

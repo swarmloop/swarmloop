@@ -15,7 +15,6 @@ import { home, launch } from './sandbox-launch.spec-helpers';
 import {
   agentStateDir,
   emptyEnvFile,
-  modelCredential,
   mountsForRun,
   resolveDaemonPath,
   sandboxArgs,
@@ -468,7 +467,7 @@ describe('sandbox launch', () => {
       const callers = files.filter(
         (file) => /\bsandboxArgs\(/.test(readFileSync(file, 'utf8')) && !file.endsWith('sandbox-launch.ts'),
       );
-      expect(callers.map((file) => basename(file)).sort()).toEqual(['sandbox.service.ts', 'shell.ts']);
+      expect(callers.map((file) => basename(file)).sort()).toEqual(['sandbox.service.ts']);
       for (const file of callers) {
         expect(readFileSync(file, 'utf8')).toContain('workRoots');
       }
@@ -511,22 +510,11 @@ describe('sandbox launch', () => {
     expect(() => sandboxArgs(launch({ env: [{ name: 'GITLAB_TOKEN', value: 'x' }] }), home)).toThrow(
       'sandbox env is not allowed',
     );
-    expect(() => modelCredential('cursor', '', '', '')).toThrow('CURSOR_API_KEY is missing');
-    expect(() => modelCredential('claude', '', '', '')).toThrow(
-      'ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is missing',
-    );
-    expect(modelCredential('claude', '', '', 'token')).toEqual({ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'token' });
-    expect(modelCredential('claude', '', 'api-key', '')).toEqual({ name: 'ANTHROPIC_API_KEY', value: 'api-key' });
-    const both = modelCredential('claude', '', 'api-key', 'token');
-    expect(both).toEqual({ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'token' });
+    const both = { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'token' };
     const claude = sandboxArgs(launch({ env: [both], envMasks: [] }), home);
     expect(claude.filter((arg) => arg === '--env')).toEqual(['--env']);
     expect(claude[claude.indexOf('--env') + 1]).toBe('CLAUDE_CODE_OAUTH_TOKEN=token');
     expect(claude.join(' ')).not.toContain('ANTHROPIC_API_KEY');
-    expect(modelCredential('cursor', 'cursor-key', 'api-key', 'token')).toEqual({
-      name: 'CURSOR_API_KEY',
-      value: 'cursor-key',
-    });
   });
 
   it('uses an internal network only for local allowlist hosts', () => {

@@ -1,14 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
-import type {
-  CloneOriginsView,
-  CreateRepositoryBody,
-  ProjectListView,
-  RemoteEntry,
-  RemoteListView,
-} from '../contract/api';
+import type { CreateRepositoryBody, ProjectListView, RemoteEntry, RemoteListView } from '../contract/api';
 import { Actor } from '../auth/actor.decorator';
 import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
-import { RepositoryOrigins } from '../steps/shared/repository-origins';
 import { PrepareStep } from '../steps/prepare/prepare.step';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -18,17 +11,11 @@ export class CheckoutsController {
   constructor(
     private readonly prepare: PrepareStep,
     private readonly remote: RemoteRepositories,
-    private readonly origins: RepositoryOrigins,
   ) {}
 
   @Get()
   list(): Promise<{ clones: { name: string }[] }> {
     return this.prepare.listClones().then((clones) => ({ clones }));
-  }
-
-  @Get('origins')
-  async cloneOrigins(): Promise<CloneOriginsView> {
-    return this.badRequest(async () => ({ clones: await this.origins.list() }));
   }
 
   @Get('projects')
