@@ -472,31 +472,12 @@ describe('code-review step', () => {
     await putStamped(app, run!, 'review_requirements', 'notes\ndecision: ok\n', ['billing-api']);
     await putStamped(app, run!, 'review_security', 'notes\ndecision: ok\n', ['billing-api']);
     await putStamped(app, run!, 'review_performance', 'notes\ndecision: ok\n', ['billing-api']);
-    await putStamped(app, run!, 'review_regressions', 'notes\ndecision: return\n', ['billing-api']);
-    const done = await app.get(PipelineService).step('code-review', 'PROJ-89', { reviewer: 'quality' });
-    expect(agent.mock.calls.map((call) => call[0].step)).toEqual(['code-review-quality']);
+    await putStamped(app, run!, 'review_regressions', 'notes\ndecision: ok\n', ['billing-api']);
+    const done = await app.get(PipelineService).step('code-review', 'PROJ-89');
+    expect(agent.mock.calls.map((call) => call[0].step)).toEqual(['code-review-quality', 'code-review-report']);
     expect(done.exitCode).toBe(0);
     const next = await runs.findRun('PROJ-89');
-    expect(next?.currentStep).toBe('code-review');
-    expect(next?.status).toBe('waiting');
-  });
-
-  it('names the open reviewers when one is started alone', async () => {
-    gitWorktree(join(root, 'worktrees', 'PROJ-95', 'billing-api'));
-    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step)));
-    useAgent(agent);
-    await seed(app, 'PROJ-95');
-    const runs = app.get(RunRepository);
-    const run = await runs.findRun('PROJ-95');
-    await putStamped(app, run!, 'review_requirements', 'notes\ndecision: ok\n', ['billing-api']);
-    await putStamped(app, run!, 'review_regressions', 'notes\ndecision: return\n', ['billing-api']);
-    const done = await app.get(PipelineService).step('code-review', 'PROJ-95', { reviewer: 'quality' });
-    expect(done.message).toMatch(
-      /^\S+ code-review waiting: security and performance have no answer for these files, regressions returned; the report waits for them\n/,
-    );
-    const next = await runs.findRun('PROJ-95');
-    expect(next?.status).toBe('waiting');
-    expect(next?.currentStep).toBe('code-review');
+    expect(next?.currentStep).toBe('commit');
   });
 
   it('does not recover an ok from a reviewer file of an older round', async () => {
@@ -512,7 +493,7 @@ describe('code-review step', () => {
     utimesSync(older, new Date(1000), new Date(1000));
     utimesSync(newer, new Date(2000), new Date(2000));
     const documents = { latestBody: async () => null } as unknown as DocumentRepository;
-    const input = { key: 'PROJ-88', only: undefined, fresh: false, retry: true };
+    const input = { key: 'PROJ-88', fresh: false, retry: true };
     const counts = async (): Promise<boolean> => false;
     const second = await selectReviewers(documents, workdir, { ...input, attemptId: 'aaa', counts });
     expect(second.kept.find((item) => item.kind === 'review_quality')?.decision).toBe('return');
