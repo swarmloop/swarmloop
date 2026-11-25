@@ -1,10 +1,11 @@
-import type { LimitHit } from '../integrations/agent-runtime/runtime-limit';
+import type { LimitHit, LimitInput } from '../integrations/agent-runtime/runtime-limit';
+import type { ModelHostOutage } from '../integrations/agent-runtime/runtime-outage';
 import type { AgentRuntime } from '../integrations/agent-runtime/agent-runtime';
 
 /** How much of the end of stderr is kept to read a limit from. */
 const STDERR_CHARS = 4_000;
 
-/** The end of a launch's output: its last stdout line and its stderr, where a provider's limit text shows. */
+/** The end of a launch's output: its last stdout line and its stderr, where a provider's limit or outage text shows. */
 export class OutputTail {
   private finalLine = '';
   private stderr = '';
@@ -19,10 +20,25 @@ export class OutputTail {
 
   /** The limit the launch ended on, or null. `partial` is the stdout line that never got its newline. */
   limit(runtime: AgentRuntime, partial: string, now: number): LimitHit | null {
-    return runtime.classifyLimit({
-      finalLine: partial.trim() === '' ? this.finalLine : partial,
-      stderr: this.stderr,
-      now,
-    });
+    return runtime.classifyLimit(this.end(partial, now));
+  }
+
+  /** The outage of the model host the launch ended on, or null. Read from the same end as the limit. */
+  outage(runtime: AgentRuntime, partial: string, now: number): ModelHostOutage | null {
+    return runtime.classifyOutage(this.end(partial, now));
+  }
+
+  /** What the launch ended on besides an answer: its usage limit, else the outage of its model host. A limit goes to failover, so it hides an outage. */
+  ending(runtime: AgentRuntime, partial: string, now: number): { limit?: LimitHit; outage?: ModelHostOutage } {
+    const limit = this.limit(runtime, partial, now);
+    if (limit) {
+      return { limit };
+    }
+    const outage = this.outage(runtime, partial, now);
+    return outage ? { outage } : {};
+  }
+
+  private end(partial: string, now: number): LimitInput {
+    return { finalLine: partial.trim() === '' ? this.finalLine : partial, stderr: this.stderr, now };
   }
 }

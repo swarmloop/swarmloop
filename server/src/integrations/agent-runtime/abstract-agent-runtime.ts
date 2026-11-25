@@ -11,6 +11,7 @@ import type {
   RuntimeName,
 } from './agent-runtime';
 import { classifyLimit, type LimitHit, type LimitInput, type LimitRule } from './runtime-limit';
+import { classifyOutage, type ModelHostOutage, type OutageRule } from './runtime-outage';
 
 export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract readonly name: RuntimeName;
@@ -27,9 +28,17 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract readonly credentialNames: readonly string[];
   /** The samples of this CLI's limit texts. */
   protected abstract readonly limits: readonly LimitRule[];
+  /** The samples of this CLI's outage of its model host. */
+  protected abstract readonly outages: readonly OutageRule[];
+  /** The API host this CLI's model answers from. */
+  protected abstract readonly modelHost: string;
 
   classifyLimit(input: LimitInput): LimitHit | null {
     return classifyLimit(this.limits, input);
+  }
+
+  classifyOutage(input: LimitInput): ModelHostOutage | null {
+    return classifyOutage(this.outages, this.modelHost, input);
   }
 
   /** By default the key stays in the container: the vendor's login does not allow a stand-in. */

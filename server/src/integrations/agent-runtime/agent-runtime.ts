@@ -1,6 +1,7 @@
 import type { Connection } from '../connection';
 import type { Effort } from '../../contract/effort';
 import type { LimitHit, LimitInput } from './runtime-limit';
+import type { ModelHostOutage } from './runtime-outage';
 import type { RuntimeName } from './runtime-name';
 
 export type { RuntimeName };
@@ -77,6 +78,11 @@ export interface AgentRuntime {
   secrets(keys: RuntimeKeys): string[];
   /** The provider limit the end of a launch reports, or null when it is no limit: an auth, billing, network or context error is none. */
   classifyLimit(input: LimitInput): LimitHit | null;
+  /**
+   * The model host the launch could not reach after the CLI's own retries, or null. An answer, an answer without a result block, a
+   * usage limit, an auth or billing error give null.
+   */
+  classifyOutage(input: LimitInput): ModelHostOutage | null;
   /** The rule file names the CLI loads by itself from its working directory. */
   ownRuleFiles(): readonly string[];
   briefArgs(): string[];

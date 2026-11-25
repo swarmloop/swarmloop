@@ -11,6 +11,7 @@ import type {
 } from '../agent-runtime';
 import { ClaudeConnection } from './claude-connection';
 import { CLAUDE_LIMITS } from './claude-limit';
+import { CLAUDE_OUTAGES } from './claude-outage';
 import { DENY_BACKGROUND_HOOK, DENY_BACKGROUND_SCRIPT } from './claude-hook';
 
 export const CLAUDE_KEY_PLACEHOLDER = 'sk-ant-api03-swarmloop-egress-placeholder';
@@ -69,6 +70,8 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly connection = new ClaudeConnection();
   readonly credentialNames = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
   protected readonly limits = CLAUDE_LIMITS;
+  protected readonly outages = CLAUDE_OUTAGES;
+  protected readonly modelHost = 'api.anthropic.com';
 
   secrets(keys: RuntimeKeys): string[] {
     return [keys.oauthToken, keys.anthropicKey].filter(Boolean);

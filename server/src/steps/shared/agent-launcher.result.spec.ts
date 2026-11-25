@@ -12,6 +12,11 @@ import type { VisitRepository } from '../../history/visit.repository';
 import { AgentLauncher } from './agent-launcher';
 import type { AgentLaunchRequest } from './agent-launch-request';
 import { ResultInvalid } from './answer-errors';
+import { ModelHostUnavailable } from './model-host-unavailable';
+import { emptyResult } from '../../agent/agent-result';
+import type { AgentRunResult } from '../../agent/agent-result';
+import type { KillReason } from '../../agent/limits';
+import { HOST_RETRY_MS } from '../../integrations/http';
 import { BlockAgentRunner } from '../../testing/result-answer';
 import type { ScriptedAnswer } from '../../testing/result-answer';
 
@@ -138,5 +143,72 @@ describe('AgentLauncher result', () => {
     await launcher.launch(requestOf({ answerErrors: ['items: bad'], resume: false }));
     expect(prompts()[0]).toContain('FULL PROMPT');
     expect(prompts()[0]).toContain('- items: bad');
+  });
+});
+
+const OUTAGE = { host: 'api.anthropic.com', detail: 'API Error: 502 ENOTFOUND api.anthropic.com' };
+const FINISHED = '2026-11-25T10:00:00.000Z';
+
+/** A launch that ends because the model host did not answer, with the cost of its try. */
+function outageTry(killReason: KillReason | null = null): AgentRunResult {
+  return {
+    ...emptyResult(killReason ?? 'time', 0, 1, FINISHED),
+    killReason,
+    usd: 0.5,
+    tokensIn: 7,
+    outage: OUTAGE,
+  };
+}
+
+/** A launcher over a runner that returns these results in order, and the prompts it saw. */
+function launcherOfResults(results: AgentRunResult[]) {
+  const prompts: string[] = [];
+  const agent = {
+    run: (input: AgentRunInput) => {
+      prompts.push(input.prompt);
+      const next = results.shift();
+      return next ? Promise.resolve(next) : Promise.reject(new Error('unexpected launch'));
+    },
+  } as unknown as AgentProcessRunner;
+  const visits = { tokenTotal: jest.fn().mockResolvedValue(0) } as unknown as VisitRepository;
+  return { launcher: new AgentLauncher(agent, visits, new RunStop()), prompts };
+}
+
+describe('AgentLauncher model host outage', () => {
+  it("throws ModelHostUnavailable with the host, its next try and the try's cost, and sends no follow-up", async () => {
+    const { launcher, prompts } = launcherOfResults([outageTry()]);
+    const failure = (await launcher.launch(requestOf()).catch((error: unknown) => error)) as ModelHostUnavailable;
+    expect(failure).toBeInstanceOf(ModelHostUnavailable);
+    expect(failure.host).toBe(OUTAGE.host);
+    expect(failure.detail).toBe(OUTAGE.detail);
+    expect(failure.retryAt).toBe(new Date(Date.parse(FINISHED) + HOST_RETRY_MS).toISOString());
+    expect(failure.result.usd).toBe(0.5);
+    expect(prompts).toHaveLength(1);
+  });
+
+  it('throws it with the cost of both tries when a follow-up ends with an outage', async () => {
+    const { launcher, prompts } = launcherOfResults([
+      {
+        ...emptyResult('time', 0, 1, FINISHED),
+        killReason: null,
+        usd: 0.25,
+        tokensIn: 3,
+        responseText: 'I wrote the plan.',
+      },
+      outageTry(),
+    ]);
+    const failure = (await launcher.launch(requestOf()).catch((error: unknown) => error)) as ModelHostUnavailable;
+    expect(failure).toBeInstanceOf(ModelHostUnavailable);
+    expect(failure.result.usd).toBe(0.75);
+    expect(failure.result.tokensIn).toBe(10);
+    expect(prompts).toHaveLength(2);
+  });
+
+  it('throws it for a launch killed by idle whose end reads an outage', async () => {
+    const { launcher, prompts } = launcherOfResults([outageTry('idle')]);
+    const failure = await launcher.launch(requestOf()).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ModelHostUnavailable);
+    expect((failure as ModelHostUnavailable).result.killReason).toBe('idle');
+    expect(prompts).toHaveLength(1);
   });
 });

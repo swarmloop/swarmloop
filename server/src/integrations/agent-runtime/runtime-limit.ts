@@ -21,7 +21,7 @@ const LIMIT_TEXT_CHARS = 400;
 const MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
-function stringsOf(value: unknown): string[] {
+export function stringsOf(value: unknown): string[] {
   if (typeof value === 'string') {
     return [value];
   }

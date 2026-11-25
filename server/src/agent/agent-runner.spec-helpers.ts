@@ -1,11 +1,17 @@
-import { writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
+import { mkdtemp } from 'fs/promises';
+import { tmpdir } from 'os';
 import { EventEmitter } from 'events';
 import { join } from 'path';
 import { PassThrough } from 'stream';
+import { parseAgentList } from '../config/agents';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
+import { SystemClock } from '../core/clock';
 import { testEnv } from '../config/env.spec-helpers';
 import type { SandboxService } from '../sandbox/sandbox.service';
-import type { AgentRunInput } from './agent-runner';
+import type { SandboxLaunch } from '../sandbox/sandbox-launch';
+import { AgentProcessRunner, type AgentRunInput } from './agent-runner';
+import { RunStop } from './run-stop';
 
 export function fakeChild(chunks: string[], code: number): EventEmitter {
   const stdout = new PassThrough();
@@ -82,5 +88,46 @@ export function writePriceCache(root: string): void {
         prices: { m: { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 } },
       })}\n`,
     );
+  }
+}
+
+export async function start(
+  label: string,
+  steps: { chunks: string[]; code?: number; advance?: number }[],
+  patch: Partial<AgentRunInput> = {},
+  env: Partial<SwarmloopEnv> = {},
+  stop = new RunStop(),
+): Promise<{
+  result: Awaited<ReturnType<AgentProcessRunner['run']>>;
+  launches: SandboxLaunch[];
+  outputFile: string;
+  root: string;
+}> {
+  const root = await mkdtemp(join(tmpdir(), `swarmloop-agent-${label}-`));
+  const outputFile = join(root, 'data', 'run1-implement-output.txt');
+  mkdirSync(join(root, 'data'), { recursive: true });
+  writePriceCache(root);
+  const pending = [...steps];
+  let now = Date.now();
+  const clock = steps.some((step) => step.advance) ? jest.spyOn(Date, 'now').mockImplementation(() => now) : null;
+  const launches: SandboxLaunch[] = [];
+  const spawn = jest.fn<Promise<EventEmitter>, [SandboxLaunch]>((launch) => {
+    launches.push(launch);
+    const next = pending.shift();
+    if (!next) {
+      return Promise.reject(new Error('unexpected spawn'));
+    }
+    now += next.advance ?? 0;
+    return Promise.resolve(fakeChild(next.chunks, next.code ?? 0));
+  });
+  const runner = new AgentProcessRunner(config(root, env), new SystemClock(), sandbox(spawn), stop);
+  try {
+    const runtime = env.AGENTS_IMPLEMENT
+      ? parseAgentList('AGENTS_IMPLEMENT', env.AGENTS_IMPLEMENT)[0].runtime
+      : 'cursor';
+    const result = await runner.run(input(root, outputFile, { runtime, ...patch }));
+    return { result, launches, outputFile, root };
+  } finally {
+    clock?.mockRestore();
   }
 }

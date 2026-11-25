@@ -4,6 +4,7 @@ import { AbstractAgentRuntime } from '../abstract-agent-runtime';
 import type { AgentPrintInput, EffortLaunch, RuntimeKeys } from '../agent-runtime';
 import { CursorConnection } from './cursor-connection';
 import { CURSOR_LIMITS } from './cursor-limit';
+import { CURSOR_OUTAGES } from './cursor-outage';
 import { effortsOf, idWithEffort, parseModelIds } from './cursor-models';
 
 export class CursorRuntime extends AbstractAgentRuntime {
@@ -16,6 +17,8 @@ export class CursorRuntime extends AbstractAgentRuntime {
   readonly connection = new CursorConnection();
   readonly credentialNames = ['CURSOR_API_KEY'];
   protected readonly limits = CURSOR_LIMITS;
+  protected readonly outages = CURSOR_OUTAGES;
+  protected readonly modelHost = 'api2.cursor.sh';
   private modelIds: readonly string[] = [];
 
   secrets(keys: RuntimeKeys): string[] {
