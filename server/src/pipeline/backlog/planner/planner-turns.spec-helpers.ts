@@ -85,7 +85,7 @@ export async function plannerTurnsHarness(
     sent.push({ command, key });
   });
   const chat = db.app.get(BacklogChatRepository);
-  const calls = new PlannerBacklogCalls(h.actions, support, h.backlogs, h.runs);
+  const calls = new PlannerBacklogCalls(h.actions, support, h.backlogs);
   const { holds, passOn } = holdServices(db.app, db.clock);
   const turns = new PlannerTurnActions(
     h.backlogs,
