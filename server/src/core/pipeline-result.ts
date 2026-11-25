@@ -213,7 +213,6 @@ export interface StepOptions {
   startBy?: StartBy;
   /** The level of the planner that asks. Set only with `startBy: 'planner'`. */
   level?: number | null;
-  reviewer?: string;
   /** The errors of the answer the last visit of this step failed on. The agent is told them on this launch. */
   answerErrors?: string[];
   /** Called once the step is open and the run is `running`. The driver uses it to wake the parent of a subtask that left `blocked` or `failed`. */

@@ -145,7 +145,6 @@ describe('a reviewer killed after its block', () => {
     const documents = { latestBody: async () => null } as unknown as DocumentRepository;
     const selection = await selectReviewers(documents, root, {
       key: 'PROJ-412',
-      only: undefined,
       fresh: false,
       retry: true,
       attemptId: 'aaa',
@@ -163,7 +162,6 @@ describe('a reviewer killed after its block', () => {
     const documents = { latestBody: async () => null } as unknown as DocumentRepository;
     const selection = await selectReviewers(documents, root, {
       key: 'PROJ-410',
-      only: undefined,
       fresh: false,
       retry: true,
       attemptId: 'aaa',
@@ -187,7 +185,6 @@ describe('a stored return on an unchanged diff', () => {
     } as unknown as DocumentRepository;
     const selection = await selectReviewers(documents, '/none', {
       key: 'PROJ-411',
-      only: undefined,
       fresh: false,
       retry: false,
       attemptId: null,

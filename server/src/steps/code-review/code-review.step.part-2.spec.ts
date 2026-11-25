@@ -66,7 +66,7 @@ describe('code-review step', () => {
       for (const name of ['requirements', 'regressions', 'security', 'performance']) {
         await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
       }
-      const done = await app.get(PipelineService).step('code-review', 'PROJ-90', { reviewer: 'quality' });
+      const done = await app.get(PipelineService).step('code-review', 'PROJ-90');
       expect(done.exitCode).toBe(0);
       expect((await runs.findRun('PROJ-90'))?.currentStep).toBe('commit');
     } finally {
@@ -87,7 +87,7 @@ describe('code-review step', () => {
       for (const name of ['requirements', 'regressions', 'security', 'performance']) {
         await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
       }
-      const done = await app.get(PipelineService).step('code-review', 'PROJ-91', { reviewer: 'quality' });
+      const done = await app.get(PipelineService).step('code-review', 'PROJ-91');
       expect(done.exitCode).toBe(0);
       const next = await runs.findRun('PROJ-91');
       expect(next?.currentStep).toBe('implement');
@@ -110,7 +110,7 @@ describe('code-review step', () => {
       for (const name of ['requirements', 'regressions', 'security', 'performance']) {
         await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
       }
-      await app.get(PipelineService).step('code-review', 'PROJ-92', { reviewer: 'quality' });
+      await app.get(PipelineService).step('code-review', 'PROJ-92');
       const issues = ARTIFACTS.issues.parse((await documents.latestBody('PROJ-92', 'issues')) ?? '[]');
       expect(issues.map((issue) => issue.source)).toEqual(['quality']);
       expect(issues[0]?.id).toMatch(/^quality-[0-9a-f]{10}$/);
