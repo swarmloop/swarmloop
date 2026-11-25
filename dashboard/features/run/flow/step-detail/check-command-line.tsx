@@ -16,7 +16,7 @@ import { duration } from '../../../../lib/format';
 import { statusColor } from '../../../../theme/theme';
 import { useLiveBridge } from '../../../shell';
 import { commandLabel, commandMs } from '../../check-commands';
-import { useCommandLog } from '../../use-command-log';
+import { CommandOutput } from './command-output';
 import { CommandChart } from './step-chart';
 
 const STATUS: Record<CheckCommandView['status'], { word: string; color: string; Icon: typeof Schedule }> = {
@@ -28,28 +28,32 @@ const STATUS: Record<CheckCommandView['status'], { word: string; color: string; 
   interrupted: { word: 'interrupted by a server restart', color: statusColor('interrupted'), Icon: RestartAlt },
 };
 
-function CommandOutput({ runKey, command }: { runKey: string; command: CheckCommandView }): ReactElement {
-  const live = useLiveBridge((snapshot) =>
-    snapshot.logs.find((entry) => entry.key === runKey && entry.step === 'checks' && entry.command === command.index),
+/** The latest line the server said of a waiting command (`waiting for a free check slot (2 ahead)`), else `queued`. */
+function QueuedWord({ runKey, command }: { runKey: string; command: CheckCommandView }): ReactElement {
+  const body = useLiveBridge(
+    (snapshot) =>
+      snapshot.logs.find((entry) => entry.key === runKey && entry.step === 'checks' && entry.command === command.index)
+        ?.body,
   );
-  const stored = useCommandLog(runKey, command, true);
-  const text = command.status === 'running' || command.status === 'waiting' ? (live?.body ?? stored) : stored;
-  const neverRan = command.status === 'waiting' || command.status === 'skipped';
+  return <>{body?.split('\n').findLast((line) => line.trim() !== '') ?? STATUS.waiting.word}</>;
+}
+
+/** A skipped command: muted from the start, with its reason where a running one shows its time. It does not open. */
+function SkippedLine({ command, reason }: { command: CheckCommandView; reason: string | undefined }): ReactElement {
+  const { Icon } = STATUS.skipped;
   return (
     <Box
-      component="pre"
-      aria-label={`Output of ${command.command}`}
-      sx={{
-        m: 0,
-        p: 1,
-        maxHeight: 420,
-        overflow: 'auto',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 12,
-        whiteSpace: 'pre-wrap',
-      }}
+      component="li"
+      sx={{ listStyle: 'none', display: 'flex', alignItems: 'center', gap: 1.5, py: 0.5, fontSize: 13 }}
     >
-      {text ?? (text === null || neverRan ? 'no output: it did not run' : 'loading')}
+      <Box aria-hidden sx={{ width: 20, flexShrink: 0 }} />
+      <Icon aria-hidden sx={{ fontSize: 18, color: 'text.disabled' }} />
+      <Box component="span" sx={{ fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0, color: 'text.disabled' }}>
+        {commandLabel(command)}
+      </Box>
+      <Box component="span" sx={{ color: 'text.disabled' }}>
+        {reason ? `skipped · ${reason}` : 'skipped'}
+      </Box>
     </Box>
   );
 }
@@ -60,13 +64,19 @@ export function CheckCommandLine({
   command,
   visit,
   now,
+  skipReason,
 }: {
   runKey: string;
   command: CheckCommandView;
   visit: StepView['visits'][number] | undefined;
   now: number;
+  /** Why a skipped command was skipped, from its skip record. */
+  skipReason?: string;
 }): ReactElement {
   const [toggled, setToggled] = useState<boolean | null>(null);
+  if (command.status === 'skipped') {
+    return <SkippedLine command={command} reason={skipReason} />;
+  }
   const open = toggled ?? command.status === 'failed';
   const ms = commandMs(command, now);
   const { word, color, Icon } = STATUS[command.status];
@@ -84,7 +94,7 @@ export function CheckCommandLine({
           {commandLabel(command)}
         </Box>
         <Box component="span" sx={{ color }}>
-          {word}
+          {command.status === 'waiting' ? <QueuedWord runKey={runKey} command={command} /> : word}
         </Box>
         <Box component="span" sx={{ color: 'text.secondary' }}>
           {ms === null ? '' : duration(ms)}

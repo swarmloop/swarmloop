@@ -8,6 +8,7 @@ import { restartWaitSentence } from '@contract/restart-wait';
 import { localTime } from '../../../lib/format';
 import { phaseLabel } from '../../../lib/phase-label';
 import { stepLabel, withReport } from '../phases';
+import { SLOT_WAIT, waitsForSlot } from '../check-commands';
 import type { CheckCommandView, FlowView } from '@contract/api';
 import { ChecksProgress } from './checks-progress';
 import { stateWord, type StateReason } from '@contract/run-state';
@@ -113,9 +114,7 @@ export function FlowBoard({
                           {`×${step.attempts}`}
                         </Box>
                       ) : null}
-                      {step.name === 'checks' && checkCommands.length > 0 ? (
-                        <ChecksProgress commands={checkCommands} />
-                      ) : null}
+                      {step.name === 'checks' ? <ChecksCard step={step} commands={checkCommands} /> : null}
                     </Box>
                   </Tooltip>
                 );
@@ -129,6 +128,20 @@ export function FlowBoard({
 }
 
 type Step = FlowView['phases'][number]['steps'][number];
+
+/** What the checks card adds: the wait for a free check slot while no command runs, and how far the commands are. */
+function ChecksCard({ step, commands }: { step: Step; commands: CheckCommandView[] }): ReactElement {
+  return (
+    <>
+      {step.status === 'running' && waitsForSlot(commands) ? (
+        <Box component="span" sx={{ fontSize: 10, color: 'text.secondary' }}>
+          {SLOT_WAIT}
+        </Box>
+      ) : null}
+      {commands.length > 0 ? <ChecksProgress commands={commands} /> : null}
+    </>
+  );
+}
 
 /** The words of the return a step sent: the code review's reviewers all send theirs from `code-review`. */
 function returnWords(returns: FlowView['returns'], step: string): string {

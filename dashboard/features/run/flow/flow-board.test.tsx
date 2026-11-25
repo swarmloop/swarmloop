@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CheckCommandView, FlowView } from '@contract/api';
 import { restartWaitSentence } from '@contract/restart-wait';
 import { localTime } from '../../../lib/format';
+import { statusColor } from '../../../theme/theme';
 import { FlowBoard } from './flow-board';
 
 const errorColor = createTheme().palette.error.main;
@@ -255,6 +256,26 @@ describe('FlowBoard', () => {
       expect(part('passed')).toHaveStyle({ flexGrow: '8' });
       expect(part('running')).toHaveStyle({ flexGrow: '2' });
       expect(part('queued')).toHaveStyle({ flexGrow: '2' });
+    });
+
+    it('reads 0/8 with the skipped part in the skipped colour, and says it waits for a free check slot', () => {
+      const statuses: CheckCommandView['status'][] = [
+        ...Array<CheckCommandView['status']>(4).fill('skipped'),
+        ...Array<CheckCommandView['status']>(8).fill('waiting'),
+      ];
+      const card = draw(statuses);
+
+      expect(within(card).getByText('0/8')).toBeInTheDocument();
+      expect(within(card).getByText('waits for a free check slot')).toBeInTheDocument();
+      const skipped = card.querySelector('[data-part="skipped"]');
+      expect(skipped).toHaveStyle({ flexGrow: '4' });
+      expect(skipped).toHaveStyle({ backgroundColor: statusColor('skipped') });
+    });
+
+    it('does not say it waits while a command runs', () => {
+      const card = draw(['running', 'waiting']);
+
+      expect(within(card).queryByText('waits for a free check slot')).toBeNull();
     });
 
     it('shows N failed in the error color with an icon after a failure', () => {

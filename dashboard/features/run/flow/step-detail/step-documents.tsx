@@ -17,6 +17,7 @@ import { AgentLogPanel, Exchanges, type AgentLog } from '../../transcript/agent-
 import { DocumentBody } from '../../transcript/document-detail';
 import { TranscriptFeed } from '../../transcript/transcript-feed';
 import type { IssueLinks } from '../../transcript/transcript-model';
+import { waitsForSlot } from '../../check-commands';
 import { CheckCommands } from './check-commands';
 import { NO_CONTAINER, StepChart, startedNoContainer } from './step-chart';
 
@@ -138,6 +139,7 @@ export function StepDocuments({
           live={visit?.status === 'running'}
           now={now}
           activities={commands === undefined}
+          waitsForSlot={waitsForSlot(commands)}
           note={startedNoContainer(visit, restarted) ? NO_CONTAINER : undefined}
         />
       ) : null}

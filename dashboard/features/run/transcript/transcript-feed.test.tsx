@@ -408,4 +408,24 @@ describe('TranscriptFeed', () => {
 
     expect(screen.queryByText('This step started no container.')).toBeNull();
   });
+
+  describe('the status line of a live step', () => {
+    const quiet = [{ ...input, occurredAt: '2026-01-01T10:00:00.000Z' }];
+    const later = Date.parse('2026-01-01T10:05:00.000Z');
+
+    it('says how long the step has been silent', () => {
+      render(<TranscriptFeed runKey="run-1" events={quiet} live now={later} />, { wrapper: QueryWrapper });
+
+      expect(screen.getByText('no output for 5 min')).toBeInTheDocument();
+    });
+
+    it('says it waits for a free check slot in place of the silence', () => {
+      render(<TranscriptFeed runKey="run-1" events={quiet} live now={later} waitsForSlot />, {
+        wrapper: QueryWrapper,
+      });
+
+      expect(screen.getByText('waits for a free check slot')).toBeInTheDocument();
+      expect(screen.queryByText(/no output for/)).toBeNull();
+    });
+  });
 });
