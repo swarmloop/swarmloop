@@ -73,7 +73,7 @@ test('allows a process in git-fixture, a whole-flow spec and each listed excepti
 });
 
 test('lists exactly the specs that keep a real process, and each exists', () => {
-  assert.equal(PROCESS_EXCEPTIONS.length, 3);
+  assert.equal(PROCESS_EXCEPTIONS.length, 4);
   for (const filePath of PROCESS_EXCEPTIONS) {
     assert.ok(existsSync(join(root, filePath)), filePath);
   }

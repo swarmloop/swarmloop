@@ -71,6 +71,8 @@ export const PROCESS_EXCEPTIONS = [
   'server/src/integrations/agent-runtime/claude/claude-hook.spec.ts',
   // Proves what a real child process reads from stdin.
   'server/src/sandbox/sandbox-stdin.spec.ts',
+  // Proves the conditional write against a second real process on the same database file.
+  'server/src/testing/faults/concurrent-run-change.spec.ts',
 ];
 
 const PROCESS_IGNORES = ['**/*.e2e.spec.ts', 'server/src/testing/git-fixture.ts', ...PROCESS_EXCEPTIONS];

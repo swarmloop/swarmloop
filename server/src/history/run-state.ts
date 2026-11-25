@@ -223,7 +223,7 @@ export function isReturned(
   );
 }
 
-/** Moves a run to a state in memory. Persist it with `saveRun`, `claim` or `finalize`. */
+/** Moves a run to a state in memory. Persist it with `change`, `claim` or `finalize`. */
 export function writeRunState(
   run: Omit<StateColumns, 'mergeOutcome' | 'doneAt'> & Partial<Pick<StateColumns, 'mergeOutcome' | 'doneAt'>>,
   change: RunStateChange,
@@ -231,12 +231,12 @@ export function writeRunState(
   Object.assign(run, stateColumns(run, change));
 }
 
-/** Marks the run as an epic from `at`, in memory. Persist it with `saveRun`. */
+/** Marks the run as an epic from `at`, in memory. Persist it with `change`. */
 export function markEpic(run: Pick<RunEntity, 'epicAt'>, at: string): void {
   run.epicAt = at;
 }
 
-/** Clears the epic mark, in memory. Persist it with `saveRun`. */
+/** Clears the epic mark, in memory. Persist it with `change`. */
 export function clearEpic(run: Pick<RunEntity, 'epicAt'>): void {
   run.epicAt = null;
 }
