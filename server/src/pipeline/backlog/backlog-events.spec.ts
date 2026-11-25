@@ -1,7 +1,9 @@
 import type { BacklogEventKind } from '../../contract/backlog';
+import { join } from 'path';
 import { DocumentRepository } from '../../history/document.repository';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { RunRepository } from '../../history/run.repository';
+import { copyMainWithOrigin, git } from '../../testing/git-fixture';
 import { readStoredQuestions } from '../../steps/shared/question-parts';
 import type { PlanConversation } from '../../steps/shared/plan-conversation';
 import { PlannerChain } from '../planner-chain';
@@ -113,6 +115,95 @@ describe('BacklogEvents', () => {
         { facts: { slug: 'a', runKey: 'a-1', state: 'blocked', reason: 'the branch name was refused' } },
       ]);
     }));
+
+  describe('the end a run-needs-person event reports', () => {
+    async function seedEnded(h: Harness, key: string, change: Parameters<Harness['moveRun']>[1]) {
+      await h.seedDoneRun(key, []);
+      await h.moveRun(key, change);
+      const { clone } = copyMainWithOrigin(join(h.db.root, 'worktrees', key), 'web');
+      return `web=${git(clone, ['rev-parse', 'HEAD'])}`;
+    }
+
+    it('names a failed run, its step, no code and the heads of its work trees, and reads them only for a new key', () =>
+      withHarness(async (h) => {
+        h.setMain('web');
+        const id = (await h.seedBacklog('one')).id as number;
+        await h.seedTask(id, 'a', { runKey: 'a-1' });
+        const heads = await seedEnded(h, 'a-1', { status: 'failed', currentStep: 'implement' });
+
+        await h.tick();
+        await h.tick();
+
+        expect(await events(h, id, 'run-needs-person')).toMatchObject([
+          {
+            facts: {
+              runKey: 'a-1',
+              state: 'failed',
+              endRun: 'a-1',
+              endStep: 'implement',
+              endCode: '',
+              endHeads: heads,
+            },
+          },
+        ]);
+      }));
+
+    it('names the first part that needs a person for an epic blocked by its parts', () =>
+      withHarness(async (h) => {
+        h.setMain('web');
+        const id = (await h.seedBacklog('one')).id as number;
+        await h.seedTask(id, 'a', { runKey: 'a-1' });
+        await seedEnded(h, 'a-1', {
+          status: 'blocked',
+          currentStep: 'implement',
+          reason: { code: 'SUBTASK_BLOCKED', message: 'a part is blocked' },
+        });
+        const epic = (await h.runs.findRun('a-1')) as NonNullable<Awaited<ReturnType<typeof h.runs.findRun>>>;
+        await h.seedDoneRun('p-1', []);
+        const heads = await seedEnded(h, 'p-2', {
+          status: 'blocked',
+          currentStep: 'code-review',
+          reason: { code: 'GIT_RULES', message: 'refused' },
+        });
+        for (const key of ['p-1', 'p-2']) {
+          const part = (await h.runs.findRun(key)) as NonNullable<Awaited<ReturnType<typeof h.runs.findRun>>>;
+          part.parentRunId = epic.id;
+          await h.runs.saveRun(part);
+        }
+
+        await h.tick();
+
+        expect(await events(h, id, 'run-needs-person')).toMatchObject([
+          {
+            facts: {
+              runKey: 'a-1',
+              endRun: 'p-2',
+              endStep: 'code-review',
+              endCode: 'GIT_RULES',
+              endHeads: heads,
+            },
+          },
+        ]);
+      }));
+
+    it('names the epic itself when it is blocked in its own step', () =>
+      withHarness(async (h) => {
+        h.setMain('web');
+        const id = (await h.seedBacklog('one')).id as number;
+        await h.seedTask(id, 'a', { runKey: 'a-1' });
+        await seedEnded(h, 'a-1', {
+          status: 'blocked',
+          currentStep: 'plan',
+          reason: { code: 'GIT_RULES', message: 'refused' },
+        });
+
+        await h.tick();
+
+        expect(await events(h, id, 'run-needs-person')).toMatchObject([
+          { facts: { endRun: 'a-1', endStep: 'plan', endCode: 'GIT_RULES' } },
+        ]);
+      }));
+  });
 
   it('writes run-done-without-request once for a done run with no merge request', () =>
     withHarness(async (h) => {

@@ -4,19 +4,26 @@ import { join } from 'path';
 import { attachmentsMount } from '../agent/agent-args';
 import { AppConfig } from '../config/env';
 import { AttachmentStore } from '../history/attachment-store';
-import { attachmentsDir } from '../history/run-paths';
+import { attachmentsDir, root } from '../history/run-paths';
 import { BacklogChatService } from '../api/backlog-chat.service';
 import { BacklogChatRepository } from '../history/backlog-chat.repository';
 import { BacklogRepository } from '../history/backlog.repository';
+import { CheckCommandRepository } from '../history/check-command.repository';
+import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
+import { checkOutputPath } from '../core/check-output';
+import { ERROR_CODES } from '../contract/error-codes';
+import { REASON } from '../contract/reason-words';
+import type { BacklogTurnResult } from '../agent-result/definitions/backlog-turn';
 import { remoteProject } from '../integrations/code-host/remote-project';
 import { BacklogPlanner } from '../pipeline/backlog/planner/backlog-planner';
 import { CommandService } from '../pipeline/command.service';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { FAKE_MODEL_KEY } from './env.spec-helpers';
 import { createFlowHarness } from './flow-harness';
+import { BlockAgentRunner } from './result-answer';
 import { git } from './runs.spec-helpers';
 import { scriptedBacklogTurns } from './test-app-steps';
 
@@ -191,5 +198,146 @@ describe('a backlog of two repositories is planned, run and accepted through the
     expect(launches[0].prompt).toContain('Attachments:');
     expect(launches[0].prompt).toContain('mockup.png');
     expect(launches[0].mount).toMatchObject({ containerPath: '/work/brief/attachments', readonly: true });
+  });
+});
+
+describe('the planner acts on a run of its backlog that waits for a person', () => {
+  const LINT_OUTPUT = 'src/a.ts: unused variable lintBroke';
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+  /** The prompts of the planner turns, in order. */
+  let prompts: string[];
+  /** What the next turn answers, by its prompt; an empty turn when it answers nothing. */
+  let answer: (prompt: string) => BacklogTurnResult;
+
+  beforeEach(async () => {
+    prompts = [];
+    answer = () => ({ say: '', actions: [] });
+    const blocks = new BlockAgentRunner();
+    const base = blocks.run.bind(blocks);
+    blocks.run = (input) => {
+      if (input.step !== 'backlog-plan') return base(input);
+      prompts.push(input.prompt ?? '');
+      return new BlockAgentRunner({ 'backlog-plan': [{ block: answer(input.prompt ?? '') }] }).run(input);
+    };
+    flow = await createFlowHarness(KEY, {
+      env: { CHECKOUTS_ROOT: '.', ...FAKE_MODEL_KEY },
+      realImplement: false,
+      realReview: false,
+      blocks,
+    });
+    const url = `file://${join(flow.app.root, 'demo.git')}`;
+    git(join(flow.app.root, 'demo'), ['remote', 'set-url', 'origin', url]);
+    remoteProject(url);
+    flow.host.defaultBranchPasses();
+  });
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await flow.app.app.get(CommandService).idle();
+    await flow.close();
+  });
+
+  /** A started task `a` whose run is `blocked` at `step`; returns the backlog id and the run. */
+  async function blockedTask(step: string) {
+    const { actions, scheduler } = flow.backlog();
+    await actions.createBacklog(OWNER, { name: BACKLOG, repositories: ['demo'], mergeMode: 'green' });
+    await actions.proposeMilestone(OWNER, BACKLOG, { title: 'Ship the shop', goal: 'Customers can order.' });
+    await actions.addRequirements(OWNER, BACKLOG, 1, { texts: ['Orders can be placed'] });
+    await actions.addTasks(OWNER, BACKLOG, [{ ...TASKS[0], repositories: ['demo'], depends: [] }]);
+    await actions.runMilestone(OWNER, BACKLOG, 1);
+    const id = (await backlogs().findBacklog(BACKLOG))!.id as number;
+    await scheduler.tick();
+    const runKey = (await backlogs().tasks(id))[0].runKey as string;
+    await flow.app.pipeline.whenIdle(runKey);
+    await flow.app.app.get(CommandService).idle();
+    const run = (await runs().findRun(runKey))!;
+    writeRunState(run, {
+      status: 'blocked',
+      currentStep: step,
+      reason: { code: REASON.loopLimit, message: 'checks ran 3 times (MAX_RETURNS)' },
+    });
+    await runs().saveRun(run);
+    return { id, run };
+  }
+
+  const backlogs = () => flow.app.app.get(BacklogRepository);
+  const runs = () => flow.app.app.get(RunRepository);
+
+  it('reads the output of the failed checks and replays the run from implement with an instruction', async () => {
+    const { id, run } = await blockedTask('checks');
+    await flow.app.app.get(CheckCommandRepository).add({
+      runId: run.id,
+      attemptId: 'att-1',
+      repo: 'demo',
+      command: 'npm run lint',
+      name: 'lint',
+      commandIndex: 0,
+      status: 'failed',
+      exitCode: 1,
+    });
+    const output = checkOutputPath(root(flow.app.app.get(AppConfig)), run.key, 'checks', 'att-1', 0);
+    mkdirSync(join(output, '..'), { recursive: true });
+    writeFileSync(output, LINT_OUTPUT);
+    answer = (prompt) =>
+      prompt.includes(LINT_OUTPUT)
+        ? {
+            say: 'The lint check failed; I replay implement.',
+            actions: [
+              {
+                action: 'replay',
+                run: run.key,
+                step: 'implement',
+                instruction: 'Remove the unused variable lintBroke.',
+                reason: 'the lint check failed',
+              },
+            ],
+          }
+        : { say: '', actions: [] };
+
+    await flow.backlog().scheduler.tick();
+    await flow.app.app.get(BacklogPlanner).whenIdle();
+    await flow.app.app.get(CommandService).idle();
+
+    expect(prompts[0]).toContain(LINT_OUTPUT);
+    const refused = (await backlogs().events(id, 100)).filter((event) => event.kind === 'command-refused');
+    expect(refused).toEqual([]);
+    const replayed = (await runs().findRun(run.key))!;
+    expect(replayed.prompt).toContain('Remove the unused variable lintBroke.');
+    const instructions = await flow.app.app.get(DocumentRepository).latestBody(run.key, 'instructions:implement');
+    expect(instructions).toBe('Remove the unused variable lintBroke.');
+  });
+
+  it('resumes a blocked part of an epic, and the part goes on', async () => {
+    const { id, run } = await blockedTask('implement');
+    run.split = true;
+    writeRunState(run, {
+      status: 'blocked',
+      currentStep: 'implement',
+      reason: { code: ERROR_CODES.SUBTASK_BLOCKED, message: 'subtask a is blocked' },
+    });
+    await runs().saveRun(run);
+    await runs().openSubtask(`${run.key}-a`, run.id, 'a');
+    const part = (await runs().findRun(`${run.key}-a`))!;
+    writeRunState(part, {
+      status: 'blocked',
+      currentStep: 'implement',
+      reason: { code: REASON.loopLimit, message: 'checks ran 3 times (MAX_RETURNS)' },
+    });
+    await runs().saveRun(part);
+    answer = (prompt) =>
+      prompt.includes(part.key)
+        ? { say: 'I resume the part.', actions: [{ action: 'resume', run: part.key, reason: 'the part is blocked' }] }
+        : { say: '', actions: [] };
+
+    await flow.backlog().scheduler.tick();
+    await flow.app.app.get(BacklogPlanner).whenIdle();
+    await flow.app.app.get(CommandService).idle();
+    await flow.app.pipeline.whenIdle(part.key);
+
+    const refused = (await backlogs().events(id, 100)).filter((event) => event.kind === 'command-refused');
+    expect(refused).toEqual([]);
+    const resumed = await flow.app.app.get(CommandRepository).latestOfType(part.id, 'resume');
+    expect(resumed).toMatchObject({ actor: OWNER, state: 'succeeded' });
+    expect(JSON.parse(resumed?.result ?? 'null')).toEqual({ value: { key: part.key, status: 'started' } });
   });
 });

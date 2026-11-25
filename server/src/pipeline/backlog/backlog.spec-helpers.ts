@@ -121,6 +121,7 @@ export async function backlogHarness(parallel = 3) {
     host,
     db.app.get(PlanChatStore),
     holdServices(db.app, db.clock).holds,
+    config,
   );
   const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands, events);
   const epics = { idle: true, held: new Set<string>() };

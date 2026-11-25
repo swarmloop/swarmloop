@@ -1,13 +1,37 @@
-import type { BacklogTaskRecord } from '../../../history/backlog.repository';
+import { AppConfig } from '../../../config/env';
+import { AttachmentStore } from '../../../history/attachment-store';
+import { BacklogRepository, type BacklogTaskRecord } from '../../../history/backlog.repository';
+import { CheckCommandRepository } from '../../../history/check-command.repository';
 import { DocumentRepository } from '../../../history/document.repository';
 import { PlanChatStore } from '../../../history/plan-chat.store';
 import { RunRepository } from '../../../history/run.repository';
+import { VisitRepository } from '../../../history/visit.repository';
 import type { CodeHostRegistry } from '../../../integrations/code-host/code-host.registry';
 import { RepositoryHost } from '../../../steps/shared/repository-host';
 import type { RunNames } from '../../../steps/shared/run-names';
 import type { RepositoryOrigins } from '../../../steps/shared/repository-origins';
 import { FakeBacklogHost, pipelineOf } from '../../../testing/fake-backlog-host';
+import { EventFacts } from './event-facts';
 import { plannerDatabase } from './planner.spec-helpers';
+import { RunFacts } from './run-facts';
+
+/** The facts of a turn's events, read from the real repositories of `app` and the code host `host`. */
+export function eventFactsOf(app: { get<T>(token: new (...args: never[]) => T): T }, host: RepositoryHost): EventFacts {
+  const runFacts = new RunFacts(
+    app.get(RunRepository),
+    app.get(DocumentRepository),
+    app.get(CheckCommandRepository),
+    app.get(VisitRepository),
+    app.get(AppConfig),
+  );
+  return new EventFacts(
+    app.get(BacklogRepository),
+    app.get(DocumentRepository),
+    host,
+    runFacts,
+    app.get(AttachmentStore),
+  );
+}
 
 /** The planner database with runs that hold documents, a plan chat, and a fake code host that a repository's main can be set on. */
 export async function plannerFacts() {
@@ -32,6 +56,7 @@ export async function plannerFacts() {
     documents,
     fake,
     host,
+    eventFacts: () => eventFactsOf(db.app, host),
     chats: db.app.get(PlanChatStore),
     /** A run that holds the documents `kinds` names, each with its body. */
     async addRun(key: string, kinds: Record<string, string> = {}): Promise<void> {

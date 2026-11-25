@@ -3,11 +3,9 @@ import type { BacklogTurnAction, RunAction } from '../../../agent-result/definit
 import type { ChangeTaskBody } from '../../../contract/backlog-actions';
 import type { BacklogRecord } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
-import { RunRepository } from '../../../history/run.repository';
 import { BacklogActionSupport, type PlannerContext } from '../backlog-action-support';
 import { BacklogActions } from '../backlog-actions';
 import type { PlannerRunCommand } from './planner-run-port';
-import { stopReason } from './planner-run-state';
 
 /** How many of the newest events are read for the commands of an applied turn; a turn's own are always among them. */
 const EVENT_WINDOW = 1000;
@@ -17,6 +15,7 @@ const COMMAND_WORDS: Record<PlannerRunCommand['type'], string> = {
   answer: 'answer run',
   resume: 'resume run',
   replay: 'replay run',
+  rebase: 'rebase run',
   skipTask: 'skip task of run',
   stop: 'stop run',
   planChat: 'write to run planner',
@@ -40,7 +39,9 @@ export function commandOf(action: RunAction): PlannerRunCommand {
     case 'resume':
       return { type: 'resume', run: action.run };
     case 'replay':
-      return { type: 'replay', run: action.run, step: action.step };
+      return { type: 'replay', run: action.run, step: action.step, instruction: action.instruction };
+    case 'rebase':
+      return { type: 'rebase', run: action.run };
     case 'skipTask':
       return { type: 'skipTask', run: action.run, task: action.task };
     case 'stop':
@@ -62,7 +63,6 @@ export class PlannerBacklogCalls {
     private readonly actions: BacklogActions,
     private readonly support: BacklogActionSupport,
     private readonly backlogs: BacklogRepository,
-    private readonly runs: RunRepository,
   ) {}
 
   /** Runs a backlog action in the turn's transaction. */
@@ -117,7 +117,6 @@ export class PlannerBacklogCalls {
         run,
         index: String(index),
         payload: JSON.stringify(payload),
-        ...(type === 'resume' ? { blockCode: await stopReason(this.runs, run) } : {}),
       },
       call.context,
     );

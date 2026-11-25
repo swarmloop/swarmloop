@@ -51,7 +51,7 @@ export class AttachmentStore {
     await mkdir(join(dir, 'file'), { recursive: true, mode: 0o755 });
     await chmod(join(dir, 'file'), 0o755);
     await chmod(dir, 0o755);
-    await this.write(join(dir, 'file', ref.name), data);
+    await this.writeReadable(join(dir, 'file', ref.name), data);
     await this.writeMeta(id, { at: this.clock.now(), ref });
     return ref;
   }
@@ -90,6 +90,16 @@ export class AttachmentStore {
     return run;
   }
 
+  /** Writes one text file into one key's attachments folder, read only, after the earlier writes to that folder. */
+  write(key: string, name: string, text: string): Promise<void> {
+    const run = (this.tails.get(key) ?? Promise.resolve()).then(() => this.writeText(key, basename(name), text));
+    this.tails.set(
+      key,
+      run.catch(() => undefined),
+    );
+    return run;
+  }
+
   /** The names of the files a run has, in order. It reads without waiting: every agent launch asks, and a wait would move the launches of concurrent steps against each other. */
   names(key: string): string[] {
     try {
@@ -114,6 +124,13 @@ export class AttachmentStore {
         await rm(stagedDirOf(uploadsDir(this.config), id), { recursive: true, force: true });
       }
     }
+  }
+
+  private async writeText(key: string, name: string, text: string): Promise<void> {
+    const dir = attachmentsDir(this.config, key);
+    await mkdir(dir, { recursive: true, mode: 0o755 });
+    await chmod(dir, 0o755);
+    await this.writeReadable(join(dir, name), Buffer.from(text, 'utf8'));
   }
 
   private async claimAll(key: string, ids: string[]): Promise<AttachmentRef[]> {
@@ -171,7 +188,7 @@ export class AttachmentStore {
     return candidate;
   }
 
-  private async write(path: string, bytes: Buffer): Promise<void> {
+  private async writeReadable(path: string, bytes: Buffer): Promise<void> {
     await writeFile(path, bytes);
     await chmod(path, 0o644);
   }

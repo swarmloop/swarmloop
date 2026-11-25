@@ -22,6 +22,7 @@ function handles(command: PlannerRunCommand, runKey: string, questionId: string)
     case 'answer':
       return command.answers.some((answer) => answer.id === undefined || answer.id === questionId);
     case 'replay':
+    case 'rebase':
     case 'resume':
     case 'skipTask':
     case 'stop':

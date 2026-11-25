@@ -6,9 +6,8 @@ import type { BacklogTurnAction, RunAction } from '../../../agent-result/definit
 import type { BacklogRecord, BacklogTaskRecord, BacklogWriters } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
 import { RunRepository } from '../../../history/run.repository';
-import { stopReason } from './planner-run-state';
 
-/** The newest events the rules read; a turn's own events and the last main-green are always among them. */
+/** The newest events the rules read, among them the recorded run-needs-person ends that repeatRefusal counts. */
 const EVENT_WINDOW = 1000;
 
 /** What only the owner does: the planner is refused, and the reason says whose it is. */
@@ -29,11 +28,6 @@ type Judgement = { action: BacklogTurnAction } | { refusal: string };
 
 const refuse = (refusal: string): Judgement => ({ refusal });
 
-/** The run actions on a question: its run may lie below a task's run, since a subtask's question waits there. */
-function questionAction(action: RunAction): boolean {
-  return action.action === 'answerRun' || action.action === 'passQuestion';
-}
-
 /** The server's rules for the planner, read from the database; the model does not keep them. */
 @Injectable()
 export class PlannerRules {
@@ -51,12 +45,12 @@ export class PlannerRules {
       : this.backlogAction(reads, backlog, tasks, given);
   }
 
-  /** A command to a run: the run is one of this backlog's, and a resume is not a repeat. */
+  /** A command to a run: the run is a task's run or lies below one, and a resume, replay or rebase is not a third end the same way. */
   private async runAction(backlog: BacklogRecord, tasks: BacklogTaskRecord[], action: RunAction): Promise<Judgement> {
     const own = this.ownRun(tasks, action.run);
-    if (own !== null && questionAction(action) && (await this.belowTaskRun(tasks, action.run))) return { action };
-    if (action.action !== 'resume') return this.verdict(action, own);
-    return this.verdict(action, own ?? (await this.repeatedResume(backlog, action.run)));
+    if (own !== null && !(await this.belowTaskRun(tasks, action.run))) return refuse(own);
+    if (action.action !== 'resume' && action.action !== 'replay' && action.action !== 'rebase') return { action };
+    return this.verdict(action, await this.repeatRefusal(backlog, action.run));
   }
 
   private async backlogAction(
@@ -69,7 +63,7 @@ export class PlannerRules {
       case 'addTasks':
         return this.added(reads, backlog, tasks, action);
       case 'changeTask':
-        return this.changed(reads, backlog, tasks, action);
+        return this.changed(backlog, tasks, action);
       case 'deleteTask':
       case 'skipBacklogTask':
       case 'moveItem':
@@ -98,13 +92,9 @@ export class PlannerRules {
     action: Extract<BacklogTurnAction, { action: 'addTasks' }>,
   ): Promise<Judgement> {
     const active = (await reads.milestones(backlog.id as number)).find((milestone) => milestone.status === 'active');
-    const requirements = await reads.requirements(backlog.id as number);
     const planned: AddTaskBody[] = [];
     for (const task of action.tasks) {
-      const refusal =
-        this.scopeRefusal(backlog, task.repositories ?? []) ??
-        this.coverRefusal(tasks, requirements, task.covers ?? []) ??
-        (await this.fixRefusal(backlog, tasks, planned, task));
+      const refusal = this.scopeRefusal(backlog, task.repositories ?? []) ?? this.fixRefusal(tasks, planned, task);
       if (refusal) return refuse(refusal);
       const fixesWithoutMilestone = task.fixesMain && task.milestone === undefined;
       if (fixesWithoutMilestone && active === undefined) {
@@ -117,20 +107,14 @@ export class PlannerRules {
     return { action: { ...action, tasks: planned } };
   }
 
-  private async changed(
-    reads: BacklogWriters,
+  private changed(
     backlog: BacklogRecord,
     tasks: BacklogTaskRecord[],
     action: Extract<BacklogTurnAction, { action: 'changeTask' }>,
-  ): Promise<Judgement> {
-    const requirements = await reads.requirements(backlog.id as number);
-    const task = tasks.find((other) => other.slug === action.task);
-    const newlyCovered = (action.covers ?? []).filter((ref) => !task?.covers.includes(ref));
+  ): Judgement {
     return this.verdict(
       action,
-      this.startedRefusal(tasks, action.task) ??
-        this.scopeRefusal(backlog, action.repositories ?? []) ??
-        this.coverRefusal(tasks, requirements, newlyCovered),
+      this.startedRefusal(tasks, action.task) ?? this.scopeRefusal(backlog, action.repositories ?? []),
     );
   }
 
@@ -165,53 +149,31 @@ export class PlannerRules {
     return false;
   }
 
-  /** A resume of a run that is blocked again for the reason of its last planner resume goes to the person. */
-  private async repeatedResume(backlog: BacklogRecord, run: string): Promise<string | null> {
-    const reason = await stopReason(this.runs, run);
-    if (reason === '') return null;
+  /** A run that ended the same way a third time on the same tree is not resumed, replayed or rebased again. */
+  private async repeatRefusal(backlog: BacklogRecord, run: string): Promise<string | null> {
     const events = await this.backlogs.events(backlog.id as number, EVENT_WINDOW);
-    const last = events.find((event) => event.facts.command === 'resume' && event.facts.run === run);
-    return last?.facts.blockCode === reason
-      ? `${run} is blocked again for the same reason as at the last resume: ask the person in the chat`
-      : null;
+    const ends = events.filter(
+      (event) =>
+        event.kind === 'run-needs-person' &&
+        event.facts.endRun !== undefined &&
+        (event.facts.endRun === run || event.facts.runKey === run),
+    );
+    const latest = ends[0]?.facts;
+    if (latest === undefined) return null;
+    const same = ends.filter((event) =>
+      (['endRun', 'endStep', 'endCode', 'endHeads'] as const).every((name) => event.facts[name] === latest[name]),
+    );
+    if (same.length < 3) return null;
+    return `${run} ended the same way a third time on the same tree (${latest.endStep}, ${latest.endCode || 'no reason code'}): stop it, leave its error as it is and report it in the chat`;
   }
 
-  /** A requirement that is still open after two covering tasks merged following its first one goes to the person. */
-  private coverRefusal(
-    tasks: BacklogTaskRecord[],
-    requirements: { ref: string; status: string }[],
-    refs: string[],
-  ): string | null {
-    for (const ref of refs) {
-      if (requirements.find((requirement) => requirement.ref === ref)?.status === 'closed') continue;
-      const covering = tasks.filter((task) => task.covers.includes(ref)).sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
-      if (covering.slice(1).filter((task) => task.status === 'merged').length >= 2) {
-        return `${ref} is still open after two more tasks merged: ask the person in the chat before another task`;
-      }
-    }
-    return null;
-  }
-
-  /** One open task fixes the red main of a repository; a third after two merged on a main that is still red goes to the person. */
-  private async fixRefusal(
-    backlog: BacklogRecord,
-    tasks: BacklogTaskRecord[],
-    planned: AddTaskBody[],
-    task: AddTaskBody,
-  ): Promise<string | null> {
+  /** One open task fixes the red main of a repository; a second is refused while it is open. */
+  private fixRefusal(tasks: BacklogTaskRecord[], planned: AddTaskBody[], task: AddTaskBody): string | null {
     const repository = task.fixesMain;
     if (!repository) return null;
-    const fixes = tasks.filter((other) => other.fixesMain === repository);
     const open =
-      fixes.filter((other) => !settled(other)).length + planned.filter((p) => p.fixesMain === repository).length;
-    if (open > 0) return `a task already fixes the red main of ${repository}: ${task.id} waits for it`;
-    const id = backlog.id as number;
-    if ((await this.backlogs.latestMainEvent(id, repository)) !== 'main-red') return null;
-    const events = await this.backlogs.events(id, EVENT_WINDOW);
-    const green = events.find((event) => event.kind === 'main-green' && event.facts.repository === repository);
-    const merged = fixes.filter((other) => other.status === 'merged' && (!green || other.createdAt > green.createdAt));
-    return merged.length >= 2
-      ? `two fixes of ${repository} merged and its main is still red: ask the person in the chat`
-      : null;
+      tasks.filter((other) => other.fixesMain === repository && !settled(other)).length +
+      planned.filter((p) => p.fixesMain === repository).length;
+    return open > 0 ? `a task already fixes the red main of ${repository}: ${task.id} waits for it` : null;
   }
 }

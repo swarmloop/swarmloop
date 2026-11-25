@@ -37,7 +37,8 @@ describe('PlannerRunCommands', () => {
     const commands: PlannerRunCommand[] = [
       { type: 'answer', run: 'r1', answers: [{ kind: 'question', id: 'Which?', body: 'yes' }] },
       { type: 'resume', run: 'r1' },
-      { type: 'replay', run: 'r1', step: 'implement' },
+      { type: 'replay', run: 'r1', step: 'implement', instruction: 'Fix the import.' },
+      { type: 'rebase', run: 'r1' },
       { type: 'skipTask', run: 'r1', task: 't1' },
       { type: 'stop', run: 'r1' },
     ];
@@ -56,9 +57,10 @@ describe('PlannerRunCommands', () => {
         service: 'commands',
         type: 'replay',
         key: 'r1',
-        payload: { step: 'implement', prompt: '' },
+        payload: { step: 'implement', prompt: 'Fix the import.' },
         options: { ...key, actor: 'ada' },
       },
+      { service: 'commands', type: 'rebase', key: 'r1', payload: {}, options: { ...key, actor: 'ada' } },
       { service: 'commands', type: 'skip', key: 'r1', payload: { taskId: 't1' }, options: key },
       { service: 'commands', type: 'stop', key: 'r1', payload: {}, options: key },
     ]);

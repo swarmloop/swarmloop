@@ -35,7 +35,8 @@ export type BacklogTurnAction = Reasoned &
     | { action: 'passQuestion'; run: string; question?: string }
     | { action: 'planChat'; run: string; message: string }
     | { action: 'resume'; run: string }
-    | { action: 'replay'; run: string; step: string }
+    | { action: 'replay'; run: string; step: string; instruction: string }
+    | { action: 'rebase'; run: string }
     | { action: 'skipTask'; run: string; task: string }
     | { action: 'stop'; run: string }
   );
@@ -73,7 +74,8 @@ const REQUIRED: Record<BacklogTurnAction['action'], string[]> = {
   passQuestion: ['run', 'reason'],
   planChat: ['run', 'message'],
   resume: ['run'],
-  replay: ['run', 'step'],
+  replay: ['run', 'step', 'instruction'],
+  rebase: ['run'],
   skipTask: ['run', 'task'],
   stop: ['run'],
 };
@@ -119,7 +121,7 @@ const action = Joi.object({
   id: text('addItem: the item id; closeRequirement: the requirement, like M1.R2'),
   text: text('recordDecision: the decision'),
   evidence: text('closeRequirement: what shows the requirement is met'),
-  run: text('answerRun, passQuestion, planChat, resume, replay, skipTask, stop: the run key'),
+  run: text('answerRun, passQuestion, planChat, resume, replay, rebase, skipTask, stop: the run key'),
   question: text(
     'passQuestion: the id of the question to pass to the person; leave out to pass every question of the run you hold',
   ),
@@ -130,6 +132,7 @@ const action = Joi.object({
     ),
   message: text('planChat: the message for the planner of the run'),
   step: text('replay: the step to run again'),
+  instruction: text('replay: the instruction the step starts with, as a person writes it in Replay'),
 })
   .unknown(false)
   .custom((value: Record<string, unknown>, helpers) => {

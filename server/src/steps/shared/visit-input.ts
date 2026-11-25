@@ -83,7 +83,7 @@ function takes(artifact: Reader, step: string): boolean {
 }
 
 /** The head of each work tree among the run's mounts, and the host path it was read at. */
-async function headsOf(
+export async function headsOf(
   deps: VisitInputDeps,
   run: Pick<RunEntity, 'targetPath'>,
 ): Promise<{ heads: VisitInputParts['heads']; paths: string[] }> {

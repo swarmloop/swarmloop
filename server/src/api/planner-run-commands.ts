@@ -43,9 +43,12 @@ export class PlannerRunCommands implements OnModuleInit {
         await this.commands.submit(
           'replay',
           command.run,
-          { step: command.step, prompt: '' },
+          { step: command.step, prompt: command.instruction },
           { ...options, actor: owner },
         );
+        return;
+      case 'rebase':
+        await this.commands.submit('rebase', command.run, {}, { ...options, actor: owner });
         return;
       case 'skipTask':
         await this.commands.submit('skip', command.run, { taskId: command.task }, options);

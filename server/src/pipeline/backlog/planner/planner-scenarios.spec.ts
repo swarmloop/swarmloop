@@ -143,24 +143,6 @@ describe('planner scenarios: scripted turn results', () => {
       expect((await harness.lines(backlogId))[0]).toContain('extra is unnecessary');
     }));
 
-  it('sends two fixes of a red main in a row to the person', () =>
-    withPlanner(async (harness) => {
-      const { backlogId, milestoneId } = await harness.seed();
-      await harness.addEvent(backlogId, 'main-red:web:a1', 'main-red', { repository: 'web', head: 'a1' });
-      await harness.task(backlogId, milestoneId, 'fix-one', { fixesMain: 'web', status: 'merged' });
-      await harness.task(backlogId, milestoneId, 'fix-two', { fixesMain: 'web', status: 'merged' });
-      const third = turnResult('Main is still red; here is another fix.', {
-        action: 'addTasks',
-        tasks: [task('fix-three', { fixesMain: 'web' })],
-      });
-      expect(await harness.turns.check('alpha', third)).toEqual([
-        'add fix-three: two fixes of web merged and its main is still red: ask the person in the chat',
-      ]);
-      await harness.turns.apply('alpha', 'turn-1', third);
-      expect((await harness.tasks(backlogId)).map((record) => record.slug)).toEqual(['fix-one', 'fix-two']);
-      expect((await harness.lines(backlogId))[1]).toContain('ask the person in the chat');
-    }));
-
   it('gives a red main one fix task, first in the active milestone, and refuses a second while it is open', () =>
     withPlanner(async (harness) => {
       const { backlogId, milestoneId } = await harness.seed();
@@ -185,20 +167,32 @@ describe('planner scenarios: scripted turn results', () => {
       ]);
     }));
 
-  it('refuses a second resume of a run for the same reason and leaves the question to the person', () =>
+  it('refuses a third resume of a run that ended the same way on the same tree and says to stop and report it', () =>
     withPlanner(async (harness) => {
       const { backlogId, milestoneId } = await harness.seed();
       await harness.task(backlogId, milestoneId, 'going', { runKey: 'going-1', status: 'running' });
       await harness.run('going-1', { status: 'blocked', reason: { code: 'loop-limit', message: 'loop-limit' } });
+      const ended = async (n: number) => {
+        harness.clock.advance(1000);
+        await harness.addEvent(backlogId, `needs-person:going-1:${n}`, 'run-needs-person', {
+          runKey: 'going-1',
+          endRun: 'going-1',
+          endStep: 'implement',
+          endCode: 'loop-limit',
+          endHeads: 'web=a1',
+        });
+      };
       const resume = turnResult('Trying again.', { action: 'resume', run: 'going-1' });
+      await ended(1);
+      await ended(2);
       await harness.turns.apply('alpha', 'turn-1', resume);
       expect(harness.sent.map(({ key }) => key)).toEqual(['turn-1-action-0']);
 
-      await harness.run('going-1', { status: 'blocked', reason: { code: 'loop-limit', message: 'loop-limit' } });
+      await ended(3);
       await harness.turns.apply('alpha', 'turn-2', resume);
       expect(harness.sent).toHaveLength(1);
       expect((await harness.lines(backlogId)).pop()).toBe(
-        'I did not resume going-1: going-1 is blocked again for the same reason as at the last resume: ask the person in the chat',
+        'I did not resume going-1: going-1 ended the same way a third time on the same tree (implement, loop-limit): stop it, leave its error as it is and report it in the chat',
       );
     }));
 
