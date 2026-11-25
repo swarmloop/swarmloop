@@ -88,15 +88,17 @@ export class ProjectAppendService {
         await this.branches.ensure(run, name, committed);
       }
     }
-    run.projects = renderProjects(projects);
-    await this.runs.saveRun(run);
+    const stored = await this.runs.change(run.key, (row) => {
+      const known = storedProjects(row.projects);
+      row.projects = renderProjects(appendProjectNames(known, [...known, ...added]).projects);
+    });
     const repos = await this.documents.latestBody(run.key, ARTIFACTS.repos.kind);
     if (repos?.trim()) {
-      await this.documents.putDocument(run, ARTIFACTS.repos.kind, renderProjects([...repoNames(repos), ...added]));
+      await this.documents.putDocument(stored, ARTIFACTS.repos.kind, renderProjects([...repoNames(repos), ...added]));
     }
     const earlier = mountedNames(await this.documents.latestBody(run.key, ARTIFACTS.addedRepos.kind));
     const names = storedProjects(renderProjects([...earlier, ...added]));
-    await this.documents.putDocument(run, ARTIFACTS.addedRepos.kind, `${addedNote(names)}\n`);
+    await this.documents.putDocument(stored, ARTIFACTS.addedRepos.kind, `${addedNote(names)}\n`);
     return projects;
   }
 }

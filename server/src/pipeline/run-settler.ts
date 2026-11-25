@@ -172,13 +172,14 @@ export class RunSettler {
     } else if (container) {
       const since = recoveringSince(run);
       if (since === null) {
-        writeRunState(run, {
-          status: 'running',
-          ownerPid: null,
-          reason: { code: REASON.recovering, message: this.clock.iso() },
-          facts: { recovering: true },
+        await this.runs.change(run.key, (row) => {
+          writeRunState(row, {
+            status: 'running',
+            ownerPid: null,
+            reason: { code: REASON.recovering, message: this.clock.iso() },
+            facts: { recovering: true },
+          });
         });
-        await this.runs.saveRun(run);
         return null;
       }
       const asleep = slept.filter((gap) => gap.at > since).reduce((sum, gap) => sum + gap.ms, 0);
@@ -206,7 +207,7 @@ export class RunSettler {
     const cause = relaunch.state === 'superseded' ? 'stop' : 'start';
     writeRunState(run, { status: 'failed', ownerPid: null });
     const note: InterruptionNote = { at: cut.finishedAt, relaunched: false, cause };
-    // The write bypassed `saveRun`: the dashboard is told that the run left `queued`.
+    // The write bypassed `change`: the dashboard is told that the run left `queued`.
     if (await this.visits.endRelaunch(run, cut, note, this.clock.iso())) this.runs.notify(run.key);
   }
 
@@ -239,9 +240,10 @@ export class RunSettler {
   /** Docker did not answer: the run waits with its attempt, nothing starts, and the reconciler probes again. */
   private async blocked(run: RunEntity): Promise<void> {
     const { code, message, retryAt } = dockerWait(this.clock, this.config.env);
-    writeRunState(run, { status: 'waiting', ownerPid: null, reason: { code, message, retryAt } });
-    run.stepStartedAt = null;
-    await this.runs.saveRun(run);
+    await this.runs.change(run.key, (row) => {
+      writeRunState(row, { status: 'waiting', ownerPid: null, reason: { code, message, retryAt } });
+      row.stepStartedAt = null;
+    });
   }
 
   /** The attempt ended without a visit: it gets one, through `finalize`, once. */

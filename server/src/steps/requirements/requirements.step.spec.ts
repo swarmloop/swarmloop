@@ -270,10 +270,12 @@ describe('requirements step', () => {
     const app = await boot(root, 'http://127.0.0.1:9', 'direct', jest.fn(), jest.fn());
     try {
       const runs = app.get(RunRepository);
-      const save = runs.saveRun.bind(runs);
-      jest
-        .spyOn(runs, 'saveRun')
-        .mockImplementation((run) => (run.prompt ? Promise.reject(new Error('disk full')) : save(run)));
+      const change = runs.change.bind(runs);
+      jest.spyOn(runs, 'change').mockImplementation(async (key, apply) => {
+        const run = await change(key, apply);
+        if (run.prompt) throw new Error('disk full');
+        return run;
+      });
       const result = await app.get(PipelineService).step('requirements', 'PROJ-2', { prompt: 'Build it' });
       expect(result).toEqual({
         exitCode: 1,
