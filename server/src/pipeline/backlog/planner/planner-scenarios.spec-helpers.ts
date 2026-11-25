@@ -1,3 +1,4 @@
+import { storeRun } from '../../../testing/store-run.spec-helpers';
 import type { BacklogTurnAction, BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
 import type { Type } from '@nestjs/common';
 import { AppConfig } from '../../../config/env';
@@ -143,7 +144,7 @@ export async function plannerHarness() {
     async run(key: string, change: RunStateChange) {
       const run = (await runs.findRun(key)) ?? runs.newWaitingRun(key, null, 'owner');
       writeRunState(run, change);
-      await runs.saveRun(run);
+      await storeRun(runs, run);
     },
     async tasks(backlogId: number) {
       return db.backlogs.tasks(backlogId);

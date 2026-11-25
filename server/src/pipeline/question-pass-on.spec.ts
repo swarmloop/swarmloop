@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { HttpException } from '@nestjs/common';
 import { DocumentRepository } from '../history/document.repository';
 import { repositoryDatabase } from '../history/repository.spec-helpers';
@@ -19,7 +20,7 @@ async function setup() {
   await seedBacklogTask(db.app, 'going-1');
   const run = await runs.openWaiting('going-1', '/target');
   run.currentStep = 'research';
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   await documents.putDocument(run, 'questions', `- ${QUESTION}\n`);
   await db.app.get(RunFactsRepository).recordFacts(run, factColumns(run, await services.holds.facts(run)));
   const read = async () => {

@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -178,7 +179,7 @@ describe('run driver and the parent of a subtask', () => {
         currentStep: 'research',
         reason: { code: 'LOOP_LIMIT', message: 'research ran 3 times (MAX_RETURNS); Resume starts another round' },
       });
-      await app.app.get(RunRepository).saveRun(blocked);
+      await storeRun(app.app.get(RunRepository), blocked);
       await pass(app);
       expect(storedState((await app.app.get(RunRepository).findRun(PARENT))!).state).toBe('blocked');
 
@@ -211,12 +212,12 @@ describe('run driver and the parent of a subtask', () => {
       await pass(app);
       const run = await child(app, 'a');
       writeRunState(run, { status: 'waiting', currentStep: 'research' });
-      await app.app.get(RunRepository).saveRun(run);
+      await storeRun(app.app.get(RunRepository), run);
       await app.app.get(DocumentRepository).putDocument(run, 'pending_rebase', 'rebased onto the epic after b merged');
       jest.spyOn(app.app.get(RunRebase), 'rebase').mockImplementation(async (key) => {
         const moved = (await app.app.get(RunRepository).findRun(key))!;
         writeRunState(moved, { status: 'waiting', currentStep: 'implement' });
-        await app.app.get(RunRepository).saveRun(moved);
+        await storeRun(app.app.get(RunRepository), moved);
         return 'start';
       });
       const ran: string[] = [];
@@ -244,12 +245,12 @@ describe('run driver and the parent of a subtask', () => {
       await pass(app);
       const run = await child(app, 'a');
       writeRunState(run, { status: 'waiting', currentStep: 'research' });
-      await app.app.get(RunRepository).saveRun(run);
+      await storeRun(app.app.get(RunRepository), run);
       await app.app.get(DocumentRepository).putDocument(run, 'pending_rebase', 'rebased onto the epic after b merged');
       jest.spyOn(app.app.get(RunRebase), 'rebase').mockImplementation(async (key) => {
         const moved = (await app.app.get(RunRepository).findRun(key))!;
         writeRunState(moved, { status: 'waiting', currentStep: 'implement' });
-        await app.app.get(RunRepository).saveRun(moved);
+        await storeRun(app.app.get(RunRepository), moved);
         return 'start';
       });
       installScripts(app, { implement: () => ({ outcome: 'waiting', exitCode: 0 }) }, ['implement']);

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -94,7 +95,7 @@ describe('reconciler waits and automatic tries', () => {
     for (const run of await runs.listRuns()) {
       if (run.status === 'done') continue;
       writeRunState(run, { status: 'done', activeAttempt: null, reason: null });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
     }
   });
 
@@ -107,7 +108,7 @@ describe('reconciler waits and automatic tries', () => {
     const runs = world.app.get(RunRepository);
     const run = await save(runs, KEY, 'implement', status);
     writeRunState(run, { status, activeAttempt: null, reason: { code, message: 'reason', ...extra } });
-    return runs.saveRun(run);
+    return storeRun(runs, run);
   }
 
   const reasonOf = async (world: TestApp) => storedState((await world.app.get(RunRepository).findRun(KEY))!).reason;
@@ -417,7 +418,7 @@ describe('reconciler waits and automatic tries', () => {
 
       const other = await save(runs, 'PROJ-701', 'implement', 'running');
       writeRunState(other, { status: 'running', activeAttempt: null });
-      await runs.saveRun(other);
+      await storeRun(runs, other);
       await world.app.get(Reconciler).reconcile(other);
       const bare = (await runs.findRun('PROJ-701'))!;
       const documents = await world.app.get(DocumentRepository).listDocuments(bare.id);

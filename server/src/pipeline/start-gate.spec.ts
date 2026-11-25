@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -27,7 +28,7 @@ async function setup() {
   const run = await save(runs, 'proj-1', 'implement', 'waiting');
   const stop = async () => {
     writeRunState(run, { status: 'blocked', reason: { code: REASON.stopped, message: 'Stopped.' } });
-    await runs.saveRun(run);
+    await storeRun(runs, run);
   };
   const stored = async () => (await app.get(CommandRepository).listForRun(run.id)).filter((c) => c.type === 'resume');
   return { app, gate: app.get(StartGate), run, stop, stored };
@@ -103,7 +104,7 @@ async function admitting(env: Record<string, string> = {}) {
   const runs = app.get(RunRepository);
   const run = await save(runs, 'proj-1', 'implement', 'waiting');
   run.targetPath = dir;
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   const gate = app.get(StartGate);
   const digest = async (): Promise<string | null> => {
     const seen = await gate.admit(run.key, 'implement', {});
@@ -246,7 +247,7 @@ describe('StartGate admit', () => {
       try {
         await visit(1, { digest: await digest() });
         writeRunState(run, { status: 'waiting', reason: { code, message: 'later' } });
-        await runs.saveRun(run);
+        await storeRun(runs, run);
 
         expect(await admit({ startBy: 'machine' })).toMatchObject({
           kind: 'admitted',
@@ -265,13 +266,13 @@ describe('StartGate admit', () => {
       try {
         await visit(1, { digest: await digest() });
         writeRunState(run, { status: 'waiting', reason: { code, message: 'later' } });
-        await runs.saveRun(run);
+        await storeRun(runs, run);
 
         expect((await admit({ startBy: 'machine' })).kind).toBe('refused');
 
         await visit(2, { digest: 'another-input' });
         writeRunState(run, { status: 'waiting', reason: { code, message: 'later' } });
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         expect((await admit({ startBy: 'machine' })).kind).toBe('admitted');
       } finally {
         await app.close();
@@ -301,7 +302,7 @@ describe('StartGate admit', () => {
     const { app, run, runs, admit } = await admitting();
     try {
       writeRunState(run, { status: 'blocked', reason: { code: REASON.stopped, message: 'Stopped.' } });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
 
       expect((await admit({ startBy: 'machine' })).kind).toBe('blocked');
       expect((await admit({ startBy: 'planner', level: 0 })).kind).toBe('blocked');
@@ -315,21 +316,21 @@ describe('StartGate admit', () => {
     const { app, run, runs, admit } = await admitting({ MAX_RUN_USD: '25' });
     try {
       run.spentUsd = 30;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       expect((await admit({})).kind).toBe('blocked');
 
       for (const status of ['failed', 'waiting']) {
         writeRunState(run, { status, currentStep: 'implement' });
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         expect((await admit({})).kind).toBe('blocked');
       }
 
       writeRunState(run, { status: 'running', currentStep: 'implement' });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       expect((await admit({})).kind).toBe('admitted');
 
       writeRunState(run, { status: 'running', currentStep: 'plan' });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       expect((await admit({})).kind).toBe('blocked');
     } finally {
       await app.close();

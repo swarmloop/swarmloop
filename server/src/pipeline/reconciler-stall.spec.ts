@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor } from '../contract/run-state';
 import { CommandRepository } from '../history/command.repository';
@@ -48,7 +49,7 @@ describe('a run that stopped moving with no reason', () => {
     for (const run of await runs.listRuns()) {
       if (run.status === 'done') continue;
       writeRunState(run, { status: 'done', activeAttempt: null, reason: null });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
     }
   });
 
@@ -59,7 +60,7 @@ describe('a run that stopped moving with no reason', () => {
     const runs = app.app.get(RunRepository);
     const run = (await runs.findRun(KEY)) ?? (await save(runs, KEY, step, 'waiting'));
     run.currentStep = step;
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     const now = app.clock.iso();
     await app.app.get(VisitRepository).saveStat(
       Object.assign(new StepStatEntity(), {
@@ -258,7 +259,7 @@ describe('a run that stopped moving with no reason', () => {
     await stalledAt('implement');
     const run = await find();
     writeRunState(run, { ...change, ...(change.facts?.needsAnswers ? { currentStep: 'plan' } : {}) });
-    await app.app.get(RunRepository).saveRun(run);
+    await storeRun(app.app.get(RunRepository), run);
     if (change.facts?.needsAnswers) {
       await app.app.get(DocumentRepository).putDocument(run, 'questions', '- which?\n');
       app.app.get(RunRepository).notify(KEY);

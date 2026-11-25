@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { ERROR_CODES } from '../contract/error-codes';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -27,7 +28,7 @@ describe('a run that a lock written by a former version still holds', () => {
     const run = await save(runs, 'proj-1', 'implement', 'running');
     run.ownerPid = own.pid ?? process.pid;
     if (own.claimed) run.ownerInstance = SERVER_INSTANCE;
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     await documents.putDocument(run, 'chat_lock', lock);
     const start = () => world.app.get(Reconciler).start(() => own.claimed === true);
     return { world, runs, documents, removed, start };

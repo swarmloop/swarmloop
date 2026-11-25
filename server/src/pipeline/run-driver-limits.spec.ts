@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { StepStatEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
@@ -13,7 +14,7 @@ async function waitingRun(app: Awaited<ReturnType<typeof createTestApp>>, spentU
   const runs = app.app.get(RunRepository);
   const run = await save(runs, KEY, 'research', 'waiting');
   run.spentUsd = spentUsd;
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   await app.app
     .get(DocumentRepository)
     .putDocument(run, 'requirements', `${JSON.stringify({ prompt: 'p', tickets: [] })}\n`);

@@ -1,3 +1,4 @@
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { actionsHarness, backlogHarness } from './backlog.spec-helpers';
 
@@ -145,7 +146,7 @@ describe('task actions', () => {
   it('stops the run of a running task before it marks the task skipped', () =>
     withActions(async (harness) => {
       const key = await started(harness, 'live');
-      await harness.runs.saveRun(harness.runs.newWaitingRun(key, null, 'ada'));
+      await storeRun(harness.runs, harness.runs.newWaitingRun(key, null, 'ada'));
       await harness.actions.addTasks('ada', 'shop', [task('idle')]);
 
       await harness.actions.skipTask('ada', 'shop', 'live');
