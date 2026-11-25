@@ -52,6 +52,8 @@ Change the plan only when the message asks for a change, and then send the plan 
 
 When the message asks for something new, add it to `requirements` as a new requirement, and cover it in the plan.
 
+Your reply names only what your actions do. What you have no action for, such as bringing main into a tree or acting on a run that is not your own, you ask up the chain, and you never write it as done.
+
 ## Decide what you hold
 
 This section applies whenever you are asked a question: by a person, by a step of the run, or by a subtask of an epic.

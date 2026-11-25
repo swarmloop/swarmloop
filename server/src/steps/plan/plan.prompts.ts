@@ -27,7 +27,7 @@ export function planFollowUp(answers: string, resultText: string, heading = 'Ans
   return lines.join('\n');
 }
 
-/** The rule every planner answer follows: decide what the run's decisions settle, escalate the rest. */
+/** The rule to decide what the run's decisions settle; the cases that go up are `escalateWhatYouDoNotHold`'s. */
 function decideWhatYouHold(): string {
   return skillSection('plan', 'Decide what you hold');
 }

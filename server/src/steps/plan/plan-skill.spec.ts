@@ -12,6 +12,13 @@ describe('the plan skill, Answer a person', () => {
     expect(answer).toContain('escalate as `Escalate what you do not hold` says');
     expect(answer).toContain('never invent a product decision');
   });
+
+  it('names only what its actions do and asks up the chain for the rest', () => {
+    const sentence =
+      'Your reply names only what your actions do. What you have no action for, such as bringing main into a tree or acting on a run that is not your own, you ask up the chain, and you never write it as done.';
+    expect(answer).toContain(sentence);
+    expect(planChatFollowUp([{ text: 'hi' }], 'RESULT')).toContain(sentence);
+  });
 });
 
 describe('the plan skill, Decide what you hold', () => {

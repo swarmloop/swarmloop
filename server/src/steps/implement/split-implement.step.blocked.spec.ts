@@ -6,6 +6,8 @@ import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { RunRepository } from '../../history/run.repository';
 import { writeRunState } from '../../history/run-state';
 import { ERROR_CODES } from '../../contract/error-codes';
+import { COMMAND_TYPES } from '../../contract/command';
+import { actionsFor } from '../../contract/run-state';
 import type { TestApp } from '../../testing/test-app';
 import { child, parentState, pass, seedParent, task, tasksOf, work, world } from './split-implement.spec-helpers';
 
@@ -38,6 +40,8 @@ describe('split implement, a blocked task', () => {
     expect(state.state).toBe('waiting');
     expect(state.reason?.code).toBe(ERROR_CODES.SUBTASKS_RUNNING);
     expect(state.reason?.message).toContain('subtask a is blocked; Resume, Replay or Skip task clears it');
+    expect(actionsFor(state.state, state.reason?.code ?? null)).toEqual(expect.arrayContaining(['resume', 'replay']));
+    expect(COMMAND_TYPES).toContain('skip');
   });
 
   it('is SUBTASK_BLOCKED when nothing else can move', async () => {
