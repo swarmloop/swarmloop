@@ -20,6 +20,7 @@ import type { OpenedStep } from '../step-run';
 import type { AgentLaunchRequest, LaunchOwner } from './agent-launch-request';
 import { AgentLauncher } from './agent-launcher';
 import type { LaunchResult } from './result-exchange';
+import { answerErrorsByVisit } from './stored-answer-errors';
 import { refusalLine, refusalQuestion, sameInput } from './same-input';
 import { SpendLimit } from './spend-limit';
 import { StartRefused } from './start-refused';
@@ -116,7 +117,7 @@ export class AgentDoor {
       const rerunUnfinished = decision.kind === 'new' && decision.rerunUnfinished;
       return { kind: 'admitted', start: { agent: true, digest, rerunUnfinished, reason } };
     }
-    const refusal = await this.sameInputRefusal(step, by, options.level, undefined, decision);
+    const refusal = await this.sameInputRefusal(run.id, step, by, options.level, undefined, decision);
     await this.runs.release(run, {
       status: 'waiting',
       currentStep: step,
@@ -147,7 +148,7 @@ export class AgentDoor {
         const digest = await this.inputOf(run, step, options);
         const decision = await this.hopDecision(run, step, digest, reason);
         if (decision.kind === 'same' && by !== 'person') {
-          await this.refuse(step, by, options.level, undefined, decision, run.key);
+          await this.refuse(run.id, step, by, options.level, undefined, decision, run.key);
         }
         await this.noteVisit(run, step, opened.attemptId, options, {
           digest,
@@ -230,27 +231,34 @@ export class AgentDoor {
     return sameInput({
       step,
       digest,
-      stats: await this.visits.listStats(run.id),
+      stats: await this.statsWithErrors(run.id),
       starts: (await this.starts.forRun(run.id)).filter((start) => !start.outside),
       reasonCode: reason,
     });
   }
 
+  /** The run's visits, each with the errors its answer was refused for. */
+  private async statsWithErrors(runId: number) {
+    const errors = await answerErrorsByVisit({ documents: this.documents }, runId);
+    return (await this.visits.listStats(runId)).map((stat) => ({ ...stat, answerErrors: errors.get(stat.id) }));
+  }
+
   /** Refuses an outside start of the machine or a planner that has the input of the last visit of its step. */
   private async compareOutside(run: RunEntity, start: OutsideStart, digest: string | null): Promise<void> {
     const own = (await this.starts.forRun(run.id)).filter((row) => row.outside && row.step === start.step);
-    const stats = (await this.visits.listStats(run.id)).flatMap((stat) => {
+    const stats = (await this.statsWithErrors(run.id)).flatMap((stat) => {
       const linked = own.find((row) => row.statId === stat.id);
       return linked ? [{ ...stat, step: start.step, attemptId: linked.attemptId }] : [];
     });
     const decision = sameInput({ step: start.step, digest, stats, starts: own, reasonCode: null });
     if (decision.kind === 'same') {
-      await this.refuse(start.step, start.by, start.level, start.plannerLevel, decision, run.key);
+      await this.refuse(run.id, start.step, start.by, start.level, start.plannerLevel, decision, run.key);
     }
   }
 
   /** Keeps the refusal for the driver and throws it. A refused planner is never asked its own question again. */
   private async refuse(
+    runId: number,
     step: string,
     by: StartBy,
     level: number | null | undefined,
@@ -258,13 +266,14 @@ export class AgentDoor {
     decision: SameDecision,
     key: string,
   ): Promise<never> {
-    const refusal = await this.sameInputRefusal(step, by, level, plannerLevel, decision);
+    const refusal = await this.sameInputRefusal(runId, step, by, level, plannerLevel, decision);
     this.refusals.set(key, refusal);
     throw StartRefused.sameInput(refusal);
   }
 
   /** The words of a same-input refusal: the line, the step's last words as a question, and the level that is asked. */
   private async sameInputRefusal(
+    runId: number,
     step: string,
     by: StartBy,
     level: number | null | undefined,
@@ -276,7 +285,12 @@ export class AgentDoor {
     const [last] = (await this.visits.listExchanges([decision.statId])).slice(-1);
     return {
       message: refusalLine(decision.visit, who),
-      question: refusalQuestion(step, decision.visit, last?.responseText ?? ''),
+      question: refusalQuestion(
+        step,
+        decision.visit,
+        last?.responseText ?? '',
+        (await answerErrorsByVisit({ documents: this.documents }, runId)).get(decision.statId),
+      ),
       startLevel,
     };
   }

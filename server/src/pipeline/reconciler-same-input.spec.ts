@@ -19,7 +19,8 @@ import { createTestApp } from '../testing/test-app';
 import { CommandService } from './command.service';
 import { Reconciler } from './reconciler';
 import { installScripts } from './run-driver.spec-helpers';
-import { sameInput } from '../steps/shared/same-input';
+import { ERROR_CODES } from '../contract/error-codes';
+import { refusalQuestion, sameInput } from '../steps/shared/same-input';
 import { StartGate } from './start-gate';
 import { SubtaskPort } from './subtask-port';
 
@@ -132,7 +133,21 @@ describe('a SAME_INPUT wait that a restart left', () => {
 });
 
 describe('sameInput', () => {
-  const finished = { id: 1, step: 'implement', attempt: 1, attemptId: 'a1', status: 'waiting', killReason: null };
+  const finished: {
+    id: number;
+    step: string;
+    attempt: number;
+    attemptId: string;
+    status: string;
+    killReason: string | null;
+  } = {
+    id: 1,
+    step: 'implement',
+    attempt: 1,
+    attemptId: 'a1',
+    status: 'waiting',
+    killReason: null,
+  };
   const facts = (reasonCode: string | null, digest = 'd') => ({
     step: 'implement',
     digest,
@@ -155,4 +170,45 @@ describe('sameInput', () => {
       expect(sameInput(facts(code))).toEqual({ kind: 'new', rerunUnfinished: true });
     },
   );
+
+  describe('the end of the last visit, on the same input', () => {
+    const ended = (stat: Partial<typeof finished> & { answerErrors?: string[] }) => ({
+      step: 'implement',
+      digest: 'd',
+      stats: [{ ...finished, ...stat }],
+      starts: [{ step: 'implement', attemptId: 'a1', inputDigest: 'd' }],
+      reasonCode: null,
+    });
+    const rerun = { kind: 'new', rerunUnfinished: true };
+
+    it('is the same input after an answer that stayed invalid or the agent’s own limit', () => {
+      const same = { kind: 'same', visit: 1, statId: 1 };
+      expect(sameInput(ended({ status: 'failed', answerErrors: ['keep line unknown'] }))).toEqual(same);
+      expect(sameInput(ended({ status: 'interrupted', killReason: 'process killed: calls' }))).toEqual(same);
+      expect(sameInput(ended({ status: 'interrupted', killReason: 'process killed: time' }))).toEqual(same);
+    });
+
+    it.each([
+      ['a model host outage', { status: 'interrupted', killReason: ERROR_CODES.HOST_UNAVAILABLE }],
+      ['a usage limit', { status: 'interrupted', killReason: ERROR_CODES.RUNTIME_LIMIT }],
+      ['a failure with no answer errors and no kill', { status: 'failed' }],
+    ])('reruns after %s', (_name, stat) => {
+      expect(sameInput(ended(stat))).toEqual(rerun);
+    });
+
+    it('reruns a start with no stored visit and goes on with a new digest', () => {
+      expect(sameInput({ ...ended({}), stats: [] })).toEqual(rerun);
+      expect(sameInput({ ...ended({ status: 'failed', answerErrors: ['x'] }), digest: 'other' })).toEqual({
+        kind: 'new',
+        rerunUnfinished: false,
+      });
+    });
+
+    it('puts the answer errors in the refusal question only when there are some', () => {
+      expect(refusalQuestion('plan', 2, 'words').text).not.toContain('refused for');
+      expect(refusalQuestion('plan', 2, 'words', ['bad one', 'bad two']).text).toMatch(
+        /words\n\nThe answer was refused for:\n- bad one\n- bad two$/,
+      );
+    });
+  });
 });

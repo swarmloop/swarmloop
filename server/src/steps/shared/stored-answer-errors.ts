@@ -9,6 +9,20 @@ export function answerErrorsDocument(errors: string[]): DocumentDraft {
   return { ...textDocument(ARTIFACTS.answerErrors.kind, ARTIFACTS.answerErrors.format(errors)), perVisit: true };
 }
 
+/** The errors stored with each visit of the run as its answer-errors document, by the visit's stat id. */
+export async function answerErrorsByVisit(
+  deps: { documents: DocumentRepository },
+  runId: number,
+): Promise<Map<number, string[]>> {
+  const byVisit = new Map<number, string[]>();
+  for (const document of await deps.documents.listDocuments(runId)) {
+    if (document.kind === ARTIFACTS.answerErrors.kind) {
+      byVisit.set(document.stepStatId, ARTIFACTS.answerErrors.parse(document.body));
+    }
+  }
+  return byVisit;
+}
+
 /** Errors belong to the latest failed visit of this run and agent; a later successful visit leaves none. */
 export async function storedAnswerErrors(
   deps: { documents: DocumentRepository; visits: VisitRepository },
@@ -19,8 +33,5 @@ export async function storedAnswerErrors(
   if (last?.status !== 'failed') {
     return undefined;
   }
-  const stored = (await deps.documents.listDocuments(runId))
-    .filter((document) => document.stepStatId === last.id && document.kind === ARTIFACTS.answerErrors.kind)
-    .at(-1);
-  return stored ? ARTIFACTS.answerErrors.parse(stored.body) : undefined;
+  return (await answerErrorsByVisit(deps, runId)).get(last.id);
 }

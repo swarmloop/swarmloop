@@ -193,6 +193,7 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 
 **Today.**
 - Steps one to six hold for run agents through `steps/shared/agent-door.ts` (launch-door).
+- A visit that ended by its own answer (still invalid after its follow-ups) or by its own limit counts as finished in `steps/shared/same-input.ts`, so the next start of the machine or a planner on that input is refused as the same input and asked up the planners' chain once, with its answer errors. A visit cut by something outside the agent (an outage, a usage limit, an outside wait, a process that died, a person's Stop) runs again on its input.
 - The backlog planner's turns start through their own `turn-runner.ts` and are not admitted by the door.
 
 ## 3.4 Documents, gates and generations
