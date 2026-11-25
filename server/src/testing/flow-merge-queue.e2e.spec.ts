@@ -311,7 +311,7 @@ describe('the feature branch stays green: every merge is of a task tested on top
     await pass();
     // The first command died; the next pass sent the rebase again, once.
     expect(sent).toHaveLength(2);
-    expect(sent.at(-1)).toEqual([`${KEY}-b`, true]);
+    expect(sent.at(-1)).toEqual([`${KEY}-b`, true, undefined, false]);
 
     await pass();
     expect(sent).toHaveLength(2);

@@ -291,6 +291,7 @@ export default tseslint.config(
       'server/src/steps/shared/merge-marks.ts', // reads the stored review, handoff, merged files and plan of a merged task, for the planner that looks at it
       'server/src/steps/shared/starter-briefing.ts', // reads the parent's tasks, contract and requirements, and its children's results, for a subtask's prompts
       'server/src/steps/shared/briefing-record.ts', // keeps what each chat of a subtask was told as a document of the run, between its visits
+      'server/src/steps/shared/subtask-settled-at.ts', // reads the parent's task list, to say when a task was settled
       'server/src/steps/shared/rebased-publisher.ts', // records the refs it pushed for the implement step
       'server/src/steps/prepare/project-append.service.ts', // adds a project to a run between its visits
       'server/src/steps/commit/commit-delivered.ts', // reads the stored reviews an unchanged tree is judged from

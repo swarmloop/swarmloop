@@ -3,7 +3,7 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft } from '../../history/visit';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import type { Subtask } from '../../contract/subtask';
-import { storedReview } from '../../agent-result/stored-review';
+import { reviewKinds, storedReview } from '../../agent-result/stored-review';
 import { legacyHandoff, type HandoffEntry } from '../../agent-result/legacy/handoff';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 import type { FailedCommand } from '../../environment/environment-types';
@@ -190,6 +190,19 @@ export function composedReturn(documents: { kind: string; body: string }[]): str
 /** The return notes of the run: the stored ones, or the ones its latest reviews and pipeline result call for. */
 export async function returnedNotes(documents: DocumentRepository, runId: number): Promise<string | null> {
   return composedReturn(await documents.listDocuments(runId));
+}
+
+/**
+ * The same notes as `returnedNotes`, read from the newest document of each kind they are made of, so a caller that
+ * asks often does not load every stored version of the run.
+ */
+export async function latestReturnedNotes(documents: DocumentRepository, runId: number): Promise<string | null> {
+  const kinds = new Set([ARTIFACTS.return.kind, ARTIFACTS.issues.kind, ARTIFACTS.pipelineLog.kind]);
+  for (const source of CODE_REVIEWERS) {
+    kinds.add(REVIEWS.of(source));
+    for (const kind of reviewKinds(source)) kinds.add(kind);
+  }
+  return composedReturn(await documents.latestDocuments([runId], [...kinds]));
 }
 
 /** The id of the newest return the run holds: the code review's return notes, or the issues of a failed check or pipeline. */

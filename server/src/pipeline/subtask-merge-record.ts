@@ -3,8 +3,8 @@ import type { Clock } from '../core/clock';
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
-import { parseSubtasks, settled, SUBTASKS_KIND } from '../contract/subtask';
 import { ARTIFACTS } from '../steps/contract/artifacts';
+import { settledAt } from '../steps/shared/subtask-settled-at';
 import type { ReportRefresh } from '../steps/shared/report-refresh';
 import type { SubtaskWorktrees } from './subtask-worktrees';
 
@@ -40,15 +40,7 @@ export class SubtaskMergeRecord {
 
   /** The ISO time a task of the parent was merged or skipped, or null when it is not settled or the time is not known. */
   async settledAt(parent: RunEntity, taskId: string): Promise<string | null> {
-    const task = parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND)).find(
-      (item) => item.id === taskId,
-    );
-    if (!task || !settled(task)) return null;
-    if (task.status === 'merged') return (await this.runs.findSubtask(parent, taskId))?.doneAt ?? null;
-    // A skipped task has no run to say when: the first list that holds it as skipped does.
-    const lists = await this.documents.revisionsOfKind(parent.id, SUBTASKS_KIND);
-    const first = lists.find((item) => parseSubtasks(item.body).some((t) => t.id === taskId && t.status === 'skipped'));
-    return first?.createdAt ?? null;
+    return settledAt(this.runs, this.documents, parent, taskId);
   }
 
   /** Makes the parent's report current at a task merge. No step scope is open, so a failure is a warning; the next step end tries again. */

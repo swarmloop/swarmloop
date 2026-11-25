@@ -303,6 +303,10 @@ export class SubtaskPort extends SubtaskOps {
     return this.rebases.rebase(run, event);
   }
 
+  override keepsWait(run: RunEntity): Promise<boolean> {
+    return this.rebases.keepsWait(run);
+  }
+
   applyPendingRebase(key: string): Promise<string | null> {
     return this.rebases.applyPendingRebase(key);
   }

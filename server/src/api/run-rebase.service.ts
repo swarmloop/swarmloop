@@ -25,14 +25,17 @@ export class RunRebaseService {
     private readonly subtasks: SubtaskPort,
   ) {}
 
-  /** `main` is the machine bringing a new green main into an epic: its open subtasks follow the epic's new tip. */
-  async rebase(key: string, byParent = false, main?: string): Promise<RunRef> {
+  /**
+   * `main` is the machine bringing a new green main into an epic: its open subtasks follow the epic's new tip.
+   * `keepsWait` is a parent moving a subtask that waits on a question or a sibling: it is moved and starts nothing.
+   */
+  async rebase(key: string, byParent = false, main?: string, keepsWait = false): Promise<RunRef> {
     // A cleaned run gets its worktrees back before they are rebased.
     const run = await this.runs.findRun(key);
     if (run) await this.workspace.ensureForRequest(run);
-    const next = await this.rebaseOrConflict(key, byParent, main !== undefined);
+    const next = await this.rebaseOrConflict(key, byParent, main !== undefined, keepsWait);
     if (run?.split) await this.moveSubtasks(run, next, main);
-    if (next === 'stay') return { key, status: 'blocked' };
+    if (next === 'stay') return { key, status: keepsWait ? 'waiting' : 'blocked' };
     // A parent's or main's rebase of an idle task is the machine's start; a person's rebase keeps the default.
     const machine = byParent || main !== undefined;
     if (next === 'resume') return this.commands.resume(key, undefined, machine ? MACHINE : undefined);
@@ -53,9 +56,14 @@ export class RunRebaseService {
   }
 
   /** A person who asks for a Rebase while the host is down gets the plain reason; the automatic callers get the outage itself. */
-  private async rebaseOrConflict(key: string, byParent: boolean, byMain: boolean): Promise<RebaseNext> {
+  private async rebaseOrConflict(
+    key: string,
+    byParent: boolean,
+    byMain: boolean,
+    keepsWait: boolean,
+  ): Promise<RebaseNext> {
     try {
-      return await this.action.rebase(key, false, byParent, byMain);
+      return await this.action.rebase(key, false, byParent, byMain, keepsWait);
     } catch (error) {
       if (error instanceof HostUnavailable && !byMain) throw new ConflictException(error.message);
       throw error;

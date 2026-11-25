@@ -24,7 +24,12 @@ import { renderMergeRequest } from '../steps/merge-request/merge-request-record'
 import { handoffText } from '../steps/shared/handoff';
 import { checkDocker } from './check-docker.spec-helpers';
 import { FAKE_MODEL_KEY } from './env.spec-helpers';
+import { agentFor } from '../config/agents';
+import { AppConfig } from '../config/env';
+import { agentStateDir } from '../sandbox/sandbox-launch';
+import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { ConflictAgent, createFlowHarness } from './flow-harness';
+import { BlockAgentRunner } from './result-answer';
 import { assertInvariants } from './flow-invariants';
 import { git, save } from './runs.spec-helpers';
 
@@ -63,7 +68,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
     launch.mounts.some((mount) => existsSync(join(mount.hostPath, 'src', 'fix.ts'))) ? 0 : 1,
   );
 
-  async function boot(repoFiles?: Record<string, string>, blocks?: ConflictAgent): Promise<void> {
+  async function boot(repoFiles?: Record<string, string>, blocks?: BlockAgentRunner): Promise<void> {
     flow = await createFlowHarness(KEY, {
       env: { CHECKOUTS_ROOT: '.', ...FAKE_MODEL_KEY },
       realHost: true,
@@ -326,6 +331,94 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
 
     expect(rebaseKeys()).toEqual([KEY]);
     expect(await documents().latestBody(childKey('a'), 'pending_rebase')).toContain(NOTE);
+  });
+
+  /** A part waits in research on the question of its document, as a part that asked leaves it. */
+  async function ask(id: string): Promise<void> {
+    const run = (await runs().findRun(childKey(id)))!;
+    await documents().putDocument(run, 'questions', '- Which type are the ids?\n');
+    writeRunState(run, { status: 'waiting', currentStep: 'research', facts: { needsAnswers: true } });
+    await runs().saveRun(run);
+  }
+
+  const waitingKept = async (id: string) => {
+    const state = await stateOf(childKey(id));
+    const run = (await runs().findRun(childKey(id)))!;
+    return { state: state.state, step: run.currentStep, started: flow.launched.includes(childKey(id)) };
+  };
+
+  it("a person's Rebase of an epic publishes the rebased branch and moves every open part onto it, a part that waits on a question or a sibling keeping its wait", async () => {
+    await boot();
+    await seedEpic([task('a'), task('b'), task('c')], ['src/own.ts', 'export const own = 1;\n']);
+    const child = (await runs().findRun(childKey('a')))!;
+    const { record } = await flow.host.openMergeRequest({
+      project: 'group/demo',
+      source: branchName(child.key, summaryForBranch(requirements, child.key)),
+      target: 'main',
+      title: 'feat: task a',
+      summary: '',
+      draft: false,
+    });
+    await documents().putDocument(child, 'merge_request', renderMergeRequest([{ ...record, summary: '' }]));
+    await ask('b');
+    await documents().putDocument((await runs().findRun(childKey('c')))!, 'questions', '');
+    await block('c', ERROR_CODES.SUBTASK_WAITING, 'research');
+    const waiting = (await runs().findRun(childKey('c')))!;
+    writeRunState(waiting, {
+      status: 'waiting',
+      currentStep: 'research',
+      reason: { code: ERROR_CODES.SUBTASK_WAITING, message: 'waits for a sibling' },
+    });
+    await runs().saveRun(waiting);
+    landOnMain('src/fix.ts', 'export const fix = 1;\n');
+
+    await flow.app.app.get(RunRebaseService).rebase(KEY);
+    await settleAll();
+
+    const tip = git(flow.tree, ['rev-parse', 'HEAD']);
+    expect(git(bare(), ['rev-parse', FEATURE])).toBe(tip);
+    for (const id of ['a', 'b', 'c']) expect(isIn(treeOf(id), tip)).toBe(true);
+    expect(await waitingKept('b')).toEqual({ state: 'waiting', step: 'research', started: false });
+    expect(await waitingKept('c')).toEqual({ state: 'waiting', step: 'research', started: false });
+    expect((await stateOf(childKey('c'))).reason?.code).toBe(ERROR_CODES.SUBTASK_WAITING);
+  });
+
+  it('an epic whose only open part waits on a question takes a new green main; the part keeps its question and its answer runs it on the new tree', async () => {
+    const planner = new BlockAgentRunner({ plan: [{ block: { escalate: 'The owner must decide.' } }] });
+    await boot(undefined, planner);
+    await seedEpic([task('a')]);
+    await ask('a');
+    // The epic's pass hands the part's question up to whoever started the run, and waits on it.
+    const root = flow.app.root;
+    mkdirSync(join(root, 'data'), { recursive: true });
+    mkdirSync(agentStateDir(root, KEY, 'plan'), { recursive: true });
+    const runtime = agentFor(flow.app.app.get(AppConfig).env, await runs().findRun(KEY), 'plan').runtime;
+    writeFileSync(join(root, 'data', `${KEY}-plan-session.json`), JSON.stringify({ chatId: 'chat-1', runtime }));
+    await documents().putDocument((await runs().findRun(KEY))!, 'contract', '- api (owner a): the api\n');
+    await flow.app.pipeline.step('implement', KEY);
+    await flow.app.app.get(CommandService).idle();
+    await flow.app.app.get(RunStateRefresh).settled();
+    expect((await stateOf(KEY)).reason?.code).toBe('ASKS_PLANNER');
+    const head = landOnMain('src/fix.ts', 'export const fix = 1;\n');
+
+    await backlogPass();
+    await settleAll();
+
+    expect(isIn(flow.tree, head)).toBe(true);
+    expect(isIn(treeOf('a'), head)).toBe(true);
+    expect(await waitingKept('a')).toEqual({ state: 'waiting', step: 'research', started: false });
+    expect(await documents().latestBody(childKey('a'), 'answers')).toBeNull();
+    // The move restarted the epic's pass; its question is still open, so it waits on it again.
+    expect(await stateOf(KEY)).toMatchObject({
+      state: 'waiting',
+      reason: { code: expect.stringMatching(/ASKS_PLANNER|NEEDS_ANSWERS/) },
+    });
+
+    await flow.app.app.get(SubtaskOps).deliverAnswer((await runs().findRun(childKey('a')))!, 'Ids are numbers.');
+    await settleAll();
+
+    expect(flow.launched).toContain(childKey('a'));
+    expect(isIn(treeOf('a'), head)).toBe(true);
   });
 
   /** The agent of the epic's implement step resolves the conflict in the epic's worktree, and so the checks pass on it. */

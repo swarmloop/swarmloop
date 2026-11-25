@@ -24,7 +24,7 @@ import { runJournal } from './shared/rebase-journal';
 import type { RebaseJournal } from '../git/rebase';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { actionsFor } from '../contract/run-state';
-import { betweenPasses } from './shared/epic-between-passes';
+import { takesMain } from './shared/epic-between-passes';
 import { RebasedPublisher } from './shared/rebased-publisher';
 import type { RebaseStop } from '../git/rebase/types';
 import { forwardOwnLess } from './shared/main-forward';
@@ -60,9 +60,10 @@ export class RunRebase {
    * A reconciler resume of an unfinished journal is not a new command: it does not raise the generation. `byParent`
    * is the parent of a subtask moving it onto the feature branch, which a person is never offered for a blocked or
    * working run. A blocked subtask is moved and left blocked (`stay`): only a person's Resume, Replay or Skip moves it on.
+   * A subtask that waits on a question or a sibling (`keepsWait`) is moved and left waiting the same way.
    * A subtask blocked by a check goes on instead: the move gave it a new tree, so its checks run once on it.
-   * `byMain` is the machine bringing a new green main into an epic that waits between passes; it publishes the
-   * rebased branch so the subtasks move onto it. A main move that conflicts goes to implement like every rebase conflict
+   * `byMain` is the machine bringing a new green main into an epic that waits between passes or on questions. A clean
+   * Rebase of an epic, a main move included, publishes the rebased branch so the subtasks move onto it. A main move that conflicts goes to implement like every rebase conflict
    * (`resolve`): the conflict agent resolves it, and the end of its round moves the subtasks.
    */
   async rebase(
@@ -70,11 +71,11 @@ export class RunRebase {
     resume = false,
     byParent = false,
     byMain = false,
+    keepsWait = false,
   ): Promise<'resume' | 'start' | 'stay' | 'resolve'> {
     const run = await this.requireRun(key);
-    this.assertOffered(run, byParent, byMain);
-    const { state, reason } = storedState(run);
-    const stays = byParent && state === 'blocked' && reason?.code !== ERROR_CODES.CHECK_FAILED;
+    await this.assertOffered(run, byParent, byMain, keepsWait);
+    const stays = this.staysAfterMove(run, byParent, keepsWait);
     const status = run.status;
     if (!resume) {
       await this.assertSubtasksIdle(run);
@@ -113,7 +114,7 @@ export class RunRebase {
       await this.startAtImplement(run);
       return 'resolve';
     }
-    if (byMain) await withWorktrees(paths, async () => this.publishMain(key, run, names, stop.leases));
+    if (byMain || run.split) await withWorktrees(paths, async () => this.publishRebased(key, run, names, stop.leases));
     if (stays) return 'stay';
     if (await this.checklistUnfinished(run)) {
       return this.startAtImplement(run);
@@ -127,14 +128,26 @@ export class RunRebase {
     return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
   }
 
-  /** A Rebase is for the states `actionsFor` offers it in, and for a blocked or working subtask when its parent sends it. */
-  private assertOffered(run: RunEntity, byParent: boolean, byMain: boolean): void {
+  /** A subtask its parent moves stays as it is when it waits on a question or a sibling, or is blocked for a reason a check does not clear. */
+  private staysAfterMove(run: RunEntity, byParent: boolean, keepsWait: boolean): boolean {
     const { state, reason } = storedState(run);
-    const parentMay = byParent && isSubtask(run) && (state === 'blocked' || state === 'running');
-    const mainMay = byMain && run.split && betweenPasses(run);
+    return byParent && (keepsWait || (state === 'blocked' && reason?.code !== ERROR_CODES.CHECK_FAILED));
+  }
+
+  /** A Rebase is for the states `actionsFor` offers it in, and for a blocked, working or waiting subtask when its parent sends it. */
+  private async assertOffered(run: RunEntity, byParent: boolean, byMain: boolean, keepsWait: boolean): Promise<void> {
+    const { state, reason } = storedState(run);
+    const parentMay =
+      byParent && isSubtask(run) && (state === 'blocked' || state === 'running' || (keepsWait && state === 'waiting'));
+    const mainMay = byMain && (await this.takesMain(run));
     if (!parentMay && !mainMay && !actionsFor(state, reason?.code ?? null).includes('rebase')) {
       throw new ConflictException(`${run.key} is ${state}`);
     }
+  }
+
+  /** True when the machine's main move takes this epic now: it waits on its parts or on their questions. */
+  takesMain(run: RunEntity): Promise<boolean> {
+    return takesMain(this.documents, this.runs, run);
   }
 
   private async turnBackToDraft(run: RunEntity): Promise<void> {
@@ -169,8 +182,8 @@ export class RunRebase {
       .join(',');
   }
 
-  /** A main move that rebased clean puts the branch on origin before any subtask moves onto it. */
-  private async publishMain(
+  /** An epic's Rebase that rebased clean puts the branch on origin before any subtask moves onto it. */
+  private async publishRebased(
     key: string,
     run: RunEntity,
     names: string[],

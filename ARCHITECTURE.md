@@ -298,6 +298,7 @@ When `main` moves while the epic waits, the epic takes it (rule 6). A conflict g
   - a return of an epic does not always reach implement (f124);
   - the epic may read its tasks before their queued move has run (epic-round-moves, not in M1);
   - an epic's plan review may not change a task that has not started (plan-review-waiting-part, not in M1).
+- An epic whose pass waits on a question that its parts or its gaps raised takes a new green main too, with no part running (rule 6; `takesMain` in `steps/shared/epic-between-passes.ts`, read by the main move and by an epic's Rebase). Every open part moves with its epic; a part that waits on a question or a sibling is moved and keeps its wait.
 - Child runs follow the flow, but several mechanisms have their own code for children (3.11, 3.12).
 
 ## 3.11 Base moves and conflicts
@@ -321,6 +322,8 @@ The journal makes a rebase that a crash cut finish or roll back. Every git opera
 6. a child catching up with its parent's branch (`subtask-worktrees.catchUp`, which only warns when it fails);
 7. the backlog merge queue (`backlog-merge.ts`);
 8. the reconciler finishing a journal (`run-settler.ts`).
+
+Paths 1, 4 and 5 move an epic's open parts through one rule, `pipeline/subtask-rebases.ts` (rule 6). A part that waits on a question or a sibling moves onto the new tip and keeps its wait: the move does not start it. A stopped part stays a person's and is not moved. A clean Rebase of an epic publishes the rebased branch before its parts move, as the main move does. The one-path target above stays with base-moves.
 
 epic-conflict-implement removed the wait for a person. One path is planned after M1.
 
