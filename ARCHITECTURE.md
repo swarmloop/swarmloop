@@ -454,11 +454,12 @@ A limit stops the run in a wait that names it (rule 18). Every visit stores only
 **Target.**
 - **The database** is one SQLite database in WAL mode. Changes come only through additive migrations, behind a guard that backs up the database before it migrates.
 - **What is written once:** documents, events and stalls are appended and never rewritten. A newer document of a kind supersedes the older one.
+- **A write of a run** sets only the columns its writer changed, so a copy read earlier never sets back a change made since; after the write the copy is the stored row.
 - **The disk guard** stops a step from starting on a disk it may fill. It frees old runs first, then docker leftovers, and only then makes the run wait (`MIN_FREE_GB`).
 - **Retention** removes everything a finished run leaves after `RETAIN_DONE_DAYS`, and deleting a run removes everything of it.
 - **Housekeeping** runs at startup and once a day.
 
-**Today.** Holds (`history/`, `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
+**Today.** Holds (`history/`, a run's row is written by `history/run.repository.ts` and `history/visit.repository.ts` from what the copy read, kept in `history/run-read.ts`; `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
 
 ## 3.20 People, access and connections
 

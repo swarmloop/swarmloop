@@ -101,6 +101,7 @@ export class MergeWatch {
       return error instanceof HostUnavailable;
     }
     if (!merge) return false;
+    const before = run.state;
     const released = await this.runs.release(run, { status: 'done', doneAt: this.clock.iso(), merge });
     if (released.status !== 'done') return false;
     const ended = 'merged' in merge ? 'merged' : 'closed';
@@ -109,7 +110,7 @@ export class MergeWatch {
       run,
       MERGE_WATCH_COUNTER,
       0,
-      `The merge request was ${ended} on ${host} while the run was ${run.state}; the run is done.`,
+      `The merge request was ${ended} on ${host} while the run was ${before}; the run is done.`,
     );
     return false;
   }

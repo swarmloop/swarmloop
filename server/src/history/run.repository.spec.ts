@@ -36,6 +36,44 @@ describe('RunRepository', () => {
     }
   });
 
+  it('writes only what the copy changed, so a change made since it was read stays', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting('run-1', '/target');
+      const copy = (await runs.findRun('run-1'))!;
+      await runs.markWorkspaceRemoved('run-1');
+      await runs.bumpGeneration('run-1');
+      copy.prompt = 'new';
+      const saved = await runs.saveRun(copy);
+      const row = (await runs.findRun('run-1'))!;
+      expect(row).toEqual(expect.objectContaining({ prompt: 'new', workspace: 'removed', generation: 1 }));
+      expect(saved).toEqual(row);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('releases a held copy without setting back a title or generation written since', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting('run-1', '/target');
+      const copy = await runs.begin('run-1', 'research');
+      await runs.recordTitle((await runs.findRun('run-1'))!, 'A title');
+      await runs.bumpGeneration('run-1');
+      const released = await runs.release(copy, { status: 'waiting' });
+      const row = (await runs.findRun('run-1'))!;
+      expect(row).toEqual(
+        expect.objectContaining({ status: 'waiting', activeAttempt: null, title: 'A title', generation: 1 }),
+      );
+      expect(copy).toEqual(row);
+      expect(released).toEqual(row);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('removes the output files named by attempt with the run', async () => {
     const db = await repositoryDatabase();
     try {

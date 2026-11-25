@@ -7,6 +7,7 @@ import { AppConfig } from '../config/env';
 import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
 import { SERVER_INSTANCE } from '../core/server-instance';
+import { adoptRow, changedColumns, wasRead } from './run-read';
 import { claimedColumns, storedState, stateColumns, titleColumns } from './run-state';
 import type { RunStateChange } from './run-state';
 import { LiveHub } from '../live/live.hub';
@@ -87,9 +88,8 @@ export class RunRepository {
     await this.runs.update({ id: parent.id }, { subtaskFingerprint });
   }
 
-  /** Stores the title in a single statement and on the given copy, so the save at the end of the step keeps it. */
+  /** Stores the title in a single statement and tells the dashboard. */
   async recordTitle(run: RunEntity, title: string): Promise<void> {
-    Object.assign(run, titleColumns(title));
     await this.runs.update({ id: run.id }, titleColumns(title));
     this.live?.changed(run.key);
   }
@@ -208,20 +208,21 @@ export class RunRepository {
    */
   async release(run: RunEntity, change: RunStateChange & { stepStartedAt?: string | null }): Promise<RunEntity> {
     const { stepStartedAt, ...state } = change;
+    const attempt = run.activeAttempt;
+    Object.assign(
+      run,
+      stateColumns(run, { ...state, activeAttempt: null }),
+      stepStartedAt === undefined ? {} : { stepStartedAt },
+    );
     await this.runs
       .createQueryBuilder()
       .update(RunEntity)
-      .set({
-        ...stateColumns(run, { ...state, activeAttempt: null }),
-        ...(stepStartedAt === undefined ? {} : { stepStartedAt }),
-        updatedAt: this.clock.iso(),
-        revision: () => 'revision + 1',
-      })
-      .where('id = :id AND active_attempt IS :attempt', { id: run.id, attempt: run.activeAttempt })
+      .set({ ...changedColumns(run), updatedAt: this.clock.iso(), revision: () => 'revision + 1' })
+      .where('id = :id AND active_attempt IS :attempt', { id: run.id, attempt })
       .execute();
-    const released = await this.runs.findOneByOrFail({ id: run.id });
+    adoptRow(run, await this.runs.findOneByOrFail({ id: run.id }));
     this.notify(run.key);
-    return released;
+    return run;
   }
 
   private async insertClaimed(key: string, step: string): Promise<RunEntity> {
@@ -263,9 +264,15 @@ export class RunRepository {
 
   async saveRun(run: RunEntity): Promise<RunEntity> {
     run.updatedAt = this.clock.iso();
-    const saved = await this.runs.save(run);
-    this.live?.changed(saved.key);
-    return saved;
+    const changed = changedColumns(run);
+    if (!wasRead(run)) {
+      await this.runs.save(run);
+    } else if (Object.keys(changed).length > 0) {
+      await this.runs.createQueryBuilder().update(RunEntity).set(changed).where('id = :id', { id: run.id }).execute();
+    }
+    adoptRow(run, await this.runs.findOneByOrFail({ id: run.id }));
+    this.live?.changed(run.key);
+    return run;
   }
 
   /** Raises the generation by one in a single statement, so a restart cannot count the same command twice. */
