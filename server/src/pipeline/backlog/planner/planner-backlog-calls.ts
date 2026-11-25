@@ -3,11 +3,9 @@ import type { BacklogTurnAction, RunAction } from '../../../agent-result/definit
 import type { ChangeTaskBody } from '../../../contract/backlog-actions';
 import type { BacklogRecord } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
-import { RunRepository } from '../../../history/run.repository';
 import { BacklogActionSupport, type PlannerContext } from '../backlog-action-support';
 import { BacklogActions } from '../backlog-actions';
 import type { PlannerRunCommand } from './planner-run-port';
-import { stopReason } from './planner-run-state';
 
 /** How many of the newest events are read for the commands of an applied turn; a turn's own are always among them. */
 const EVENT_WINDOW = 1000;
@@ -65,7 +63,6 @@ export class PlannerBacklogCalls {
     private readonly actions: BacklogActions,
     private readonly support: BacklogActionSupport,
     private readonly backlogs: BacklogRepository,
-    private readonly runs: RunRepository,
   ) {}
 
   /** Runs a backlog action in the turn's transaction. */
@@ -120,7 +117,6 @@ export class PlannerBacklogCalls {
         run,
         index: String(index),
         payload: JSON.stringify(payload),
-        ...(type === 'resume' ? { blockCode: await stopReason(this.runs, run) } : {}),
       },
       call.context,
     );

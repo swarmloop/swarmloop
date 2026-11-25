@@ -49,7 +49,7 @@ export function plannerTurnActions({ app, backlogs, chat, runs, clock, config, c
   const taskActions = new BacklogTaskActions(backlogs, queries, runs, commands, clock, support);
   const actions = new BacklogActions(backlogs, queries, clock, config, support, taskActions);
   const rules = new PlannerRules(backlogs, runs);
-  const calls = new PlannerBacklogCalls(actions, support, backlogs, runs);
+  const calls = new PlannerBacklogCalls(actions, support, backlogs);
   const { holds, passOn } = holdServices(app, clock);
   const left = new LeftQuestions(chat, holds, passOn, runs, backlogs, clock);
   const turns = new PlannerTurnActions(backlogs, chat, rules, calls, port, clock, left);

@@ -19,7 +19,6 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { StatsRepository } from '../history/stats.repository';
 import { recoveringSince, storedState, writeRunState, type RunStateChange } from '../history/run-state';
-import { stopReason } from '../pipeline/backlog/planner/planner-run-state';
 import { backlogHarness } from '../pipeline/backlog/backlog.spec-helpers';
 import { MergeWatch } from '../pipeline/merge-watch';
 import { RunRetention } from '../pipeline/run-retention';
@@ -36,7 +35,6 @@ interface Readings {
   column: { state: RunState; code: string | undefined };
   flow: { state: RunState; code: string | undefined; actions: string[] };
   list: { state: RunState; code: string | undefined };
-  planner: string;
   recovering: boolean;
   /** The status a task shows for this run's state, and whether the phase of its estimate is a person. */
   task: string;
@@ -96,7 +94,6 @@ async function readings(setup: Setup): Promise<Readings> {
     column: { state: column.state, code: column.reason?.code },
     flow: { state: flow.state, code: flow.stateReason?.code, actions: flow.actions },
     list: { state: row.state, code: row.stateReason?.code },
-    planner: await stopReason(runs, key),
     recovering: recoveringSince(stored) !== null,
     task: runTaskStatus({ state: column.state, currentStep: stored.currentStep }),
     phase: etaPhase(column.state, column.reason),
@@ -110,7 +107,6 @@ function expectAgreement(read: Readings, state: RunState, code?: string): void {
   expect(read.column).toEqual({ state, code });
   expect(read.flow).toMatchObject({ state, code });
   expect(read.list).toEqual({ state, code });
-  expect(read.planner).toBe(code ?? '');
   const ended = state === 'merged' || state === 'closed';
   expect(read.stats).toEqual({ merged: state === 'merged' ? 1 : 0, closed: state === 'closed' ? 1 : 0 });
   expect(read.freed).toBe(ended);
@@ -142,7 +138,6 @@ describe('every reader of a run state agrees with the stored state', () => {
       expect(read.flow.state).toBe(read.column.state);
       expect(read.list).toEqual(read.column);
       expect(read.flow.code).toBe(read.column.code);
-      expect(read.planner).toBe(read.column.code);
       expect(read.column).toEqual({ state: code === REASON.stopped ? 'stopped' : 'blocked', code });
       expect(read.phase).toBe('person');
       expect(read.task).toBe('blocked');
@@ -267,7 +262,6 @@ describe('every reader of a run state agrees with the stored state', () => {
     expect(storedState(stored)).toMatchObject({ state: 'stopped', reason: { code: REASON.stopped } });
     expect(flow).toMatchObject({ state: 'stopped', actions: expect.arrayContaining(['resume']) });
     expect(view.runs.find((row) => row.key === key)).toMatchObject({ state: 'stopped' });
-    expect(await stopReason(app.get(RunRepository), key)).toBe(REASON.stopped);
   });
 });
 
