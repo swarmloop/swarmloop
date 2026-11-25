@@ -93,6 +93,49 @@ describe('StepDetail', () => {
     expect(screen.getByText('Checks sent it back: lint')).toBeInTheDocument();
   });
 
+  it('reads a relaunched step as not started and keeps its old visit as an earlier attempt', async () => {
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [visitView({ id: 1, attempt: 1, status: 'done' })] }));
+    detail({ boardStatus: 'idle', attempts: 1 });
+
+    expect(await screen.findByText('Not started')).toBeInTheDocument();
+    expect(screen.queryByText('done')).toBeNull();
+    expect(screen.getByRole('button', { name: /1/ })).toBeInTheDocument();
+  });
+
+  it('reads a relaunched checks step with commands as not started, not as its counts', async () => {
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        step: 'checks',
+        commands: [
+          {
+            attempt: 'a',
+            index: 0,
+            repo: 'r',
+            command: 'lint',
+            name: 'lint',
+            status: 'passed',
+            startedAt: null,
+            endedAt: null,
+            exitCode: 0,
+          },
+        ],
+        visits: [visitView({ id: 1, attempt: 1, status: 'done' })],
+      }),
+    );
+    detail({ step: 'checks', boardStatus: 'idle', attempts: 1 });
+
+    expect(await screen.findByText('Not started')).toBeInTheDocument();
+    expect(screen.queryByText('done')).toBeNull();
+  });
+
+  it('shows the status of its visit when the board does not say idle', async () => {
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [visitView({ id: 1, attempt: 1, status: 'done' })] }));
+    detail({ boardStatus: 'done', attempts: 1 });
+
+    expect(await screen.findByText('done')).toBeInTheDocument();
+    expect(screen.queryByText('Not started')).toBeNull();
+  });
+
   it('says nothing about a return for a step that sent none', async () => {
     detail();
 

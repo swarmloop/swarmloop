@@ -78,6 +78,36 @@ describe('feedTimeline', () => {
     ]);
   });
 
+  it('adds one relaunch line at its time next to the return lines, and no return', () => {
+    const flow = flowView({
+      returns: [
+        {
+          counter: 'checks',
+          count: 1,
+          from: 'checks',
+          to: 'implement',
+          at: at('12:20'),
+          words: 'Checks sent it back: lint',
+        },
+      ],
+      relaunches: [
+        {
+          at: at('12:40'),
+          reason: 'Rebased onto the epic after input merged',
+          phases: ['checks', 'ci'],
+          steps: ['checks', 'commit', 'merge-request', 'pipeline'],
+          open: false,
+        },
+      ],
+    });
+    const rows = feedTimeline(flow, []);
+    expect(rows.map((row) => row.key)).toEqual(['return:checks', `relaunch:${at('12:40')}`]);
+    expect(rows.map((row) => (row.type === 'info' ? row.sentence : null))).toEqual([
+      'Checks sent it back: lint',
+      'Rebased onto the epic after input merged: checks and CI run again',
+    ]);
+  });
+
   it('puts a revision after the reply of its version on a tie, and lists revisions without entries', () => {
     const flow = flowView({ conversation: conversation({ revisions: [revision(1, '12:30')] }) });
     expect(feedTimeline(flow, [entry('reply', '12:30', 'planner')]).map((row) => row.key)).toEqual([

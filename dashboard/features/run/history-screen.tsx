@@ -17,9 +17,10 @@ import { AttemptSelector } from './attempt-selector';
 import { SeriesChart } from './series';
 import { getFlow, getHistory, getRunLog } from '../../lib/endpoints';
 import { useDocumentTitle } from '../../lib/document-title';
-import { count, duration, memory, money } from '../../lib/format';
+import { count, duration, memory, money, when } from '../../lib/format';
 import { documentsByKind, tokensByModel } from './history';
 import { latestPhaseLabels } from './phases';
+import { relaunchLine } from './relaunch-words';
 import { useLiveBridge } from '../shell';
 import { LOG_CHUNK } from './use-visit-log';
 import { LogTranscript } from './log-transcript';
@@ -223,6 +224,11 @@ export function HistoryScreen({ runKey }: { runKey: string }): ReactElement {
           <Typography key={`${loop.counter}-${loop.attempt}`} variant="body2">
             {loop.counter} {loop.attempt}: {loop.reason}
             {loop.ciOnly ? ' · CI only: no check covers it' : ''}
+          </Typography>
+        ))}
+        {(view.relaunches ?? []).map((relaunch) => (
+          <Typography key={`relaunch-${relaunch.at}`} variant="body2">
+            {when(relaunch.at)} · {relaunchLine(relaunch, ': ')}
           </Typography>
         ))}
         {view.calls.map((call, index) => (
