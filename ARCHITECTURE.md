@@ -333,6 +333,7 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 - Gaps:
   - a planner's change can overwrite one it did not see (f130);
   - person tools still bypass the planners (3.14, f129).
+- For the backlog planner only the f129 gap differs from the target: it sends a person's commands on every run of its backlog and reads why a run stopped (3.14).
 
 ## 3.13 Questions to a person
 
@@ -370,6 +371,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 **Today.**
 - There are 14 command types: `start`, `resume`, `replay`, `rebase`, `answer`, `plan-chat`, `stop`, `step`, `chat`, `shell`, `rewind`, `remove`, `skip` and `projects`.
 - `chat`, `shell`, `rewind` and `step` serve only the IDE bridge, and they bypass the planners (rule 9). They are being removed with it (decision 5 of Part 4), which leaves ten.
+- The backlog planner sends Resume, Replay of a step with its instruction, Rebase, an answer, Stop, Skip and a message on every run of its backlog, an epic's parts included, through `PlannerRunCommands.send`, and reads a run's failed step, check output and failed CI jobs (`pipeline/backlog/planner/run-facts.ts`, cut in `event-facts.ts`).
 
 ## 3.15 Waits, places and timers
 
@@ -507,8 +509,7 @@ The text is plain words for a person: no raw JSON and no internal ids. A cut tex
 
 **Today.** Holds in the main. Gaps:
 - held runs read as failures (held-run-says-so);
-- a failed step does not tell the backlog planner why (failed-run-says-why);
-- several screens are still being reworked in M1 (f95, f121, f126, f131, f132, done-lately, b04, f26).
+- several screens are still being reworked in M1 (f95, f121, f131, f132, done-lately, b04, f26).
 
 ## 3.24 Tests, CI and releases
 

@@ -39,6 +39,14 @@ describe('the backlog-plan skill', () => {
     expect(skill).toContain("pass a run's question to the person");
   });
 
+  it('names the facts of a run and the run commands, with a replay instruction, a rebase and the runs below a task', () => {
+    expect(skill).toContain('each failed check command with the end of its output');
+    expect(skill).toContain('each failed CI job with the end of its log');
+    expect(skill).toContain('replay a run from a step with an instruction');
+    expect(skill).toContain('rebase a run');
+    expect(skill).toContain("on a task's run or any run below it, such as a part of an epic");
+  });
+
   it('asks `Milestone or backlog?` and records the answer as a decision', () => {
     expect(skill).toContain('`Milestone or backlog?`');
   });
@@ -68,6 +76,15 @@ describe('the backlog-plan skill', () => {
       expect(section).toContain("A run's question comes to you first, as an event with the question's id");
       expect(section).toContain('pass it to the person with the pass-on action and a one-line reason');
       expect(section).toContain('A turn that ends with neither passes the question on and says so in the chat');
+    });
+
+    it('holds the one guard for a run that fails the same way a third time and none of the three old rules', () => {
+      expect(section).toContain(
+        'A run that fails the same way a third time on the same tree is stopped, its error left as it is, and reported in the chat; you do not resume, replay or rebase it again.',
+      );
+      expect(section).not.toContain('blocked again for the same reason');
+      expect(section).not.toContain('two of its covering tasks merged');
+      expect(section).not.toContain('When two fixes merged');
     });
 
     it('names no project and no person', () => {
