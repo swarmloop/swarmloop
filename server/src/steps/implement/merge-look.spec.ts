@@ -10,6 +10,7 @@ import { writeRunState } from '../../history/run-state';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { resultAnswer } from '../../testing/result-answer';
 import { type TestApp } from '../../testing/test-app';
+import { skillSection } from '../shared/skill-prompt';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { AgentDoor } from '../shared/agent-door';
@@ -182,6 +183,12 @@ describe('merge look', () => {
 
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain('decision');
+    const rules = skillSection('plan', 'The look after a merge');
+    expect(rules).not.toBe('');
+    expect(prompts[0]).toContain(rules);
+    expect(prompts[0]).toContain('The server computes the marks, so you do not search the code for them');
+    expect(prompts[0]).toContain('Tell a started or merged task what it must know in `decision`.');
+    expect(prompts[0]).toContain('Do not use `waitFor`');
     expect(prompts[0]).not.toContain('escalate');
     expect(prompts[0]).not.toContain('finding');
   });

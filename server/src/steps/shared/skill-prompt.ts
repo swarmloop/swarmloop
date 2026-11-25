@@ -3,6 +3,7 @@ import { join } from 'path';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { NEAR_TESTS_MARK, NEAR_TESTS_RULE } from './near-tests-rule';
+import { PLANNER_CORE_MARK, plannerCore } from './planner-core';
 import { alsoReadLine, skillFileReads, STAY_LINE_START } from './outside-reads';
 import type { OutsideRead } from './outside-reads';
 import { requirementsBrief } from './requirements-brief';
@@ -56,7 +57,18 @@ function sourceState(hostPath: string): string {
   }
 }
 
-/** Keeps a `[plan tool] ` line only for a runtime with a plan tool and a `[no plan tool] ` line only for one without. */
+/** A line that is a mark stands for its shared text; any other line stays. */
+function markedText(line: string): string {
+  if (line === NEAR_TESTS_MARK) {
+    return NEAR_TESTS_RULE;
+  }
+  return line === PLANNER_CORE_MARK ? plannerCore() : line;
+}
+
+/**
+ * Keeps a `[plan tool] ` line only for a runtime with a plan tool and a `[no plan tool] ` line only for one without.
+ * A `[near tests rule]` line becomes the near-tests rule and a `[planner core]` line the planners' core text.
+ */
 export function skillText(raw: string, planTool: boolean): string {
   const kept: string[] = [];
   for (const line of raw.split('\n')) {
@@ -69,7 +81,7 @@ export function skillText(raw: string, planTool: boolean): string {
         kept.push(line.slice(NO_PLAN_TOOL_MARK.length));
       }
     } else {
-      kept.push(line === NEAR_TESTS_MARK ? NEAR_TESTS_RULE : line);
+      kept.push(markedText(line));
     }
   }
   return kept.join('\n');

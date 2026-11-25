@@ -27,14 +27,17 @@ export function planFollowUp(answers: string, resultText: string, heading = 'Ans
   return lines.join('\n');
 }
 
-/** The rule to decide what the run's decisions settle; the cases that go up are `escalateWhatYouDoNotHold`'s. */
+/** The core's rule to decide what the planner holds; the cases that go up are `escalateWhatYouDoNotHold`'s. */
 function decideWhatYouHold(): string {
   return skillSection('plan', 'Decide what you hold');
 }
 
-/** The cases that go to whoever started the run, for the planner results that have `escalate`. */
+/** The cases that go up, and how the `escalate` field passes them, for the planner results that have `escalate`. */
 function escalateWhatYouDoNotHold(): string {
-  return skillSection('plan', 'Escalate what you do not hold');
+  return [
+    skillSection('plan', 'Pass up what you do not hold'),
+    skillSection('plan', 'Escalate what you do not hold'),
+  ].join('\n\n');
 }
 
 /** The heading before a person's messages in a planner prompt. */

@@ -1,7 +1,33 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
+import { plannerCore } from '../../steps/shared/planner-core';
+import { skillPrompt } from '../../steps/shared/skill-prompt';
+
 const skill = readFileSync(join(__dirname, '../../../../skills/backlog-plan/SKILL.md'), 'utf8');
+const prompt = skillPrompt('backlog-plan', '{}', ['api']);
+const core = plannerCore();
+
+const CASES = [
+  "a new behavior for the product's users",
+  'a change of the requirements or the goal, or of an order the person set',
+  'money (limits, plans)',
+  'what a public repository shows about a person',
+  'anything that weakens a project rule (security, a test, CI)',
+  'anything you are not sure of',
+];
+
+/** Sentences the core holds once, which the backlog skill must not repeat. */
+const CORE_SENTENCES = [
+  'No change is the usual answer.',
+  'The server computes the marks, so you do not search the code for them',
+  'the files its merge request changed outside its files or its plan, its `not built:` lines, and the requirements its review left unmet',
+  'Give each decision with a one-line reason that names the goal',
+  'the facts you were given, each with the file and line it rests on, to be checked against main',
+  'you do no code research to write a brief',
+  'quotes each fact by its exact line, with its file and its line number',
+  'check its quote with one search and do not reread the file',
+];
 
 const GENERAL_RULES = [
   'Behavior stays as today unless `Behavior change` says so (routes and payloads, settings and defaults, data and schema, texts people and agents see, the UI).',
@@ -24,26 +50,28 @@ describe('the backlog-plan skill', () => {
     expect(skill).toContain(`\`${section}\``);
   });
 
+  it('reads the shared rules from the core, once, and repeats none of them', () => {
+    expect(prompt).toContain(core);
+    expect(skill.split('[planner core]')).toHaveLength(2);
+    for (const rule of CORE_SENTENCES) {
+      expect(core).toContain(rule);
+      expect(skill).not.toContain(rule);
+    }
+  });
+
   it('reads the marks of every merge, whether or not the task covers a requirement, and adds a fix task for a real miss', () => {
     const section = skill.slice(skill.indexOf('## After a merge'), skill.indexOf('## Before anything starts'));
     expect(section).toContain(
-      'Whether or not the task covers a milestone requirement, read its marks against its brief',
+      'Whether or not the task covers a milestone requirement, read its marks against its brief, as `The look after a merge` says',
     );
-    expect(section).toContain('`not built:` lines');
-    expect(section).toContain('outside its files or its plan');
+    expect(section).toContain("the report and the review's per-id statuses");
     expect(section).toContain('A real miss gets a fix task in the same milestone, with a one-line reason in the chat');
-    expect(section).toContain('No change is the usual answer.');
-    expect(section).toContain("the merged task's summary, the report and the review's per-id statuses");
-    expect(section).toContain('The server computes the marks: you do not search the code for them');
     expect(section).toContain('Close it with its evidence from the per-id statuses');
     expect(section).toContain('every task of the backlog that has not started');
   });
 
   it('writes a brief whose Today carries what the planner was given and leaves code research to the task', () => {
-    expect(skill).toContain(
-      'the goal, the requirements and the facts you were given, each with the file and line it rests on, to be checked against main',
-    );
-    expect(skill).toContain('you do no code research to write a brief');
+    expect(skill).toContain('`Today`: what `A new task or a plan change` says a brief carries.');
     expect(skill).not.toContain('with names and evidence');
   });
 
@@ -54,8 +82,7 @@ describe('the backlog-plan skill', () => {
     expect(section).toContain('Ask it for the facts you need');
     expect(section).not.toContain('read yourself the lines it rests on');
     expect(section).toContain('you read code only through it, and the launch holds you to it');
-    expect(section).toContain('each with the exact line quoted, its file and its line number');
-    expect(section).toContain('check its quote with one search and do not reread the file');
+    expect(section).toContain('each quoted as `A fact checked by its quote` says');
     expect(section).toContain("long texts of the turn's folder (cut logs, attachments, diffs)");
     expect(section).toContain('Without a helper you read yourself');
     expect(section).toContain('The decisions, the actions and the result block are yours');
@@ -83,21 +110,19 @@ describe('the backlog-plan skill', () => {
     const section = skill.split('## Questions and decisions')[1].split('\n## ')[0];
 
     it('decides what the decision log answers, records it with a reason shown as an info line, and does not wait', () => {
-      expect(section).toContain('Decide any question whose answer follows from the decision log');
+      expect(section).toContain('Decide as `Decide what you hold` says, with what the backlog holds');
+      expect(section).toContain('the decision log, the milestone');
       expect(section).toContain('record it as a decision with a one-line reason');
       expect(section).toContain('info line');
       expect(section).toContain('nothing waits for the person');
     });
 
-    it.each([
-      'a new behavior for the product',
-      "a change of the milestone's goal, or of an order the person set",
-      'money (limits, plans)',
-      'what a public repository shows about a person',
-      'anything that weakens a project rule (security, a test, CI)',
-      'anything you are not sure of',
-    ])('asks the person only about: %s', (kind) => {
-      expect(section).toContain(kind);
+    it.each(CASES)('asks the person only about: %s', (kind) => {
+      expect(section).toContain(
+        'only in the cases of `Pass up what you do not hold`: the person is the end of your chain',
+      );
+      expect(core).toContain(kind);
+      expect(skill).not.toContain(kind);
     });
 
     it('says a run question comes to the planner first and that passing it on is an action with a reason', () => {
@@ -116,7 +141,7 @@ describe('the backlog-plan skill', () => {
     });
 
     it('names no project and no person', () => {
-      expect(section).not.toMatch(/swarmloop|@\w/i);
+      expect(`${section}${core}`).not.toMatch(/swarmloop|@\w/i);
     });
   });
 });
