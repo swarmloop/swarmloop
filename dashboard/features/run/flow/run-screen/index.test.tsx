@@ -31,7 +31,6 @@ vi.mock('../../../../lib/endpoints', () => ({
   stopRun: vi.fn(),
   rebaseRun: vi.fn(),
   skipTask: vi.fn(),
-  startReviewer: vi.fn(),
   replayStep: vi.fn(),
 }));
 vi.mock('../../../../lib/live', async () => (await import('../../../../test/fake-socket')).fakeLive());

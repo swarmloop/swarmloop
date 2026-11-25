@@ -22,6 +22,7 @@ describe('routes that no longer exist', () => {
     ['POST', '/runs/proj-1/shell/unlock'],
     ['GET', '/runs/proj-1/snapshots'],
     ['POST', '/runs/proj-1/rewind'],
+    ['POST', '/runs/proj-1/steps/code-review-quality'],
     ['GET', '/checkouts/origins'],
     ['POST', '/auth/cli/logins'],
     ['GET', '/auth/cli/logins/abc'],

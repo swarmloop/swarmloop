@@ -5,7 +5,6 @@ import {
   rebaseRun as rebaseEndpoint,
   replayStep,
   resumeRun as resumeEndpoint,
-  startReviewer as reviewerEndpoint,
   stopRun as stopEndpoint,
 } from '../../lib/endpoints';
 import { openElapsed } from '../../lib/elapsed';
@@ -27,7 +26,7 @@ interface CommandContext {
   followStep: MutableRefObject<boolean>;
 }
 
-/** The commands of a run (stop, rebase, replay, reviewer, resume). Stop, rebase, replay and the reviewer start return their promise, so the confirm that asked for them shows a failure. */
+/** The commands of a run (stop, rebase, replay, resume). Stop, rebase and replay return their promise, so the confirm that asked for them shows a failure. */
 export function useRunCommands({
   flow,
   setFlow,
@@ -42,7 +41,6 @@ export function useRunCommands({
   stopRun: () => Promise<void>;
   rebaseRun: () => Promise<void>;
   startReplay: (step: string, prompt: string, phases: PhaseName[], attachments?: string[]) => Promise<void>;
-  startReviewer: (step: string) => Promise<void>;
   resumeRun: () => void;
 } {
   const stopRun = (): Promise<void> => {
@@ -114,29 +112,6 @@ export function useRunCommands({
     });
   };
 
-  const startReviewer = (step: string): Promise<void> => {
-    if (!flow) {
-      return Promise.resolve();
-    }
-    const run = flow;
-    return reviewerEndpoint(run.key, step).then(() => {
-      followStep.current = true;
-      setSelected(step);
-      memory.current = { ...memory.current, pinnedAt: run.updatedAt };
-      setFlow((current) =>
-        current
-          ? {
-              ...inState(current, 'running'),
-              status: 'running',
-              currentStep: 'code-review',
-              resume: 'running',
-              stepStartedAt: null,
-            }
-          : current,
-      );
-    });
-  };
-
   const resumeRun = (): void => {
     if (!flow) {
       return;
@@ -155,5 +130,5 @@ export function useRunCommands({
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'resume failed'));
   };
 
-  return { stopRun, rebaseRun, startReplay, startReviewer, resumeRun };
+  return { stopRun, rebaseRun, startReplay, resumeRun };
 }

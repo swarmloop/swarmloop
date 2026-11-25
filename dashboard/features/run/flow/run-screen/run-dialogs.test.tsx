@@ -16,9 +16,6 @@ function baseProps(overrides: Partial<ComponentProps<typeof RunDialogs>> = {}): 
     runningElsewhere: false,
     stopRun: vi.fn().mockResolvedValue(undefined),
     startReplay: vi.fn().mockResolvedValue(undefined),
-    reviewer: null,
-    setReviewer: vi.fn(),
-    startReviewer: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -123,25 +120,5 @@ describe('RunDialogs', () => {
     render(<RunDialogs {...baseProps({ flow: flowView({ tasks }), replay: 'implement', pending })} />);
     expect(screen.getByRole('dialog')).not.toHaveTextContent('subtasks');
     expect(screen.getByRole('dialog')).toHaveTextContent('The results of the later steps are replaced');
-  });
-
-  it('asks before a reviewer runs again, sends nothing on Cancel and keeps a failure in the dialog', async () => {
-    const user = userEvent.setup({ delay: null });
-    const props = baseProps({
-      reviewer: 'code-review-quality',
-      startReviewer: vi.fn().mockRejectedValueOnce(new Error('reviewer refused')).mockResolvedValue(undefined),
-    });
-    render(<RunDialogs {...props} />);
-
-    expect(screen.getByRole('heading', { name: 'Run quality again?' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(props.setReviewer).toHaveBeenCalledWith(null);
-    expect(props.startReviewer).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole('button', { name: 'Run again' }));
-    expect(await screen.findByText('reviewer refused')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Run again' }));
-    expect(props.startReviewer).toHaveBeenCalledTimes(2);
-    expect(props.startReviewer).toHaveBeenCalledWith('code-review-quality');
   });
 });
