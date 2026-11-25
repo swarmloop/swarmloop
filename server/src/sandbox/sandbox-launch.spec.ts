@@ -181,8 +181,6 @@ describe('sandbox launch', () => {
         launch({ step: 'checks', runtime: 'claude', command: [], project: { ...project, shell: 'npm test' } }),
         launch({ step: 'code-review-security' }),
         launch({ step: 'report' }),
-        launch({ step: 'chat' }),
-        launch({ step: 'shell', attemptId: '', stdin: true, tty: true }),
       ];
       for (const given of cases) {
         expect(labels(sandboxArgs(given, home, ''))).toEqual([
@@ -302,11 +300,10 @@ describe('sandbox launch', () => {
     ).toEqual([base, `${base}-security`]);
   });
 
-  it('binds the feature home and allocates a terminal only when asked', () => {
-    const args = sandboxArgs(launch({ statePath: '/tmp/agent-state/PROJ-1', tty: true, stdin: true }), home);
+  it('binds the feature home and attaches stdin when asked', () => {
+    const args = sandboxArgs(launch({ statePath: '/tmp/agent-state/PROJ-1', stdin: true }), home);
     expect(args.join(' ')).toContain('type=bind,src=/tmp/agent-state/PROJ-1,dst=/home/sandbox,readonly=false');
     expect(args.join(' ')).not.toContain('/home/sandbox:rw,nosuid');
-    expect(args).toContain('-t');
     expect(args).toContain('-i');
     expect(() => sandboxArgs(launch({ statePath: home }), home)).toThrow(SwarmloopError);
   });

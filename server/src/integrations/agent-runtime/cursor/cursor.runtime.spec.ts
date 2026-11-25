@@ -8,6 +8,12 @@ describe('CursorRuntime', () => {
     expect(runtime.planModeHasPlanTool).toBe(true);
   });
 
+  it('has no helpers and launches a print the same with one', () => {
+    const input = { model: 'm', prompt: 'p', mounts, resumeChatId: null, tools: 'plan' as const };
+    expect(runtime.hasHelpers).toBe(false);
+    expect(runtime.printArgs({ ...input, helper: { model: 'h' } })).toEqual(runtime.printArgs(input));
+  });
+
   it('opens one more directory for reading', () => {
     expect(runtime.readDirArgs('/work/logs')).toEqual(['--add-dir', '/work/logs']);
   });

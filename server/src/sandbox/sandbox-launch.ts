@@ -267,9 +267,6 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   if (runtime !== '') {
     args.push('--runtime', runtime);
   }
-  if (launch.tty) {
-    args.push('-t');
-  }
   if (launch.stdin) {
     args.push('-i');
   }

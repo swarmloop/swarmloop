@@ -1,13 +1,7 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import type { Effort } from '../../../contract/effort';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
-import type {
-  AgentPrintInput,
-  AgentTerminalInput,
-  EffortLaunch,
-  EgressCredential,
-  RuntimeKeys,
-} from '../agent-runtime';
+import type { AgentPrintInput, EffortLaunch, EgressCredential, RuntimeKeys } from '../agent-runtime';
 import { CodexConnection } from './codex-connection';
 import { CODEX_LIMITS } from './codex-limit';
 import { CODEX_OUTAGES } from './codex-outage';
@@ -21,6 +15,8 @@ export class CodexRuntime extends AbstractAgentRuntime {
   readonly command = 'codex' as const;
   readonly syncsChatMode = false;
   readonly planModeHasPlanTool = false;
+  // Not read for Codex 0.167.0 in this change: no helper is declared, and a print launch is as before.
+  readonly hasHelpers = false;
   readonly priceSource = 'https://platform.openai.com/docs/pricing';
   readonly apiHosts = ['api.openai.com', 'auth.openai.com', '*.chatgpt.com'];
   readonly connection = new CodexConnection();
@@ -84,17 +80,6 @@ export class CodexRuntime extends AbstractAgentRuntime {
       args.push('resume', input.resumeChatId);
     }
     args.push(input.prompt);
-    return args;
-  }
-
-  override terminalArgs(input: AgentTerminalInput): string[] {
-    if (input.vendor.length > 0) {
-      return [...input.vendor];
-    }
-    const args = ['-m', input.model, '-C', input.workspace];
-    if (input.resumeChatId) {
-      args.push('resume', input.resumeChatId);
-    }
     return args;
   }
 

@@ -87,6 +87,7 @@ export const envSchema = Joi.object({
   AGENTS_SUBTASK_IMPLEMENT: Joi.string().allow(''),
   AGENTS_SUBTASK_REVIEW: Joi.string().allow(''),
   AGENTS_BACKLOG_PLAN: Joi.string().allow(''),
+  AGENTS_BACKLOG_READ: Joi.string().allow(''),
   EPIC_EFFORT: Joi.string().valid('', ...EFFORTS),
   EPIC_REPLAN_EVERY_MERGE: Joi.boolean(),
   SPLIT: Joi.string().valid('auto', 'off'),

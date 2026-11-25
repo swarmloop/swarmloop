@@ -4,7 +4,7 @@ import type { BacklogTurnResult } from '../../../agent-result/definitions/backlo
 import type { AgentRunResult } from '../../../agent/agent-runner';
 import { RunStop } from '../../../agent/run-stop';
 import { StepStopped } from '../../../agent/step-stopped';
-import { backlogPlanAgents } from '../../../config/agents';
+import { backlogPlanAgents, backlogReadAgents } from '../../../config/agents';
 import { AppConfig } from '../../../config/env';
 import { effortFields } from '../../../contract/effort';
 import { SwarmloopError } from '../../../core/swarmloop-error';
@@ -162,6 +162,7 @@ export class BacklogTurnRunner {
         prompt,
         workspace: space.workspace,
         mounts: space.mounts,
+        helpers: backlogReadAgents(env),
         failover: true,
         result: backlogTurn,
         check: nameRefusalsOnce((value) => this.actions.check(backlog.name, value)),

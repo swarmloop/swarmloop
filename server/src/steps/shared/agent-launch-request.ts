@@ -58,6 +58,8 @@ export interface AgentLaunchRequest extends EffortFields {
   project?: ProjectLaunch;
   /** The project launch for another runtime. A launch that moves to another agent mounts that agent's CLI. */
   projectFor?: (runtime: RuntimeName) => Promise<ProjectLaunch | undefined>;
+  /** Read-only helpers by runtime. The launch uses the first entry of the runtime that runs. */
+  helpers?: readonly Agent[];
   /** The launch may move to the next agent of its role when its runtime hits a provider limit. */
   failover?: boolean;
   /** The full prompt for a new chat on another agent, when `prompt` is a follow-up. Defaults to `prompt`. */

@@ -1,3 +1,4 @@
+import type { AgentHelper } from '../../../integrations/agent-runtime/agent-runtime';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import type { BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
@@ -32,14 +33,19 @@ export type TurnAnswer = BacklogTurnResult | 'limit' | 'crash' | 'outage';
 
 /** The planner's agent: it answers every launch from a script and records what it was asked. */
 export class ScriptedTurnAgent {
-  readonly launches: { runtime: string; prompt: string; mounts: { readonly?: boolean }[] }[] = [];
+  readonly launches: { runtime: string; prompt: string; mounts: { readonly?: boolean }[]; helper?: AgentHelper }[] = [];
   /** The answers still to give; an empty script answers with a turn that does nothing. */
   script: TurnAnswer[] = [];
   /** Held back until a spec lets it go, so it can add messages while a turn runs. */
   gate: Promise<void> | null = null;
 
-  async run(input: { runtime: string; prompt: string; mounts: { readonly?: boolean }[] }): Promise<AgentRunResult> {
-    this.launches.push({ runtime: input.runtime, prompt: input.prompt, mounts: input.mounts });
+  async run(input: {
+    runtime: string;
+    prompt: string;
+    mounts: { readonly?: boolean }[];
+    helper?: AgentHelper;
+  }): Promise<AgentRunResult> {
+    this.launches.push({ runtime: input.runtime, prompt: input.prompt, mounts: input.mounts, helper: input.helper });
     await this.gate;
     const next = this.script.shift() ?? { say: '', actions: [] };
     const base = {

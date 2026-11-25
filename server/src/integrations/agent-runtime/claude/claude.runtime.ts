@@ -2,6 +2,7 @@ import { SwarmloopError } from '../../../core/swarmloop-error';
 import { EFFORTS, type Effort } from '../../../contract/effort';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
 import type {
+  AgentHelper,
   AgentPrintInput,
   AgentTools,
   EffortLaunch,
@@ -58,6 +59,37 @@ export function claudeDisallowedTools(tools: AgentTools): string {
   return [...CLAUDE_DISALLOWED_TOOLS, ...denied].join(',');
 }
 
+/**
+ * Claude Code 2.1.319 (`claude --help`: `--agents <json>`; https://code.claude.com/docs/en/sub-agents). The subagent tool is
+ * `Agent`, with `Task` as its old name; a deny rule `Agent(<type>)` denies one subagent type. A definition sets `model`,
+ * `effort` and `tools`. These built-in types are denied, so only the helper's own reader runs.
+ */
+const CLAUDE_SUBAGENT_TOOLS = ['Agent', 'Task'];
+const CLAUDE_BUILT_IN_SUBAGENTS = ['Explore', 'Plan', 'general-purpose', 'statusline-setup', 'claude-code-guide'];
+const CLAUDE_HELPER_TOOLS = ['Read', 'Grep', 'Glob', 'Bash'];
+const CLAUDE_HELPER_PROMPT =
+  'Read what you are asked to read and report each fact with its file and line. Never change a file.';
+
+/** The `--disallowedTools` value of a launch with a helper: the subagent tool is let through, its built-in types are not. */
+function helperDisallowedTools(tools: AgentTools): string {
+  const kept = claudeDisallowedTools(tools)
+    .split(',')
+    .filter((tool) => !CLAUDE_SUBAGENT_TOOLS.includes(tool));
+  return [...kept, ...CLAUDE_BUILT_IN_SUBAGENTS.map((type) => `Agent(${type})`)].join(',');
+}
+
+/** The `--agents` value: one reader on the helper's model and level, with the tools that read. */
+function helperAgents(helper: AgentHelper): string {
+  const reader = {
+    description: 'Reads code, briefs, logs and diffs and reports facts with file and line. It changes nothing.',
+    prompt: CLAUDE_HELPER_PROMPT,
+    model: helper.model,
+    ...(helper.effort ? { effort: helper.effort } : {}),
+    tools: CLAUDE_HELPER_TOOLS,
+  };
+  return JSON.stringify({ reader });
+}
+
 const HOOK_DIR = '.claude';
 
 export class ClaudeRuntime extends AbstractAgentRuntime {
@@ -65,6 +97,7 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly command = 'claude' as const;
   readonly syncsChatMode = false;
   readonly planModeHasPlanTool = false;
+  readonly hasHelpers = true;
   readonly priceSource = 'https://platform.claude.com/docs/en/about-claude/pricing.md';
   readonly apiHosts = ['api.anthropic.com'];
   readonly connection = new ClaudeConnection();
@@ -152,7 +185,11 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   }
 
   protected override appendPrintFlags(args: string[], input: AgentPrintInput): void {
-    args.push('--verbose', '--disallowedTools', claudeDisallowedTools(input.tools));
+    const denied = input.helper ? helperDisallowedTools(input.tools) : claudeDisallowedTools(input.tools);
+    args.push('--verbose', '--disallowedTools', denied);
+    if (input.helper) {
+      args.push('--agents', helperAgents(input.helper));
+    }
     if (input.mode === 'plan' || input.mode === 'ask') {
       args.push('--permission-mode', 'plan');
       return;

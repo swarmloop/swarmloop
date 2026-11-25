@@ -1,6 +1,7 @@
 import type { ChatUsage } from '../history/chat-usage.repository';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { Effort } from '../contract/effort';
+import type { AgentHelper } from '../integrations/agent-runtime/agent-runtime';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
 
@@ -13,6 +14,8 @@ export interface AgentRunInput {
   model: string;
   /** How hard the agent works. Without it the runtime runs at its own default. */
   effort?: Effort;
+  /** A read-only helper on another model of the same runtime, inside this launch. */
+  helper?: AgentHelper;
   agentCalls: number;
   spentUsd: number;
   tokensInRun: number;

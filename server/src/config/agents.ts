@@ -36,6 +36,7 @@ interface AgentEnv {
   AGENTS_SUBTASK_IMPLEMENT: string;
   AGENTS_SUBTASK_REVIEW: string;
   AGENTS_BACKLOG_PLAN: string;
+  AGENTS_BACKLOG_READ: string;
   EPIC_EFFORT: string;
 }
 
@@ -276,6 +277,24 @@ export function backlogPlanAgents(env: AgentEnv, stored?: StoredAgents | null): 
   return agentsOf(env, 'plan', 'backlog', { agents: stored });
 }
 
+/**
+ * The helpers a backlog planner turn hands reading to, read only. An empty list is no helper and never falls back to
+ * another list. A level is resolved and capped as for every list.
+ */
+export function backlogReadAgents(env: AgentEnv): Agent[] {
+  if (env.AGENTS_BACKLOG_READ === '') {
+    return [];
+  }
+  return parseAgentList('AGENTS_BACKLOG_READ', env.AGENTS_BACKLOG_READ).map((agent) =>
+    resolveEffort(agent, null, env, 'plan'),
+  );
+}
+
+/** The first helper of the runtime that runs, or none when the list has none or the runtime has no helpers. */
+export function helperFor(helpers: readonly Agent[] | undefined, runtime: RuntimeName): Agent | undefined {
+  return runtimeFor(runtime).hasHelpers ? helpers?.find((agent) => agent.runtime === runtime) : undefined;
+}
+
 /** The backlog planner's agents the server defaults (env) name, as written. */
 export function namedBacklogPlanAgents(env: AgentEnv): Agent[] {
   return namedAgents(env, 'plan', 'backlog');
@@ -300,6 +319,7 @@ export function runtimesNamingEffort(env: AgentEnv): RuntimeName[] {
   const names = [
     ...TIERS.flatMap((tier) => ROLES.map((role) => LISTS[tier][role])),
     'AGENTS_BACKLOG_PLAN' as const,
+    'AGENTS_BACKLOG_READ' as const,
   ].filter((name) => env[name] !== '');
   const agents = names.flatMap((name) => env[name].split(',').map((item) => splitAgent(name, item)));
   return [...new Set(agents.filter((agent) => agent.effort).map((agent) => agent.runtime))];
@@ -366,12 +386,18 @@ export function credentialFor(env: Partial<CredentialEnv>, runtime: RuntimeName)
 export function assertAgents(env: AgentEnv): void {
   const lists: [Role, ListTier][] = TIERS.flatMap((tier) => ROLES.map((role): [Role, ListTier] => [role, tier]));
   for (const [role, tier] of [...lists, ['plan', 'backlog'] as [Role, ListTier]]) {
-    const name = listName(env, role, tier);
-    for (const entry of env[name].split(',')) {
-      const { runtime, effort } = splitAgent(name, entry);
-      if (!effort || runtimeFor(runtime).listLoaded()) {
-        parseAgent(name, entry);
-      }
+    assertList(listName(env, role, tier), env);
+  }
+  if (env.AGENTS_BACKLOG_READ !== '') {
+    assertList('AGENTS_BACKLOG_READ', env);
+  }
+}
+
+function assertList(name: keyof AgentEnv, env: AgentEnv): void {
+  for (const entry of env[name].split(',')) {
+    const { runtime, effort } = splitAgent(name, entry);
+    if (!effort || runtimeFor(runtime).listLoaded()) {
+      parseAgent(name, entry);
     }
   }
 }

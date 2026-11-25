@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { readOnlyTree } from './agent-args';
-import { buildAgentArgs, reviewBriefMount, spillPrompt, terminalArgs } from './agent-runner';
+import { buildAgentArgs, reviewBriefMount, spillPrompt } from './agent-runner';
 
 describe('buildAgentArgs', () => {
   const mounts = [{ hostPath: '/tmp/worktrees/PROJ-1/demo', containerPath: '/work/demo' }];
@@ -118,23 +118,6 @@ describe('spillPrompt', () => {
       { hostPath: join(root, 'briefs'), containerPath: '/work/brief', readonly: true },
     ]);
     expect(readFileSync(join(root, 'briefs', 'code-review-quality.md'), 'utf8')).toBe(prompt);
-  });
-});
-
-describe('terminalArgs', () => {
-  it('opens the vendor screen and forwards other words unchanged', () => {
-    expect(terminalArgs({ model: 'from-env', workspace: '/work', resumeChatId: 'chat-1', vendor: [] })).toEqual([
-      '--model',
-      'from-env',
-      '--trust',
-      '--workspace',
-      '/work',
-      '--resume',
-      'chat-1',
-    ]);
-    expect(
-      terminalArgs({ model: 'from-env', workspace: '/work', resumeChatId: null, vendor: ['mcp', 'list'] }),
-    ).toEqual(['mcp', 'list']);
   });
 });
 

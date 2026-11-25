@@ -10,6 +10,8 @@ export interface StreamPiece {
   reportedUsd: number | null;
   /** The visit's own usage in a result line that reports it apart from the session total, summed over its models. */
   own: OwnUsage | null;
+  /** The same usage by model: one entry per model of the result line, or none. */
+  ownByModel: ModelUsage[];
   guessedIn: number;
   guessedOut: number;
   guessKind: 'user' | 'output' | 'tool-result' | 'none';
@@ -35,6 +37,12 @@ export interface OwnUsage {
   cacheRead: number;
   cacheWrite: number;
   /** Null when no model entry reports a cost. */
+  usd: number | null;
+}
+
+/** One model's part of a visit's own usage. `usd` is null when the line reports no cost for it. */
+export interface ModelUsage extends Omit<OwnUsage, 'usd'> {
+  model: string;
   usd: number | null;
 }
 
@@ -69,6 +77,7 @@ export function readStreamLine(line: string): StreamPiece | null {
       numberFrom(record, ['total_cost_usd', 'totalCostUsd', 'cost_usd']) ??
       numberFrom(usage, ['total_cost_usd', 'totalCostUsd', 'cost_usd']),
     own: ownUsageOf(record),
+    ownByModel: modelUsageOf(record),
     guessedIn: guessed.tokensIn,
     guessedOut: guessed.tokensOut,
     guessKind: guessed.kind,
@@ -258,25 +267,44 @@ function counted(piece: StreamPiece): boolean {
 
 /** `model_usage_since_last_result` holds one entry per model. The piece's own usage is their sum. */
 function ownUsageOf(record: Record<string, unknown>): OwnUsage | null {
-  const byModel = record.model_usage_since_last_result;
-  if (!byModel || typeof byModel !== 'object') {
+  const models = modelUsageOf(record);
+  if (models.length === 0) {
     return null;
   }
-  const entries = Object.values(byModel as Record<string, unknown>).filter(
-    (entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object',
-  );
-  if (entries.length === 0) {
-    return null;
-  }
-  const sum = (keys: string[]): number => entries.reduce((total, entry) => total + (numberFrom(entry, keys) ?? 0), 0);
-  const costs = entries.map((entry) => numberFrom(entry, ['costUSD', 'cost_usd']));
+  const sum = (key: 'input' | 'output' | 'cacheRead' | 'cacheWrite'): number =>
+    models.reduce((total, entry) => total + entry[key], 0);
+  const costs = models.map((entry) => entry.usd);
   return {
-    input: sum(['inputTokens', 'input_tokens']),
-    output: sum(['outputTokens', 'output_tokens']),
-    cacheRead: sum(['cacheReadInputTokens', 'cache_read_input_tokens']),
-    cacheWrite: sum(['cacheCreationInputTokens', 'cache_creation_input_tokens']),
+    input: sum('input'),
+    output: sum('output'),
+    cacheRead: sum('cacheRead'),
+    cacheWrite: sum('cacheWrite'),
     usd: costs.every((cost) => cost === null) ? null : costs.reduce<number>((total, cost) => total + (cost ?? 0), 0),
   };
+}
+
+/** One entry per model of `model_usage_since_last_result`, so that each model can be priced at its own price. */
+function modelUsageOf(record: Record<string, unknown>): ModelUsage[] {
+  const byModel = record.model_usage_since_last_result;
+  if (!byModel || typeof byModel !== 'object') {
+    return [];
+  }
+  return Object.entries(byModel as Record<string, unknown>).flatMap(([model, value]) => {
+    if (!value || typeof value !== 'object') {
+      return [];
+    }
+    const entry = value as Record<string, unknown>;
+    return [
+      {
+        model,
+        input: numberFrom(entry, ['inputTokens', 'input_tokens']) ?? 0,
+        output: numberFrom(entry, ['outputTokens', 'output_tokens']) ?? 0,
+        cacheRead: numberFrom(entry, ['cacheReadInputTokens', 'cache_read_input_tokens']) ?? 0,
+        cacheWrite: numberFrom(entry, ['cacheCreationInputTokens', 'cache_creation_input_tokens']) ?? 0,
+        usd: numberFrom(entry, ['costUSD', 'cost_usd']),
+      },
+    ];
+  });
 }
 
 function usageOf(record: Record<string, unknown>): Record<string, unknown> {

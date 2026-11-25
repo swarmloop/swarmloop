@@ -48,8 +48,6 @@ export interface SandboxLaunch {
   resultLost?: boolean;
   /** Attach the caller's stdin. */
   stdin?: boolean;
-  /** Allocate a terminal. Only the interactive vendor screen needs one. */
-  tty?: boolean;
   /** The memory the container may take. Set by the service from the memory Docker has less the reserve. */
   memoryCapBytes?: number;
   /** The number of the check place the command runs in. Set by the check pool. */

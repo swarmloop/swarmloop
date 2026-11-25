@@ -10,6 +10,8 @@ import {
   assertAgents,
   firstAvailable,
   backlogPlanAgents,
+  backlogReadAgents,
+  helperFor,
   knownModels,
   namedAgentsFor,
   namedBacklogPlanAgents,
@@ -473,5 +475,52 @@ describe('the backlog tier', () => {
     expect(agentFor(env, null, 'plan')).toEqual({ runtime: 'cursor', model: 'main-plan' });
     expect(agentsFor(env, { parentRunId: 1 }, 'plan')).toEqual([{ runtime: 'cursor', model: 'sub-plan' }]);
     expect(runAgents(env, null).map((agent) => agent.model)).not.toContain('backlog-a');
+  });
+});
+
+describe('the backlog helpers', () => {
+  it('parses like every list, with its level resolved', () => {
+    const env = testEnv({ AGENTS_BACKLOG_READ: 'claude:a:high,codex:b' });
+    const [first, second] = backlogReadAgents(env);
+    expect(first).toEqual({ runtime: 'claude', model: 'a', effort: 'high' });
+    expect(second).toEqual({ runtime: 'codex', model: 'b' });
+  });
+
+  it('resolves a level against what its runtime declares for the model, as for every list', () => {
+    const levels = jest.spyOn(runtimeFor('claude'), 'efforts');
+    try {
+      levels.mockReturnValueOnce(['low', 'medium']).mockReturnValue(['low']);
+      const [capped] = backlogReadAgents(testEnv({ AGENTS_BACKLOG_READ: 'claude:m:medium' }));
+      expect(capped).toEqual({ runtime: 'claude', model: 'm', effort: 'low', effortNote: 'capped:medium' });
+    } finally {
+      levels.mockRestore();
+    }
+  });
+
+  it('gives no helper for an empty list and passes the start-up check', () => {
+    const env = testEnv({ AGENTS_BACKLOG_READ: '' });
+    expect(backlogReadAgents(env)).toEqual([]);
+    expect(() => assertAgents({ ...env, ...KEYS })).not.toThrow();
+  });
+
+  it('refuses an unknown runtime at start-up, naming the setting', () => {
+    expect(() => assertAgents({ ...testEnv({ AGENTS_BACKLOG_READ: 'gemini:g' }), ...KEYS })).toThrow(
+      /AGENTS_BACKLOG_READ.*gemini/,
+    );
+  });
+
+  it('names a runtime whose helper has a level, and leaves readiness and models alone', () => {
+    const env = testEnv({ AGENTS_BACKLOG_READ: 'claude:m:high' });
+    expect(runtimesNamingEffort(env)).toEqual(['claude']);
+    expect(runtimesInUse(env)).not.toContain('claude');
+    expect(knownModels(env).claude ?? []).not.toContain('m');
+  });
+
+  it('picks the first entry of the runtime, and none for a runtime without an entry or without helpers', () => {
+    const helpers = backlogReadAgents(testEnv({ AGENTS_BACKLOG_READ: 'codex:x,claude:h1,claude:h2' }));
+    expect(helperFor(helpers, 'claude')).toMatchObject({ model: 'h1' });
+    expect(helperFor(helpers, 'cursor')).toBeUndefined();
+    expect(helperFor(helpers, 'codex')).toBeUndefined();
+    expect(helperFor(undefined, 'claude')).toBeUndefined();
   });
 });

@@ -1,7 +1,7 @@
 import type { ChatUsage } from '../history/chat-usage.repository';
 import { type DecisionWatch, hasModelDecision, type ModelPrice, noteDecision, priceTokens } from './limits';
 import { sinceRecorded } from './since-recorded';
-import { readStreamLine, type OwnUsage, type StreamPiece, takeAnswer } from './stream';
+import { readStreamLine, type ModelUsage, type OwnUsage, type StreamPiece, takeAnswer } from './stream';
 import { addGuessedLine, emptyUsageGuess } from './stream-guess';
 
 interface AttemptBilling {
@@ -29,6 +29,7 @@ export class AttemptMeter {
   /** The counted usage came from a result line, which covers a whole session. */
   private fromResult = false;
   private own: OwnUsage | null = null;
+  private ownByModel: ModelUsage[] = [];
   private decision: DecisionWatch = { text: '', locked: false };
   private responseText = '';
   private answerLocked = false;
@@ -91,7 +92,7 @@ export class AttemptMeter {
       return {
         tokensIn: input + cacheRead + cacheWrite,
         tokensOut: output,
-        usd: usd ?? priceTokens(model, input, output, prices, cacheRead, cacheWrite) ?? 0,
+        usd: usd ?? this.pricedByModel(),
       };
     }
     const totals = this.totals();
@@ -104,6 +105,16 @@ export class AttemptMeter {
       tokensOut: sinceRecorded(totals.tokensOut, prior.tokensOut),
       usd: sinceRecorded(totals.usd, prior.usd),
     };
+  }
+
+  /** Each model of the result line at its own price; a model with no price row is priced as the launch's model. */
+  private pricedByModel(): number {
+    const { model, prices } = this.billing;
+    return this.ownByModel.reduce((total, entry) => {
+      const { input, output, cacheRead, cacheWrite } = entry;
+      const own = priceTokens(entry.model, input, output, prices, cacheRead, cacheWrite);
+      return total + (entry.usd ?? own ?? priceTokens(model, input, output, prices, cacheRead, cacheWrite) ?? 0);
+    }, 0);
   }
 
   /** The session totals of the last result line, also from a line that reports the visit's own part. Null when there is none. */
@@ -157,6 +168,7 @@ export class AttemptMeter {
       return;
     }
     this.own = piece.own ?? this.own;
+    this.ownByModel = piece.own ? piece.ownByModel : this.ownByModel;
     this.billedFromStream ||= piece.own !== null;
     this.fromResult ||= piece.tokensIn !== null || piece.tokensOut !== null || piece.reportedUsd !== null;
   }
