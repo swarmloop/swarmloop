@@ -25,6 +25,7 @@ import { boot, planBlock, questionsBlock, result, seed, writeEnv } from './plan.
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { imageMissing, imageName } from '../../sandbox/image-resolver';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const REFUSED_WRITE = JSON.stringify({
   type: 'system',
@@ -86,7 +87,7 @@ describe('plan step', () => {
       await app.get(DocumentRepository).putDocument(parent, 'contract', '- decided: the field is a column\n');
       await seed(app, 'PROJ-45-t1', '');
       const child = await runs.findRun('PROJ-45-t1');
-      await runs.saveRun({ ...child!, parentRunId: parent.id, taskId: 't1' });
+      await storeRun(runs, { ...child!, parentRunId: parent.id, taskId: 't1' });
       await seed(app, 'PROJ-46', '');
 
       await app.get(PipelineService).step('plan', 'PROJ-45-t1');
@@ -114,7 +115,7 @@ describe('plan step', () => {
       const runs = app.get(RunRepository);
       const parent = await runs.openWaiting('PROJ-47', '/target');
       await seed(app, 'PROJ-47-t1', '');
-      await runs.saveRun({ ...(await runs.findRun('PROJ-47-t1'))!, parentRunId: parent.id, taskId: 't1' });
+      await storeRun(runs, { ...(await runs.findRun('PROJ-47-t1'))!, parentRunId: parent.id, taskId: 't1' });
       await seed(app, 'PROJ-48', '');
 
       await app.get(PipelineService).step('plan', 'PROJ-47-t1');
@@ -280,7 +281,7 @@ describe('plan step', () => {
         throw new Error('run is missing');
       }
       run.projects = 'app\n';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await documents.putDocument(run, 'repos', 'app\n');
       const done = await app.get(PipelineService).step('plan', 'PROJ-44');
       expect(done.exitCode).toBe(0);

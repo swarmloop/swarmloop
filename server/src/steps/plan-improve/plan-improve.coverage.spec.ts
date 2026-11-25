@@ -8,6 +8,7 @@ import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { resultAnswer } from '../../testing/result-answer';
 import { boot, result, seed, writeEnv } from './plan-improve.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const KEY = 'PROJ-61';
 const LIST = Array.from({ length: 9 }, (_, index) => ({ id: `R${index + 1}`, text: `requirement ${index + 1}` }));
@@ -29,7 +30,7 @@ async function improveWith(answers: string[]) {
     await seed(app, KEY);
     const runs = app.get(RunRepository);
     const run = (await runs.findRun(KEY))!;
-    await runs.saveRun({ ...run, split: false });
+    await storeRun(runs, { ...run, split: false });
     const documents = app.get(DocumentRepository);
     await documents.putDocument(run, 'requirement_list', `${JSON.stringify(LIST)}\n`);
     await documents.putDocument(run, 'requirement_coverage', `${JSON.stringify(COVERAGE)}\n`);

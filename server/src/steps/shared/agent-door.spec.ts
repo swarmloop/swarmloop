@@ -22,6 +22,7 @@ import type { AgentDoor, OutsideStart } from './agent-door';
 import type { AgentLaunchRequest } from './agent-launch-request';
 import type { LaunchResult } from './result-exchange';
 import { refusedRoute, StartRefused, WRITE_REFUSAL } from './start-refused';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 async function setup(env: Record<string, string> = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'swarmloop-agent-door-'));
@@ -181,7 +182,7 @@ describe('AgentDoor', () => {
     const { app, run, runs, door, launched, request, start } = await setup({ MAX_RUN_USD: '25' });
     try {
       writeRunState(run, { status: 'running', currentStep: 'implement' });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
 
       const refused = await door.outside(start('machine'), request('read', 30)).catch((error: unknown) => error);
 

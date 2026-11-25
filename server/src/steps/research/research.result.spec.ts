@@ -10,6 +10,7 @@ import { ARTIFACTS } from '../contract/artifacts';
 import { storedImpact } from '../shared/research-reads';
 import { answer, boot, research, result, seed, writeEnv } from './research.step.spec-helpers';
 import { renderImpact } from './research-record';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const IMPACT = [
   { capability: 'stop button', file: 'stop.tsx', status: 'kept' },
@@ -101,7 +102,7 @@ describe('research result', () => {
     const child = (await runs.findRun('PROJ-64-t1'))!;
     child.parentRunId = (await runs.openWaiting('PROJ-64', '/target')).id;
     child.taskId = 't1';
-    await runs.saveRun(child);
+    await storeRun(runs, child);
     try {
       await app.get(PipelineService).step('research', 'PROJ-64-t1');
       const documents = app.get(DocumentRepository);

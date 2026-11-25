@@ -17,6 +17,7 @@ import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { boot, listen, requirementsBody, writeEnv } from './requirements.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 describe('requirements step', () => {
   it('does not move backward when an earlier step fails', async () => {
@@ -26,7 +27,7 @@ describe('requirements step', () => {
     const seeded = await runs.begin('PROJ-6', 'requirements');
     seeded.status = 'waiting';
     seeded.currentStep = 'implement';
-    await runs.saveRun(seeded);
+    await storeRun(runs, seeded);
     const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
     await documents.save(
       documents.create({
@@ -63,7 +64,7 @@ describe('requirements step', () => {
       seeded.ownerInstance = null;
       seeded.prompt = 'Ship the widget\n';
       seeded.currentStep = 'requirements';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       const result = await app.get(PipelineService).run('widget');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('requirements done');

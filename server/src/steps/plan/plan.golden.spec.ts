@@ -5,6 +5,7 @@ import { resultAnswer } from '../../testing/result-answer';
 import { expectGolden } from '../../testing/step-trace.spec-helpers';
 import { goldenApp } from '../shared/model-golden.spec-helpers';
 import { PlanStep } from './plan.step';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const KEY = 'PROJ-40';
 
@@ -14,7 +15,7 @@ async function plan(agent: jest.Mock, questions: string, split = false) {
   seeded.status = 'waiting';
   seeded.currentStep = 'plan';
   seeded.split = split;
-  await golden.runs.saveRun(seeded);
+  await storeRun(golden.runs, seeded);
   await golden.seedDocuments.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
   await golden.seedDocuments.putDocument(seeded, 'repos', 'billing-api\n');
   await golden.seedDocuments.putDocument(seeded, 'questions', questions);

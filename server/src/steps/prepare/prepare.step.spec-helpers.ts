@@ -26,6 +26,7 @@ import { git, repoTemplate } from '../../testing/git-fixture';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 
 import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 export async function boot(
   root: string,
@@ -67,7 +68,7 @@ export async function seedRequirements(app: TestingModule, key: string): Promise
   const runs = app.get(RunRepository);
   const seeded = await runs.begin(key, 'requirements');
   seeded.status = 'waiting';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
   await documents.save(
     documents.create({

@@ -33,6 +33,7 @@ import type { PipelineCheck, PipelineRef, PipelineJob, PipelineSnapshot } from '
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 
 import { type HttpCallDraft } from '../../core/swarmloop-error';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 export const TOKEN = 'super-secret-token';
 
@@ -192,7 +193,7 @@ export async function seed(
   seeded.currentStep = 'commit';
   seeded.codeHost = 'gitlab';
   seeded.attemptsPipeline = attemptsPipeline;
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(seeded, 'pipeline_ref', body);
 }
 

@@ -5,6 +5,7 @@ import { expectGolden } from '../../testing/step-trace.spec-helpers';
 import { resultAnswer } from '../../testing/result-answer';
 import { goldenApp } from '../shared/model-golden.spec-helpers';
 import { ResearchStep } from './research.step';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const KEY = 'PROJ-20';
 
@@ -13,7 +14,7 @@ async function research(agent: jest.Mock) {
   const seeded = await golden.runs.begin(KEY, 'prepare');
   seeded.status = 'waiting';
   seeded.currentStep = 'research';
-  await golden.runs.saveRun(seeded);
+  await storeRun(golden.runs, seeded);
   await golden.seedDocuments.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
   const step = new ResearchStep(
     new StepKernel(

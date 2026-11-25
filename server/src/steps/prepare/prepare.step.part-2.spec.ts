@@ -31,6 +31,7 @@ import {
   git,
   hostFetch,
 } from './prepare.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 describe('prepare step', () => {
   it('continues prepare when the previous process is gone', async () => {
@@ -48,7 +49,7 @@ describe('prepare step', () => {
       seeded.ownerPid = 2_147_483_646;
       seeded.ownerInstance = null;
       seeded.currentStep = 'prepare';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
       await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
       const result = await app.get(PipelineService).step('prepare', 'PROJ-14');
@@ -97,7 +98,7 @@ describe('prepare step', () => {
       }
       run.projects = 'app\n';
       run.prompt = 'branch: feature/missing\n';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const missing = await app.get(PipelineService).step('prepare', 'PROJ-19');
       expect(missing.exitCode).toBe(1);
       expect(missing.message).toContain('app has no origin/feature/missing');
@@ -107,14 +108,14 @@ describe('prepare step', () => {
 
       run.prompt = 'branch: feature/a\nbranch: feature/b\n';
       run.status = 'waiting';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const ambiguous = await app.get(PipelineService).step('prepare', 'PROJ-19');
       expect(ambiguous.exitCode).toBe(1);
       expect(ambiguous.message).toContain('branch is ambiguous');
 
       run.prompt = 'Review the ticket\nbranch: feature/other\n';
       run.status = 'waiting';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const result = await app.get(PipelineService).step('prepare', 'PROJ-19');
       expect(result.exitCode).toBe(0);
       const worktree = join(swarm, 'worktrees', 'PROJ-19', 'app');
@@ -143,14 +144,14 @@ describe('prepare step', () => {
         throw new Error('run is missing');
       }
       seeded.projects = 'app\n';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       expect((await app.get(PipelineService).step('prepare', 'PROJ-40')).exitCode).toBe(0);
       const worktree = join(swarm, 'worktrees', 'PROJ-40', 'app');
       expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(git(clone, ['rev-parse', 'origin/main']));
 
       seeded.prompt = 'branch: origin/feature/other\n';
       seeded.status = 'waiting';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       expect((await app.get(PipelineService).step('prepare', 'PROJ-40')).exitCode).toBe(0);
       expect(git(worktree, ['rev-parse', 'HEAD'])).toBe(base);
       expect(git(clone, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('dirty');
@@ -258,7 +259,7 @@ describe('prepare step', () => {
           throw new Error('run is missing');
         }
         run.codeHost = 'github';
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
         await checkouts.save(checkouts.create({ name: 'web', path: web }));
         await checkouts.save(checkouts.create({ name: 'api', path: api }));
@@ -293,7 +294,7 @@ describe('prepare step', () => {
           throw new Error('run is missing');
         }
         run.codeHost = 'gitlab';
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         const checkouts = app.get<Repository<CheckoutEntity>>(getRepositoryToken(CheckoutEntity));
         await checkouts.save(checkouts.create({ name: 'demo', path: clone }));
         const result = await app.get(PipelineService).step('prepare', 'PROJ-33');
@@ -332,7 +333,7 @@ describe('prepare step', () => {
           throw new Error('run is missing');
         }
         run.codeHost = 'github';
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         await expect(app.get(CheckoutService).ensureDetached(run, ['other'], null, false)).rejects.toThrow(
           /origin is not github/,
         );

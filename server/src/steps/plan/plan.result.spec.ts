@@ -9,6 +9,7 @@ import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { resultAnswer } from '../../testing/result-answer';
 import { boot, planBlock, result, seed, writeEnv } from './plan.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const TASK = { id: 'a', title: 'Add it', depends: [], files: ['a.ts'], proof: 'a.spec.ts', description: 'Adds it.' };
 const split = (tasks: unknown[]): string =>
@@ -25,7 +26,7 @@ async function planWith(key: string, answers: string[]) {
   try {
     await seed(app, key, '');
     const runs = app.get(RunRepository);
-    await runs.saveRun({ ...(await runs.findRun(key))!, split: true });
+    await storeRun(runs, { ...(await runs.findRun(key))!, split: true });
     const done = await app.get(PipelineService).step('plan', key);
     const documents = app.get(DocumentRepository);
     const stored: Record<string, string | null> = {};
