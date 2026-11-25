@@ -4,6 +4,7 @@ import { AppConfig } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { PersonalTokenEntity, PersonEntity } from '../history/people-entities';
 import { PeopleAndTokens1796300000000 } from '../history/migrations/1796300000000-people-and-tokens';
+import { PersonAvatar1797500000000 } from '../history/migrations/1797500000000-person-avatar';
 import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { PeopleService } from './people.service';
 import { PersonalTokens } from './personal-tokens.service';
@@ -107,6 +108,7 @@ describe('PeopleService', () => {
         await runner.query(insert, ['gitlab', 'machine']);
         await runner.query(insert, ['gitea', null]);
         await migration.up(runner);
+        await new PersonAvatar1797500000000().up(runner);
       } finally {
         await runner.release();
       }
