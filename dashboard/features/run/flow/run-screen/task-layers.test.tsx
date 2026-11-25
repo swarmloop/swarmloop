@@ -36,7 +36,7 @@ const tasks: TaskEntry[] = [
 ];
 
 const openSettled = async (): Promise<void> =>
-  userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: /^✓ \d+ merged/ }));
+  userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: /^\d+ tasks, .*merged/ }));
 
 function renderRunList(runs: RunSummary[]): void {
   render(
@@ -112,7 +112,17 @@ describe('TaskLayers', () => {
   it('sums the subtasks in one summary line', () => {
     render(<TaskLayers now={0} tasks={tasks} epic={{ usd: 9, durationMs: 1000 }} ownUsd={2.75} onSkip={vi.fn()} />);
 
-    expect(screen.getByRole('region', { name: 'Tasks' })).toHaveTextContent('7 tasks · 4 merged · $6.25');
+    expect(screen.getByRole('region', { name: 'Tasks' })).toHaveTextContent('7 tasks, 4 merged · $6.25');
+    expect(screen.getByRole('progressbar', { name: 'Merged' })).toBeInTheDocument();
+  });
+
+  it('says `all merged` in one line and draws no second merged line', () => {
+    const merged = ['a', 'b', 'c', 'd'].map((id, index) => ({ ...task(id), index }));
+    render(<TaskLayers now={0} tasks={merged} epic={{ usd: 9, durationMs: 1000 }} ownUsd={1.19} onSkip={vi.fn()} />);
+
+    const region = screen.getByRole('region', { name: 'Tasks' });
+    expect(within(region).getByText('4 tasks, all merged · $7.81')).toBeInTheDocument();
+    expect(within(region).queryByText(/^✓/)).toBeNull();
     expect(screen.getByRole('progressbar', { name: 'Merged' })).toBeInTheDocument();
   });
 
@@ -152,7 +162,7 @@ describe('TaskLayers', () => {
 
     const region = screen.getByRole('region', { name: 'Tasks' });
     expect(region).not.toHaveTextContent('Stage');
-    expect(within(region).getByText('13 tasks · 6 merged · $15.00')).toBeInTheDocument();
+    expect(within(region).getByText('13 tasks, 6 merged, 1 skipped · $15.00')).toBeInTheDocument();
     expect(region).toHaveTextContent('after r1');
     expect(region).toHaveTextContent('after r2, r3');
     expect(region).toHaveTextContent('waiting for a free slot');
@@ -163,7 +173,9 @@ describe('TaskLayers', () => {
         .map((node) => node.textContent);
     expect(titles()).toEqual(['Title r1', 'Title r2', 'Title r3', 'Title w1', 'Title w2', 'Title w3']);
 
-    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: '✓ 6 merged · 1 skipped' }));
+    await userEvent
+      .setup({ delay: null })
+      .click(screen.getByRole('button', { name: '13 tasks, 6 merged, 1 skipped · $15.00' }));
 
     expect(titles().slice(6)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 's1'].map((id) => `Title ${id}`));
   });
@@ -171,7 +183,7 @@ describe('TaskLayers', () => {
   it('puts the agent time in the tooltip of the summary', async () => {
     render(<TaskLayers now={0} tasks={tasks} epic={{ usd: 9, durationMs: 1000 }} ownUsd={2.75} onSkip={vi.fn()} />);
 
-    await userEvent.setup({ delay: null }).hover(screen.getByText('7 tasks · 4 merged · $6.25'));
+    await userEvent.setup({ delay: null }).hover(screen.getByText('7 tasks, 4 merged · $6.25'));
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent('agents worked 4m 25s');
   });

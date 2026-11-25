@@ -53,6 +53,9 @@ export function feedTimeline(flow: FlowView, entries: FeedEntry[]): FeedRow[] {
       at: asked.get(item.id) ?? flow.updatedAt,
       item,
     })),
+    ...flow.returns.flatMap((edge): FeedRow[] =>
+      edge.words && edge.at ? [{ type: 'info', key: `return:${edge.counter}`, at: edge.at, sentence: edge.words }] : [],
+    ),
   ];
   const limit = limitWaitSentence(flow);
   if (limit) {

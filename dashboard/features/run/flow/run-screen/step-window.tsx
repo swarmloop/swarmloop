@@ -5,6 +5,14 @@ import { pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
 import { resumeLabel, resumeTip } from '../../../../lib/ci-infra';
 import { StepDetail } from '../step-detail';
 
+/** Why the step sent work back, only while its chip reads `returned`: a step that went on is not shown as returned. */
+function returnWordsOf(flow: FlowView, step: string): string | undefined {
+  const returned = flow.phases.some((phase) =>
+    phase.steps.some((item) => item.name === step && item.status === 'returned'),
+  );
+  return returned ? flow.returns.find((edge) => edge.from === pipelineStepOf(step))?.words : undefined;
+}
+
 /** The window of the selected step: its transcript and documents, with the Replay and Resume it offers. */
 export function StepWindow({
   flow,
@@ -35,6 +43,7 @@ export function StepWindow({
       revision={flow.updatedAt}
       planRevision={planRevision}
       attempts={attempts}
+      returnWords={returnWordsOf(flow, step)}
       restartedAt={restartedAt}
       now={now}
       liveCommands={flow.checkCommands}

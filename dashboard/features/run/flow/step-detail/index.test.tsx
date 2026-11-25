@@ -63,6 +63,43 @@ beforeEach(() => {
 });
 
 describe('StepDetail', () => {
+  it('says in plain words why the step sent work back', async () => {
+    detail({ step: 'checks', returnWords: 'Checks sent it back: dashboard tests' });
+
+    expect(await screen.findByText('Checks sent it back: dashboard tests')).toBeInTheDocument();
+  });
+
+  it('keeps the interruption sentence beside the words of a return', async () => {
+    const at = '2026-01-01T10:00:00.000Z';
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        visits: [
+          visitView({ id: 1, attempt: 1, status: 'failed', attemptId: 'a', interruption: { at, relaunched: true } }),
+        ],
+      }),
+    );
+    detail({ step: 'checks', returnWords: 'Checks sent it back: lint' });
+
+    expect(await screen.findByText('Checks sent it back: lint')).toBeInTheDocument();
+    expect(await screen.findByText(/Interrupted at .* by a server restart/)).toBeInTheDocument();
+  });
+
+  it('keeps the restart wait sentence beside the words of a return', async () => {
+    const restartedAt = '2026-01-01T10:00:00.000Z';
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [visitView({ status: 'running', samples: [] })] }));
+    detail({ step: 'checks', runStatus: 'running', restartedAt, returnWords: 'Checks sent it back: lint' });
+
+    expect(await screen.findByText(restartWaitSentence(restartedAt, localTime))).toBeInTheDocument();
+    expect(screen.getByText('Checks sent it back: lint')).toBeInTheDocument();
+  });
+
+  it('says nothing about a return for a step that sent none', async () => {
+    detail();
+
+    await screen.findByText('This step started no container.');
+    expect(screen.queryByText(/sent it back/)).toBeNull();
+  });
+
   it('shows a cut attempt as interrupted in the neutral color with its sentence', async () => {
     const at = '2026-01-01T10:00:00.000Z';
     vi.mocked(getStep).mockResolvedValue(
