@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFlow, getHistory } from '../../lib/endpoints';
 import userEvent from '@testing-library/user-event';
@@ -60,9 +60,10 @@ describe('HistoryScreen', () => {
     vi.mocked(getFlow).mockResolvedValue(flowView({ title: 'An old run' }));
 
     render(<HistoryScreen runKey="run-1" />, { wrapper: LiveBridgeProvider });
+    await act(async () => {});
 
-    expect(await screen.findByRole('heading', { name: 'An old run' })).toBeInTheDocument();
-    expect(document.title).toBe('An old run · swarmloop');
+    expect(screen.getByRole('heading', { name: 'An old run' })).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe('An old run · swarmloop'));
     expect(getFlow).toHaveBeenCalledTimes(1);
     expect(getFlow).toHaveBeenCalledWith('run-1');
   });
