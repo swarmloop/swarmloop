@@ -78,8 +78,9 @@ export async function retrying(visits: VisitRepository, opened: OpenedStep): Pro
   if (opened.previousStatus !== 'waiting') {
     return false;
   }
-  // The run waited for a provider limit: the reviewers that answered keep their answers, the others run again.
-  if (opened.prior && storedState(opened.prior).reason?.code === ERROR_CODES.RUNTIME_LIMIT) {
+  // The run waited for a provider limit or a model host: the reviewers that answered keep their answers, the others run again.
+  const waitCode = opened.prior ? storedState(opened.prior).reason?.code : undefined;
+  if (waitCode === ERROR_CODES.RUNTIME_LIMIT || waitCode === ERROR_CODES.HOST_UNAVAILABLE) {
     return true;
   }
   const last = [...(await visits.listStats(opened.run.id))].reverse().find((item) => item.step === 'code-review');

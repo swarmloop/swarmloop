@@ -4,12 +4,9 @@ import { mkdtemp, readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Logger } from '@nestjs/common';
-import { parseAgentList } from '../config/agents';
-import type { SwarmloopEnv } from '../config/env';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { SystemClock } from '../core/clock';
 import type { LiveHub } from '../live/live.hub';
-import type { AgentRunInput } from './agent-runner';
 import { AGENT_CONTINUE, AgentProcessRunner, readSession } from './agent-runner';
 import { AGENT_BACKGROUND_KILLED_CONTINUE } from './agent-session';
 import { AppConfig } from '../config/env';
@@ -21,7 +18,7 @@ import { agentStateDir, type SandboxLaunch } from '../sandbox/sandbox-launch';
 import { sessionHome } from '../history/session-group';
 import * as limits from './limits';
 import { RunStop } from './run-stop';
-import { config, fakeChild, input, sandbox, writePriceCache } from './agent-runner.spec-helpers';
+import { config, fakeChild, input, sandbox, start, writePriceCache } from './agent-runner.spec-helpers';
 
 const PREVIOUS = 'previous-visit-transcript\n';
 
@@ -254,77 +251,6 @@ describe('readSession', () => {
     expect(await readSession(path, 'cursor')).toBeNull();
     writeFileSync(path, `${JSON.stringify({ ...body, runtime: 'cursor' })}\n`);
     expect((await readSession(path, 'cursor'))?.chatId).toBe('c');
-  });
-});
-
-/** What each runtime's CLI ends a launch with when the provider's limit is reached, with the reset it names. */
-const LIMIT_SAMPLES = [
-  {
-    runtime: 'claude',
-    // The reviewer output of run-mw85iykj: the text is the answer, so no step finds a decision in it.
-    stream: [
-      JSON.stringify({ type: 'system', subtype: 'init', session_id: 'chat-r03' }),
-      JSON.stringify({
-        type: 'assistant',
-        message: { content: [{ type: 'text', text: "You've hit your 5-hour limit · resets 9:50pm (UTC)" }] },
-      }),
-      JSON.stringify({
-        type: 'result',
-        subtype: 'success',
-        is_error: true,
-        result: "You've hit your 5-hour limit · resets 9:50pm (UTC)",
-        session_id: 'chat-r03',
-      }),
-    ].join('\n'),
-    limit: { window: '5-hour', resetsAt: '2026-11-08T21:50:00.000Z' },
-  },
-  {
-    runtime: 'codex',
-    stream: `${JSON.stringify({ type: 'turn.failed', error: { message: "You've hit your usage limit. Upgrade to Plus to continue using Codex, or try again at 9:50 PM." } })}\n`,
-    limit: { window: 'usage', resetsAt: '2026-11-08T21:50:00.000Z' },
-  },
-  {
-    runtime: 'cursor',
-    stream: `${JSON.stringify({ type: 'result', is_error: true, result: "You've hit your usage limit" })}\n`,
-    limit: { window: 'usage' },
-  },
-] as const;
-
-describe('AgentProcessRunner provider limit', () => {
-  const NOW = Date.parse('2026-11-08T18:42:00Z');
-
-  beforeEach(() => {
-    jest.spyOn(Date, 'now').mockReturnValue(NOW);
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  it.each(LIMIT_SAMPLES)(
-    'returns the $runtime limit with its reset and launches once, because a limit is no attempt',
-    async ({ runtime, stream, limit }) => {
-      const { result, launches } = await start(
-        `limit-${runtime}`,
-        [{ chunks: [stream], code: 1 }],
-        { resumeChatId: null, runtime },
-        { MAX_LAUNCHES: 3, CODEX_API_KEY: 'codex-key' },
-      );
-      expect(result.limit).toEqual(limit);
-      expect(launches).toHaveLength(1);
-    },
-  );
-
-  it('does not take an auth error or a full context for a limit', async () => {
-    for (const text of ['Invalid API key · Please run /login', 'Prompt is too long']) {
-      const { result } = await start(
-        'not-a-limit',
-        [{ chunks: [`${JSON.stringify({ type: 'result', is_error: true, result: text })}\n`], code: 1 }],
-        { resumeChatId: null, runtime: 'claude' },
-        { MAX_LAUNCHES: 1 },
-      );
-      expect(result.limit).toBeUndefined();
-    }
   });
 });
 
@@ -655,47 +581,6 @@ function killedStream(chatId: string): string {
   const killed = { type: 'system', subtype: 'task_notification', task_id: 'b1', status: 'killed', summary: 'tests' };
   const talk = { type: 'assistant', message: { content: [{ type: 'text', text: "I'll report when it ends" }] } };
   return `${chatStream(chatId)}${JSON.stringify(talk)}\n${doneStream("I'll report when it ends")}${JSON.stringify(killed)}\n`;
-}
-
-async function start(
-  label: string,
-  steps: { chunks: string[]; code?: number; advance?: number }[],
-  patch: Partial<AgentRunInput> = {},
-  env: Partial<SwarmloopEnv> = {},
-  stop = new RunStop(),
-): Promise<{
-  result: Awaited<ReturnType<AgentProcessRunner['run']>>;
-  launches: SandboxLaunch[];
-  outputFile: string;
-  root: string;
-}> {
-  const root = await mkdtemp(join(tmpdir(), `swarmloop-agent-${label}-`));
-  const outputFile = join(root, 'data', 'run1-implement-output.txt');
-  mkdirSync(join(root, 'data'), { recursive: true });
-  writePriceCache(root);
-  const pending = [...steps];
-  let now = Date.now();
-  const clock = steps.some((step) => step.advance) ? jest.spyOn(Date, 'now').mockImplementation(() => now) : null;
-  const launches: SandboxLaunch[] = [];
-  const spawn = jest.fn<Promise<EventEmitter>, [SandboxLaunch]>((launch) => {
-    launches.push(launch);
-    const next = pending.shift();
-    if (!next) {
-      return Promise.reject(new Error('unexpected spawn'));
-    }
-    now += next.advance ?? 0;
-    return Promise.resolve(fakeChild(next.chunks, next.code ?? 0));
-  });
-  const runner = new AgentProcessRunner(config(root, env), new SystemClock(), sandbox(spawn), stop);
-  try {
-    const runtime = env.AGENTS_IMPLEMENT
-      ? parseAgentList('AGENTS_IMPLEMENT', env.AGENTS_IMPLEMENT)[0].runtime
-      : 'cursor';
-    const result = await runner.run(input(root, outputFile, { runtime, ...patch }));
-    return { result, launches, outputFile, root };
-  } finally {
-    clock?.mockRestore();
-  }
 }
 
 /** The chat id in the session file of these specs, null when there is none. */

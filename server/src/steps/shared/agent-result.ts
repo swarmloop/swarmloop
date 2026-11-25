@@ -22,7 +22,7 @@ export function combineAgentResults(results: AgentRunResult[]): AgentRunResult |
     reported: last?.reported ?? null,
     killReason: last?.killReason ?? null,
     backgroundKilled: last?.backgroundKilled ?? false,
-    ...(last?.limit ? { limit: last.limit } : {}),
+    ...endOf(last),
     exitCode: last?.exitCode ?? 0,
     output: foldedOutput(results),
     resumed: results.some((item) => item.resumed),
@@ -32,6 +32,11 @@ export function combineAgentResults(results: AgentRunResult[]): AgentRunResult |
     startedAt,
     finishedAt,
   };
+}
+
+/** What the last launch ended on besides an answer: its usage limit or the outage of its model host. */
+function endOf(last: AgentRunResult | undefined): Pick<AgentRunResult, 'limit' | 'outage'> {
+  return { ...(last?.limit ? { limit: last.limit } : {}), ...(last?.outage ? { outage: last.outage } : {}) };
 }
 
 /** A later output that already contains an earlier launch replaces it. One that does not is appended. */

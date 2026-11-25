@@ -26,6 +26,7 @@ import { withAttachments } from './attachments-section';
 import { withLogReads } from './outside-reads';
 import { promptSections } from './prompt-manifest';
 import { LimitFailover } from './limit-failover';
+import { ModelHostUnavailable } from './model-host-unavailable';
 import type { AgentLaunchRequest } from './agent-launch-request';
 import { loopWatch, newChatReason, recordWork } from './launch-work';
 import { answerIsReadable, exchangeResult, resultFollowUpRequest, withAnswerErrors } from './result-exchange';
@@ -82,10 +83,16 @@ export class AgentLauncher {
 
   private async launchOn(request: AgentLaunchRequest): Promise<LaunchResult> {
     const result = await this.runOnce(request);
+    if (result.outage) {
+      throw new ModelHostUnavailable(result.outage, result);
+    }
     if (request.result && answerIsReadable(request, result)) {
       const exchange = await exchangeResult(request, result, (followUp) =>
         this.runOnce(resultFollowUpRequest(request, followUp)),
       );
+      if (exchange.result.outage) {
+        throw new ModelHostUnavailable(exchange.result.outage, exchange.result);
+      }
       return { ...exchange.result, resultValue: exchange.value };
     }
     return result;

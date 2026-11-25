@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { mergeRequestText } from '../../agent-result/definitions/merge-request-text';
+import { HostUnavailable } from '../../core/swarmloop-error';
 import type { AppConfig } from '../../config/env';
 import type { RunEntity } from '../../history/entities';
 import { sessionFileName, sessionHome } from '../../history/session-group';
@@ -18,10 +19,12 @@ describe('implement chat', () => {
   let dir: string;
   let requests: AgentLaunchRequest[];
   let answer: Record<string, unknown>;
+  let failure: Error | null;
 
   const door = {
     outside: async (_start: unknown, request: AgentLaunchRequest) => {
       requests.push(request);
+      if (failure) throw failure;
       return { ...result(''), ...answer };
     },
   } as unknown as AgentDoor;
@@ -55,6 +58,7 @@ describe('implement chat', () => {
     mkdirSync(join(dir, 'worktrees', KEY, 'demo'), { recursive: true });
     requests = [];
     answer = { resultValue: { text: 'filled' } };
+    failure = null;
   });
 
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -64,6 +68,12 @@ describe('implement chat', () => {
     expect(await chat().ask(RUN, ['demo'], 'fill it', mergeRequestText)).toEqual({ value: { text: 'filled' } });
     expect(requests[0]).toMatchObject({ step: 'implement', tools: 'none', mode: 'plan', prompt: 'fill it' });
     expect(requests[0]?.result).toBe(mergeRequestText);
+  });
+
+  it('throws HostUnavailable when the model host did not answer', async () => {
+    const down = new HostUnavailable('api.anthropic.com', 'API Error: 502', '2026-11-12T15:00:00.000Z');
+    failure = down;
+    await expect(chat().ask(RUN, ['demo'], 'fill it', mergeRequestText)).rejects.toBe(down);
   });
 
   it('starts a chat of the implement agent when the run has none', async () => {

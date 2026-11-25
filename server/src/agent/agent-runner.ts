@@ -123,6 +123,10 @@ export class AgentProcessRunner {
           // A limit is no attempt: relaunching into it only burns launches. The caller picks another agent or waits.
           return merged;
         }
+        if (attempt.outage) {
+          // The CLI already retried its API calls: relaunching only burns launches. The caller waits for the host.
+          return merged;
+        }
         prior = `${carried}${merged.output ?? ''}`;
         const budget = {
           halted: this.runStop.halted(input.runKey),

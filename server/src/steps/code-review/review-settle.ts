@@ -6,7 +6,8 @@ import type { DocumentDraft } from '../../history/visit';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { OpenedStep } from '../step-run';
-import { RuntimeLimit } from '../../core/swarmloop-error';
+import { HostUnavailable, RuntimeLimit } from '../../core/swarmloop-error';
+import { ModelHostUnavailable, hostRoute } from '../shared/model-host-unavailable';
 import { StartRefused, refusedRoute } from '../shared/start-refused';
 import type { Requirement } from '../../contract/requirement-list';
 import { isResultKind } from '../../agent-result/result-definition';
@@ -23,7 +24,7 @@ import { waitForPlanner } from '../implement/implement-question';
 import { isSubtask } from '../../contract/subtask';
 import { askedReviewer } from '../shared/reviewer-labels';
 import type { Exchange } from './review-exchange';
-import { closeReview, failed, noteHandoff, writeReport } from './review-report';
+import { closeReview, failed, noteHandoff, usageOf, writeReport } from './review-report';
 import { openOthers, othersOpen, routeReview, tallyRound } from './review-round';
 import type { Finished, ReviewDeps } from './reviewer';
 import type { Opinion } from './code-review-record';
@@ -75,6 +76,7 @@ function plannerQuestions(
 /** The route a report launch ends the visit on when a provider limit or the door stopped it; null for any other error, and a Stop. */
 function stoppedRoute(error: unknown): Route | null {
   if (error instanceof RuntimeLimit) return limitRoute(error);
+  if (error instanceof HostUnavailable) return hostRoute(error);
   return error instanceof StartRefused ? refusedRoute(error) : null;
 }
 
@@ -141,7 +143,15 @@ export class ReviewSettle {
     } catch (error) {
       const route = stoppedRoute(error);
       if (!route) throw error;
-      const waiting = await closeReview(ctx, route, `${opened.startedAt} ${(error as Error).message}`, noted, []);
+      const usage = error instanceof ModelHostUnavailable ? usageOf(error.result) : undefined;
+      const waiting = await closeReview(
+        ctx,
+        route,
+        `${opened.startedAt} ${(error as Error).message}`,
+        noted,
+        [],
+        usage,
+      );
       await this.stamp(opened.run, stored, fingerprint);
       return waiting;
     }
@@ -241,6 +251,13 @@ export class ReviewSettle {
     if (limited) {
       // The reviewers that answered keep their answers; the ones the limit stopped run again when the run goes on.
       const waiting = await closeReview(ctx, limitRoute(limited), `${opened.startedAt} ${limited.message}`, stored, []);
+      await this.stamp(opened.run, stored, fingerprint);
+      return waiting;
+    }
+    const outage = finished.find((item) => item.outage)?.outage;
+    if (outage) {
+      // The reviewers that answered keep their answers; the ones whose model host did not answer run again at the next try.
+      const waiting = await closeReview(ctx, hostRoute(outage), `${opened.startedAt} ${outage.message}`, stored, []);
       await this.stamp(opened.run, stored, fingerprint);
       return waiting;
     }

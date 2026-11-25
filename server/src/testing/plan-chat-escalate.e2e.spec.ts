@@ -124,6 +124,14 @@ describe('a review disagreement that implement and the reviewer did not settle',
     reason: 'The field is still missing.',
     requirements: [{ id: 'R1', status: 'missing', note: 'not there' }],
   });
+  /** The reviewer's next visit, after implement answered again: ok, with its reason. */
+  const settles = block({
+    decision: 'ok',
+    review: 'requirements',
+    summary: ['the answer holds'],
+    reason: 'The answer holds.',
+    requirements: [{ id: 'R1', status: 'met', note: 'the plan removes it' }],
+  });
   const keeps = block({
     implementation: [],
     summary: ['kept as it is'],
@@ -132,7 +140,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
 
   async function start(
     plan: ScriptedAnswer[],
-    { requirement = 'ship the field', reviews = [returns, stillReturns] } = {},
+    { requirement = 'ship the field', reviews = [returns, stillReturns, settles] } = {},
   ): Promise<void> {
     blocks = new BlockAgentRunner({
       plan: [firstPlan, ...plan],
@@ -177,7 +185,7 @@ describe('a review disagreement that implement and the reviewer did not settle',
       });
     await start([block({ reply: HELD_DECISION, finding: 'holds' })], {
       requirement: `${GOAL}; ${STOP_FIRST}`,
-      reviews: [old(), old('Old stopped rows still do not say how they read.')],
+      reviews: [old(), old('Old stopped rows still do not say how they read.'), settles],
     });
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });

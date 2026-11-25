@@ -27,8 +27,8 @@ import { PlannerRules } from './planner-rules';
 import { PlannerRunPort, type PlannerRunCommand } from './planner-run-port';
 import { BacklogTurnRunner } from './turn-runner';
 
-/** One answer of the scripted planner agent: a turn result, a usage limit, or a launch that fails. */
-export type TurnAnswer = BacklogTurnResult | 'limit' | 'crash';
+/** One answer of the scripted planner agent: a turn result, a usage limit, a model host that did not answer, or a launch that fails. */
+export type TurnAnswer = BacklogTurnResult | 'limit' | 'crash' | 'outage';
 
 /** The planner's agent: it answers every launch from a script and records what it was asked. */
 export class ScriptedTurnAgent {
@@ -49,6 +49,9 @@ export class ScriptedTurnAgent {
       tokensOut: 5,
     };
     if (next === 'limit') return { ...base, usd: 0.25, responseText: 'limit', limit: { window: '5-hour' } };
+    if (next === 'outage') {
+      return { ...base, usd: 0.25, responseText: '', outage: { host: 'api.anthropic.com', detail: 'API Error: 502' } };
+    }
     if (next === 'crash') return { ...base, exitCode: 1, responseText: '' };
     return { ...base, usd: 0.5, responseText: resultAnswer('Done.', next) };
   }

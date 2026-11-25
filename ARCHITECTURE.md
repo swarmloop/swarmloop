@@ -193,6 +193,8 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 
 **Today.**
 - Steps one to six hold for run agents through `steps/shared/agent-door.ts` (launch-door).
+- A visit that ended by its own answer (still invalid after its follow-ups) or by its own limit counts as finished in `steps/shared/same-input.ts`, so the next start of the machine or a planner on that input is refused as the same input and asked up the planners' chain once, with its answer errors. A visit cut by something outside the agent (an outage, a usage limit, an outside wait, a process that died, a person's Stop) runs again on its input.
+- A model host that does not answer is a wait. Each runtime adapter reads it (`classifyOutage`), `AgentLauncher` ends such a launch as `HostUnavailable` with its next try, and this holds for a step's agent, a plan visit, a reviewer, the report, the implement chat, the planner's question turns and the backlog planner's turn. The chain asked after a same-input refusal keeps that refusal's wait.
 - The backlog planner's turns start through their own `turn-runner.ts` and are not admitted by the door.
 
 ## 3.4 Documents, gates and generations

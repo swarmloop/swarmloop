@@ -5,6 +5,9 @@ import { REASON } from '../contract/run-state';
 import { CODE_REVIEWERS } from '../contract/steps';
 import { RunRepository } from '../history/run.repository';
 import { storedState } from '../history/run-state';
+import { Reconciler } from '../pipeline/reconciler';
+import { CommandService } from '../pipeline/command.service';
+import { HOST_RETRY_MS } from '../integrations/http';
 import { AgentDoor } from '../steps/shared/agent-door';
 import type { StepOptions } from '../core/pipeline-result';
 import { createFlowHarness } from './flow-harness';
@@ -17,6 +20,21 @@ const FIRST = `code-review-${CODE_REVIEWERS[0]}`;
 class CostlyRunner extends BlockAgentRunner {
   override async run(input: Parameters<BlockAgentRunner['run']>[0]): Promise<AgentRunResult> {
     return { ...(await super.run(input)), usd: 2 };
+  }
+}
+
+/** The first reviewer's first launch ends with the model host's API error, at the fake clock's now. */
+class DownRunner extends BlockAgentRunner {
+  constructor(
+    private readonly now: () => number,
+    others: ConstructorParameters<typeof BlockAgentRunner>[0] = {},
+  ) {
+    super({ ...others, [FIRST]: [{ outage: { host: 'api.anthropic.com', detail: 'API Error: 502' } }] });
+  }
+
+  override async run(input: Parameters<BlockAgentRunner['run']>[0]): Promise<AgentRunResult> {
+    const result = await super.run(input);
+    return result.outage ? { ...result, finishedAt: new Date(this.now()).toISOString() } : result;
   }
 }
 
@@ -115,5 +133,52 @@ describe('a reviewer or the report starts only through the door', () => {
     const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
     expect(run.status).toBe('blocked');
     expect(storedState(run).reason?.code).toBe(ERROR_CODES.SPEND_LIMIT);
+  });
+
+  it('a reviewer whose model host did not answer makes the run wait with its next try, and the round goes on at the next try through the door', async () => {
+    await boot({}, new DownRunner(() => flow.app.clock.now()));
+    const first = flow.app.clock.now();
+
+    const waited = await review({ auto: true, startBy: 'machine' });
+    const waiting = (await flow.app.app.get(RunRepository).findRun(KEY))!;
+    const reason = storedState(waiting).reason;
+
+    expect(waited.exitCode).not.toBe(1);
+    expect(waiting.status).toBe('waiting');
+    expect(reason?.code).toBe(ERROR_CODES.HOST_UNAVAILABLE);
+    expect(reason?.retryAt).toBe(new Date(first + HOST_RETRY_MS).toISOString());
+    expect(blocks.steps.filter((step) => step === FIRST)).toHaveLength(1);
+
+    const accept = jest.spyOn(flow.app.app.get(CommandService), 'accept').mockResolvedValue({} as never);
+    const resumes = flow.app.app.get(Reconciler);
+    await resumes.resumeHostUnavailable();
+    expect(accept).not.toHaveBeenCalled();
+    flow.app.clock.advance(HOST_RETRY_MS);
+    await resumes.resumeHostUnavailable();
+    expect(accept).toHaveBeenCalledWith('resume', KEY, { by: 'machine', level: null }, expect.anything());
+
+    const done = await flow.app.pipeline.step('code-review', KEY, { auto: true, startBy: 'machine' });
+
+    expect(done.exitCode).toBe(0);
+    expect(blocks.steps.filter((step) => step === FIRST)).toHaveLength(2);
+    expect(blocks.steps.filter((step) => step === 'code-review-report')).toHaveLength(1);
+    expect((await flow.app.app.get(RunRepository).findRun(KEY))!.status).not.toBe('blocked');
+  });
+
+  it('keeps the answer of a reviewer that returned while another one’s model host did not answer', async () => {
+    const other = `code-review-${CODE_REVIEWERS[1]}`;
+    const returned = { decision: 'return', review: 'needs work', summary: ['needs work'] };
+    await boot({}, new DownRunner(() => flow.app.clock.now(), { [other]: [{ block: returned }] }));
+
+    await review({ auto: true, startBy: 'machine' });
+    expect(storedState((await flow.app.app.get(RunRepository).findRun(KEY))!).reason?.code).toBe(
+      ERROR_CODES.HOST_UNAVAILABLE,
+    );
+
+    flow.app.clock.advance(HOST_RETRY_MS);
+    await flow.app.pipeline.step('code-review', KEY, { auto: true, startBy: 'machine' });
+
+    expect(blocks.steps.filter((step) => step === other)).toHaveLength(1);
+    expect(blocks.steps.filter((step) => step === 'code-review-report')).toHaveLength(1);
   });
 });

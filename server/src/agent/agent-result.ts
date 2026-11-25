@@ -2,6 +2,7 @@ import type { EffortFields } from '../contract/effort';
 import type { ChatUsage } from '../history/chat-usage.repository';
 import type { SampleDraft } from '../history/visit';
 import type { LimitHit } from '../integrations/agent-runtime/runtime-limit';
+import type { ModelHostOutage } from '../integrations/agent-runtime/runtime-outage';
 import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import type { KillReason } from './limits';
 
@@ -27,6 +28,8 @@ export interface AgentRunResult {
   agent?: { runtime: RuntimeName; model: string } & EffortFields;
   /** The launch ended on the provider's usage limit. Nothing was answered, and the launch is not an attempt. */
   limit?: LimitHit;
+  /** The launch ended because its model host did not answer after the CLI's own retries. Whatever was said is no answer. */
+  outage?: ModelHostOutage;
   calls: number;
   samples: SampleDraft[];
   durationMs: number;

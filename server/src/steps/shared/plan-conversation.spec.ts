@@ -15,6 +15,9 @@ import type { ModelStepContext } from '../model-step-context';
 import { withPlan } from '../plan/plan-record';
 import { launchingDoor } from '../../testing/agent-door.spec-helpers';
 import { PlanConversation } from './plan-conversation';
+import { ModelHostUnavailable, HOST_VISIT } from './model-host-unavailable';
+import { ResultInvalid } from './answer-errors';
+import { answerErrorsDocument } from './stored-answer-errors';
 import { StartRefused } from './start-refused';
 
 const answered = {
@@ -137,6 +140,28 @@ describe('PlanConversation.visit', () => {
 
     await expect(conversation.visit({ run, startedAt: '' } as never, () => 'x', subtaskAnswer)).resolves.toBeNull();
     expect(finished).toMatchObject([{ step: 'plan', exitCode: 1 }]);
+  });
+
+  it('stores an outage plan visit as HOST_VISIT with its cost and throws the wait', async () => {
+    const { conversation, launch, finished, links, run } = setup();
+    const down = new ModelHostUnavailable(
+      { host: 'api.anthropic.com', detail: 'API Error: 502' },
+      { ...answered, usd: 0.5, finishedAt: '2026-11-12T14:00:00.000Z' },
+    );
+    launch.mockRejectedValue(down);
+
+    await expect(conversation.visit({ run, startedAt: '' } as never, () => 'x', subtaskAnswer)).rejects.toBe(down);
+    expect(finished).toMatchObject([{ status: HOST_VISIT.status, killReason: HOST_VISIT.killReason, usd: 0.5 }]);
+    expect(links).toEqual([['start-1', 1]]);
+  });
+
+  it('stores the answer errors and the cost of a plan visit whose answer stayed invalid', async () => {
+    const { conversation, launch, finished, run } = setup();
+    launch.mockRejectedValue(new ResultInvalid(['no answer'], 'out', { ...answered, usd: 0.5 }));
+
+    await expect(conversation.visit({ run, startedAt: '' } as never, () => 'x', subtaskAnswer)).resolves.toBeNull();
+    expect(finished[0]).toMatchObject({ status: 'failed', usd: 0.5 });
+    expect(finished[0]?.documents).toEqual([answerErrorsDocument(['no answer'])]);
   });
 
   it('links the stored visit with its start, also when the launch failed after admission', async () => {
