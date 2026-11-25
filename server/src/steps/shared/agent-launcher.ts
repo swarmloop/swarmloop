@@ -41,13 +41,18 @@ function withRules(prompt: string): string {
   return `${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\n${prompt}`;
 }
 
-/** The helper of the runtime that runs this launch, as the runtime interface takes it. Nothing when there is none. */
+/**
+ * The helper of the runtime that runs this launch, as the runtime interface takes it. Nothing when there is none. An agent
+ * that has a helper reads the code only through it, so every launch that gets one asks for that.
+ */
 function helperInput(request: AgentLaunchRequest): Pick<AgentRunInput, 'helper'> {
   const helper = helperFor(request.helpers, request.runtime);
   if (!helper) {
     return {};
   }
-  return { helper: { model: helper.model, ...(helper.effort ? { effort: helper.effort } : {}) } };
+  return {
+    helper: { model: helper.model, ...(helper.effort ? { effort: helper.effort } : {}), codeOnlyByHelper: true },
+  };
 }
 
 /** Starts one agent process for a step: the session file, the prompt prefix, and the run's spend counters. */

@@ -13,7 +13,12 @@ import type {
 import { ClaudeConnection } from './claude-connection';
 import { CLAUDE_LIMITS } from './claude-limit';
 import { CLAUDE_OUTAGES } from './claude-outage';
-import { DENY_BACKGROUND_HOOK, DENY_BACKGROUND_SCRIPT } from './claude-hook';
+import {
+  DENY_BACKGROUND_HOOK,
+  DENY_BACKGROUND_SCRIPT,
+  READ_BY_HELPER_HOOK,
+  READ_BY_HELPER_SCRIPT,
+} from './claude-hook';
 
 export const CLAUDE_KEY_PLACEHOLDER = 'sk-ant-api03-swarmloop-egress-placeholder';
 export const CLAUDE_OAUTH_PLACEHOLDER = 'sk-ant-oat01-swarmloop-egress-placeholder';
@@ -91,6 +96,21 @@ function helperAgents(helper: AgentHelper): string {
 }
 
 const HOOK_DIR = '.claude';
+
+/**
+ * Claude Code 2.1.319 (https://code.claude.com/docs/en/hooks, /permissions). Not confirmed against the docs, and to be
+ * checked on one real turn: a Read deny rule also reaches Grep and Glob best-effort, and the launch's deny rules reach a
+ * subagent, so a rule on the mounts would take away the search and the reader. A PreToolUse hook gets `agent_id` only
+ * from a subagent's call, so it holds the agent alone. `--settings`
+ * adds it for this launch, with the code mounts as its arguments.
+ */
+function readByHelperSettings(mounts: readonly { containerPath: string }[]): string {
+  const paths = mounts.map((mount) => mount.containerPath).join(' ');
+  const command = `sh /home/sandbox/${HOOK_DIR}/${READ_BY_HELPER_HOOK} ${paths}`;
+  return JSON.stringify({
+    hooks: { PreToolUse: [{ matcher: 'Read|Glob|Bash', hooks: [{ type: 'command', command }] }] },
+  });
+}
 
 export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly name = 'claude' as const;
@@ -181,6 +201,7 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
     return [
       { path: `${HOOK_DIR}/settings.json`, content: `${JSON.stringify(settings, null, 2)}\n`, mode: 0o644 },
       { path: `${HOOK_DIR}/${DENY_BACKGROUND_HOOK}`, content: DENY_BACKGROUND_SCRIPT, mode: 0o755 },
+      { path: `${HOOK_DIR}/${READ_BY_HELPER_HOOK}`, content: READ_BY_HELPER_SCRIPT, mode: 0o755 },
     ];
   }
 
@@ -189,6 +210,9 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
     args.push('--verbose', '--disallowedTools', denied);
     if (input.helper) {
       args.push('--agents', helperAgents(input.helper));
+      if (input.helper.codeOnlyByHelper) {
+        args.push('--settings', readByHelperSettings(input.mounts));
+      }
     }
     if (input.mode === 'plan' || input.mode === 'ask') {
       args.push('--permission-mode', 'plan');
