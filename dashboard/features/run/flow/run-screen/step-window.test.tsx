@@ -67,6 +67,27 @@ describe('StepWindow', () => {
     expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
+  it('reads a step whose chip is idle as not started, with its old visit kept', async () => {
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        step: 'checks',
+        descriptor: { name: 'checks', kind: 'agent' },
+        visits: [visitView({ status: 'done' })],
+      }),
+    );
+    const flow = flowView({
+      status: 'running',
+      currentStep: 'checks',
+      phases: [{ phase: 'checks', steps: [{ name: 'checks', status: 'idle', current: false, attempts: 1 }] }],
+    });
+    render(<StepWindow flow={flow} step="checks" attempts={1} now={0} onReplay={vi.fn()} onResume={vi.fn()} />, {
+      wrapper: Wrapper,
+    });
+
+    expect(await screen.findByText('Not started')).toBeInTheDocument();
+    expect(screen.queryByText('done')).toBeNull();
+  });
+
   it('offers no replay while the run is running', async () => {
     window('implement', 'running', 'done');
 

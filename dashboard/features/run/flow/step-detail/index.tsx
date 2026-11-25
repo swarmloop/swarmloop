@@ -13,7 +13,7 @@ import { slowestBeforeAttempt } from '../../transcript/prepared-wait';
 import { useStepEvents } from '../../transcript/use-step-events';
 import type { CheckCommandView } from '@contract/api';
 import { commandSummary, liveCommands as withLive, visitCommands } from '../../check-commands';
-import { shownStatus, stepText, visitChecks } from '../../step-view';
+import { stepText, visitChecks, windowLabel } from '../../step-view';
 import { useVisitLog } from '../../use-visit-log';
 import { StepDocuments } from './step-documents';
 import { StepHeader } from './step-header';
@@ -35,6 +35,7 @@ export function StepDetail({
   restartedAt,
   planRevision,
   returnWords,
+  boardStatus,
 }: {
   runKey: string;
   step: string;
@@ -55,6 +56,8 @@ export function StepDetail({
   planRevision?: PlanRevision | null;
   /** Why this step sent work back, in words from the server. */
   returnWords?: string;
+  /** The status of this step's chip on the board: `idle` over old visits means a relaunch will run it again. */
+  boardStatus?: string;
 }): React.ReactElement | null {
   const { view, attempt, setAttempt, error, loading, retry, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
@@ -88,11 +91,7 @@ export function StepDetail({
   const visit = view.visits[attempt];
   const latest = attempt === view.visits.length - 1;
   const restartWait = Boolean(restartedAt) && latest && visit?.status === 'running';
-  const label = restartWait
-    ? 'waiting'
-    : visit
-      ? shownStatus(visit.status, latest, runStatus, step, visit.decision, visit.killReason)
-      : '';
+  const label = windowLabel(restartWait, boardStatus, visit, latest, runStatus, step);
   const shownDuration =
     visit?.status === 'running' ? Math.max(0, now - Date.parse(revision)) : (visit?.durationMs ?? 0);
   const shownAttempt = visit?.attempt ?? 0;
