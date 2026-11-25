@@ -9,6 +9,7 @@ import type { PlanConversation } from '../steps/shared/plan-conversation';
 import type { CommandService } from './command.service';
 import { PlannerOwnTurn } from './planner-own-turn';
 import { PlannerTurns } from './planner-turns';
+import { asksForStarter } from '../steps/shared/starter-asks';
 import type { StartGate } from './start-gate';
 
 const AT = '2026-01-01T00:00:00.000Z';
@@ -61,6 +62,7 @@ function setup(options: {
   visit?: 'none' | 'refused' | 'outage';
   stopped?: boolean;
   submit?: () => Promise<unknown>;
+  run?: Partial<RunEntity>;
 }) {
   const chat = fakeChat(options.messages ?? [message('message-1', 'please go on')]);
   const turns = new PlannerTurns();
@@ -81,7 +83,7 @@ function setup(options: {
         ? { refused: new Error('door says no') }
         : { value: options.reply ?? { reply: 'Done.' } };
   });
-  const run = { key: 'run-1', status: 'waiting', stateReason: null } as unknown as RunEntity;
+  const run = { key: 'run-1', status: 'waiting', stateReason: null, ...options.run } as unknown as RunEntity;
   const release = jest.fn(async () => run);
   const clock = { iso: () => AT, now: () => new Date(AT) } as unknown as Clock;
   const own = new PlannerOwnTurn(
@@ -162,6 +164,19 @@ describe('PlannerOwnTurn', () => {
     expect(escalated).toHaveBeenCalledWith(expect.objectContaining({ key: 'run-1' }), escalation);
     expect(chat.entries[0].state).toBe('taken');
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("hands a subtask's escalation up as its implement's hand-up, which its parent's planner finds", async () => {
+    const { own, chat, escalated } = setup({
+      reply: { reply: 'Not mine.', escalate: 'Which database?' },
+      run: { parentRunId: 4 },
+    });
+    await own.take('run-1', idle);
+    expect(asksForStarter({ entries: chat.entries })).toMatchObject([
+      { key: 'handback-implement-message-1-0', text: 'Which database?', from: 'implement' },
+    ]);
+    expect(chat.entries[0].state).toBe('taken');
+    expect(escalated).not.toHaveBeenCalled();
   });
 
   it('writes a refused command as one line that says why, and takes the messages', async () => {

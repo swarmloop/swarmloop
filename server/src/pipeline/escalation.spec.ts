@@ -2,7 +2,7 @@ import type { PlanChatEntry } from '../contract/plan-chat';
 import { DocumentRepository } from '../history/document.repository';
 import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { RunRepository } from '../history/run.repository';
-import { closeEscalation, escalateToPerson, escalationLine } from './escalation';
+import { closeEscalation, escalateToPerson, escalationLine, isAsked } from './escalation';
 
 describe('an escalated question for the person', () => {
   const escalation: PlanChatEntry = {
@@ -52,6 +52,21 @@ describe('an escalated question for the person', () => {
 
       expect(await documents.latestBody('PROJ-1', 'questions')).toBe('- Another open line\n');
       expect(JSON.parse((await documents.latestBody('PROJ-1', 'question_parts')) ?? '[]')).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('says whether the question is among the open ones', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const run = await db.app.get(RunRepository).openWaiting('PROJ-1', '/target');
+      const documents = db.app.get(DocumentRepository);
+      expect(await isAsked(documents, run, escalation)).toBe(false);
+      await escalateToPerson(documents, run, escalation);
+      expect(await isAsked(documents, run, escalation)).toBe(true);
+      await closeEscalation(documents, run, escalation);
+      expect(await isAsked(documents, run, escalation)).toBe(false);
     } finally {
       await db.close();
     }

@@ -32,9 +32,6 @@ function questionItems(
   });
 }
 
-/** The steps whose question the planner may escalate to the person. */
-const ESCALATING_STEPS = ['implement', 'implement-improve', 'code-review'];
-
 function pasteItems(documents: DocumentEntity[], pasteUrls: string[]): FlowItem[] {
   const pending = pendingUrl(latest(documents, 'pending'));
   return pending && !pasteUrls.includes(pending) && !jiraIssueKey(pending)
@@ -64,9 +61,8 @@ export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls
         storedResult<PlanResult>(plan, documents),
       ]),
     );
-  }
-  if (ESCALATING_STEPS.includes(run.currentStep)) {
-    // A question the planner escalated to the person who started the run waits in the questions of the step that asked.
+  } else {
+    // A question the planner escalated to the person who started the run waits in the questions at the step the run is at.
     itemsOut.push(...questionItems(documents, 'questions', [], true));
   }
   if (run.split && run.currentStep === 'implement') {

@@ -2,6 +2,7 @@ import { resumableChat } from '../../agent/agent-session';
 import { isSubtask } from '../../contract/subtask';
 import type { RunEntity } from '../../history/entities';
 import type { DocumentRepository } from '../../history/document.repository';
+import type { PlanChatEntry } from '../../contract/plan-chat';
 import type { PlanChatStore } from '../../history/plan-chat.store';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
@@ -16,6 +17,7 @@ import { withAddedRepos } from '../follow-up';
 import { implementedWithoutTasks } from '../shared/amendment';
 import { planErrors } from '../shared/plan-errors';
 import type { PlanConversation } from '../shared/plan-conversation';
+import { replyEscalation } from '../shared/reply-escalation';
 import { PLAN_EXECUTION_RULE } from '../shared/skill-prompt';
 import { storedImpact } from '../shared/research-reads';
 import { storedGraph } from '../shared/stored-graph';
@@ -83,6 +85,25 @@ async function replyRoute(
 }
 
 /**
+ * Marks the answered messages taken. A run without a parent first writes what the planner could not settle for the
+ * person, as the pending escalation of its first message; the drive puts it to them.
+ */
+async function takeMessages(
+  deps: MessageDeps,
+  key: string,
+  pending: readonly PlanChatEntry[],
+  reply: PlanReplyResult,
+  hasParent: boolean,
+): Promise<void> {
+  const escalation = hasParent ? null : replyEscalation(reply.escalate, pending[0], deps.conversation.clock.iso());
+  if (escalation) await deps.planChat.appendEntry(key, escalation);
+  await deps.planChat.markTaken(
+    key,
+    pending.map((message) => message.key),
+  );
+}
+
+/**
  * The messages a person sent are answered in the plan's own chat, with the reply the planner gives. Null when none is
  * waiting, or when there is no plan or no plan chat yet: the message then waits for the first plan, and plan-improve sends the run back.
  */
@@ -124,10 +145,7 @@ export async function answerMessages(deps: MessageDeps | null, ctx: ModelStepCon
     return { reply, applied: await conversation.applyReply(ctx, reply, reason) };
   });
   const { reply, applied } = answered;
-  await planChat.markTaken(
-    run.key,
-    pending.map((message) => message.key),
-  );
+  await takeMessages(deps, run.key, pending, reply, parent !== null);
   if (parent) {
     const author = pending.find((message) => message.author)?.author ?? null;
     await tellParent(deps, ctx, parent.run, { author, message: reason, reply: reply.reply });

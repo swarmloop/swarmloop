@@ -15,6 +15,15 @@ export function escalationLine(escalation: PlanChatEntry): string {
   return `${step} asks: ${text} (asked ${escalation.at})`;
 }
 
+/** True when the escalated question is among the run's open questions. */
+export async function isAsked(
+  documents: DocumentRepository,
+  run: RunEntity,
+  escalation: PlanChatEntry,
+): Promise<boolean> {
+  return (await openLines(documents, run)).includes(escalationLine(escalation));
+}
+
 /** Puts the escalated question into the run's `questions` document with its parts, so the run waits for the person. */
 export async function escalateToPerson(
   documents: DocumentRepository,

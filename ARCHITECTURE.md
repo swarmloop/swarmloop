@@ -359,7 +359,8 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 - question parts and holds;
 - the answers route.
 
-A part's starter answer escalates on main (`starter-answer.ts`, `StarterExchange`). One gap remains: an escalation in a top-level run's message reply can be dropped; message-escalation closes it.
+A part's starter answer escalates by the chain of f124 (`starter-answer.ts`, `StarterExchange`).
+Every other planner answer, a step's question and a reply to a message on any path (the plan step's `answerMessages`, f129's own turn), has its `escalate` read by one function (`steps/shared/reply-escalation.ts`). It goes up only through `pipeline/escalation.ts`: `PlannerTurns.raise` puts the entry the plan step wrote to the person or, on a backlog run, to the backlog planner first. A subtask's message escalation is a `StarterExchange` hand-up for its epic's planner. A person's message has no step to read the planner's answer, so that answer is a taken line of the chat.
 
 They join in one path after M1 (one-question-path).
 
