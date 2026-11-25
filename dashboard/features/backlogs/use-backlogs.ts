@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BacklogView } from '@contract/backlog';
 import { listBacklogs } from '../../lib/backlog-endpoints';
-import { useLiveBridge } from '../shell';
+import { useLiveBridge, useOnReconnect } from '../shell';
 
 interface BacklogsState {
   backlogs: BacklogView[];
@@ -12,7 +12,7 @@ interface BacklogsState {
   error: string | null;
 }
 
-/** The backlogs, loaded again when any backlog's stamp moves. */
+/** The backlogs, loaded again when any backlog's stamp moves and after a reconnect. */
 export function useBacklogs(): BacklogsState {
   const stamp = useLiveBridge((snapshot) =>
     Object.values(snapshot.backlogStamps).reduce((sum, value) => sum + value, 0),
@@ -26,6 +26,11 @@ export function useBacklogs(): BacklogsState {
       void client.invalidateQueries({ queryKey: ['backlogs'] });
     }
   }, [client, stamp]);
+  useOnReconnect(
+    useCallback(() => {
+      void client.invalidateQueries({ queryKey: ['backlogs'] });
+    }, [client]),
+  );
   return {
     backlogs: query.data ?? [],
     loaded: query.data !== undefined,

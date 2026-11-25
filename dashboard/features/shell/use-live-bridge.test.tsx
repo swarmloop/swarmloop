@@ -237,4 +237,29 @@ describe('useLiveBridge', () => {
     act(() => receive('run', { rows: [runSummary()], removed: [], counts }));
     expect(screen.getByText('backlogs {"shop":1,"api":2}')).toBeInTheDocument();
   });
+
+  it('applies a usage event to the held row and keeps the latest entry per run', () => {
+    function Usage() {
+      const runs = useLiveBridge((snapshot) => snapshot.runs);
+      const usage = useLiveBridge((snapshot) => snapshot.usage);
+      return (
+        <div>
+          {runs.map((run) => (
+            <p key={run.key}>usd {run.usd}</p>
+          ))}
+          <p>tokens {usage['run-1']?.tokens ?? 'none'}</p>
+        </div>
+      );
+    }
+    render(<Usage />, { wrapper: LiveBridgeProvider });
+    act(() => receive('runs', runsPage([{ ...runSummary(), usd: 1 }], { part: 'active' })));
+    expect(screen.getByText('usd 1')).toBeInTheDocument();
+    expect(screen.getByText('tokens none')).toBeInTheDocument();
+
+    act(() => receive('usage', { key: 'run-1', tokens: 5, usd: 2, cpuPeak: 0, memPeak: 0 }));
+    act(() => receive('usage', { key: 'run-1', tokens: 9, usd: 2.5, cpuPeak: 0, memPeak: 0 }));
+
+    expect(screen.getByText('usd 2.5')).toBeInTheDocument();
+    expect(screen.getByText('tokens 9')).toBeInTheDocument();
+  });
 });

@@ -34,10 +34,9 @@ import { STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
 import { latest, metrics, phases, returns, runName } from './run-view/flow';
 import { reason, sentence, withSkip } from './run-view/flow-waiting';
-import { belongsToVisit, documentView, interruptionOf, taskView, withReturnNotes } from './run-view/documents';
+import { belongsToVisit, documentView, interruptionOf, withReturnNotes } from './run-view/documents';
 import { mergeRequestViews } from './run-view/merge-requests';
 import { ARTIFACTS } from '../steps/contract/artifacts';
-import { taskRuns } from './run-view/task-runs';
 import { shownRun } from './run-view/own-state';
 import { ReviewerSteps } from './run-view/reviewer-steps';
 import { visitKey } from '../contract/visit-key';
@@ -58,7 +57,7 @@ import { viewTitle } from './run-view/run-title';
 import type { Part, RunsPage } from '../contract/run-list';
 import { RunListRows } from './run-list-rows';
 import { EtaSummary } from './eta-summary';
-import { liveRunOf, runViewEta, taskEtas } from './run-view/run-eta';
+import { tasksAndEta, type TaskSection, type TaskSources } from './run-queries-tasks';
 import { pageOf } from './run-list-page';
 import { readHistory } from './run-queries-history';
 import { openSpend, spentUsd } from './run-queries-spend';
@@ -122,25 +121,8 @@ export class RunQueriesService {
     const run = await requireRun(this.runs, key);
     const documents = await this.documents.listDocuments(run.id);
     const stats = await this.visits.listStats(run.id);
-    const pastes = await this.checkouts.listPastes(key);
     const launches = await this.flows.listFlows(run.id);
-    const open = await this.holds.mark(
-      run,
-      openItems(
-        run,
-        documents,
-        pastes.map((paste) => paste.url),
-      ),
-      documents,
-    );
-    const shown = shownRun(run, (held) => this.pipeline.claimed(held));
-    const state = await runState(
-      this.commands,
-      shown,
-      open,
-      parkedConflictIn(documents, run),
-      runPlace(this.gate.agentWait(run.key)),
-    );
+    const { open, shown, state } = await this.ownState(run, documents);
     const maxReturns = this.config.env.MAX_RETURNS;
     const reportMs = await this.visits.codeReviewReportMs(run.id);
     const children = await this.runs.children(run);
@@ -165,7 +147,7 @@ export class RunQueriesService {
       ...(label ? { backlog: label } : {}),
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
       ...(run.ownerSince ? { ownerSince: run.ownerSince } : {}),
-      ...(await this.tasksAndEta(run, documents, children, state)),
+      ...(await tasksAndEta(this.taskSources(), run, documents, children, state)),
       ...epicTotal(shown, children, this.usdOf, this.clock.now()),
       ...state,
       conversation: conversationView({
@@ -210,35 +192,54 @@ export class RunQueriesService {
     };
   }
 
-  /** The tasks of the run page and the ETA of the run, from one reading of the waits, so the header and the Tasks section agree. */
-  private async tasksAndEta(
-    run: RunEntity,
-    documents: DocumentEntity[],
-    children: RunEntity[],
-    own: Pick<FlowView, 'state' | 'stateReason'>,
-  ): Promise<Pick<FlowView, 'tasks' | 'taskLine' | 'mergeQueue' | 'decisions' | 'eta'>> {
-    await this.waitLog.settled();
-    const table = await this.etaSummary.table();
-    const waits = await this.waitLog.waitsOf([run.id, ...children.map((child) => child.id)]);
-    const sources = { documents: this.documents, commands: this.commands };
-    const { runs, lives } = await taskRuns(
-      this.runs,
-      this.visits,
-      children,
-      documents,
-      this.pipeline,
-      sources,
-      waits,
-      this.live,
-      (key) => runPlace(this.gate.agentWait(key)),
-    );
-    const plan = parseSubtasks(latest(documents, SUBTASKS_KIND));
-    const now = this.clock.now();
-    const parallel = this.config.env.SUBTASKS_PARALLEL;
-    const eta = runViewEta(liveRunOf(run, own, waits.get(run.id) ?? []), plan, lives, table, parallel, now);
+  /** The task section of the run page: its tasks, ETA and epic total, built as `flow` builds them. */
+  async tasks(key: string): Promise<TaskSection> {
+    const run = await requireRun(this.runs, key);
+    const documents = await this.documents.listDocuments(run.id);
+    const children = await this.runs.children(run);
+    const { shown, state } = await this.ownState(run, documents);
     return {
-      ...taskView(documents, run.currentStep, runs, taskEtas(plan, lives, table, now)),
-      ...(eta ? { eta } : {}),
+      ...(await tasksAndEta(this.taskSources(), run, documents, children, state)),
+      ...epicTotal(shown, children, this.usdOf, this.clock.now()),
+    };
+  }
+
+  /** The open items, the run as shown and the state of a run, read the same way for the page and its task section. */
+  private async ownState(run: RunEntity, documents: DocumentEntity[]) {
+    const pastes = await this.checkouts.listPastes(run.key);
+    const open = await this.holds.mark(
+      run,
+      openItems(
+        run,
+        documents,
+        pastes.map((paste) => paste.url),
+      ),
+      documents,
+    );
+    const shown = shownRun(run, (held) => this.pipeline.claimed(held));
+    const state = await runState(
+      this.commands,
+      shown,
+      open,
+      parkedConflictIn(documents, run),
+      runPlace(this.gate.agentWait(run.key)),
+    );
+    return { open, shown, state };
+  }
+
+  private taskSources(): TaskSources {
+    return {
+      runs: this.runs,
+      visits: this.visits,
+      documents: this.documents,
+      commands: this.commands,
+      pipeline: this.pipeline,
+      live: this.live,
+      gate: this.gate,
+      config: this.config,
+      clock: this.clock,
+      waitLog: this.waitLog,
+      etaSummary: this.etaSummary,
     };
   }
 

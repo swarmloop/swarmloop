@@ -4,14 +4,14 @@ import { useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { StepEvent } from '@contract/step-events';
 import { getStepEvents } from '../../../lib/endpoints';
-import { useLiveBridge } from '../../shell';
+import { useLiveBridge, useOnReconnect } from '../../shell';
 
 const POLL_MS = 3000;
 
 /**
  * Every event of a step (of the run when `step` is null), in `seq` order. `events` is null while they load, and when there is no cursor yet. The list is read once;
  * after that only the events past the last held `seq` are read and appended. They are read when the cursor moves, when the live socket says the step appended
- * events, and every 3 s while `running` with the socket down.
+ * events, after a reconnect, and every 3 s while `running` with the socket down.
  */
 export function useStepEvents(
   runKey: string,
@@ -54,6 +54,8 @@ export function useStepEvents(
       refresh();
     }
   }, [refresh, pushed, runKey, step]);
+  // A reconnect may follow missed events.
+  useOnReconnect(refresh);
   useEffect(() => {
     if (!running || connected) {
       return;

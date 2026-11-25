@@ -6,11 +6,12 @@ import { getFlow, getRunLog } from '../../lib/endpoints';
 import { openElapsed, visitStored } from '../../lib/elapsed';
 import { useLiveActions, useLiveBridge } from '../shell';
 import { useRunCommands } from './use-run-commands';
+import { withUsage } from './flow-usage';
 import { applyFlow, applyReviewLog, type FlowMemory } from './flow-state';
 import { pipelineStepOf, REVIEW_STEPS, type PhaseName } from '@contract/steps';
 import { reviewChipStatus } from '@contract/readable-log-review';
 import type { FlowView } from '@contract/api';
-import type { LiveLog } from '@contract/live';
+import type { LiveLog, LiveRunUsage } from '@contract/live';
 
 export function useRunFlow(runKey: string): {
   flow: FlowView | null;
@@ -47,11 +48,13 @@ export function useRunFlow(runKey: string): {
   const [now, setNow] = useState(() => Date.now());
   const liveFlow = useLiveBridge((snapshot) => snapshot.flow);
   const logs = useLiveBridge((snapshot) => snapshot.logs);
+  const usage = useLiveBridge((snapshot) => snapshot.usage);
   const { watchRun } = useLiveActions();
 
   const generation = useRef(0);
   const seenFlow = useRef<FlowView | null>(null);
   const seenLogs = useRef(new WeakSet<LiveLog>());
+  const seenUsage = useRef(new WeakSet<LiveRunUsage>());
 
   const applyBody = (body: FlowView | null): void => {
     const mine = generation.current;
@@ -83,6 +86,8 @@ export function useRunFlow(runKey: string): {
     generation.current += 1;
     const mine = generation.current;
     memory.current = { ...memory.current, openReviews: [] };
+    // An entry held before this load is older than the page about to be fetched: only later entries apply.
+    Object.values(usage).forEach((entry) => seenUsage.current.add(entry));
     watchRun(runKey);
     getFlow(runKey)
       .then((body) => {
@@ -123,6 +128,20 @@ export function useRunFlow(runKey: string): {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- applyBody is rebuilt every render; the effect follows the live data
   }, [liveFlow, logs, runKey]);
+
+  useEffect(() => {
+    // A number is applied to this page's own state, once, for the run and for each of its tasks' runs.
+    if (!flow) {
+      return;
+    }
+    const keys = [flow.key, ...(flow.tasks ?? []).flatMap((task) => (task.run ? [task.run.key] : []))];
+    const fresh = keys.flatMap((key) => (usage[key] && !seenUsage.current.has(usage[key]) ? [usage[key]] : []));
+    if (fresh.length === 0) {
+      return;
+    }
+    fresh.forEach((entry) => seenUsage.current.add(entry));
+    setFlow((current) => (current ? fresh.reduce(withUsage, current) : current));
+  }, [usage, flow]);
 
   useEffect(() => {
     // An epic waiting for subtasks is not running, but its estimate still counts down.

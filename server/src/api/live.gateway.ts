@@ -1,4 +1,4 @@
-import { Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   OnGatewayConnection,
   OnGatewayInit,
@@ -7,10 +7,10 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { FlowView } from '../contract/api';
-import { ClientToServerEvents, LiveEvents, ServerToClientEvents } from '../contract/live';
+import { ClientToServerEvents, LiveEvents, LiveRunUsage, ServerToClientEvents } from '../contract/live';
 import { RunQueriesService } from '../api/run-queries.service';
 import { filterRuns } from '../contract/run-list';
+import { LiveFlowRooms, room } from './live-flow-rooms';
 import { RunListChanges } from './run-list-changes';
 import { pageOf } from './run-list-page';
 import { RunListRows } from './run-list-rows';
@@ -23,6 +23,7 @@ import { allowedOrigins, originAllowed } from '../live/origins';
 import { AuthService } from '../auth/auth.service';
 import { ContainerGate } from '../sandbox/container-gate';
 import { isAllowedHost } from './allowed-hosts';
+import { RunUsageReader } from './run-usage';
 
 /** Changes within this window go out as one `run` event. */
 const BATCH_MS = 100;
@@ -53,18 +54,24 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
   private readonly logger = new Logger(LiveGateway.name);
   private readonly stop: Array<() => void> = [];
   private readonly changes = new RunListChanges();
+  private readonly flows: LiveFlowRooms;
   private readonly batch = new Set<string>();
+  /** Keys whose spend, tokens or peaks moved in this batch; they send a `usage` event, not a page. */
+  private readonly spent = new Set<string>();
   private batchTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly eventWindows = new Map<string, { timer: ReturnType<typeof setTimeout>; latest: LiveEvents }>();
 
   constructor(
     private readonly hub: LiveHub,
-    private readonly runs: RunQueriesService,
+    runs: RunQueriesService,
     private readonly auth: AuthService,
     private readonly gate: ContainerGate,
     private readonly rows: RunListRows,
     private readonly clock: Clock,
-  ) {}
+    private readonly usage: RunUsageReader,
+  ) {
+    this.flows = new LiveFlowRooms(runs, () => this.server);
+  }
 
   /** A socket needs the session cookie or a personal token, like a request. */
   afterInit(server: Server): void {
@@ -78,8 +85,8 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
   }
 
   onModuleInit(): void {
-    this.stop.push(this.hub.onChanged((key) => this.queue(key)));
-    this.stop.push(this.hub.onSpend((key) => this.queue(key)));
+    this.stop.push(this.hub.onChanged((key) => this.queue(key, this.batch)));
+    this.stop.push(this.hub.onSpend((key) => this.queue(key, this.spent)));
     this.stop.push(
       this.hub.onLog((entry) => {
         if (this.server.sockets.adapter.rooms.has(room(entry.key))) {
@@ -97,6 +104,9 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       stop();
     }
     clearTimeout(this.batchTimer);
+    this.batch.clear();
+    this.spent.clear();
+    this.flows.clear();
     for (const { timer } of this.eventWindows.values()) {
       clearTimeout(timer);
     }
@@ -122,10 +132,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       }
     }
     await client.join(room(key));
-    const flow = await this.flowOf(key);
-    if (flow) {
-      client.emit('flow', flow);
-    }
+    await this.flows.watch(client, key);
   }
 
   /** At most one `events` message per run in a 500 ms window; the window ends with the latest entry. */
@@ -145,49 +152,43 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     this.eventWindows.set(entry.key, opened);
   }
 
-  private queue(key: string): void {
-    this.batch.add(key);
+  private queue(key: string, into: Set<string>): void {
+    into.add(key);
     this.batchTimer ??= setTimeout(() => {
       const keys = [...this.batch];
+      const spent = [...this.spent];
       this.batch.clear();
+      this.spent.clear();
       this.batchTimer = undefined;
-      markEntered(`live update ${keys.join(', ')}`);
-      void this.publish(keys);
+      markEntered(`live update ${[...new Set([...keys, ...spent])].join(', ')}`);
+      void this.publish(keys, spent);
     }, BATCH_MS);
   }
 
-  /** Sends the changed rows to every socket and the flow of each run, and of its parent, to the room that watches it. Nothing without a socket. */
-  private async publish(keys: string[]): Promise<void> {
+  /**
+   * Sends the changed rows to every socket and the flow of each run, and of its parent, to the room that watches it,
+   * then one `usage` event per spent key. A spent key builds no flow. Nothing without a socket.
+   */
+  private async publish(keys: string[], spent: string[]): Promise<void> {
     if (this.server.sockets.sockets.size === 0) {
       return;
     }
     const started = this.clock.now();
     try {
-      const { view, recomputed } = await this.rows.read();
-      const { rows, removed } = this.changes.since(view, keys);
-      if (rows.length > 0 || removed.length > 0) {
-        this.server.emit('run', { rows, removed, counts: filterRuns(view.runs, '', 'all').counts });
-      }
-      // A subtask's step, cost and time show on its parent's page.
-      const watched = new Set<string>();
-      for (const key of keys) {
-        watched.add(key);
-        const parentKey = view.runs.find((row) => row.key === key)?.parentKey;
-        if (parentKey) {
-          watched.add(parentKey);
+      const { recomputed, built } = keys.length > 0 ? await this.publishChanged(keys) : { recomputed: 0, built: 0 };
+      const sent = new Map<string, LiveRunUsage>();
+      for (const key of spent) {
+        for (const entry of await this.usage.entries(key)) {
+          sent.set(entry.key, entry);
         }
       }
-      let built = 0;
-      for (const key of watched) {
-        if (this.server.sockets.adapter.rooms.has(room(key))) {
-          built += 1;
-          await this.emitFlow(key);
-        }
+      for (const entry of sent.values()) {
+        this.server.emit('usage', entry);
       }
       const took = this.clock.now() - started;
       if (took > SLOW_PUBLISH_MS) {
         this.logger.warn(
-          `live update of ${keys.join(', ')} took ${took} ms, recomputed ${recomputed} rows and built ${built} flows`,
+          `live update of ${[...new Set([...keys, ...spent])].join(', ')} took ${took} ms, recomputed ${recomputed} rows and built ${built} flows`,
         );
       }
     } catch (error) {
@@ -196,25 +197,54 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     }
   }
 
-  private async emitFlow(key: string): Promise<void> {
-    const flow = await this.flowOf(key);
-    if (flow) {
-      this.server.to(room(key)).emit('flow', flow);
+  /** The `run` event for the changed keys and the flows of the watched rooms; how many rows were recomputed and flows built. */
+  private async publishChanged(keys: string[]): Promise<{ recomputed: number; built: number }> {
+    const { view, recomputed } = await this.rows.read();
+    const { rows, removed } = this.changes.since(view, keys);
+    if (rows.length > 0 || removed.length > 0) {
+      this.server.emit('run', { rows, removed, counts: filterRuns(view.runs, '', 'all').counts });
     }
-  }
-
-  private async flowOf(key: string): Promise<FlowView | null> {
-    try {
-      return await this.runs.flow(key);
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        return null;
+    this.flows.prune();
+    let built = 0;
+    for (const key of keys) {
+      if (this.watched(key)) {
+        built += 1;
+        await this.flows.publish(key);
       }
-      throw error;
+    }
+    // A subtask's step, cost and time show on its parent's page as its task section and figures.
+    for (const parent of this.parentsToRefresh(keys, view.runs)) {
+      if (this.flows.has(parent)) {
+        await this.refreshTasks(parent);
+      } else {
+        built += 1;
+        await this.flows.publish(parent);
+      }
+    }
+    return { recomputed, built };
+  }
+
+  private watched(key: string): boolean {
+    return this.server.sockets.adapter.rooms.has(room(key));
+  }
+
+  /** The watched parents of the changed keys that did not change themselves, each once. */
+  private parentsToRefresh(keys: string[], runs: Array<{ key: string; parentKey?: string }>): Set<string> {
+    const parents = new Set<string>();
+    for (const key of keys) {
+      const parentKey = runs.find((row) => row.key === key)?.parentKey;
+      if (parentKey && !keys.includes(parentKey) && this.watched(parentKey)) {
+        parents.add(parentKey);
+      }
+    }
+    return parents;
+  }
+
+  private async refreshTasks(parent: string): Promise<void> {
+    const entry = (await this.usage.entries(parent)).find((item) => item.key === parent);
+    if (entry) {
+      const { tokens, usd, cpuPeak, memPeak } = entry;
+      await this.flows.publishTasks(parent, { tokens, usd, cpuPeak, memPeak });
     }
   }
-}
-
-function room(key: string): string {
-  return `run:${key}`;
 }

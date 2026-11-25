@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BacklogView } from '@contract/backlog';
 import type { BacklogChatView } from '@contract/backlog-chat';
 import { getBacklog, getBacklogChat } from '../../lib/backlog-endpoints';
 import { getSession } from '../../lib/endpoints';
-import { useBacklogStamp } from '../shell';
+import { useBacklogStamp, useOnReconnect } from '../shell';
 
 interface Loaded {
   view: BacklogView;
@@ -22,7 +22,7 @@ interface BacklogState {
   onChat: (chat: BacklogChatView) => void;
 }
 
-/** One backlog with its chat and the signed-in login; the view and chat load again when its stamp moves. */
+/** One backlog with its chat and the signed-in login; the view and chat load again when its stamp moves and after a reconnect. */
 export function useBacklog(name: string): BacklogState {
   const stamp = useBacklogStamp(name);
   const client = useQueryClient();
@@ -44,6 +44,11 @@ export function useBacklog(name: string): BacklogState {
       void client.invalidateQueries({ queryKey: ['backlog', name] });
     }
   }, [client, name, stamp]);
+  useOnReconnect(
+    useCallback(() => {
+      void client.invalidateQueries({ queryKey: ['backlog', name] });
+    }, [client, name]),
+  );
   const keep = (change: Partial<Loaded>): void => {
     client.setQueryData<Loaded>(key, (current) => (current ? { ...current, ...change } : current));
   };

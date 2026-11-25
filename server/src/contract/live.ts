@@ -33,6 +33,17 @@ export interface LiveEvents {
   seq: number;
 }
 
+/** A run's spend, tokens and peaks as totals (stored plus open), sent apart from the run page. The client replaces numbers, never adds. */
+export interface LiveRunUsage {
+  key: string;
+  tokens: number;
+  usd: number;
+  cpuPeak: number;
+  memPeak: number;
+  /** Set only on a run with subtask runs. */
+  epic?: { usd: number; durationMs: number };
+}
+
 /** Type aliases, not interfaces: socket.io's EventsMap needs an index signature that interfaces lack. */
 export type ServerToClientEvents = {
   runs: (page: RunsPage) => void;
@@ -42,6 +53,7 @@ export type ServerToClientEvents = {
   events: (entry: LiveEvents) => void;
   server: (state: ServerState) => void;
   backlog: (entry: LiveBacklog) => void;
+  usage: (entry: LiveRunUsage) => void;
 };
 
 export type ClientToServerEvents = {

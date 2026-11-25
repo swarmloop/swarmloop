@@ -240,4 +240,87 @@ describe('useRunFlow', () => {
       vi.useRealTimers();
     }
   });
+
+  it('applies a usage event to its own flow once, for its run and for a task run, never to another run', async () => {
+    const withTask = flowView({
+      tasks: [
+        {
+          id: 'a',
+          index: 0,
+          title: 'a',
+          files: [],
+          proof: '',
+          depends: [],
+          status: 'running',
+          run: { key: 'run-1-a', state: 'running', currentStep: 'implement', usd: 1, durationMs: 0 },
+        },
+      ],
+    });
+    vi.mocked(getFlow).mockResolvedValue(withTask);
+    function Numbers() {
+      const { flow } = useRunFlow('run-1');
+      return flow ? (
+        <p>
+          {flow.metrics.usd}/{flow.metrics.tokens}/{flow.tasks?.[0]?.run?.usd}
+        </p>
+      ) : null;
+    }
+    render(<Numbers />, { wrapper: LiveBridgeProvider });
+    await screen.findByText('0/0/1');
+
+    act(() => receive('usage', { key: 'run-1', tokens: 40, usd: 2, cpuPeak: 0, memPeak: 0 }));
+    expect(await screen.findByText('2/40/1')).toBeInTheDocument();
+    act(() => receive('usage', { key: 'run-1-a', tokens: 5, usd: 4, cpuPeak: 0, memPeak: 0 }));
+    expect(await screen.findByText('2/40/4')).toBeInTheDocument();
+    act(() => receive('usage', { key: 'other', tokens: 1, usd: 9, cpuPeak: 0, memPeak: 0 }));
+
+    expect(screen.getByText('2/40/4')).toBeInTheDocument();
+  });
+
+  it('does not lay a usage entry held before the load over the fetched numbers, and still applies a later one', async () => {
+    const task = {
+      id: 'a',
+      index: 0,
+      title: 'a',
+      files: [],
+      proof: '',
+      depends: [],
+      status: 'running' as const,
+      run: { key: 'run-1-a', state: 'running' as const, currentStep: 'implement', usd: 9, durationMs: 0 },
+    };
+    const fetched = flowView({ tasks: [task] });
+    vi.mocked(getFlow).mockResolvedValue({ ...fetched, metrics: { ...fetched.metrics, usd: 7, tokens: 700 } });
+    function Numbers({ show }: { show: boolean }) {
+      return show ? <Page /> : <p>held</p>;
+    }
+    function Page() {
+      const { flow, reload } = useRunFlow('run-1');
+      return (
+        <div>
+          {flow ? (
+            <p>
+              {flow.metrics.usd}/{flow.metrics.tokens}/{flow.tasks?.[0]?.run?.usd}
+            </p>
+          ) : null}
+          <button onClick={reload}>Retry</button>
+        </div>
+      );
+    }
+    const view = render(<Numbers show={false} />, { wrapper: LiveBridgeProvider });
+    act(() => receive('usage', { key: 'run-1', tokens: 40, usd: 2, cpuPeak: 0, memPeak: 0 }));
+    act(() => receive('usage', { key: 'run-1-a', tokens: 5, usd: 4, cpuPeak: 0, memPeak: 0 }));
+
+    view.rerender(<Numbers show />);
+    await screen.findByText(/\/\d+\/9/);
+    await act(async () => {});
+    expect(screen.getByText('7/700/9')).toBeInTheDocument();
+
+    act(() => screen.getByText('Retry').click());
+    await screen.findByText(/\/\d+\/9/);
+    await act(async () => {});
+    expect(screen.getByText('7/700/9')).toBeInTheDocument();
+
+    act(() => receive('usage', { key: 'run-1', tokens: 800, usd: 8, cpuPeak: 0, memPeak: 0 }));
+    expect(await screen.findByText('8/800/9')).toBeInTheDocument();
+  });
 });

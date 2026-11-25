@@ -4,6 +4,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { AuthService } from '../auth/auth.service';
 import { Clock } from '../core/clock';
+import { PipelineService } from '../pipeline/pipeline.service';
+import { RunUsageReader } from './run-usage';
 import { BacklogRepository } from '../history/backlog.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -164,6 +166,7 @@ describe('RunListRows', () => {
         new ContainerGate(),
         app.get(RunListRows),
         app.get(Clock),
+        new RunUsageReader(app.get(RunRepository), app.get(VisitRepository), app.get(PipelineService), app.get(Clock)),
       );
       const told: Array<[string, unknown]> = [];
       await gateway.handleConnection({ emit: (name: string, entry: unknown) => told.push([name, entry]) } as never);

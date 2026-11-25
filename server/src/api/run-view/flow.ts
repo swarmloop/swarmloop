@@ -20,6 +20,27 @@ import type { OpenReviewRound } from '../../steps/shared/open-review-rounds';
 export { latest } from './status';
 import { PHASES } from './run-view.types';
 
+/** The token, cost and peak totals of a run: its stored visits plus what the open visits have used so far. */
+export function usageFigures(
+  run: RunEntity,
+  stats: StepStatEntity[],
+  live: LiveUsage,
+  peaks: { cpuPeak: number; memPeak: number },
+): Pick<FlowView['metrics'], 'tokens' | 'usd' | 'cpuPeak' | 'memPeak'> {
+  return {
+    tokens: stats.reduce((sum, stat) => sum + stat.tokensIn + stat.tokensOut, 0) + live.tokensIn + live.tokensOut,
+    usd: run.spentUsd + live.usd,
+    cpuPeak: Math.max(
+      stats.reduce((peak, stat) => Math.max(peak, stat.cpuPeak), 0),
+      peaks.cpuPeak,
+    ),
+    memPeak: Math.max(
+      stats.reduce((peak, stat) => Math.max(peak, stat.memPeak), 0),
+      peaks.memPeak,
+    ),
+  };
+}
+
 export function metrics(
   run: RunEntity,
   stats: StepStatEntity[],
@@ -32,19 +53,10 @@ export function metrics(
     status: run.status,
     durationMs: activeDurationMs(toDurationParts(stats, reportMs)),
     closedStarts: wall.flatMap((stat) => (stat.stepStartedAt ? [stat.stepStartedAt] : [])),
-    tokens: stats.reduce((sum, stat) => sum + stat.tokensIn + stat.tokensOut, 0) + live.tokensIn + live.tokensOut,
-    usd: run.spentUsd + live.usd,
     attemptsReview: run.attemptsReview,
     attemptsPipeline: run.attemptsPipeline,
     attemptsChecks: run.attemptsChecks,
-    cpuPeak: Math.max(
-      stats.reduce((peak, stat) => Math.max(peak, stat.cpuPeak), 0),
-      peaks.cpuPeak,
-    ),
-    memPeak: Math.max(
-      stats.reduce((peak, stat) => Math.max(peak, stat.memPeak), 0),
-      peaks.memPeak,
-    ),
+    ...usageFigures(run, stats, live, peaks),
   };
 }
 
