@@ -88,6 +88,13 @@ export class RunRepository {
     await this.runs.update({ id: parent.id }, { subtaskFingerprint });
   }
 
+  /** Merges the base tips of some repositories into the run's own, without a run change. A key with no run changes nothing. */
+  async recordBaseTips(key: string, tips: Record<string, string>): Promise<void> {
+    const row = await this.runs.findOne({ where: { key }, select: { id: true, baseTips: true } });
+    if (!row) return;
+    await this.runs.update({ id: row.id }, { baseTips: { ...row.baseTips, ...tips } });
+  }
+
   /** Stores the title in a single statement and tells the dashboard. */
   async recordTitle(run: RunEntity, title: string): Promise<void> {
     await this.runs.update({ id: run.id }, titleColumns(title));

@@ -1,3 +1,4 @@
+import { BaseTips } from '../steps/shared/base-tips';
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
@@ -94,7 +95,7 @@ export class SubtaskPort extends SubtaskOps {
     @Optional() holds?: QuestionHolds,
   ) {
     super();
-    this.worktrees = new SubtaskWorktrees(config, clock, publisher);
+    this.worktrees = new SubtaskWorktrees(config, clock, new BaseTips(runs, documents), publisher);
     const planning =
       conversation ?? new PlanConversation(door, visits, documents, config, clock, new PlanChatStore(runs, documents));
     this.asks = new SubtaskAsks(documents, commands, gate, planning, visits, runs);

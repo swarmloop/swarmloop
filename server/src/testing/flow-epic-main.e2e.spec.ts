@@ -383,6 +383,25 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
     expect((await stateOf(childKey('c'))).reason?.code).toBe(ERROR_CODES.SUBTASK_WAITING);
   });
 
+  it('an epic that takes main through a rewrite of its branch moves a part with no commit of its own onto the new tip, keeping its question, with no agent start and no commit', async () => {
+    await boot();
+    await seedEpic([task('a')], ['src/own.ts', 'export const own = 1;\n']);
+    // The part has nothing of its own: it stands on the epic's tip, as it was made.
+    git(treeOf('a'), ['reset', '--hard', `origin/${FEATURE}`]);
+    const oldTip = git(treeOf('a'), ['rev-parse', 'HEAD']);
+    await ask('a');
+    landOnMain('src/fix.ts', 'export const fix = 1;\n');
+
+    await flow.app.app.get(RunRebaseService).rebase(KEY);
+    await settleAll();
+
+    const tip = git(flow.tree, ['rev-parse', 'HEAD']);
+    expect(isIn(flow.tree, oldTip)).toBe(false);
+    expect(git(treeOf('a'), ['rev-parse', 'HEAD'])).toBe(tip);
+    expect(await waitingKept('a')).toEqual({ state: 'waiting', step: 'research', started: false });
+    expect(await documents().latestBody(childKey('a'), 'questions')).toContain('Which type are the ids?');
+  });
+
   it('an epic whose only open part waits on a question takes a new green main; the part keeps its question and its answer runs it on the new tree', async () => {
     const planner = new BlockAgentRunner({ plan: [{ block: { escalate: 'The owner must decide.' } }] });
     await boot(undefined, planner);
@@ -504,7 +523,8 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
   async function expectChecksOnNewTree(): Promise<void> {
     expect(flow.launched.filter((key) => key === childKey('b'))).toHaveLength(1);
     expect(existsSync(join(treeOf('b'), 'src', 'fix.ts'))).toBe(true);
-    expect((await stateOf(childKey('b'))).state).not.toBe('blocked');
+    // The task carries only its own commit on the pushed branch: main does not touch what it changes, so its move is clean.
+    expect(git(treeOf('b'), ['rev-parse', 'HEAD~1'])).toBe(git(flow.tree, ['rev-parse', 'HEAD']));
   }
 
   it('an epic whose own work conflicts with main has implement resolve it, checks and review judge it, then its open tasks move onto the pushed branch', async () => {

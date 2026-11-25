@@ -305,7 +305,7 @@ When `main` moves while the epic waits, the epic takes it (rule 6). A conflict g
 
 **Target.** Rule 6, one path:
 1. The base moved.
-2. Fetch it and rebase the run's branch onto it, writing a journal first.
+2. Fetch it and rebase the run's branch onto it, writing a journal first. A move carries only the run's own change: what lies between the base tip the run stands on and its head, as `git rebase --onto <new> <tip>` does, never what git's merge base adds once the base was rewritten. The tip is recorded per repository in `runs.base_tips`: when the worktree is made (prepare), after each move (written with the move, before the journal completes) and after a child catches up. A run with no recorded tip takes it, at its first move, from the journal history main already keeps: its own completed moves and its parent's heads before they moved. A run with no change of its own stands on the new tip, with no agent, no conflict and no commit.
 3. On a conflict, park it and go to implement.
 4. The conflict agent resolves it.
 5. The resolution goes through checks and review.
@@ -322,6 +322,8 @@ The journal makes a rebase that a crash cut finish or roll back. Every git opera
 6. a child catching up with its parent's branch (`subtask-worktrees.catchUp`, which only warns when it fails);
 7. the backlog merge queue (`backlog-merge.ts`);
 8. the reconciler finishing a journal (`run-settler.ts`).
+
+Every path that carries a run's change takes the one rule of step 2, `ownChangeBase` in `git/rebase/own-change.ts`. Paths 1, 2, 4, 5, 7 and 8 reach it through `rebaseFeatureRepos` and `squashOffMount` (a squash of `ownBase..HEAD` in a scratch clone, one commit with the run's message; nothing to carry means the worktree is reset to the new base). Path 6 (`catchUp`) and path 3 (`ParentTreeSync.commit`) run `git rebase --onto <new> <ownBase>`. A conflict that the squash from git's merge base parked before this rule (a journal entry with no `ownBase`) is not resolved: the worktree goes back to the head before that move and the move is taken again by the rule (`git/rebase/retake.ts`). A review stands when `sameOwnDiff` finds the carried change equal to the one reviewed, both measured from the same `ownBase`.
 
 Paths 1, 4 and 5 move an epic's open parts through one rule, `pipeline/subtask-rebases.ts` (rule 6). A part that waits on a question or a sibling moves onto the new tip and keeps its wait: the move does not start it. A stopped part stays a person's and is not moved. A clean Rebase of an epic publishes the rebased branch before its parts move, as the main move does. The one-path target above stays with base-moves.
 

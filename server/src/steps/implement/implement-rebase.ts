@@ -16,7 +16,7 @@ import { answersConflict, askConflict, inRound, resolvedResult, type RebaseDeps 
 import { settleOwnConflict } from './implement-own-conflict';
 import { ownConflictOf } from './own-conflict-marker';
 import { rebaseConflictPrompt } from './implement.prompts';
-import { takeAnswer } from './implement-question';
+import { plannerWait, takeAnswer } from './implement-question';
 
 /**
  * Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the
@@ -53,6 +53,7 @@ export async function settleRebase(
     author: await deps.author.of(ctx.opened.run),
     hosts: await deps.publisher.hostsFor(ctx.opened.run),
     journal: runJournal(deps.documents, ctx.opened.run),
+    tips: await deps.tips.known(ctx.opened.run, names),
     onBase: (repo: string, sha: string) => {
       bases.set(repo, sha);
     },
@@ -61,7 +62,13 @@ export async function settleRebase(
   const paths = names.map((repo) => worktreePath(root(deps.config), key, repo));
   let outcome: RebaseStop = await withWorktrees(paths, async () => {
     for (const repo of names) {
-      const parked = await parkedConflict(worktreePath(root(deps.config), key, repo), repo, ctx.opened.run.prompt);
+      const entry = await input.journal.entry(repo);
+      const parked = await parkedConflict(
+        worktreePath(root(deps.config), key, repo),
+        repo,
+        ctx.opened.run.prompt,
+        entry,
+      );
       if (parked) {
         return parked;
       }
@@ -69,6 +76,7 @@ export async function settleRebase(
     return rebaseFeatureRepos(input);
   });
   const seen = new Set<string>();
+  let launched = false;
   let carried = answersConflict(answer, deps.step) ? answer : null;
   while (outcome.kind === 'conflict') {
     if (!outcome.stderr.trim() && storedStderr) {
@@ -99,6 +107,7 @@ export async function settleRebase(
         answer: carried,
       })}\n`,
     );
+    launched = true;
     const resolved = await ctx.launch({
       ...workplace,
       projectFor: projectFor(deps.environments, place),
@@ -125,8 +134,15 @@ export async function settleRebase(
   }
   await withWorktrees(paths, async () => {
     await deps.environments.refreshAfterRebase(ctx.opened.run, mounts, bases);
+    await deps.tips.recordMoved(ctx.opened.run, input.journal);
     await completeRebase(input.journal, key);
   });
+  const waiting = launched ? undefined : (await deps.chat?.pendingQuestions(key))?.find((q) => q.from === deps.step);
+  if (waiting) {
+    // The move was settled by the rule with no agent: the question the run waited on before it is still its wait.
+    await ctx.write(ARTIFACTS.rebaseConflict, 'review\n');
+    return plannerWait(ctx.opened.run, { step: deps.step, startedAt: ctx.opened.startedAt, question: waiting.text });
+  }
   if (marker === 'pending-implement' && !(await inRound(ctx))) {
     await ctx.write(ARTIFACTS.rebaseConflict, 'review\n');
     return null;

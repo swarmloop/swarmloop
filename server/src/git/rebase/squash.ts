@@ -2,10 +2,13 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import { originRef, promptBase } from '../base-ref';
 import { git, gitDetail, gitMissing, gitStderr, type CommitAuthor, type CommitIdentity } from '../git';
 import type { RebaseHosts, RebaseStop } from './types';
+import { hasOwnChange } from './own-change';
 import { squashRefFor, type RebaseJournal } from './journal';
 import { cloneArgs, cloneAuthor, cloneSource, cloneUnmerged, indexDirty } from './clone-index';
 import { landConflict, resetHard } from './conflict';
 import { gitAt, rebaseStderr } from './workflow';
+
+const SCRATCH_TIME = '2000-01-01T00:00:00Z';
 
 export async function squashOffMount(input: {
   cwd: string;
@@ -20,9 +23,14 @@ export async function squashOffMount(input: {
   hosts: RebaseHosts;
   journal: RebaseJournal;
   base: string;
+  /** The commit the run's own change is measured from: only `ownBase..HEAD` is carried onto the base. */
+  ownBase: string;
 }): Promise<RebaseStop | null> {
   const baseSha = await gitAt(input.cwd, input.repo, ['rev-parse', input.base], 'rebase failed', input.hosts);
   const tipSha = await gitAt(input.cwd, input.repo, ['rev-parse', 'HEAD'], 'rebase failed', input.hosts);
+  if (!(await hasOwnChange(input.cwd, input.ownBase))) {
+    return standOnBase(input);
+  }
   try {
     await git(['-c', 'safe.directory=*', 'clone', '--shared', await cloneSource(input.cwd), input.tmp]);
     await git(cloneArgs(input.tmp, ['checkout', '--detach', baseSha]));
@@ -30,7 +38,7 @@ export async function squashOffMount(input: {
     throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(gitStderr(error), input.hosts)}`);
   }
   const author = await cloneAuthor(input.cwd, input.author);
-  const merged = await squashMerge(input.tmp, tipSha, author);
+  const merged = await carryOwnChange(input.tmp, tipSha, input.ownBase, author);
   const unmerged = await cloneUnmerged(input.tmp, input.repo, input.hosts);
   if (unmerged.length > 0) {
     return landConflict({ ...input, baseSha, message: input.message, stderr: merged });
@@ -39,8 +47,8 @@ export async function squashOffMount(input: {
     throw new SwarmloopError(`${input.repo} rebase failed: ${rebaseStderr(merged, input.hosts)}`);
   }
   if (!(await indexDirty(input.tmp, input.repo, input.hosts))) {
-    const contained = await tipInBase(input.tmp, tipSha, baseSha, input.repo, input.hosts);
-    throw new SwarmloopError(`${input.repo} rebase failed: ${contained ? 'already in the base' : 'empty squash'}`);
+    // What the run changed is already in the base: it stands on the base, with nothing to commit.
+    return standOnBase(input);
   }
   if (await sameSquash(input.tmp, tipSha, baseSha, input.message, input.repo, input.hosts)) {
     await resetHard(input.cwd, input.repo, input.hosts, input.journal, 'oldHead');
@@ -97,30 +105,35 @@ export async function baseRefFor(cwd: string, prompt: string | null, sha: string
   return originRef(names[0] ?? 'main');
 }
 
-async function squashMerge(tmp: string, tipSha: string, author: CommitIdentity): Promise<string> {
+/** A run with nothing of its own to carry stands on the new base: no clone, no conflict, no commit. */
+async function standOnBase(input: {
+  cwd: string;
+  repo: string;
+  hosts: RebaseHosts;
+  journal: RebaseJournal;
+}): Promise<null> {
+  await resetHard(input.cwd, input.repo, input.hosts, input.journal, 'baseSha');
+  return null;
+}
+
+/**
+ * Puts the change `ownBase..tipSha` on the checked out base, in the index and not committed: the way
+ * `git rebase --onto <base> <ownBase>` applies it. The change is a scratch commit of the tip's tree on `ownBase`,
+ * so the three-way merge has `ownBase` as its old side whatever history lies between it and the tip.
+ * The git message of a failure, empty when the change applied.
+ */
+async function carryOwnChange(tmp: string, tipSha: string, ownBase: string, author: CommitIdentity): Promise<string> {
   try {
-    await git(cloneArgs(tmp, [...author.args, 'merge', '--squash', tipSha]), author.env);
+    // The scratch commit has a fixed time, so its id, which git names in a conflict message, is the same on every move of the same change.
+    const fixedTime = { GIT_AUTHOR_DATE: SCRATCH_TIME, GIT_COMMITTER_DATE: SCRATCH_TIME };
+    const scratch = await git(
+      cloneArgs(tmp, [...author.args, 'commit-tree', `${tipSha}^{tree}`, '-p', ownBase, '-m', 'own change']),
+      { ...author.env, ...fixedTime },
+    );
+    await git(cloneArgs(tmp, [...author.args, 'cherry-pick', '--no-commit', scratch]), author.env);
     return '';
   } catch (error) {
     return gitStderr(error);
-  }
-}
-
-async function tipInBase(
-  tmp: string,
-  tipSha: string,
-  baseSha: string,
-  repo: string,
-  hosts: RebaseHosts,
-): Promise<boolean> {
-  try {
-    await git(cloneArgs(tmp, ['merge-base', '--is-ancestor', tipSha, baseSha]), undefined, { answers: [1] });
-    return true;
-  } catch (error) {
-    if (gitMissing(error)) {
-      return false;
-    }
-    throw new SwarmloopError(`${repo} rebase failed: ${rebaseStderr(gitStderr(error), hosts)}`);
   }
 }
 

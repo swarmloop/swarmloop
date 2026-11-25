@@ -126,4 +126,8 @@ export class RunEntity {
   /** A short title for the run, from research. Null until research stores one and for old rows. */
   @Column({ type: 'text', nullable: true })
   title!: string | null;
+
+  /** The base tip each repository of the run stands on, by repository. Null for a run made before it was recorded. */
+  @Column({ name: 'base_tips', type: 'simple-json', nullable: true })
+  baseTips!: Record<string, string> | null;
 }

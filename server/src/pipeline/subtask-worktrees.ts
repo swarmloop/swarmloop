@@ -3,7 +3,7 @@ import { Logger } from '@nestjs/common';
 import type { AppConfig } from '../config/env';
 import type { Clock } from '../core/clock';
 import { FetchFailed } from '../core/swarmloop-error';
-import { fetchBranch } from '../git/rebase';
+import { fetchBranch, ownChangeBase } from '../git/rebase';
 import { withWorktree } from '../git/worktree-lock';
 import { originRef } from '../git/base-ref';
 import { git, type CommitAuthor } from '../git/git';
@@ -12,6 +12,7 @@ import { worktreePath } from '../git/repo-names';
 import { root } from '../history/run-paths';
 import { originProject } from '../steps/pipeline/pipeline-report';
 import type { RunEntity } from '../history/entities';
+import type { BaseTips } from '../steps/shared/base-tips';
 import type { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import type { OwnEdits } from '../steps/shared/subtask-ops';
 import { status, type Tree } from '../steps/commit/commit-git';
@@ -24,6 +25,7 @@ export class SubtaskWorktrees {
   constructor(
     private readonly config: AppConfig,
     private readonly clock: Clock,
+    private readonly tips: BaseTips,
     private readonly publisher?: RebasedPublisher,
   ) {}
 
@@ -31,16 +33,23 @@ export class SubtaskWorktrees {
     return (await this.publisher?.hostsFor(run)) ?? { ...this.config.env, clock: this.clock };
   }
 
-  /** Brings the worktrees of a subtask run, edits that are not committed included, up to the feature branch as it is on origin. */
+  /**
+   * Brings the worktrees of a subtask run, edits that are not committed included, up to the feature branch as it is on
+   * origin. Only the run's own change is replayed, from the base tip it stands on, so a rewritten branch brings nothing else.
+   */
   async catchUp(run: RunEntity, repos: string[], branch: string): Promise<void> {
     const hosts = await this.hostsFor(run);
+    const known = await this.tips.known(run, repos);
     for (const repo of repos) {
       const path = worktreePath(root(this.config), run.key, repo);
       if (!existsSync(path)) continue;
       await withWorktree(path, async () => {
         if (!(await fetchBranch(path, repo, branch, hosts))) return;
+        const remote = originRef(branch);
         try {
-          await git(['-C', path, 'rebase', '--autostash', originRef(branch)]);
+          const ownBase = await ownChangeBase(path, known[repo] ?? [], remote);
+          await git(['-C', path, 'rebase', '--autostash', '--onto', remote, ownBase]);
+          await this.tips.record(run, { [repo]: await git(['-C', path, 'rev-parse', remote]) });
         } catch (error) {
           await git(['-C', path, 'rebase', '--abort']).catch(() => undefined);
           this.logger.warn(`${run.key} was not caught up: ${error instanceof Error ? error.message : String(error)}`);
@@ -63,6 +72,7 @@ export class SubtaskWorktrees {
   ): Promise<OwnEdits> {
     const hosts = await this.hostsFor(parent);
     const sync = new ParentTreeSync(this.publisher);
+    const known = await this.tips.known(parent, repos);
     const lines: string[] = [];
     let identity: Awaited<ReturnType<typeof commitAs>> | null = null;
     for (const repo of repos) {
@@ -77,7 +87,7 @@ export class SubtaskWorktrees {
       identity ??= await commitAs();
       const { message, author } = identity;
       const { paths, conflict } = await withWorktree(path, () =>
-        sync.commit(parent, { repo, path }, branch, message(repo), park, author),
+        sync.commit(parent, { repo, path }, branch, message(repo), park, author, known[repo] ?? []),
       );
       if (paths.length > 0) lines.push(`committed the parent's own edits in ${repo}: ${paths.join(', ')}`);
       if (conflict) return { committed: lines.join('; ') || null, conflict };

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, symlinkSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -168,6 +168,14 @@ export async function resetHard(
     throw new SwarmloopError(
       `${repo} rebase failed: the squash ${rev} is not what the worktree would move to (${head}); the old head is ${entry.oldHead}`,
     );
+  }
+}
+
+/** Removes the state file of a parked rebase. */
+export async function clearRebaseState(cwd: string): Promise<void> {
+  const target = await resolveGitPath(cwd, 'swarmloop-rebase');
+  if (target && existsSync(target)) {
+    unlinkSync(target);
   }
 }
 

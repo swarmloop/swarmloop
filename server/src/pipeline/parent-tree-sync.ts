@@ -1,7 +1,7 @@
 import { commitIdentity, git, originUrl, type CommitAuthor } from '../git/git';
 import { originRef } from '../git/base-ref';
 import { porcelainPaths } from '../git/commit-paths';
-import { unmergedPaths } from '../git/rebase';
+import { ownChangeBase, unmergedPaths } from '../git/rebase';
 import { mergeConflicts } from '../git/merge-tree';
 import { commitAllowed } from '../git/rebase/hidden-worktree';
 import { status, type Tree } from '../steps/commit/commit-git';
@@ -34,19 +34,22 @@ export class ParentTreeSync {
     message: string,
     park: boolean,
     author: CommitAuthor | null,
+    stood: string[] = [],
   ): Promise<TreeSync> {
     const remote = originRef(branch);
     const before = await git(['-C', tree.path, 'rev-parse', 'HEAD']);
     const paths = porcelainPaths(await status(tree));
     await commitAllowed(tree.path, tree.repo, [], message, author);
     if ((await git(['-C', tree.path, 'rev-parse', 'HEAD'])) === before) return { paths: [], conflict: null };
-    const files = await mergeConflicts(tree.path, remote);
+    // The edits and any commit the branch lacks are replayed, from the tip the worktree stood on: not what a rewritten branch left behind.
+    const ownBase = await ownChangeBase(tree.path, stood, remote);
+    const files = await mergeConflicts(tree.path, remote, ownBase);
     if (files.length > 0 && !park) {
       await git(['-C', tree.path, 'reset', '-q', before]);
       return { paths: [], conflict: await this.conflictText(tree, remote, before, files, false) };
     }
     try {
-      await git(['-C', tree.path, 'rebase', remote], (await commitIdentity(tree.path, author)).env);
+      await git(['-C', tree.path, 'rebase', '--onto', remote, ownBase], (await commitIdentity(tree.path, author)).env);
     } catch (error) {
       if (park && files.length > 0 && (await unmergedPaths(tree.path)).length > 0) {
         return { paths: [], conflict: await this.conflictText(tree, remote, before, files, true) };

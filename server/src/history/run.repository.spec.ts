@@ -36,6 +36,21 @@ describe('RunRepository', () => {
     }
   });
 
+  it('records the base tip of each repository and keeps the ones recorded before', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      const run = await runs.openWaiting('run-1', '/target');
+      expect((await runs.findRun(run.key))?.baseTips).toBeNull();
+      await runs.recordBaseTips(run.key, { web: 'aaa' });
+      await runs.recordBaseTips(run.key, { api: 'bbb' });
+      await runs.recordBaseTips('missing', { web: 'ccc' });
+      expect((await runs.findRun(run.key))?.baseTips).toEqual({ web: 'aaa', api: 'bbb' });
+    } finally {
+      await db.close();
+    }
+  });
+
   it('writes only what the copy changed, so a change made since it was read stays', async () => {
     const db = await repositoryDatabase();
     try {

@@ -9,7 +9,45 @@ import * as fetchModule from '../git/rebase/fetch';
 import { git as runGit } from '../git/git';
 import { withWorktree } from '../git/worktree-lock';
 import { featureWorktree, git } from '../testing/runs.spec-helpers';
+import type { BaseTips } from '../steps/shared/base-tips';
 import { SubtaskWorktrees } from './subtask-worktrees';
+
+/** The record of what a run stood on, kept in memory: `stood` is what it knows, `recorded` what it was told since. */
+function memoryTips(stood: string[] = []): { tips: BaseTips; recorded: Record<string, string>[] } {
+  const recorded: Record<string, string>[] = [];
+  const tips = {
+    known: (_run: RunEntity, repos: string[]) =>
+      Promise.resolve(Object.fromEntries(repos.map((repo) => [repo, stood]))),
+    record: (_run: RunEntity, tip: Record<string, string>) => {
+      recorded.push(tip);
+      return Promise.resolve();
+    },
+  } as unknown as BaseTips;
+  return { tips, recorded };
+}
+
+/**
+ * An epic branch on origin that was rewritten after `tree` took it: main moved, and the branch was made again on the new
+ * main with another `epic.ts`. Returns the tip `tree` stands on and the tip origin has now.
+ */
+function rewriteEpicOnOrigin(tree: string, clone: string, branch: string): { oldTip: string; newTip: string } {
+  writeFileSync(join(tree, 'src', 'epic.ts'), 'epic v1\n');
+  git(tree, ['add', '.']);
+  git(tree, ['commit', '-m', 'epic']);
+  const oldTip = git(tree, ['rev-parse', 'HEAD']);
+  git(tree, ['push', 'origin', `HEAD:refs/heads/${branch}`]);
+  git(clone, ['switch', 'main']);
+  writeFileSync(join(clone, 'src', 'moved.ts'), 'moved\n');
+  git(clone, ['add', '.']);
+  git(clone, ['commit', '-m', 'moved']);
+  git(clone, ['push', 'origin', 'main']);
+  git(clone, ['switch', '-c', 'epic-rewritten', 'main']);
+  writeFileSync(join(clone, 'src', 'epic.ts'), 'epic v2\n');
+  git(clone, ['add', '.']);
+  git(clone, ['commit', '-m', 'epic rewritten']);
+  git(clone, ['push', '--force', 'origin', `epic-rewritten:refs/heads/${branch}`]);
+  return { oldTip, newTip: git(clone, ['rev-parse', 'HEAD']) };
+}
 
 describe('the files a task changed by its merge', () => {
   it('lists the files of the merge commit, not the files the plan named', async () => {
@@ -25,7 +63,7 @@ describe('the files a task changed by its merge', () => {
     const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
     const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
 
-    const files = await new SubtaskWorktrees(config, clock).changedFiles(
+    const files = await new SubtaskWorktrees(config, clock, memoryTips().tips).changedFiles(
       { key: 'proj-91' } as RunEntity,
       { demo: sha },
       branch,
@@ -49,7 +87,11 @@ describe('moving the worktree of the parent to the feature branch', () => {
       return git(tree, ['rev-parse', 'HEAD']);
     };
     const run = { key: 'proj-92' } as RunEntity;
-    return { tree, commit, move: () => new SubtaskWorktrees(config, clock).fastForward(run, ['demo'], branch) };
+    return {
+      tree,
+      commit,
+      move: () => new SubtaskWorktrees(config, clock, memoryTips().tips).fastForward(run, ['demo'], branch),
+    };
   };
 
   it('moves the parent worktree to the feature branch and reports nothing', async () => {
@@ -96,7 +138,7 @@ describe('committing the own edits of the parent before it is brought to the fea
     const tip = git(tree, ['rev-parse', 'HEAD']);
     git(tree, ['reset', '--hard', 'HEAD~1']);
     const commit = (park = false) =>
-      new SubtaskWorktrees(config, clock).commitOwnEdits(
+      new SubtaskWorktrees(config, clock, memoryTips().tips).commitOwnEdits(
         { key: 'proj-93' } as RunEntity,
         ['demo'],
         branch,
@@ -191,10 +233,84 @@ describe('asking a subtask worktree for the tip while another operation holds it
       order.push('rebase-end');
     });
     await inside;
-    const behind = new SubtaskWorktrees(config, clock).behindTip(run, run, ['demo'], branch);
+    const behind = new SubtaskWorktrees(config, clock, memoryTips().tips).behindTip(run, run, ['demo'], branch);
     await hold;
 
     expect(await behind).toBeNull();
     expect(order).toEqual(['rebase-end', 'fetch-start']);
+  });
+});
+
+describe('bringing a subtask worktree up to a feature branch that was rewritten', () => {
+  const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
+
+  it('replays only the own change of the subtask on the new tip, and records that tip', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-catch-up-'));
+    const { tree, clone } = featureWorktree(root, 'proj-95');
+    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
+    const { oldTip, newTip } = rewriteEpicOnOrigin(tree, clone, 'feature/epic-ship');
+    writeFileSync(join(tree, 'src', 'part.ts'), 'part\n');
+    git(tree, ['add', '.']);
+    git(tree, ['commit', '-m', 'part']);
+    const { tips, recorded } = memoryTips([oldTip]);
+
+    await new SubtaskWorktrees(config, clock, tips).catchUp(
+      { key: 'proj-95' } as RunEntity,
+      ['demo'],
+      'feature/epic-ship',
+    );
+
+    expect(git(tree, ['rev-parse', 'HEAD~1'])).toBe(newTip);
+    expect(git(tree, ['diff', '--name-only', 'HEAD~1', 'HEAD'])).toBe('src/part.ts');
+    expect(recorded).toEqual([{ demo: newTip }]);
+  });
+
+  it('commits the own edits of the parent on the new tip without the old commits of the branch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-own-edits-rewritten-'));
+    const { tree, clone } = featureWorktree(root, 'proj-96');
+    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
+    const branch = 'feature/proj-96-ship-the-field';
+    const { oldTip, newTip } = rewriteEpicOnOrigin(tree, clone, branch);
+    writeFileSync(join(tree, 'src', 'own.ts'), 'own\n');
+
+    const result = await new SubtaskWorktrees(config, clock, memoryTips([oldTip]).tips).commitOwnEdits(
+      { key: 'proj-96' } as RunEntity,
+      ['demo'],
+      branch,
+      async () => ({ message: () => 'own edits', author: null }),
+      false,
+    );
+
+    expect(result.conflict).toBeNull();
+    expect(git(tree, ['rev-parse', 'HEAD~1'])).toBe(newTip);
+    expect(git(tree, ['diff', '--name-only', 'HEAD~1', 'HEAD'])).toBe('src/own.ts');
+  });
+
+  it('keeps a local commit of the parent that origin lacks, with its uncommitted edits', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-own-edits-ahead-'));
+    const { tree } = featureWorktree(root, 'proj-97');
+    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
+    const branch = 'feature/proj-97-ship-the-field';
+    git(tree, ['push', 'origin', `HEAD:refs/heads/${branch}`]);
+    const remoteTip = git(tree, ['rev-parse', 'HEAD']);
+    writeFileSync(join(tree, 'src', 'local.ts'), 'local\n');
+    git(tree, ['add', '.']);
+    git(tree, ['commit', '-m', 'local']);
+    writeFileSync(join(tree, 'src', 'own.ts'), 'own\n');
+
+    const result = await new SubtaskWorktrees(config, clock, memoryTips([remoteTip]).tips).commitOwnEdits(
+      { key: 'proj-97' } as RunEntity,
+      ['demo'],
+      branch,
+      async () => ({ message: () => 'own edits', author: null }),
+      false,
+    );
+
+    expect(result.conflict).toBeNull();
+    expect(git(tree, ['rev-parse', 'HEAD~2'])).toBe(remoteTip);
+    expect(git(tree, ['diff', '--name-only', 'HEAD~2', 'HEAD']).split('\n').sort()).toEqual([
+      'src/local.ts',
+      'src/own.ts',
+    ]);
   });
 });

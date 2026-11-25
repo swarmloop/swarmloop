@@ -4,3 +4,5 @@ export type { RebaseStop } from './rebase';
 export { fetchBranch, storedBase } from './fetch';
 export { completeRebase, RebaseJournal, REBASE_JOURNAL, parseJournal, unfinished, fingerprintOf } from './journal';
 export type { Journal } from './journal';
+export type { KnownTips } from './types';
+export { ownChangeBase } from './own-change';

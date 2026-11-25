@@ -56,6 +56,7 @@ export class CheckoutService {
     if (!existsSync(worktree)) {
       mkdirSync(join(root(this.kernel.config), 'worktrees', key), { recursive: true });
       await this.addWorktree(key, located, worktree, ref);
+      await this.recordTip(key, located.name, worktree);
       return located;
     }
     if (!(await this.registered(located, worktree))) {
@@ -64,12 +65,21 @@ export class CheckoutService {
       }
       rmSync(worktree, { recursive: true, force: true });
       await this.addWorktree(key, located, worktree, ref);
+      await this.recordTip(key, located.name, worktree);
       return located;
     }
     if (ref !== 'HEAD') {
       await this.align(located, worktree, ref);
+      await this.recordTip(key, located.name, worktree);
     }
     return located;
+  }
+
+  /** The base tip the run stands on: what its own change is measured from until its first move. */
+  private async recordTip(key: string, name: string, worktree: string): Promise<void> {
+    // Bookkeeping, not a step of the run: it records no command in the trace.
+    const tip = (await quietGit(worktree, ['rev-parse', 'HEAD'])).trim();
+    await this.kernel.runs.recordBaseTips(key, { [name]: tip });
   }
 
   async classified(checkout: { name: string; path: string }): Promise<CodeHostName | null> {

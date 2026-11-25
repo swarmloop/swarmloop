@@ -27,7 +27,7 @@ import { actionsFor } from '../contract/run-state';
 import { takesMain } from './shared/epic-between-passes';
 import { RebasedPublisher } from './shared/rebased-publisher';
 import type { RebaseStop } from '../git/rebase/types';
-import { forwardOwnLess } from './shared/main-forward';
+import { BaseTips } from './shared/base-tips';
 
 /** The steps that read a review or a CI result. */
 const AFTER_REVIEW: readonly string[] = ['commit', 'merge-request', 'pipeline'];
@@ -42,6 +42,8 @@ export abstract class RunRebaseEnvironment {
 
 @Injectable()
 export class RunRebase {
+  private readonly tips: BaseTips;
+
   constructor(
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
@@ -54,7 +56,9 @@ export class RunRebase {
     private readonly names: RunNames,
     private readonly author: RunAuthor,
     private readonly publisher: RebasedPublisher,
-  ) {}
+  ) {
+    this.tips = new BaseTips(runs, documents);
+  }
 
   /**
    * A reconciler resume of an unfinished journal is not a new command: it does not raise the generation. `byParent`
@@ -89,12 +93,13 @@ export class RunRebase {
     const { heads, stop } = await withWorktrees(paths, async () => {
       const heads = status === 'done' ? await this.heads(run) : new Map<string, string>();
       try {
-        const stop = await this.rebaseWorktrees(run, bases, journal, byMain);
+        const stop = await this.rebaseWorktrees(run, bases, journal);
         await this.environments.refreshAfterRebase(
           run,
           mountsForStep(root(this.config), run.key, names, run.targetPath),
           bases,
         );
+        await this.tips.recordMoved(run, journal);
         await completeRebase(journal, run.key);
         return { heads, stop };
       } catch (error) {
@@ -114,6 +119,7 @@ export class RunRebase {
       await this.startAtImplement(run);
       return 'resolve';
     }
+    await this.settleParkedMarker(run);
     if (byMain || run.split) await withWorktrees(paths, async () => this.publishRebased(key, run, names, stop.leases));
     if (stays) return 'stay';
     if (await this.checklistUnfinished(run)) {
@@ -121,11 +127,19 @@ export class RunRebase {
     }
     if (status === 'done') {
       await this.documents.putDocument(await this.requireRun(key), ARTIFACTS.rebaseMergeSkip.kind, 'skip\n');
-      const stands = await withWorktrees(paths, () => this.reviewStands(run, heads, bases));
+      const stands = await withWorktrees(paths, () => this.reviewStands(run, heads, bases, journal));
       return stands ? this.startAtChecks(run) : this.startAtReview(key);
     }
     // Every review and CI result of the old generation is stale: a step that reads them goes back through code-review.
     return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
+  }
+
+  /** A move that ended clean leaves no conflict parked: the one the marker names was settled by the move itself. */
+  private async settleParkedMarker(run: RunEntity): Promise<void> {
+    const marker = await this.documents.latestBody(run.key, ARTIFACTS.rebaseConflict.kind);
+    if (marker === 'pending\n' || marker === 'pending-implement\n') {
+      await this.documents.putDocument(await this.requireRun(run.key), ARTIFACTS.rebaseConflict.kind, 'review\n');
+    }
   }
 
   /** A subtask its parent moves stays as it is when it waits on a question or a sibling, or is blocked for a reason a check does not clear. */
@@ -211,12 +225,14 @@ export class RunRebase {
     run: RunEntity,
     heads: ReadonlyMap<string, string>,
     bases: ReadonlyMap<string, string>,
+    journal: RebaseJournal,
   ): Promise<boolean> {
     if (!isSubtask(run) || heads.size === 0) return false;
     for (const [repo, before] of heads) {
       const base = bases.get(repo);
+      const ownBase = (await journal.entry(repo))?.ownBase;
       const cwd = worktreePath(root(this.config), run.key, repo);
-      if (!base || !(await sameOwnDiff(cwd, before, base).catch(() => false))) return false;
+      if (!base || !ownBase || !(await sameOwnDiff(cwd, ownBase, before, base).catch(() => false))) return false;
     }
     return true;
   }
@@ -245,7 +261,6 @@ export class RunRebase {
     run: RunEntity,
     bases: Map<string, string>,
     journal: RebaseJournal,
-    byMain: boolean,
   ): Promise<RebaseStop> {
     const requirements = await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind);
     if (!requirements?.trim()) {
@@ -257,32 +272,22 @@ export class RunRebase {
       ...(await this.registry.tokensFor(run.startedBy, run.codeHost)),
       clock: this.clock,
     };
-    // A branch with nothing of its own is already in main: it goes forward to main's head, with nothing to squash.
-    const forwarded = byMain
-      ? await forwardOwnLess({ root: root(this.config), key: run.key, repos: names, prompt: run.prompt, hosts })
-      : new Map<string, string>();
-    for (const [repo, sha] of forwarded) bases.set(repo, sha);
-    const repos = names.filter((repo) => !forwarded.has(repo));
-    const stop: RebaseStop =
-      repos.length === 0
-        ? { kind: 'clean', leases: [] }
-        : await rebaseFeatureRepos({
-            root: root(this.config),
-            key: run.key,
-            repos,
-            branch: await this.names.branchOf(run, names),
-            prompt: run.prompt,
-            denied: [],
-            message: await this.names.commitMessageOf(run, names),
-            author: await this.author.of(run),
-            hosts,
-            journal,
-            onBase: (repo, sha) => {
-              bases.set(repo, sha);
-            },
-          });
-    if (stop.kind !== 'clean') return stop;
-    return { kind: 'clean', leases: [...stop.leases, ...[...forwarded.keys()].map((repo) => ({ repo, tip: null }))] };
+    return rebaseFeatureRepos({
+      root: root(this.config),
+      key: run.key,
+      repos: names,
+      branch: await this.names.branchOf(run, names),
+      prompt: run.prompt,
+      denied: [],
+      message: await this.names.commitMessageOf(run, names),
+      author: await this.author.of(run),
+      hosts,
+      journal,
+      tips: await this.tips.known(run, names),
+      onBase: (repo, sha) => {
+        bases.set(repo, sha);
+      },
+    });
   }
 
   /** Unfinished when this run is still on implement, or no implementation notes were stored. */

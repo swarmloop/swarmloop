@@ -1,21 +1,23 @@
 import 'reflect-metadata';
 
-import { rmSync, writeFileSync } from 'fs';
+import { existsSync, rmSync, writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 
 import type { AgentRunInput } from '../../agent/agent-runner';
-import { REBASE_CONFLICT } from '../../git/rebase';
+import { fingerprintOf, REBASE_CONFLICT } from '../../git/rebase';
 import { DocumentRepository } from '../../history/document.repository';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { RunRepository } from '../../history/run.repository';
 import { storedState } from '../../history/run-state';
 import { PipelineService } from '../../pipeline/pipeline.service';
+import { runJournal } from '../shared/rebase-journal';
 import { SubtaskOps } from '../shared/subtask-ops';
 import {
   boot,
   conflictedTree,
+  featureTree,
   git,
   implAnswer,
   rebaseReply,
@@ -209,6 +211,91 @@ describe('implement with a parked conflict of an epic whose tasks are open', () 
       expect(await chat.answerFor(key, 'implement')).toBeNull();
     } finally {
       await world.app.close();
+    }
+  });
+});
+
+describe('implement resuming a part whose move the squash from git merge base parked', () => {
+  it('stands on the new tip with no agent and no commit, and keeps the question the part waited on', async () => {
+    const key = 'PROJ-705-t1';
+    const agent = jest.fn(async () => result(rebaseReply));
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-retake-'));
+    await writeEnv(root);
+    const tree = featureTree(root, key, 'billing-api');
+    const clone = join(root, 'billing-api');
+    git(clone, ['config', 'user.email', 'dev@example.com']);
+    git(clone, ['config', 'user.name', 'Dev']);
+    // The part stands on the old tip of its epic and has no commit of its own.
+    writeFileSync(join(tree, 'epic.ts'), 'epic\n');
+    git(tree, ['add', 'epic.ts']);
+    git(tree, ['commit', '-m', 'epic']);
+    const epicTip = git(tree, ['rev-parse', 'HEAD']);
+    // The epic was rewritten: the new tip does not contain the old one.
+    writeFileSync(join(clone, 'rewritten.ts'), 'rewritten\n');
+    git(clone, ['add', 'rewritten.ts']);
+    git(clone, ['commit', '-m', 'rewritten']);
+    git(clone, ['push', 'origin', 'main']);
+    const newTip = git(clone, ['rev-parse', 'HEAD']);
+    // What the old squash left: the worktree at the new tip, the old head kept, the conflict parked.
+    const branch = BRANCH(key);
+    git(tree, ['update-ref', `refs/swarmloop/pre-rebase/${branch}`, epicTip]);
+    git(tree, ['reset', '--hard', newTip]);
+    const gitDir = git(tree, ['rev-parse', '--absolute-git-dir']);
+    writeFileSync(join(gitDir, 'swarmloop-rebase'), `${newTip}\nfeat(${key}): Ship the field\n`);
+    const app = await boot(root, agent);
+    try {
+      await seed(app, key, 'approve');
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = (await runs.findRun(key))!;
+      // No tip is recorded for the part: it is a run made before tips were. Its parent's journal holds the old epic head.
+      const parent = await runs.openWaiting('PROJ-705', '/target');
+      await runJournal(documents, parent).put('billing-api', {
+        path: '/epic',
+        branch: 'feature/PROJ-705-ship-the-field',
+        oldHead: epicTip,
+        fingerprint: '',
+        protectRef: 'refs/swarmloop/pre-rebase/feature/PROJ-705-ship-the-field',
+        expectedRemoteTip: null,
+        baseSha: newTip,
+        checkpoint: 'completed',
+      });
+      await runs.saveRun({ ...(await runs.findRun(key))!, parentRunId: parent.id, taskId: 't1' });
+      await runJournal(documents, run).put('billing-api', {
+        path: tree,
+        branch,
+        oldHead: epicTip,
+        fingerprint: await fingerprintOf(tree),
+        protectRef: `refs/swarmloop/pre-rebase/${branch}`,
+        expectedRemoteTip: null,
+        baseSha: newTip,
+        checkpoint: 'conflict',
+      });
+      await documents.putDocument(run, REBASE_CONFLICT, 'pending-implement\n');
+      await app.get(PlanChatStore).appendEntry(key, {
+        key: 'ask-implement-attempt-1',
+        role: 'planner',
+        kind: 'question',
+        from: 'implement',
+        text: 'Which host does the message wait for?',
+        at: '2026-01-01T00:00:00.000Z',
+        state: 'pending',
+      });
+
+      const done = await app.get(PipelineService).step('implement', key);
+
+      expect(done.exitCode).toBe(0);
+      expect(agent).not.toHaveBeenCalled();
+      expect(git(tree, ['rev-parse', 'HEAD'])).toBe(newTip);
+      expect(git(tree, ['status', '--porcelain'])).toBe('');
+      expect(existsSync(join(gitDir, 'swarmloop-rebase'))).toBe(false);
+      const waiting = (await runs.findRun(key))!;
+      expect(waiting.status).toBe('waiting');
+      expect(storedState(waiting).reason).toMatchObject({ code: 'ASKS_PLANNER' });
+      expect(await app.get(PlanChatStore).pendingQuestions(key)).toHaveLength(1);
+      expect((await documents.latestBody(key, REBASE_CONFLICT))?.trim()).toBe('review');
+    } finally {
+      await app.close();
     }
   });
 });
