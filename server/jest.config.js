@@ -12,5 +12,8 @@ module.exports = {
   globalTeardown: '<rootDir>/jest.global-teardown.js',
   setupFiles: ['<rootDir>/jest.setup.js'],
   testTimeout: 20000,
+  // A worker's heap grows with every flow spec file, and a grown worker runs the same spec two to three times slower.
+  // Replace a worker between spec files once its heap passes this.
+  workerIdleMemoryLimit: '1500MB',
   reporters: ['default', '<rootDir>/../scripts/jest-slowest-files.mjs'],
 };
