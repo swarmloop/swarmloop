@@ -18,6 +18,7 @@ export type {
   StatsRun,
   StatsShare,
   StatsTotals,
+  StatsUnit,
   StatsView,
 } from './stats';
 export type { TaskEntry } from './task-entry';

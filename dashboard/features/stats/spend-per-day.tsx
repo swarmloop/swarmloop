@@ -3,7 +3,7 @@
 import type { PointerEvent, ReactElement } from 'react';
 import { useState } from 'react';
 import Box from '@mui/material/Box';
-import type { StatsDay, StatsTotals } from '@contract/api';
+import type { StatsDay, StatsTotals, StatsUnit } from '@contract/api';
 import { CHART, ChartCard, ChartTip, TipRow, useWidth } from './chart-parts';
 import { dayLabel, longDayLabel, ticks, usd } from './stats-format';
 
@@ -11,7 +11,15 @@ const HEIGHT = 220;
 const PAD = { top: 10, right: 12, bottom: 26, left: 48 };
 
 /** Dollars spent each day, with a crosshair that snaps to the nearest day. */
-export function SpendPerDay({ days, totals }: { days: StatsDay[]; totals: StatsTotals }): ReactElement {
+export function SpendPerDay({
+  days,
+  totals,
+  tasks,
+}: {
+  days: StatsDay[];
+  totals: StatsTotals;
+  tasks: StatsUnit;
+}): ReactElement {
   const total = totals.usd;
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -50,7 +58,7 @@ export function SpendPerDay({ days, totals }: { days: StatsDay[]; totals: StatsT
       headline={`${usd(total)} in ${days.length} ${days.length === 1 ? 'day' : 'days'}`}
       note={
         peak
-          ? `${usd(total / spending.length)} per working day · ${usd(totals.usdPerTask)} per task (median ${usd(totals.medianUsdPerTask)}) · peak ${usd(peak.usd)} on ${dayLabel(peak.day)}`
+          ? `${usd(total / spending.length)} per working day · ${usd(tasks.medianUsd)} per task (median) · peak ${usd(peak.usd)} on ${dayLabel(peak.day)}`
           : 'nothing spent yet'
       }
     >

@@ -13,12 +13,13 @@ import Typography from '@mui/material/Typography';
 import { getStats } from '../../lib/endpoints';
 import { MergeShare, TimeToMerge } from './merge-charts';
 import { MoneyBreakdown, Returns } from './money-and-returns';
-import { RunsPerDay } from './runs-per-day';
+import { UnitsPerDay } from './runs-per-day';
 import { SpendPerDay } from './spend-per-day';
 import { StallsPerDay } from './stalls-per-day';
 import { StatTiles, TILE_COLUMNS } from './stat-tiles';
 import { dayLabel } from './stats-format';
 import { TopRuns } from './top-runs';
+import { UnitFigures } from './unit-figures';
 
 const RANGES = [
   { days: 7, label: '7 days' },
@@ -33,7 +34,8 @@ const RANGES = [
  */
 export function StatsSection({ version }: { version: string }): ReactElement {
   const [days, setDays] = useState(30);
-  const [day, setDay] = useState<string | null>(null);
+  const [pick, setPick] = useState<{ day: string; unit: 'epics' | 'tasks' } | null>(null);
+  const pickOn = (unit: 'epics' | 'tasks') => (day: string | null) => setPick(day === null ? null : { day, unit });
   const query = useQuery({
     queryKey: ['stats', days, version],
     queryFn: () => getStats(days, localOffset()),
@@ -56,7 +58,7 @@ export function StatsSection({ version }: { version: string }): ReactElement {
           onChange={(_, next: number | null) => {
             if (next !== null) {
               setDays(next);
-              setDay(null);
+              setPick(null);
             }
           }}
           aria-label="Range"
@@ -96,21 +98,31 @@ export function StatsSection({ version }: { version: string }): ReactElement {
             transition: 'opacity 200ms',
           }}
         >
-          <StatTiles totals={stats.totals} days={stats.days.length} />
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '7fr 5fr' }, gap: 2 }}>
-            <RunsPerDay days={stats.days} total={stats.totals} selected={day} onSelect={setDay} />
-            <SpendPerDay days={stats.days} totals={stats.totals} />
-          </Box>
+          <UnitFigures epics={stats.epics} tasks={stats.tasks} />
+          <StatTiles totals={stats.totals} tasks={stats.tasks} days={stats.days.length} />
+          <UnitsPerDay
+            unit="tasks"
+            days={stats.days}
+            total={stats.tasks}
+            selected={pick?.unit === 'tasks' ? pick.day : null}
+            onSelect={pickOn('tasks')}
+          />
+          <UnitsPerDay
+            unit="epics"
+            days={stats.days}
+            total={stats.epics}
+            selected={pick?.unit === 'epics' ? pick.day : null}
+            onSelect={pickOn('epics')}
+          />
+          <SpendPerDay days={stats.days} totals={stats.totals} tasks={stats.tasks} />
           <StallsPerDay days={stats.days} />
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 2 }}>
             <MergeShare days={stats.days} totals={stats.totals} />
             <TimeToMerge days={stats.days} totals={stats.totals} />
           </Box>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 2 }}>
-            <MoneyBreakdown stats={stats} />
-            <Returns stats={stats} />
-          </Box>
-          <TopRuns runs={stats.runs} day={day} onClearDay={() => setDay(null)} />
+          <MoneyBreakdown stats={stats} />
+          <Returns stats={stats} />
+          <TopRuns runs={stats.runs} subtasks={stats.subtasks} pick={pick} onClearDay={() => setPick(null)} />
         </Box>
       ) : null}
     </Box>

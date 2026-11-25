@@ -9,6 +9,9 @@ export interface StatsDay {
   done: number;
   active: number;
   failed: number;
+  /** Epics and tasks that started on the day, by outcome. */
+  epics: Record<RunOutcome, number>;
+  tasks: Record<RunOutcome, number>;
   usd: number;
   returns: number;
   /** Done runs of the day that were merged, and that were closed without a merge. Both are also in `done`. */
@@ -19,6 +22,22 @@ export interface StatsDay {
   /** Server stalls of the day by kind, and the time they took, counted by the local day the stall started. */
   stalls: Record<ServerStallKind, number>;
   stalledMs: number;
+}
+
+/**
+ * The figures of one unit of work. An epic is a run with subtasks (cost: its own spend and its subtasks'; time: its start
+ * to its done). A task is a run without subtasks, alone or a subtask (its own cost and working time). `finished`,
+ * `active` and `failed` count by outcome. The medians, `back` (units that came back at least once) and `medianReturns`
+ * are over the finished ones; a median is null, or 0 for cost, without one.
+ */
+export interface StatsUnit {
+  finished: number;
+  active: number;
+  failed: number;
+  medianUsd: number;
+  medianMs: number | null;
+  back: number;
+  medianReturns: number | null;
 }
 
 /** Spend and tokens of one step, model, effort or agent. `count` is visits for steps, models and efforts, runs for agents. */
@@ -36,6 +55,8 @@ export interface StatsRun {
   title: string;
   status: string;
   outcome: RunOutcome;
+  /** An epic when the run has subtasks (its figures include theirs), else a task. */
+  kind: 'epic' | 'task';
   usd: number;
   returns: number;
   /** Bash tool calls of the run that changed files through a script or `sed -i`. */
@@ -70,14 +91,6 @@ export interface StatsTotals {
   reviewReturns: number;
   /** Every return by the loop counter that sent it back (`checks`, `review`, `pipeline`, ...), most first. */
   returnsByKind: { kind: string; returns: number }[];
-  /** Tasks: done runs with no parent. A split run is one task with its subtasks. */
-  tasks: number;
-  /** Mean and median spend of a task. */
-  usdPerTask: number;
-  medianUsdPerTask: number;
-  /** Tasks that came back at least once, and the median of returns per task; null without a task. */
-  tasksBack: number;
-  medianReturnsPerTask: number | null;
   /** Times the CI pipeline sent the work back. */
   pipelineReturns: number;
   /** Done runs that never went back. */
@@ -108,6 +121,8 @@ export interface StatsView {
   from: string;
   to: string;
   totals: StatsTotals;
+  epics: StatsUnit;
+  tasks: StatsUnit;
   days: StatsDay[];
   steps: StatsShare[];
   models: StatsShare[];
@@ -120,6 +135,8 @@ export interface StatsView {
   ciReturns: StatsCiReturns;
   /** How many runs went back 0, 1, 2, 3 and 4 or more times. */
   returnsPerRun: { returns: string; runs: number }[];
-  /** Every run of the range, newest first. */
+  /** Every run of the range without a parent, newest first. */
   runs: StatsRun[];
+  /** The subtasks that count as tasks (not the skipped ones), newest first, with their own figures. */
+  subtasks: StatsRun[];
 }

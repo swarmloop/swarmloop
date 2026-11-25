@@ -44,24 +44,36 @@ function compare(column: Column): (a: StatsRun, b: StatsRun) => number {
     : (a, b) => a[column] - b[column] || a.createdAt.localeCompare(b.createdAt);
 }
 
-/** The runs of the range, sortable. With a day picked on the chart, only the runs that started that day. */
+/**
+ * The runs of the range, sortable. With a day picked on a chart, only what that chart counts that started that day: the
+ * epics, or the tasks (runs that worked alone and subtasks).
+ */
 export function TopRuns({
   runs,
-  day,
+  subtasks,
+  pick,
   onClearDay,
 }: {
   runs: StatsRun[];
-  day: string | null;
+  subtasks: StatsRun[];
+  pick: { day: string; unit: 'epics' | 'tasks' } | null;
   onClearDay: () => void;
 }): ReactElement {
   const router = useRouter();
   const [sort, setSort] = useState<{ column: Column; desc: boolean }>({ column: 'usd', desc: true });
   const [all, setAll] = useState(false);
   const rows = useMemo(() => {
-    const picked = day === null ? runs : runs.filter((run) => startedOn(run.createdAt) === day);
+    const picked =
+      pick === null
+        ? runs
+        : (pick.unit === 'epics'
+            ? runs.filter((run) => run.kind === 'epic')
+            : [...runs.filter((run) => run.kind === 'task'), ...subtasks]
+          ).filter((run) => startedOn(run.createdAt) === pick.day);
     const sorted = [...picked].sort(compare(sort.column));
     return sort.desc ? sorted.reverse() : sorted;
-  }, [runs, day, sort]);
+  }, [runs, subtasks, pick, sort]);
+  const day = pick?.day ?? null;
   const shown = all ? rows : rows.slice(0, SHOWN);
   const max = Math.max(...rows.map((run) => run.usd), 1e-9);
   const open = (key: string): void => router.push(`/runs/${encodeURIComponent(key)}`);
@@ -71,7 +83,7 @@ export function TopRuns({
       title={day === null ? 'Runs' : `Runs started ${longDayLabel(day)}`}
       note={
         day === null
-          ? 'click a day on the runs chart to see only its runs · click a run to open it'
+          ? 'click a day on a per-day chart to see only its epics or tasks · click a run to open it'
           : `${rows.length} ${rows.length === 1 ? 'run' : 'runs'} · click a run to open it`
       }
       action={

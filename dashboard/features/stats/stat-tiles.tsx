@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
-import type { StatsTotals } from '@contract/api';
+import type { StatsTotals, StatsUnit } from '@contract/api';
 import { CHART, OUTCOMES } from './chart-parts';
 import { big, hours, percent, returnsByKind, usd } from './stats-format';
 
@@ -75,7 +75,15 @@ function mostTasks(median: number | null): string {
   return median === 1 ? 'most come back once' : `most come back ${median} times`;
 }
 
-export function StatTiles({ totals, days }: { totals: StatsTotals; days: number }): ReactElement {
+export function StatTiles({
+  totals,
+  tasks,
+  days,
+}: {
+  totals: StatsTotals;
+  tasks: StatsUnit;
+  days: number;
+}): ReactElement {
   const finished = totals.done + totals.failed;
   const returns = totals.returnsByKind.reduce((sum, { returns: count }) => sum + count, 0);
   return (
@@ -112,10 +120,10 @@ export function StatTiles({ totals, days }: { totals: StatsTotals; days: number 
       <Tile
         label="Returns"
         span={2}
-        value={totals.tasks > 0 ? `${percent(totals.tasksBack, totals.tasks)} came back` : '—'}
+        value={tasks.finished > 0 ? `${percent(tasks.back, tasks.finished)} came back` : '—'}
       >
-        {totals.tasks > 0
-          ? `${mostTasks(totals.medianReturnsPerTask)} · ${returns} ${returns === 1 ? 'return' : 'returns'} in ${days} ${days === 1 ? 'day' : 'days'}: ${returnsByKind(totals.returnsByKind, ', ')}`
+        {tasks.finished > 0
+          ? `${mostTasks(tasks.medianReturns)} · ${returns} ${returns === 1 ? 'return' : 'returns'} in ${days} ${days === 1 ? 'day' : 'days'}: ${returnsByKind(totals.returnsByKind, ', ')}`
           : 'no task is done'}
       </Tile>
       <Tile label="Agent time" span={2} value={hours(totals.agentMs)}>
