@@ -52,6 +52,11 @@ describe('conversationView', () => {
     expect(shown.questions).toEqual([{ kind: 'question', id: 'q1', text: 'Which limit?', answer: '' }]);
   });
 
+  it('shows the composer of its place once every open item carries its answer', () => {
+    const items: FlowItem[] = [{ kind: 'question', id: 'q1', label: 'Which limit?', answer: 'three' }];
+    expect(view({ step: 'implement' }, 'waiting', { items }).composer).toBe('amend');
+  });
+
   it("goes to the task's planner on a subtask and to the epic's planner once it merged", () => {
     const shown = view({ step: 'implement' }, 'running', { parentKey: 'epic-1' });
     expect(shown.composer).toBe('subtask');

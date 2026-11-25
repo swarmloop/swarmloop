@@ -101,6 +101,35 @@ describe('PlanChatService', () => {
     });
   });
 
+  it('stores a message sent right after an answer as pending for the planner, not refused', async () => {
+    await withPlanChat(async ({ app, chat }) => {
+      const run = await save(app.get(RunRepository), 'proj-3', 'research', 'waiting');
+      await app.get(DocumentRepository).putDocument(run, 'questions', '- which limit\n');
+      await chat.send('proj-3', 'three', 'ann');
+      const later = await chat.send('proj-3', 'and log it', 'ann');
+      const stored = await app.get(CommandRepository).find(later.commandId);
+      expect(stored?.type).toBe('plan-chat');
+      const log = await app.get(PlanChatStore).read('proj-3');
+      expect(log.entries).toContainEqual(
+        expect.objectContaining({ key: `message-${later.commandId}`, text: 'and log it', state: 'pending' }),
+      );
+    });
+  });
+
+  it('sends a message to the planner as plan-chat while a question waits, with the checks of send', async () => {
+    await withPlanChat(async ({ app, chat }) => {
+      const run = await save(app.get(RunRepository), 'proj-3', 'research', 'waiting');
+      await app.get(DocumentRepository).putDocument(run, 'questions', '- which limit\n');
+      const sent = await chat.sendToPlanner('proj-3', ' add a task ', 'ann');
+      expect((await app.get(CommandRepository).find(sent.commandId))?.type).toBe('plan-chat');
+      expect(await app.get(DocumentRepository).latestBody('proj-3', 'answers')).toBeFalsy();
+      await expect(chat.sendToPlanner('proj-3', ' ', 'ann')).rejects.toThrow(
+        new BadRequestException('message is missing'),
+      );
+      await expect(chat.sendToPlanner('nope-1', 'hi', 'ann')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   it('stores the author of a message that answers the questions on the answer command', async () => {
     await withPlanChat(async ({ app, chat }) => {
       const run = await save(app.get(RunRepository), 'proj-3', 'research', 'waiting');

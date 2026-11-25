@@ -2,7 +2,7 @@ import type { FlowItem } from '../../contract/api';
 import type { RunState } from '../../contract/run-state';
 import type { ComposerMode, ConversationView, PlanChatLog } from '../../contract/plan-chat';
 import type { DocumentEntity, RunEntity } from '../../history/entities';
-import { messageTurn, type MessageTurn } from '../../pipeline/plan-chat-route';
+import { messageTurn, waitingItems, type MessageTurn } from '../../pipeline/plan-chat-route';
 
 /** The mode of the message box for where a message goes. The answer to a question is a message to the plan. */
 const COMPOSER: Record<MessageTurn, ComposerMode> = {
@@ -56,7 +56,7 @@ export function conversationView({
   replying,
   documents = [],
 }: ConversationInput): ConversationView {
-  const turn = messageTurn(run, { state, parentKey, openItems: items.length, split });
+  const turn = messageTurn(run, { state, parentKey, openItems: waitingItems(items), split });
   return {
     composer: parentKey && turn !== 'to-parent' ? 'subtask' : COMPOSER[turn],
     replying,
