@@ -86,6 +86,8 @@ export function useRunFlow(runKey: string): {
     generation.current += 1;
     const mine = generation.current;
     memory.current = { ...memory.current, openReviews: [] };
+    // An entry held before this load is older than the page about to be fetched: only later entries apply.
+    Object.values(usage).forEach((entry) => seenUsage.current.add(entry));
     watchRun(runKey);
     getFlow(runKey)
       .then((body) => {

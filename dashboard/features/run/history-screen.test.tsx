@@ -62,7 +62,7 @@ describe('HistoryScreen', () => {
     render(<HistoryScreen runKey="run-1" />, { wrapper: LiveBridgeProvider });
     await act(async () => {});
 
-    expect(screen.getByRole('heading', { name: 'An old run' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'An old run' })).toBeInTheDocument();
     await waitFor(() => expect(document.title).toBe('An old run · swarmloop'));
     expect(getFlow).toHaveBeenCalledTimes(1);
     expect(getFlow).toHaveBeenCalledWith('run-1');
