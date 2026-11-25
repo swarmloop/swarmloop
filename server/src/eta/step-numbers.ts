@@ -35,6 +35,24 @@ function firstEntries(run: FinishedRunInput): Map<string, string> {
   return first;
 }
 
+/** The median working time of one visit of each step, from the visits of the newest runs that entered it. */
+function visitNumbers(newestFirst: readonly Ended[]): Record<string, number> {
+  const samples = new Map<string, number[]>();
+  const taken = new Map<string, number>();
+  for (const { run } of newestFirst) {
+    for (const step of new Set(run.entries.map((entry) => entry.step))) {
+      const count = taken.get(step) ?? 0;
+      if (count >= SAMPLE_RUNS) continue;
+      taken.set(step, count + 1);
+      const times = run.entries
+        .filter((entry) => entry.step === step)
+        .map((entry) => workingMs(entry.startedAt, entry.finishedAt, run.waits));
+      samples.set(step, [...(samples.get(step) ?? []), ...times]);
+    }
+  }
+  return Object.fromEntries([...samples].map(([step, times]) => [step, median(times) ?? 0]));
+}
+
 function numbersFor(runs: Ended[]): KindNumbers {
   const newestFirst = [...runs].sort((a, b) => Date.parse(b.end) - Date.parse(a.end));
   const samples = new Map<string, number[]>();
@@ -55,7 +73,7 @@ function numbersFor(runs: Ended[]): KindNumbers {
   const whole = median(
     newestFirst.slice(0, SAMPLE_RUNS).map(({ run, end }) => workingMs(run.createdAt, end, run.waits)),
   );
-  return { steps, whole };
+  return { steps, visits: visitNumbers(newestFirst), whole };
 }
 
 /** One number per step and kind of run, from the newest finished runs of that kind that entered the step. */

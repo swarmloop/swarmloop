@@ -11,7 +11,9 @@ import { BacklogRepository } from '../history/backlog.repository';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
+import { FlowRepository } from '../history/flow.repository';
 import { RunRepository } from '../history/run.repository';
+import { VisitRepository } from '../history/visit.repository';
 import type { RunWaitEntity } from '../history/run-wait.entity';
 import { RunWaitLog } from '../history/run-wait.log';
 import { LiveHub } from '../live/live.hub';
@@ -25,6 +27,7 @@ import { requirementBodies, viewTitle } from './run-view/run-title';
 import { childrenByParent, listExtras } from './run-view/status';
 import { spentUsd } from './run-queries-spend';
 import { EtaSummary } from './eta-summary';
+import { relaunchSteps } from './run-view/relaunch';
 import { liveRunOf, runViewEta } from './run-view/run-eta';
 
 /** What is read from the database for one run, and the claim its state was worked out with. */
@@ -37,6 +40,8 @@ interface KeptRun {
   own: OwnState;
   /** The stretches the run waited in; read only while the run has not ended. */
   waits: RunWaitEntity[];
+  /** The steps the run's open relaunch still has to run; read only while the run has not ended. */
+  relaunch: string[] | undefined;
   label: RunBacklog | undefined;
   claimed: boolean;
 }
@@ -69,6 +74,8 @@ export class RunListRows implements OnModuleDestroy {
     private readonly clock: Clock,
     private readonly etaSummary: EtaSummary,
     private readonly waitLog: RunWaitLog,
+    private readonly flows: FlowRepository,
+    private readonly visits: VisitRepository,
     private readonly config: AppConfig,
     @Optional() private readonly live?: LiveHub,
   ) {}
@@ -149,7 +156,9 @@ export class RunListRows implements OnModuleDestroy {
     const requirements = await requirementBodies(this.documents, runs);
     const states = await ownStates({ commands: this.commands }, runs, (key) => claimed.get(key) ?? false);
     const labels = await this.backlogs.labelsFor(runs.map((run) => run.key));
-    const waits = await this.waitLog.waitsOf(runs.filter((run) => run.status !== 'done').map((run) => run.id));
+    const unended = runs.filter((run) => run.status !== 'done').map((run) => run.id);
+    const waits = await this.waitLog.waitsOf(unended);
+    const relaunches = await relaunchSteps(this.flows, this.visits, unended);
     for (const run of runs) {
       this.kept.set(run.key, {
         run,
@@ -158,6 +167,7 @@ export class RunListRows implements OnModuleDestroy {
         plan: plans.get(run.key),
         own: states.get(run.key) as OwnState,
         waits: waits.get(run.id) ?? [],
+        relaunch: relaunches.get(run.id),
         label: labels.get(run.key),
         claimed: claimed.get(run.key) ?? false,
       });
@@ -208,9 +218,9 @@ export class RunListRows implements OnModuleDestroy {
     const lives = new Map<string, LiveRun>();
     for (const child of childrenOf.get(entry.run.id) ?? []) {
       const kept = this.kept.get(child.key);
-      if (child.taskId && kept) lives.set(child.taskId, liveRunOf(child, kept.own, kept.waits));
+      if (child.taskId && kept) lives.set(child.taskId, liveRunOf(child, kept.own, kept.waits, kept.relaunch));
     }
-    const live = liveRunOf(entry.run, entry.own, entry.waits);
+    const live = liveRunOf(entry.run, entry.own, entry.waits, entry.relaunch);
     return runViewEta(live, entry.plan, lives, table, this.config.env.SUBTASKS_PARALLEL, this.clock.now());
   }
 }

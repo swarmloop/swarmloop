@@ -1,9 +1,10 @@
 import { ETA_MIN_MS, WAITS_FOR_YOU } from '../contract/eta';
 import { at, emptyTable, liveRun, MIN, NOW } from './eta.spec-helpers';
 import { runEta } from './run-eta';
+import { STEPS } from '../contract/steps';
 import { SEED_RUN_MS, seedFor } from './seed';
 
-const table = () => ({ ...emptyTable(), plain: { steps: { implement: 30 * MIN }, whole: null } });
+const table = () => ({ ...emptyTable(), plain: { steps: { implement: 30 * MIN }, visits: {}, whole: null } });
 
 describe('runEta', () => {
   it('subtracts the time already spent in the step', () => {
@@ -40,5 +41,18 @@ describe('runEta', () => {
 
   it('gives none to an ended run', () => {
     expect(runEta(liveRun({ state: 'done' }), table(), NOW)).toBeUndefined();
+  });
+
+  it('sums the visit of each step an open relaunch still runs, less what the current one has used', () => {
+    const visits = { checks: 6 * MIN, commit: 1 * MIN, pipeline: 12 * MIN };
+    const known = { ...emptyTable(), plain: { steps: { checks: 70 * MIN }, visits, whole: null } };
+    const run = liveRun({ currentStep: 'checks', stepStartedAt: at(-2), relaunch: ['checks', 'commit', 'pipeline'] });
+    expect(runEta(run, known, NOW)?.leftMs).toBe(17 * MIN);
+    expect(runEta({ ...run, relaunch: undefined }, known, NOW)?.leftMs).toBe(68 * MIN);
+  });
+
+  it('takes a share of the seed for a step of a relaunch that has no visits yet', () => {
+    const eta = runEta(liveRun({ currentStep: 'checks', relaunch: ['checks', 'pipeline'] }), emptyTable(), NOW);
+    expect(eta?.leftMs).toBe((2 * SEED_RUN_MS) / STEPS.length);
   });
 });

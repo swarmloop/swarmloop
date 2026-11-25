@@ -8,6 +8,7 @@ import type { CheckCommandView } from '../../contract/api';
 import { actionsFor } from '../../contract/run-state';
 import { storedState } from '../../history/run-state';
 import { parkedConflictIn } from '../../pipeline/parked-conflict';
+import type { RelaunchView } from '../../contract/relaunch';
 import { phases, returns } from './flow';
 import { reason, resumeState, sentence } from './flow-waiting';
 
@@ -118,6 +119,77 @@ describe('visits of an epic that waits for its tasks', () => {
     expect(countOf([stop(1), pass(1, 'm')])).toBe(1);
     expect(countOf([pass(1, 'm'), stop(2)])).toBe(2);
     expect(countOf([stop(1)])).toBe(1);
+  });
+});
+
+describe('steps of an open relaunch', () => {
+  const finished = '2026-11-22T01:50:00.000Z';
+  const relaunchAt = '2026-11-22T02:00:00.000Z';
+  const stat = (step: string, finishedAt = finished): StepStatEntity =>
+    ({ id: 1, step, status: 'done', finishedAt }) as StepStatEntity;
+  const steps = ['checks', 'implement', 'code-review', 'commit', 'merge-request', 'pipeline'];
+  const stats = steps.map((step) => stat(step));
+  const relaunch: RelaunchView = {
+    at: relaunchAt,
+    reason: 'Rebased onto the epic after input merged',
+    phases: ['checks', 'ci'],
+    steps: ['checks', 'commit', 'merge-request', 'pipeline'],
+    open: true,
+  };
+  const run = { key: 'r', currentStep: 'checks', status: 'waiting', attemptsReview: 1 } as RunEntity;
+  const statuses = (open?: RelaunchView, own = stats): Record<string, string> =>
+    Object.fromEntries(
+      phases(run, own, [], '/nonexistent', [], undefined, [], open)
+        .flatMap((phase) => phase.steps)
+        .map((step) => [step.name, step.status]),
+    );
+
+  it('shows the steps the relaunch runs again as waiting to run and keeps the others', () => {
+    expect(statuses(relaunch)).toMatchObject({
+      implement: 'done',
+      checks: 'waiting',
+      commit: 'idle',
+      'merge-request': 'idle',
+      pipeline: 'idle',
+    });
+    expect(statuses(undefined)).toMatchObject({ commit: 'done', 'merge-request': 'done', pipeline: 'done' });
+  });
+
+  it('shows a step that ran on the new head as it ran', () => {
+    const own = stats.map((item) => (item.step === 'commit' ? stat('commit', '2026-11-22T02:05:00.000Z') : item));
+    expect(statuses(relaunch, own)).toMatchObject({ commit: 'done', 'merge-request': 'idle' });
+  });
+
+  it('shows the reviewers, the report and the steps after a relaunched code review as waiting to run', () => {
+    const review = {
+      ...relaunch,
+      phases: ['code-review', 'ci'],
+      steps: ['code-review', 'commit', 'merge-request', 'pipeline'],
+    };
+    const inReview = { ...run, currentStep: 'code-review' };
+    const chips = (open?: RelaunchView) =>
+      Object.fromEntries(
+        phases(inReview, stats, [], '/nonexistent', [], undefined, [], open)
+          .flatMap((phase) => phase.steps)
+          .map((step) => [step.name, step.status]),
+      );
+    expect(chips(review)).toMatchObject({
+      'code-review-requirements': 'idle',
+      'code-review-performance': 'idle',
+      'code-review': 'idle',
+      commit: 'idle',
+      'merge-request': 'idle',
+      pipeline: 'idle',
+      implement: 'done',
+    });
+  });
+
+  it('leaves the returns and their counts as they were', () => {
+    const edges = returns({ ...run, attemptsChecks: 2 }).map((edge) => [edge.counter, edge.count]);
+    expect(edges).toEqual([
+      ['checks', 2],
+      ['review', 1],
+    ]);
   });
 });
 

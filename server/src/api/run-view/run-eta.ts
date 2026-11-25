@@ -13,7 +13,12 @@ import type { OwnState } from './own-state';
 type TaskLives = ReadonlyMap<string, LiveRun>;
 
 /** A run that has not ended, as the estimate reads it: its own state and the stretches it did not work in. */
-export function liveRunOf(run: RunEntity, own: OwnState, waits: readonly RunWaitEntity[]): LiveRun {
+export function liveRunOf(
+  run: RunEntity,
+  own: OwnState,
+  waits: readonly RunWaitEntity[],
+  relaunch?: string[],
+): LiveRun {
   return {
     kind: runKind({ parentRunId: run.parentRunId?.toString(), epicAt: run.epicAt }),
     state: own.state,
@@ -21,6 +26,7 @@ export function liveRunOf(run: RunEntity, own: OwnState, waits: readonly RunWait
     currentStep: run.currentStep,
     stepStartedAt: run.stepStartedAt,
     waits: waits.map((wait) => ({ from: wait.startedAt, to: wait.endedAt })),
+    ...(relaunch ? { relaunch } : {}),
   };
 }
 

@@ -9,6 +9,7 @@ import { CODE_REVIEWERS, isReviewStep, pipelineStepOf, requireReviewer } from '.
 import { reviewLogDecision } from '../../contract/readable-log-review';
 import { storedReview } from '../../agent-result/stored-review';
 import { LIMIT_VISIT } from '../../history/visit.repository';
+import type { RelaunchView } from '../../contract/relaunch';
 import { stepStatus, latest } from './status';
 import type { FlowView } from '../../contract/api';
 import { REVIEW_KINDS } from './run-view.types';
@@ -55,9 +56,10 @@ export function chipStatus(
   round: { attempts: number; status: string } | null,
   /** The last log of a reviewer that has no stored visit of its own, when no round is open. */
   log = '',
+  relaunch?: RelaunchView,
 ): string {
   if (!isReviewStep(name)) {
-    return stepStatus(pipelineStepOf(name), run, stat);
+    return stepStatus(pipelineStepOf(name), run, stat, relaunch);
   }
   if (round) {
     return round.status;

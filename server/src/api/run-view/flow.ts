@@ -1,6 +1,7 @@
 import { activeDurationMs, toDurationParts } from '../../history/active-duration';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import type { CheckCommandView, FlowView } from '../../contract/api';
+import type { RelaunchView } from '../../contract/relaunch';
 import { returnWords } from './return-words';
 import type { LiveUsage } from '../../contract/live';
 import {
@@ -18,6 +19,7 @@ import { shortLine } from '../../contract/short-text';
 import { knownAttempts, OutputFiles } from '../../core/attempt-output';
 import { chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import type { OpenReviewRound } from '../../steps/shared/open-review-rounds';
+import { awaitsRelaunch } from './relaunch';
 export { latest } from './status';
 import { PHASES } from './run-view.types';
 
@@ -61,6 +63,24 @@ export function metrics(
   };
 }
 
+/** A reviewer chip, or the report, of a code review the open relaunch runs again reads idle until the review starts. */
+function reviewChip(
+  status: string,
+  parentStat: StepStatEntity | undefined,
+  relaunch: RelaunchView | undefined,
+): string {
+  const started = status === 'running' || status === 'preparing';
+  return !started && awaitsRelaunch('code-review', parentStat, relaunch) ? 'idle' : status;
+}
+
+function reportOf(
+  chip: ReturnType<typeof reportChip>,
+  latestStats: Map<string, StepStatEntity>,
+  relaunch: RelaunchView | undefined,
+): ReturnType<typeof reportChip> {
+  return { ...chip, status: reviewChip(chip.status, latestStats.get('code-review'), relaunch) };
+}
+
 export function phases(
   run: RunEntity,
   stats: StepStatEntity[],
@@ -69,6 +89,7 @@ export function phases(
   loops: LoopEventEntity[] = [],
   open?: OpenReviewRound,
   rows: CheckCommandView[] = [],
+  relaunch?: RelaunchView,
 ): FlowView['phases'] {
   const latestStats = new Map<string, StepStatEntity>();
   for (const stat of stats) {
@@ -83,7 +104,8 @@ export function phases(
       const stat = own ?? latestStats.get(parent);
       const round = isReviewStep(name) ? reviewerRound(name, run, stats, documents, outputs, preparing, open) : null;
       const log = isReviewStep(name) && !own && !round ? outputs.read(run.key, name, run.activeAttempt) : '';
-      const status = chipStatus(name, run, stat, documents, round, log);
+      const chip = chipStatus(name, run, stat, documents, round, log, relaunch);
+      const status = isReviewStep(name) ? reviewChip(chip, latestStats.get(parent), relaunch) : chip;
       return {
         name,
         status,
@@ -99,7 +121,10 @@ export function phases(
     const working = steps.filter((step) => step.current).map((step) => requireReviewer(step.name));
     return {
       phase: phase.phase,
-      steps: [...steps, reportChip(run, stats, documents, outputs, preparing, open, working)],
+      steps: [
+        ...steps,
+        reportOf(reportChip(run, stats, documents, outputs, preparing, open, working), latestStats, relaunch),
+      ],
     };
   });
 }

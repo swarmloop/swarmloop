@@ -7,6 +7,8 @@ import { BacklogRepository } from '../history/backlog.repository';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
+import { FlowRepository } from '../history/flow.repository';
+import { VisitRepository } from '../history/visit.repository';
 import { RunRepository } from '../history/run.repository';
 import { RunWaitLog } from '../history/run-wait.log';
 import { writeRunState } from '../history/run-state';
@@ -26,6 +28,8 @@ export async function freshView(app: TestingModule) {
     app.get(Clock),
     app.get(EtaSummary),
     app.get(RunWaitLog),
+    app.get(FlowRepository),
+    app.get(VisitRepository),
     app.get(AppConfig),
     app.get(LiveHub),
   );

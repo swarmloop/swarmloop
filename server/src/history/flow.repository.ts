@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Clock } from '../core/clock';
 import { normalizePhases } from '../core/pipeline-result';
 import { PHASES } from '../contract/steps';
@@ -17,8 +17,8 @@ export class FlowRepository {
     private readonly runRepository: RunRepository,
   ) {}
 
-  /** Append a launch. The first row with a null fromStep is the original selection. */
-  async noteFlow(key: string, phases: readonly string[], fromStep: string | null): Promise<void> {
+  /** Append a launch. The first row with a null fromStep is the original selection. `cause` says why a later one was made. */
+  async noteFlow(key: string, phases: readonly string[], fromStep: string | null, cause?: 'rebase'): Promise<void> {
     const selected = normalizePhases(phases);
     let run = await this.runRepository.findRun(key);
     if (!run) {
@@ -34,6 +34,7 @@ export class FlowRepository {
         runId: run.id,
         phases: JSON.stringify(selected),
         fromStep: recordedFrom,
+        cause: cause ?? null,
         createdAt: this.clock.iso(),
       }),
     );
@@ -52,6 +53,15 @@ export class FlowRepository {
     } catch {
       return [...PHASES];
     }
+  }
+
+  /** The relaunches after a rebase of each of the runs, oldest first, in one read. */
+  async listRebases(runIds: number[]): Promise<Map<number, FlowEntity[]>> {
+    const byRun = new Map<number, FlowEntity[]>();
+    if (runIds.length === 0) return byRun;
+    const rows = await this.flows.find({ where: { runId: In(runIds), cause: 'rebase' }, order: { id: 'ASC' } });
+    for (const row of rows) byRun.set(row.runId, [...(byRun.get(row.runId) ?? []), row]);
+    return byRun;
   }
 
   async listFlows(runId: number): Promise<FlowEntity[]> {

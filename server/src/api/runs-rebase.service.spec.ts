@@ -129,6 +129,7 @@ describe('runs api', () => {
       const rows = await flows.listFlows(fresh?.id ?? 0);
       expect(JSON.parse(rows.at(-1)?.phases ?? '[]')).toEqual(['planning', 'code-review', 'ci']);
       expect(rows.at(-1)?.fromStep).toBe('code-review');
+      expect(rows.at(-1)?.cause).toBe('rebase');
       git(tree, ['merge-base', '--is-ancestor', release, 'HEAD']);
       expect(git(tree, ['log', '--oneline'])).toContain('field');
       expect(git(tree, ['rev-parse', `refs/remotes/origin/${branch}`])).toBe(tip);
@@ -197,6 +198,10 @@ describe('runs api', () => {
       const fresh = await runs.findRun('proj-54');
       expect(fresh?.status).toBe('waiting');
       expect(fresh?.currentStep).toBe('implement');
+      expect((await flows.listFlows(fresh?.id ?? 0)).map((row) => [row.fromStep, row.cause])).toEqual([
+        ['code-review', null],
+        ['implement', 'rebase'],
+      ]);
       expect(await documents.latestBody('proj-54', ARTIFACTS.rebaseMergeSkip.kind)).toBeNull();
       expect(git(tree, ['branch', '--show-current'])).toBe('feature/proj-54-ship-the-field');
     } finally {

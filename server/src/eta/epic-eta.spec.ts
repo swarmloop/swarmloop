@@ -7,8 +7,8 @@ import { seedFor } from './seed';
 
 const table = (): EtaTable => ({
   ...emptyTable(),
-  epic: { steps: { 'implement-improve': 7 * MIN }, whole: null },
-  subtask: { steps: {}, whole: 10 * MIN },
+  epic: { steps: { 'implement-improve': 7 * MIN }, visits: {}, whole: null },
+  subtask: { steps: {}, visits: {}, whole: 10 * MIN },
 });
 const parent = liveRun({ kind: 'epic', currentStep: 'implement' });
 const task = (id: string, depends: string[] = [], status: SubtaskStatus = 'waiting'): TaskInput => ({

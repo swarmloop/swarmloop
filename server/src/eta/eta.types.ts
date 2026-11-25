@@ -15,13 +15,14 @@ export interface FinishedRunInput {
   parentRunId: string | null;
   epicAt: string | null;
   /** Every entry into a step, in any order; a step entered again appears again. */
-  entries: { step: string; startedAt: string }[];
+  entries: { step: string; startedAt: string; finishedAt: string }[];
   waits: Wait[];
 }
 
-/** One number per step, and the median of a whole run, for one kind of run. */
+/** One number per step, the median working time of one visit per step, and the median of a whole run, for one kind of run. */
 export interface KindNumbers {
   steps: Record<string, number>;
+  visits: Record<string, number>;
   whole: number | null;
 }
 
@@ -35,6 +36,8 @@ export interface LiveRun {
   currentStep: string;
   stepStartedAt: string | null;
   waits: Wait[];
+  /** The steps the run's open relaunch still has to run. Missing when no relaunch is open. */
+  relaunch?: string[];
 }
 
 /** One task of an epic: its status, its dependencies and its own run once it has started. */
