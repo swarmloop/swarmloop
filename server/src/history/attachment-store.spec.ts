@@ -110,4 +110,22 @@ describe('cleanFileName', () => {
   ])('cleans %j to %j', (name, clean) => {
     expect(cleanFileName(name, 'fallback')).toBe(clean);
   });
+
+  it('writes a text file read only beside copied files, one write after another', async () => {
+    const { store, config } = setup();
+    const one = await store.stage('a.txt', Buffer.from('one'));
+    await store.claim('from-1', [one.id]);
+
+    await Promise.all([
+      store.copy('from-1', 'turn-1', ['a.txt']),
+      store.write('turn-1', 'run-1-error.txt', 'first'),
+      store.write('turn-1', 'run-1-error.txt', 'second'),
+    ]);
+
+    const dir = attachmentsDir(config, 'turn-1');
+    expect(readdirSync(dir).sort()).toEqual(['a.txt', 'run-1-error.txt']);
+    expect(readFileSync(join(dir, 'run-1-error.txt'), 'utf8')).toBe('second');
+    expect(statSync(join(dir, 'run-1-error.txt')).mode & 0o777).toBe(0o644);
+    expect(statSync(dir).mode & 0o777).toBe(0o755);
+  });
 });

@@ -1,7 +1,7 @@
 import { BacklogRepository } from '../history/backlog.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { EventFacts } from '../pipeline/backlog/planner/event-facts';
+import { eventFactsOf } from '../pipeline/backlog/planner/planner-facts.spec-helpers';
 import type { RepositoryHost } from '../steps/shared/repository-host';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { save } from '../testing/runs.spec-helpers';
@@ -23,7 +23,7 @@ async function needsPersonFacts(app: Parts['app'], runKey: string) {
   const id = backlog.id as number;
   await backlogs.recordEvent(id, `needs-person:${runKey}:1`, 'run-needs-person', { runKey });
   const [event] = await backlogs.events(id, 1);
-  return new EventFacts(backlogs, app.get(DocumentRepository), {} as RepositoryHost).of('owner', event);
+  return eventFactsOf(app, {} as RepositoryHost).of('owner', event, 'turn-1');
 }
 
 describe('the planner answering a run that waits on a question', () => {

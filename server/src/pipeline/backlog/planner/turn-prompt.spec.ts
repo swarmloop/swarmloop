@@ -1,5 +1,4 @@
 import { BacklogTurnPrompt } from './turn-prompt';
-import { EventFacts } from './event-facts';
 import { plannerFacts } from './planner-facts.spec-helpers';
 import { BacklogTurnState } from './turn-state';
 
@@ -8,13 +7,7 @@ type Harness = Awaited<ReturnType<typeof plannerFacts>>;
 async function withPrompt(body: (h: Harness, prompt: BacklogTurnPrompt) => Promise<void>): Promise<void> {
   const h = await plannerFacts();
   try {
-    const state = new BacklogTurnState(
-      h.backlogs,
-      h.chat,
-      h.runs,
-      h.documents,
-      new EventFacts(h.backlogs, h.documents, h.host),
-    );
+    const state = new BacklogTurnState(h.backlogs, h.chat, h.runs, h.documents, h.eventFacts());
     await body(h, new BacklogTurnPrompt(state));
   } finally {
     await h.close();

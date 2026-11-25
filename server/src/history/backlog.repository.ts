@@ -143,6 +143,11 @@ export class BacklogRepository implements BacklogWriters {
     return rows.map(toEvent);
   }
 
+  /** Whether the backlog has an event with this key. */
+  async hasEvent(backlogId: number, key: string): Promise<boolean> {
+    return (await this.dataSource.manager.count(BacklogEventEntity, { where: { backlogId, eventKey: key } })) > 0;
+  }
+
   /** The kind of the newest main event (`main-red` or `main-green`) of a repository in a backlog, or null when there is none. */
   async latestMainEvent(backlogId: number, repository: string): Promise<'main-red' | 'main-green' | null> {
     const escaped = repository.replace(/[\\%_]/g, (char) => `\\${char}`);
