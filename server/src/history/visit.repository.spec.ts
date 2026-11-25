@@ -2,6 +2,7 @@ import { writeRunState } from './run-state';
 import { DocumentRepository } from './document.repository';
 import { repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
+import { VisitStartRepository } from './visit-start.repository';
 import { VisitRepository } from './visit.repository';
 
 describe('VisitRepository', () => {
@@ -133,6 +134,35 @@ describe('VisitRepository', () => {
       expect(await db.app.get(DocumentRepository).listDocuments(run.id)).toHaveLength(1);
       expect(await visits.listSamples([])).toEqual([]);
       expect(await visits.listExchanges([])).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('counts a visit the step made itself, and not one started from outside the step', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const starts = db.app.get(VisitStartRepository);
+      const run = await db.app.get(RunRepository).begin('run-outside', 'plan');
+      const turn = await visits.finishVisit(run, { ...repositoryVisit(), step: 'plan' });
+      await starts.note({
+        runId: run.id,
+        step: 'plan',
+        attemptId: 'turn-1',
+        startedBy: 'person',
+        level: null,
+        inputDigest: null,
+        startReason: null,
+        rerunUnfinished: false,
+        outside: true,
+        statId: turn.id,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      expect(await visits.hasAgentVisit(run.id, 'plan')).toBe(true);
+      expect(await visits.hasStepVisit(run.id, 'plan')).toBe(false);
+      await visits.finishVisit(run, { ...repositoryVisit(), step: 'plan' });
+      expect(await visits.hasStepVisit(run.id, 'plan')).toBe(true);
     } finally {
       await db.close();
     }

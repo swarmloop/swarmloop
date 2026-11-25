@@ -101,11 +101,6 @@ export interface ReviewDeps {
 
 export const REVIEWERS: Reviewer[] = [...CODE_REVIEWERS.map((name) => ({ name, kind: REVIEWS.of(name) }))];
 
-/** The reviewer a Run again names, when it is one of the reviewers. */
-export function onlyReviewer(reviewer: string | undefined): string | undefined {
-  return REVIEWERS.some((item) => item.name === reviewer) ? reviewer : undefined;
-}
-
 type RoundJob = Omit<ReviewLaunch, 'briefFor' | 'answering'> & {
   promptFor: (runtime: RuntimeName) => string;
   exchange: { heading: string; body: string } | null;

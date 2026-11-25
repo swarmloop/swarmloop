@@ -18,7 +18,7 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import type { DocumentDraft } from '../../history/visit';
 import type { Opinion } from './code-review-record';
 import { reviewExchanges, type Exchange } from './review-exchange';
-import { onlyReviewer, type Reviewer } from './reviewer';
+import type { Reviewer } from './reviewer';
 import { selectReviewers } from './review-select';
 
 /** What the preparation reads. */
@@ -36,7 +36,6 @@ interface Preparation {
   requirements: string;
   thirdParty: boolean;
   mounts: SandboxMount[];
-  only: string | undefined;
   fresh: boolean;
   retry: boolean;
   exchanges: Map<string, Exchange>;
@@ -70,7 +69,6 @@ export async function prepareReview(deps: PrepareDeps, notes: string | null, ctx
     throw new SwarmloopError('requirements is missing');
   }
   const mounts = checkout ? pathMount(checkout) : await repoMounts(deps.runs, deps.documents, root(deps.config), key);
-  const only = onlyReviewer(options.reviewer);
   const fresh = ((await ctx.reread(ARTIFACTS.rebaseConflict)) ?? '').trim() === 'review';
   const retry = fresh ? false : await retrying(deps.visits, opened);
   const attemptId = retry ? await interruptedAttempt(deps.visits, opened) : null;
@@ -81,7 +79,6 @@ export async function prepareReview(deps: PrepareDeps, notes: string | null, ctx
   );
   const { kept, pending, recovered } = await selectReviewers(deps.documents, root(deps.config), {
     key,
-    only,
     fresh,
     retry,
     attemptId,
@@ -91,7 +88,6 @@ export async function prepareReview(deps: PrepareDeps, notes: string | null, ctx
     requirements,
     thirdParty,
     mounts,
-    only,
     fresh,
     retry,
     exchanges: await reviewExchanges(deps.documents, opened.run.id, returned),

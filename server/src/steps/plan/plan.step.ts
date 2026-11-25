@@ -241,11 +241,11 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
     };
   }
 
-  /** A stored plan visit makes this a re-plan; the session records the last definition sent into the shared chat. */
+  /** A stored visit of the plan step itself makes this a re-plan (a planner's turn in the chat is no plan visit); the session records the last definition sent into the shared chat. */
   private async sessionFor(run: RunEntity) {
     const { runtime } = this.profile(this.config.env, run);
     const chat = await resumableChat(root(this.config), run.key, 'plan', runtime);
-    const planVisit = await this.visits.hasAgentVisit(run.id, 'plan');
+    const planVisit = await this.visits.hasStepVisit(run.id, 'plan');
     const continued = planVisit ? chat : null;
     const received = chat?.chatId ? (chat.resultName ?? null) : null;
     return { runtime, chat, received, goesOn: Boolean(continued?.chatId) };

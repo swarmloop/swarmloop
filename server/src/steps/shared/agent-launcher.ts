@@ -115,9 +115,10 @@ export class AgentLauncher {
     assertNotStopped(this.runStop, request.key);
     const directory = join(request.root, 'data');
     mkdirSync(directory, { recursive: true });
-    const sessionFile = join(directory, sessionFileName(request.key, request.step));
+    const session = sessionStepOf(request);
+    const sessionFile = join(directory, sessionFileName(request.key, session));
     const stored = await readSession(sessionFile, request.runtime);
-    const removed = chatStateRemoved(request.root, request.key, request.step, stored);
+    const removed = chatStateRemoved(request.root, request.key, session, stored);
     const chatId = request.resume === false || removed ? null : (stored?.chatId ?? null);
     const before = await this.chatBefore(request, chatId);
     const launch = {
@@ -253,4 +254,9 @@ export class AgentLauncher {
       });
     }
   }
+}
+
+/** The step whose session file a launch reads and writes: its own step's, unless a one-off chat names another. */
+function sessionStepOf(request: AgentLaunchRequest): string {
+  return request.session ?? request.step;
 }

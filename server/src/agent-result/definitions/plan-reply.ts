@@ -1,6 +1,7 @@
 import Joi from 'joi';
 import { defineResult, type ResultDefinition } from '../result-definition';
 import { planKeys, STARTER_FIELDS, type PlanResult } from './plan';
+import { STEPS } from '../../contract/steps';
 import { keysFor, storedContractKey } from './split-fields';
 
 /** What the planner hands back to a person: a short answer, and when the plan changes, the plan itself. */
@@ -14,6 +15,10 @@ export interface PlanReplyResult extends Partial<Omit<PlanResult, 'questions'>> 
   finding?: 'holds' | 'ruled-out';
   /** What implement does now, a change of the plan included. Only an answer to a question about a finding has it. */
   instruction?: string;
+  /** The run starts again, and takes the message's change before its next step. Only a turn with no step running has it. */
+  resume?: boolean;
+  /** The run starts again from this step with this instruction as the replay prompt. Only a turn with no step running has it. */
+  replay?: { step: string; instruction: string };
 }
 
 /** What a run lets a reply change. */
@@ -26,6 +31,8 @@ interface ReplyShape {
   answerOnly?: boolean;
   /** The answer-only reply decides a reviewer's finding: it says whether it holds and what implement does now. */
   finding?: boolean;
+  /** The answer-only reply may also resume the run or replay it from a step: the turn of a run no step drives. */
+  acts?: boolean;
 }
 
 const SPLIT_KEYS = ['contract', 'tasks', 'keep'];
@@ -73,15 +80,30 @@ function planPart(addTasksOnly: boolean, stored: boolean): Record<string, Joi.Sc
   };
 }
 
+/** The actions of a turn with no step running: resume the run, or replay it from a pipeline step that is not done. */
+const actKeys = {
+  resume: Joi.boolean().description(
+    'true to start the run again; it takes the message before its next step. Leave out when the run stays as it is',
+  ),
+  replay: Joi.object({
+    step: Joi.string()
+      .valid(...STEPS.filter((name) => name !== 'done'))
+      .required()
+      .description('The step to start from; plan to plan again'),
+    instruction: Joi.string().trim().min(1).required().description('What the step does now, as its prompt'),
+  }).description('Start the run again from a step with an instruction. Never together with resume'),
+};
+
 function schemaOf(
   hidden: string[],
-  shape: Pick<ReplyShape, 'addTasksOnly' | 'finding'>,
+  shape: Pick<ReplyShape, 'addTasksOnly' | 'finding' | 'acts'>,
   stored = false,
 ): Joi.ObjectSchema {
   const keys = {
     ...ownKeys,
     ...planPart(Boolean(shape.addTasksOnly), stored),
     ...(shape.finding ? findingKeys : {}),
+    ...(shape.acts ? actKeys : {}),
   };
   return Joi.object(keysFor(keys, hidden))
     .unknown(hidden.length > 0)
@@ -89,6 +111,9 @@ function schemaOf(
       value.plan?.length && value.tasks?.length
         ? helpers.message({ custom: 'plan and tasks cannot both be filled in' })
         : value,
+    )
+    .custom((value: PlanReplyResult, helpers) =>
+      value.resume && value.replay ? helpers.message({ custom: 'resume and replay cannot both be given' }) : value,
     );
 }
 

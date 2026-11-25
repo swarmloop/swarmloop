@@ -64,6 +64,7 @@ import { Reconciler } from './reconciler';
 import { StartGate } from './start-gate';
 import { RunGuards } from './run-guards';
 import { PlannerTurns } from './planner-turns';
+import { PlannerOwnTurn } from './planner-own-turn';
 import { RunReopen } from './run-reopen';
 import { BacklogActions } from './backlog/backlog-actions';
 import { BacklogActionSupport } from './backlog/backlog-action-support';
@@ -168,6 +169,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     QuestionHolds,
     QuestionPassOn,
     PlannerTurns,
+    PlannerOwnTurn,
     PlanConversation,
     BacklogActionSupport,
     BacklogTaskActions,

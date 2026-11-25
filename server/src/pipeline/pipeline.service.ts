@@ -3,6 +3,7 @@ import { AppConfig } from '../config/env';
 import { RunStop } from '../agent/run-stop';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
+import { storedState } from '../history/run-state';
 import { DocumentRepository } from '../history/document.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -24,8 +25,10 @@ import { RunLifecycle } from './run-lifecycle';
 import { LimitRelease } from '../steps/shared/limit-release';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 import { ReportRefresh } from '../steps/shared/report-refresh';
+import type { SubtaskStart } from '../steps/shared/subtask-ops';
 import { PlannerTurns } from './planner-turns';
 import { RunReopen } from './run-reopen';
+import { PlannerOwnTurn } from './planner-own-turn';
 
 @Injectable()
 export class PipelineService implements OnApplicationBootstrap {
@@ -54,6 +57,7 @@ export class PipelineService implements OnApplicationBootstrap {
     reportRefresh: ReportRefresh,
     private readonly turns: PlannerTurns,
     private readonly reopening: RunReopen,
+    private readonly ownTurn: PlannerOwnTurn,
   ) {
     this.instructions = new RunInstructions(runs, documents, registry);
     this.driver = new RunDriver(
@@ -118,7 +122,7 @@ export class PipelineService implements OnApplicationBootstrap {
     return this.lifecycle.stop(key);
   }
 
-  async replay(key: string, name: string, prompt: string): Promise<PipelineResult> {
+  async replay(key: string, name: string, prompt: string, start?: SubtaskStart): Promise<PipelineResult> {
     const invalid = this.lifecycle.keyError(key);
     if (invalid) return invalid;
     if (!isStep(name) || name === 'done') return { exitCode: 1, message: `${name} is unknown` };
@@ -134,15 +138,25 @@ export class PipelineService implements OnApplicationBootstrap {
     if (failed) return failed;
     await this.runs.release(fresh, { status: 'waiting', currentStep: name });
     this.runStop.clear(key);
-    return this.startDetached(key, this.registryPromptOptions(name, full));
+    return this.startDetached(key, {
+      ...this.registryPromptOptions(name, full),
+      ...(start ? { startBy: start.by, level: start.level } : {}),
+    });
   }
 
   /**
-   * A message to a done run: the planner takes it in a pass of its own. Only a reply with a plan reopens the run, with
-   * its merge requests back to draft; a reply without one leaves the run as it is.
+   * A message to a run no step drives, taken in a pass of its own. A done run takes it in the plan step's turn, and
+   * only a reply with a plan reopens it, with its merge requests back to draft; a reply without one leaves it as it is.
+   * Any other run takes it in the planner's own turn, which answers and may resume or replay.
    */
-  amendDone(key: string): void {
+  takeMessages(key: string): void {
     this.turns.background(async () => {
+      const run = await this.runs.findRun(key);
+      if (run && storedState(run).state !== 'done') {
+        // A start that is in flight takes the message at its next hop, as a held run does.
+        await this.ownTurn.take(key, () => this.lifecycle.busy(key));
+        return;
+      }
       const outcome = await this.turns.take(key, () => this.step('plan', key, { auto: true }), new Set());
       if (outcome === 'changed') await this.reopening.reopen(key, (name) => this.startDetached(name));
     });

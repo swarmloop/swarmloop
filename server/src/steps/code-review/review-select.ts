@@ -18,7 +18,6 @@ interface Selection {
 
 interface SelectInput {
   key: string;
-  only: string | undefined;
   fresh: boolean;
   retry: boolean;
   /** The attempt of the code-review visit that was interrupted. Set when `retry`. */
@@ -56,27 +55,23 @@ export async function selectReviewers(
   root: string,
   input: SelectInput,
 ): Promise<Selection> {
-  const { key, only, fresh, retry, attemptId, counts } = input;
+  const { key, fresh, retry, attemptId, counts } = input;
   const round: Selection = { kept: [], pending: [], recovered: [] };
   for (const reviewer of REVIEWERS) {
-    if (fresh || only === reviewer.name) {
-      if (!only || only === reviewer.name) {
-        round.pending.push(reviewer);
-      }
+    if (fresh) {
+      round.pending.push(reviewer);
       continue;
     }
     const stored = (await counts(reviewer.kind)) ? await storedOpinion(documents, key, reviewer) : null;
-    if (take(round, stored, Boolean(only) || retry || stored?.decision === 'ok')) {
+    if (take(round, stored, retry || stored?.decision === 'ok')) {
       continue;
     }
-    const found = retry && !only ? recoveredOpinion(root, key, attemptId, reviewer) : null;
+    const found = retry ? recoveredOpinion(root, key, attemptId, reviewer) : null;
     if (take(round, found, true) && found) {
       round.recovered.push(...reviewDocuments(found));
       continue;
     }
-    if (!only) {
-      round.pending.push(reviewer);
-    }
+    round.pending.push(reviewer);
   }
   return round;
 }
