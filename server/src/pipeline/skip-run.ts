@@ -15,9 +15,8 @@ export async function skipRun(
 ): Promise<RunEntity | null> {
   if (storedState(child).state === 'skipped') return null;
   await stop(child);
-  const stopped = (await runs.findRun(child.key)) ?? child;
-  writeRunState(stopped, { status: 'blocked', reason: { code: REASON.skipped, message: reason } });
-  stopped.stepStartedAt = null;
-  await runs.saveRun(stopped);
-  return stopped;
+  return runs.change(child.key, (stopped) => {
+    writeRunState(stopped, { status: 'blocked', reason: { code: REASON.skipped, message: reason } });
+    stopped.stepStartedAt = null;
+  });
 }

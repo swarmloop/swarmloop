@@ -270,19 +270,22 @@ export class RunDriver {
     const prior = await this.runs.findRun(key);
     const previousStep = prior?.currentStep ?? name;
     const previousStatus = prior?.status ?? 'waiting';
-    const run = await this.runs.begin(key, name);
+    await this.runs.begin(key, name);
+    let targetPath: string | null = null;
     if (options.path) {
       assertInsideWork(options.path, workRoots(this.config));
-      run.targetPath = realpathSync(options.path);
+      targetPath = realpathSync(options.path);
     }
     const settled = settle(previousStep, previousStatus, name, 'blocked');
     const line = `${this.clock.iso()} ${name} not implemented`;
-    writeRunState(run, {
-      status: settled.status,
-      currentStep: settled.currentStep,
-      reason: { code: ownBlockCode(name), message: line },
+    await this.runs.change(key, (run) => {
+      if (targetPath !== null) run.targetPath = targetPath;
+      writeRunState(run, {
+        status: settled.status,
+        currentStep: settled.currentStep,
+        reason: { code: ownBlockCode(name), message: line },
+      });
     });
-    await this.runs.saveRun(run);
     return { exitCode: 1, message: line };
   }
 
@@ -293,10 +296,13 @@ export class RunDriver {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'repository failed';
       const run = await this.runs.findRun(key);
-      if (run && run.status !== 'running') {
-        writeRunState(run, { status: 'failed' });
-        await this.runs.saveRun(run);
-        await this.documents.putDocument(run, 'error', `${message}\n`);
+      if (run) {
+        let failing = false;
+        const failed = await this.runs.change(key, (row) => {
+          failing = row.status !== 'running';
+          if (failing) writeRunState(row, { status: 'failed' });
+        });
+        if (failing) await this.documents.putDocument(failed, 'error', `${message}\n`);
       }
       return message;
     }

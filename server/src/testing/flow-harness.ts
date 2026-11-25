@@ -170,10 +170,11 @@ export async function createFlowHarness(
     begin: async (step, begun = {}) => {
       useGitlabOrigin(first.root, tree);
       const { app } = harness;
-      const run = await remember(app.app.get(RunRepository), app.app.get(DocumentRepository), key, step, 'waiting');
-      run.codeHost = 'gitlab';
-      run.spentUsd = begun.spentUsd ?? run.spentUsd;
-      await app.app.get(RunRepository).saveRun(run);
+      const seeded = await remember(app.app.get(RunRepository), app.app.get(DocumentRepository), key, step, 'waiting');
+      const run = await app.app.get(RunRepository).change(key, (row) => {
+        row.codeHost = 'gitlab';
+        row.spentUsd = begun.spentUsd ?? seeded.spentUsd;
+      });
       if (step === 'plan') return run;
       if (step === 'merge-request') {
         mkdirSync(join(tree, 'src'), { recursive: true });

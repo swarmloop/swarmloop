@@ -281,17 +281,17 @@ export class RunCommandsService {
   private async rememberPrompt(key: string, prompt: string): Promise<void> {
     const existing = await this.runs.findRun(key);
     if (existing) {
-      if (!this.runs.held(existing)) {
-        existing.prompt = prompt;
-        await this.runs.saveRun(existing);
-      }
+      await this.runs.change(key, (row) => {
+        if (!this.runs.held(row)) row.prompt = prompt;
+      });
       return;
     }
-    const created = await this.runs.begin(key, 'code-review');
-    writeRunState(created, { status: 'waiting' });
-    created.prompt = prompt;
-    created.stepStartedAt = null;
-    await this.runs.saveRun(created);
+    await this.runs.begin(key, 'code-review');
+    await this.runs.change(key, (created) => {
+      writeRunState(created, { status: 'waiting' });
+      created.prompt = prompt;
+      created.stepStartedAt = null;
+    });
   }
 
   demandStart(result: { exitCode: number; message: string }): void {

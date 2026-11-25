@@ -82,7 +82,7 @@ function storedRun(status: Parameters<typeof writeRunState>[1]['status'], code: 
 function releasing(run: RunEntity): {
   findRun: jest.Mock;
   release: jest.Mock;
-  saveRun: jest.Mock;
+  change: jest.Mock;
   released: RunEntity;
 } {
   const released = run;
@@ -94,7 +94,10 @@ function releasing(run: RunEntity): {
         return released;
       },
     ),
-    saveRun: jest.fn().mockResolvedValue(undefined),
+    change: jest.fn(async (_key: string, apply: (row: RunEntity) => void) => {
+      apply(released);
+      return released;
+    }),
     released,
   };
 }

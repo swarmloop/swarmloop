@@ -14,6 +14,7 @@ import { PlanChatStore } from '../history/plan-chat.store';
 import { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
+import { storeRun } from './store-run.spec-helpers';
 import { storedState, writeRunState } from '../history/run-state';
 import { VisitRepository } from '../history/visit.repository';
 import { CommandService } from '../pipeline/command.service';
@@ -111,7 +112,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
     parent.split = true;
     parent.projects = 'demo\n';
     parent.codeHost = 'gitlab';
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await documents().putDocument(parent, 'requirements', requirements);
     await documents().putDocument(parent, 'repos', 'demo\n');
     await documents().putDocument(parent, 'implementation', '- the epic\n');
@@ -130,7 +131,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
       run.taskId = item.id;
       run.codeHost = 'gitlab';
       run.prompt = `branch: ${FEATURE}\n`;
-      await runs().saveRun(run);
+      await storeRun(runs(), run);
       for (const [kind, body] of [
         ['requirements', requirements],
         ['repos', 'demo\n'],
@@ -148,7 +149,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
       currentStep: 'implement',
       reason: { code: ERROR_CODES.SUBTASKS_RUNNING, message: 'subtasks run' },
     });
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await seedBacklog();
   }
 
@@ -238,7 +239,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
   async function block(id: string, code: string, step: string): Promise<void> {
     const run = (await runs().findRun(childKey(id)))!;
     writeRunState(run, { status: 'blocked', currentStep: step, reason: { code, message: 'blocked' } });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   const isIn = (tree: string, sha: string): boolean => {
@@ -307,14 +308,14 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
     await seedEpic([task('a')]);
     const child = (await runs().findRun(childKey('a')))!;
     writeRunState(child, { status: 'running', currentStep: 'implement' });
-    await runs().saveRun(child);
+    await storeRun(runs(), child);
     landOnMain('src/fix.ts', 'export const fix = 1;\n');
 
     await backlogPass();
     expect(rebaseKeys()).toEqual([]);
 
     writeRunState(child, { status: 'waiting', currentStep: 'implement' });
-    await runs().saveRun(child);
+    await storeRun(runs(), child);
     // The subtask starts after the epic's rebase ended and before the subtasks are moved.
     const rebase = flow.app.app.get(RunRebase);
     const real = rebase.rebase.bind(rebase);
@@ -323,7 +324,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
       if (key === KEY) {
         const started = (await runs().findRun(childKey('a')))!;
         writeRunState(started, { status: 'running', currentStep: 'implement' });
-        await runs().saveRun(started);
+        await storeRun(runs(), started);
       }
       return next;
     });
@@ -338,7 +339,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
     const run = (await runs().findRun(childKey(id)))!;
     await documents().putDocument(run, 'questions', '- Which type are the ids?\n');
     writeRunState(run, { status: 'waiting', currentStep: 'research', facts: { needsAnswers: true } });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   const waitingKept = async (id: string) => {
@@ -369,7 +370,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
       currentStep: 'research',
       reason: { code: ERROR_CODES.SUBTASK_WAITING, message: 'waits for a sibling' },
     });
-    await runs().saveRun(waiting);
+    await storeRun(runs(), waiting);
     landOnMain('src/fix.ts', 'export const fix = 1;\n');
 
     await flow.app.app.get(RunRebaseService).rebase(KEY);
@@ -475,7 +476,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
       return move(child, ...rest);
     });
     // Every write of the epic's state, whichever way it is made.
-    for (const write of ['saveRun', 'claim', 'release'] as const) {
+    for (const write of ['change', 'insertRun', 'claim', 'release'] as const) {
       const real = runs()[write].bind(runs()) as (...args: unknown[]) => Promise<RunEntity>;
       jest.spyOn(runs(), write).mockImplementation((...args: unknown[]) =>
         real(...args).then((run) => {
@@ -586,7 +587,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
           message: 'demo conflicts with main in src/readme.ts; the epic stays on its branch until a person replays it',
         },
       });
-      await runs().saveRun(parent);
+      await storeRun(runs(), parent);
       const commands = flow.app.app.get(CommandRepository);
       const stored = await commands.accept({
         type: 'rebase',
@@ -632,10 +633,10 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
       const head = await storedBlock();
       const running = (await runs().findRun(childKey('a')))!;
       writeRunState(running, { status: 'running', currentStep: 'implement' });
-      await runs().saveRun(running);
+      await storeRun(runs(), running);
       const settled = (await runs().findRun(childKey('b')))!;
       writeRunState(settled, { status: 'waiting', currentStep: 'implement' });
-      await runs().saveRun(settled);
+      await storeRun(runs(), settled);
       await expectResumable();
       const seen = watch();
 
@@ -657,7 +658,7 @@ describe('a running epic takes what lands on main, from a backlog pass', () => {
       currentStep: 'implement',
       reason: { code: ERROR_CODES.REBASE_CONFLICT, message: 'demo was recreated during a rebase' },
     });
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await documents().putDocument(
       parent,
       'rebase_journal',

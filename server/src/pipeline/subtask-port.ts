@@ -149,9 +149,10 @@ export class SubtaskPort extends SubtaskOps {
 
   override async waitFor(run: RunEntity, message: string): Promise<void> {
     const reason = { code: ERROR_CODES.SUBTASK_WAITING, message };
-    if (run.status !== 'waiting' || JSON.stringify(storedState(run).reason) === JSON.stringify(reason)) return;
-    writeRunState(run, { status: 'waiting', reason });
-    await this.runs.saveRun(run);
+    await this.runs.change(run.key, (row) => {
+      if (row.status !== 'waiting' || JSON.stringify(storedState(row).reason) === JSON.stringify(reason)) return;
+      writeRunState(row, { status: 'waiting', reason });
+    });
   }
 
   override asking(run: RunEntity): Promise<boolean> {
