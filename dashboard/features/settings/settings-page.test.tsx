@@ -15,7 +15,14 @@ vi.mock('../shell', () => ({ ThemeModeSwitch: () => <p>theme switch</p> }));
 const roles = { plan: ['claude:opus'], implement: ['claude:sonnet'], review: ['claude:sonnet'] };
 const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
   settings,
-  defaults: { agents: { main: roles, subtask: roles, backlog: { plan: ['claude:opus:high'] } } },
+  defaults: {
+    agents: { main: roles, subtask: roles, backlog: { plan: ['claude:opus:high'] } },
+    levels: {
+      main: { plan: 'high', implement: 'high', review: 'high' },
+      subtask: { plan: 'medium', implement: 'medium', review: 'medium' },
+      backlog: { plan: 'xhigh' },
+    },
+  },
   runtimes: [
     { runtime: 'claude', models: ['opus', 'sonnet'], efforts: { opus: ['low', 'high'], sonnet: [] } },
     { runtime: 'codex', models: ['gpt', 'gpt-priced'], efforts: {} },
@@ -115,16 +122,96 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('Saved')).toBeInTheDocument();
   });
 
-  it('offers the levels of the chosen model, with the runtime default first', async () => {
+  it('offers the levels of the chosen model and no empty choice', async () => {
     const user = await openOwnPlan();
 
     await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus' }));
 
-    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      'Runtime default',
-      'low',
-      'high',
-    ]);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['low', 'high']);
+  });
+
+  it('shows the level an entry without an effort runs at and where it comes from', async () => {
+    await openOwnPlan(own(['claude', 'opus']));
+    expect(screen.getByRole('combobox', { name: 'Effort of claude:opus' })).toHaveTextContent(
+      'high · default for plan',
+    );
+  });
+
+  it('shows the level of the entry above, and the plain level for an own effort', async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      ...view(),
+      runtimes: [
+        {
+          runtime: 'claude',
+          models: ['opus', 'sonnet'],
+          efforts: { opus: ['low', 'high'], sonnet: ['low', 'high', 'xhigh'] },
+        },
+      ],
+    });
+    vi.mocked(getSettings).mockResolvedValue({
+      ...(await getSettings()),
+      settings: {
+        agents: {
+          main: {
+            plan: [
+              { runtime: 'claude', model: 'opus', effort: 'high' },
+              { runtime: 'claude', model: 'sonnet' },
+            ],
+          },
+        },
+      },
+    });
+    render(<SettingsPage />);
+    await screen.findByRole('list', { name: 'main plan' });
+    expect(screen.getByRole('combobox', { name: 'Effort of claude:opus:high' })).toHaveTextContent(/^high$/);
+    expect(screen.getByRole('combobox', { name: 'Effort of claude:sonnet' })).toHaveTextContent('high · as above');
+  });
+
+  it('shows the level before the cap on the next entry as xhigh when the entry above is max', async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      ...view({
+        agents: {
+          main: {
+            plan: [
+              { runtime: 'claude', model: 'opus', effort: 'max' },
+              { runtime: 'codex', model: 'gpt' },
+            ],
+          },
+        },
+      }),
+      runtimes: [
+        { runtime: 'claude', models: ['opus'], efforts: { opus: ['low', 'high', 'xhigh', 'max'] } },
+        { runtime: 'codex', models: ['gpt'], efforts: { gpt: ['low', 'high', 'xhigh'] } },
+      ],
+    });
+    render(<SettingsPage />);
+    await screen.findByRole('list', { name: 'main plan' });
+    expect(screen.getByRole('combobox', { name: 'Effort of codex:gpt' })).toHaveTextContent('xhigh · as above');
+  });
+
+  it('adds a runtime and model that stores no effort', async () => {
+    const user = await openOwnPlan();
+
+    await user.click(screen.getByRole('combobox', { name: 'Add to main plan' }));
+    await user.click(await screen.findByRole('option', { name: 'claude:sonnet' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      agents: {
+        main: {
+          plan: [
+            { runtime: 'claude', model: 'opus' },
+            { runtime: 'claude', model: 'sonnet' },
+          ],
+        },
+      },
+    });
+  });
+
+  it('sends a saved list back unchanged until a level is picked', async () => {
+    const user = await openOwnPlan(own(['claude', 'opus']));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saveSettings).toHaveBeenCalledWith(own(['claude', 'opus']));
   });
 
   it('offers no level for a model that has none', async () => {
@@ -137,22 +224,24 @@ describe('SettingsPage', () => {
     const user = await openOwnPlan();
 
     await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus' }));
-    await user.click(await screen.findByRole('option', { name: 'high' }));
+    await user.click(await screen.findByRole('option', { name: 'low' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(saveSettings).toHaveBeenCalledWith({
-      agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'high' }] } },
+      agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'low' }] } },
     });
   });
 
-  it('saves no level after the runtime default is chosen', async () => {
+  it('saves the level picked in place of an own one', async () => {
     const user = await openOwnPlan(ownHigh);
 
     await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus:high' }));
-    await user.click(await screen.findByRole('option', { name: 'Runtime default' }));
+    await user.click(await screen.findByRole('option', { name: 'low' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(saveSettings).toHaveBeenCalledWith({ agents: { main: { plan: [{ runtime: 'claude', model: 'opus' }] } } });
+    expect(saveSettings).toHaveBeenCalledWith({
+      agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'low' }] } },
+    });
   });
 
   it('clears a level the new model lacks', async () => {

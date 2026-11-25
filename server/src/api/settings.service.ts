@@ -1,7 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { loadPriceTable } from '../agent/prices';
 import { useCachedModelList } from '../agent/runtime-model-lists';
-import { knownModels, missingCredential, namedAgentsFor, namedBacklogPlanAgents, parseAgent } from '../config/agents';
+import {
+  baseLevelOf,
+  knownModels,
+  missingCredential,
+  namedAgentsFor,
+  namedBacklogPlanAgents,
+  parseAgent,
+} from '../config/agents';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { rawEnv } from '../config/process-env';
@@ -10,7 +17,7 @@ import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { Clock } from '../core/clock';
 import type { SettingsBody, StoredAgents } from '../contract/api';
 import type { SettingsView } from '../contract/settings';
-import { isEffort } from '../contract/effort';
+import { isEffort, type Effort } from '../contract/effort';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { RUNTIME_NAMES, runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -96,7 +103,7 @@ export class SettingsService {
     const settings = login ? ((await this.stored.read(login)) ?? {}) : {};
     return {
       settings,
-      defaults: { agents: this.defaultAgents() },
+      defaults: { agents: this.defaultAgents(), levels: this.defaultLevels() },
       runtimes,
       modelsLimited: limited,
       server: [...SERVER_NAMES, ...PROCESS_ENV_NAMES].map((name) => {
@@ -119,6 +126,20 @@ export class SettingsService {
     const settings = await this.validate(body, login);
     await this.stored.save(login, settings);
     return this.view(login);
+  }
+
+  private defaultLevels(): SettingsView['defaults']['levels'] {
+    const env = this.config.env;
+    const levelsOf = (tier: 'main' | 'subtask') =>
+      Object.fromEntries(ROLES.map((role) => [role, baseLevelOf(env, role, tier)])) as Record<
+        keyof typeof ROLE_STEPS,
+        Effort
+      >;
+    return {
+      main: levelsOf('main'),
+      subtask: levelsOf('subtask'),
+      backlog: { plan: baseLevelOf(env, 'plan', 'backlog') },
+    };
   }
 
   private defaultAgents(): SettingsView['defaults']['agents'] {

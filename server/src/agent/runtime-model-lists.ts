@@ -26,8 +26,8 @@ export async function loadRuntimeModelIds(
 
 /**
  * Start-up of every process that resolves agents (API and CLI). Each cached model list goes to its runtime first, so a
- * level saved earlier still counts. Then the list of each runtime whose env agents name an effort is read, from the
- * cache else its CLI, so the levels can be checked. An env with no effort starts no CLI. A runtime with no lister (no
+ * level saved earlier still counts. Then the list of each runtime the env agents name is read, from the
+ * cache else its CLI, so the levels can be checked. A runtime with no lister (no
  * credential) is not read: that is a readiness item, not a refusal to start. A failure names the runtime and its reason.
  */
 export async function warmModelLists(
@@ -49,7 +49,7 @@ export async function warmModelLists(
       await loadRuntimeModelIds(root, runtime, now, lister);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      throw new SwarmloopError(`agents of ${name} name an effort, but its models cannot be read: ${reason}`);
+      throw new SwarmloopError(`agents of ${name} run at a level, but its models cannot be read: ${reason}`);
     }
   }
 }
