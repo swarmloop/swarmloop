@@ -245,6 +245,7 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
         nothing,
         { stopAll: jest.fn() } as never,
         nothing,
+        nothing,
       );
       await commands.stop('KEY-1');
       expect(run.status).toBe('blocked');

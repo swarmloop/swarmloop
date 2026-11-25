@@ -140,6 +140,50 @@ describe('runs api', () => {
     }
   });
 
+  it('refuses a planner replay of a run a person stopped and keeps it stopped', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-replay-stopped-'));
+    const pipeline = { startDetached: jest.fn(), replay: jest.fn(), stop: jest.fn() };
+    const app = await seededBoot(root, pipeline);
+    try {
+      const repository = app.get(RunRepository);
+      const saved = await save(repository, 'proj-14', 'implement', 'blocked');
+      saved.split = true;
+      writeRunState(saved, { status: 'blocked', reason: { code: REASON.stopped, message: 'Stopped.' } });
+      await repository.saveRun(saved);
+      const before = (await repository.findRun('proj-14'))?.generation;
+      await expect(
+        app.get(RunCommandsService).replay('proj-14', 'implement', 'Try again', undefined, { by: 'planner', level: 0 }),
+      ).rejects.toThrow("proj-14 is stopped. implement was not started; only a person's Resume starts it");
+      expect(pipeline.replay).not.toHaveBeenCalled();
+      expect(pipeline.stop).not.toHaveBeenCalled();
+      const after = await repository.findRun('proj-14');
+      expect(after?.generation).toBe(before);
+      expect(storedState(after as NonNullable<typeof after>).reason?.code).toBe(REASON.stopped);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('starts a replay of a stopped run when the person asks', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-replay-person-'));
+    const pipeline = {
+      startDetached: jest.fn(),
+      replay: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
+    };
+    const app = await seededBoot(root, pipeline);
+    try {
+      const repository = app.get(RunRepository);
+      const saved = await save(repository, 'proj-15', 'implement', 'blocked');
+      writeRunState(saved, { status: 'blocked', reason: { code: REASON.stopped, message: 'Stopped.' } });
+      await repository.saveRun(saved);
+      const start = { by: 'person', level: null } as const;
+      await app.get(RunCommandsService).replay('proj-15', 'implement', 'Try again', undefined, start);
+      expect(pipeline.replay).toHaveBeenCalledWith('proj-15', 'implement', 'Try again', start);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('names a run from a typed key, and from a slug when the prompt only looks like a key', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-slug-'));
     const app = await seededBoot(root);
