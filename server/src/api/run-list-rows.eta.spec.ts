@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -28,7 +29,7 @@ async function runningRun(
 ): Promise<RunEntity> {
   const run = await open();
   writeRunState(run, { status, currentStep: 'implement' });
-  return app.get(RunRepository).saveRun(run);
+  return storeRun(app.get(RunRepository), run);
 }
 
 const task = (id: string, depends: string[], status: Subtask['status']): Subtask => ({
@@ -49,7 +50,7 @@ describe('run list eta', () => {
       await runningRun(app, () => runs.openWaiting('done-1', '/target'), 'done');
       const asking = await runs.openWaiting('asking-1', '/target');
       writeRunState(asking, { status: 'waiting', currentStep: 'research' });
-      await runs.saveRun(asking);
+      await storeRun(runs, asking);
       await app.get(DocumentRepository).putDocument(asking, 'questions', '- Which branch?\n');
 
       const rows = new Map((await freshView(app)).runs.map((row) => [row.key, row]));

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { fakeConnection } from '../testing/fake-connection';
 import { PersonalCredentials } from './personal-credentials.service';
 import { PersonalTokens } from './personal-tokens.service';
@@ -154,7 +155,7 @@ describe('a run started through a token', () => {
       writeRunState(parent, { status: 'waiting', currentStep: 'implement' });
       parent.split = true;
       parent.projects = 'demo\n';
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       const documents = app.app.get(DocumentRepository);
       await documents.putDocument(parent, 'requirements', requirements);
       await documents.putDocument(parent, 'subtasks', `${JSON.stringify([task('a')])}\n`);

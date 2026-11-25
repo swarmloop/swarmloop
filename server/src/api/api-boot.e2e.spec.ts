@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -69,7 +70,7 @@ describe('the API server boot', () => {
       const run = await runs.begin(KEY, 'research');
       const attempt = run.activeAttempt;
       writeRunState(run, { status: 'running', ownerInstance: 'dead-instance', ownerPid: 2_147_483_646 });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
 
       await app.init();
       await module.get(CommandService).idle();

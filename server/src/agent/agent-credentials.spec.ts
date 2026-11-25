@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { EventEmitter } from 'events';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -110,7 +111,7 @@ describe('an agent launch uses the credential of the person who started the run'
 
   async function startRun(key: string, startedBy: string | null): Promise<void> {
     const runs = app.app.get(RunRepository);
-    await runs.saveRun(runs.newWaitingRun(key, null, startedBy));
+    await storeRun(runs, runs.newWaitingRun(key, null, startedBy));
   }
 
   const connect = (): Promise<void> =>

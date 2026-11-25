@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { AppConfig } from '../config/env';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -13,7 +14,7 @@ async function block(app: TestApp, step: string, code: string, message: string, 
   const run = await runs.begin(KEY, step);
   writeRunState(run, { status: 'blocked', currentStep: step, reason: { code, message } });
   run.spentUsd = spentUsd;
-  await runs.saveRun(run);
+  await storeRun(runs, run);
 }
 
 async function loopMark(app: TestApp): Promise<number> {

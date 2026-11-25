@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { DataSource } from 'typeorm';
 import type { StoredAgents } from '../contract/api';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
@@ -37,7 +38,7 @@ describe('a person takes over a run recorded as machine', () => {
         : await runs.openSubtask(key, parentId, 'a', startedBy, null);
     run.currentStep = 'research';
     run.status = 'failed';
-    return runs.saveRun(run);
+    return storeRun(runs, run);
   };
 
   const columns = async (key: string) =>
