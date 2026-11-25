@@ -141,4 +141,40 @@ describe('BacklogTurnRunner', () => {
       },
       { AGENTS_BACKLOG_PLAN: 'claude:m-claude,codex:m-codex' },
     ));
+
+  it('gives the turn the first helper of the runtime that runs it', () =>
+    withTurn(
+      async (h) => {
+        h.agent.script = [turnResult('Hi.')];
+        await h.runner.run('one', 'turn-a');
+        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', effort: 'low' });
+      },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'codex:h-codex,claude:h-claude:low' },
+    ));
+
+  it('gives the agent a failover moves to its own helper, or none', () =>
+    withTurn(
+      async (h) => {
+        h.agent.script = ['limit', turnResult('Hi.')];
+        await h.runner.run('one', 'turn-a');
+        expect(h.agent.launches.map((launch) => launch.runtime)).toEqual(['claude', 'codex']);
+        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude' });
+        expect(h.agent.launches[1].helper).toBeUndefined();
+      },
+      {
+        AGENTS_BACKLOG_PLAN: 'claude:m-claude,codex:m-codex',
+        AGENTS_BACKLOG_READ: 'claude:h-claude',
+      },
+    ));
+
+  it('gives a turn on a runtime without a helper entry none', () =>
+    withTurn(
+      async (h) => {
+        h.agent.script = [turnResult('Hi.')];
+        await h.runner.run('one', 'turn-a');
+        expect(h.agent.launches[0].runtime).toBe('cursor');
+        expect(h.agent.launches[0].helper).toBeUndefined();
+      },
+      { AGENTS_BACKLOG_READ: 'claude:h-claude' },
+    ));
 });

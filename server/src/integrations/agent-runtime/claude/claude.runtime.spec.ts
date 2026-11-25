@@ -87,6 +87,41 @@ describe('ClaudeRuntime', () => {
       return (args[args.indexOf('--disallowedTools') + 1] ?? '').split(',');
     };
 
+    describe('with a helper', () => {
+      const launch = (tools: 'read' | 'plan', helper?: { model: string; effort?: 'low' }) =>
+        runtime.printArgs({ model: 'm', prompt: 'p', mounts, resumeChatId: null, mode: 'plan', tools, helper });
+      const flag = (args: string[], name: string) => args[args.indexOf(name) + 1] ?? '';
+
+      it('lets the subagent tool through, runs the helper on its model and level with read tools', () => {
+        const args = launch('plan', { model: 'h-model', effort: 'low' });
+        const deniedTools = flag(args, '--disallowedTools').split(',');
+        expect(runtime.hasHelpers).toBe(true);
+        expect(deniedTools).not.toContain('Task');
+        expect(deniedTools).not.toContain('Agent');
+        for (const tool of READ_ONLY.filter((name) => name !== 'Task' && name !== 'Skill')) {
+          expect(deniedTools).toContain(tool);
+        }
+        expect(deniedTools).toContain('Agent(general-purpose)');
+        expect(JSON.parse(flag(args, '--agents'))).toEqual({
+          reader: expect.objectContaining({
+            model: 'h-model',
+            effort: 'low',
+            tools: ['Read', 'Grep', 'Glob', 'Bash'],
+          }),
+        });
+      });
+
+      it('leaves the level out when the helper has none', () => {
+        expect(JSON.parse(flag(launch('read', { model: 'h' }), '--agents')).reader).not.toHaveProperty('effort');
+      });
+
+      it('keeps the subagent tool denied and passes no definition without a helper', () => {
+        const args = launch('plan');
+        expect(flag(args, '--disallowedTools').split(',')).toContain('Task');
+        expect(args).not.toContain('--agents');
+      });
+    });
+
     it('denies the writing tools and the l00k list to a read step', () => {
       expect(denied('read')).toEqual([...L00K, ...READ_ONLY]);
       expect(claudeDisallowedTools('read').split(',')).toEqual(denied('read'));
@@ -126,16 +161,6 @@ describe('ClaudeRuntime', () => {
       ]);
       expect(launch.args.at(-1)).toBe('do it');
       expect(launch.unsetEnv).toEqual(['CLAUDE_CODE_EFFORT_LEVEL']);
-    });
-
-    it('puts --effort in terminal args too', () => {
-      const args = runtime.terminalArgs({ model: 'm', workspace: '/work', resumeChatId: null, vendor: [] });
-      expect(runtime.withEffort({ model: 'm', args, unsetEnv: [] }, 'max').args.slice(0, 4)).toEqual([
-        '--model',
-        'm',
-        '--effort',
-        'max',
-      ]);
     });
 
     it('launches without an effort exactly as before', () => {

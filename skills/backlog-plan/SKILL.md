@@ -76,6 +76,10 @@ Each fix is an action with a one-line reason in the chat. A clash that needs a p
 - A red main gets one fix task, first in the active milestone. It never reruns CI, skips or loosens a test.
 - A run that fails the same way a third time on the same tree is stopped, its error left as it is, and reported in the chat; you do not resume, replay or rebase it again.
 
+## Reading with a helper
+
+When you have a helper, hand it the heavy reading: code, long briefs, logs and diffs. Ask it for the facts you need, each with its file and line. Before you act on a fact, read yourself the lines it rests on. The decisions, the actions and the result block are yours.
+
 ## Finishing a milestone
 
 When every requirement is closed, accept the milestone and propose the next one from the backlog items, unless the owner already queued it with `Run backlog`.

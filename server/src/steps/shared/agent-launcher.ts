@@ -2,6 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { effortFields } from '../../contract/effort';
+import { helperFor } from '../../config/agents';
 import { AppConfig } from '../../config/env';
 import { redact } from '../../config/redact';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
@@ -27,6 +28,7 @@ import { withLogReads } from './outside-reads';
 import { promptSections } from './prompt-manifest';
 import { LimitFailover } from './limit-failover';
 import { ModelHostUnavailable } from './model-host-unavailable';
+import type { AgentRunInput } from '../../agent/agent-run-input';
 import type { AgentLaunchRequest } from './agent-launch-request';
 import { loopWatch, newChatReason, recordWork } from './launch-work';
 import { answerIsReadable, exchangeResult, resultFollowUpRequest, withAnswerErrors } from './result-exchange';
@@ -36,6 +38,15 @@ import { RESULT_AS_BEFORE } from '../../agent-result/result-prompt';
 
 function withRules(prompt: string): string {
   return `${AGENT_LANGUAGE_RULE}\n${AGENT_FOREGROUND_RULE}\n\n${prompt}`;
+}
+
+/** The helper of the runtime that runs this launch, as the runtime interface takes it. Nothing when there is none. */
+function helperInput(request: AgentLaunchRequest): Pick<AgentRunInput, 'helper'> {
+  const helper = helperFor(request.helpers, request.runtime);
+  if (!helper) {
+    return {};
+  }
+  return { helper: { model: helper.model, ...(helper.effort ? { effort: helper.effort } : {}) } };
 }
 
 /** Starts one agent process for a step: the session file, the prompt prefix, and the run's spend counters. */
@@ -156,6 +167,7 @@ export class AgentLauncher {
       runtime: request.runtime,
       model: request.model,
       ...(request.effort ? { effort: request.effort } : {}),
+      ...helperInput(request),
       agentCalls: request.run.agentCalls,
       spentUsd: request.run.spentUsd,
       tokensInRun: request.run.tokensSoFar ?? (await this.visits.tokenTotal(request.run.id)),

@@ -12,6 +12,8 @@ export class CursorRuntime extends AbstractAgentRuntime {
   readonly command = 'agent' as const;
   readonly syncsChatMode = true;
   readonly planModeHasPlanTool = true;
+  // Not read for Cursor CLI 2025.11.25 in this change: no helper is declared, and a print launch is as before.
+  readonly hasHelpers = false;
   readonly priceSource = 'https://cursor.com/docs/models-and-pricing.md';
   readonly apiHosts = ['*.cursor.sh', '*.cursor.com'];
   readonly connection = new CursorConnection();

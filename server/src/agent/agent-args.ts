@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { runtimeFor, runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
+import { runtimeForCommand } from '../integrations/agent-runtime/agent-runtime.registry';
 import { cleanFileName } from '../core/clean-file-name';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { AgentTools } from '../integrations/agent-runtime/agent-runtime';
@@ -70,16 +70,6 @@ export function buildAgentArgs(
   },
 ): string[] {
   return runtimeForCommand(command).printArgs(input);
-}
-
-/** The vendor's own terminal. A forwarded subcommand keeps the words the person typed. */
-export function terminalArgs(input: {
-  model: string;
-  workspace: string;
-  resumeChatId: string | null;
-  vendor: string[];
-}): string[] {
-  return runtimeFor('cursor').terminalArgs(input);
 }
 
 /** A read-only plan or ask run mounts the work tree read-only, so the agent cannot edit it. */

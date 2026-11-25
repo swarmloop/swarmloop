@@ -113,6 +113,27 @@ describe('AttemptMeter', () => {
       expect(attempt.billed()).toEqual({ tokensIn: 17, tokensOut: 3, usd: 0.75 });
     });
 
+    it('prices each model of a result line at its own price when the line reports no cost', () => {
+      const attempt = new AttemptMeter({
+        model: 'main',
+        prior,
+        prices: {
+          main: { inputPerMillion: 10, outputPerMillion: 20, cacheReadPerMillion: 0, cacheWritePerMillion: 0 },
+          helper: { inputPerMillion: 1, outputPerMillion: 2, cacheReadPerMillion: 0, cacheWritePerMillion: 0 },
+        },
+      });
+      feed(
+        attempt,
+        session({
+          model_usage_since_last_result: {
+            main: { inputTokens: 1_000_000, outputTokens: 0 },
+            helper: { inputTokens: 2_000_000, outputTokens: 1_000_000 },
+          },
+        }),
+      );
+      expect(attempt.billed()).toEqual({ tokensIn: 3_000_000, tokensOut: 1_000_000, usd: 10 + 2 + 2 });
+    });
+
     it('bills a session total as the difference to the recorded total', () => {
       const attempt = meter(prior);
       feed(attempt, session());

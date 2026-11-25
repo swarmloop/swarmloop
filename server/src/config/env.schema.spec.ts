@@ -242,6 +242,7 @@ describe('env schema', () => {
       AGENTS_SUBTASK_IMPLEMENT: shippedDefaults().AGENTS_SUBTASK_IMPLEMENT,
       AGENTS_SUBTASK_REVIEW: shippedDefaults().AGENTS_SUBTASK_REVIEW,
       AGENTS_BACKLOG_PLAN: shippedDefaults().AGENTS_BACKLOG_PLAN,
+      AGENTS_BACKLOG_READ: shippedDefaults().AGENTS_BACKLOG_READ,
     });
     const listed = await compileWith({
       ...complete,

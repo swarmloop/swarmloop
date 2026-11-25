@@ -28,7 +28,7 @@ import {
   dropMissingChat,
 } from './agent-session';
 
-export { buildAgentArgs, reviewBriefMount, spillPrompt, terminalArgs } from './agent-args';
+export { buildAgentArgs, reviewBriefMount, spillPrompt } from './agent-args';
 export { AGENT_CONTINUE, readSession } from './agent-session';
 
 export const AGENT_RUNNER = Symbol('AGENT_RUNNER');

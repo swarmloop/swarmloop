@@ -20,6 +20,12 @@ export interface RuntimeKeys {
  */
 export type AgentTools = 'none' | 'read' | 'plan' | 'write';
 
+/** A read-only helper on another model of the same runtime, inside the same launch. */
+export interface AgentHelper {
+  model: string;
+  effort?: Effort;
+}
+
 export interface AgentPrintInput {
   model: string;
   prompt: string;
@@ -27,6 +33,7 @@ export interface AgentPrintInput {
   resumeChatId: string | null;
   mode?: string;
   tools: AgentTools;
+  helper?: AgentHelper;
 }
 
 /** A file a launch needs in the CLI home, relative to the state directory. */
@@ -34,13 +41,6 @@ export interface HomeFile {
   path: string;
   content: string;
   mode: number;
-}
-
-export interface AgentTerminalInput {
-  model: string;
-  workspace: string;
-  resumeChatId: string | null;
-  vendor: string[];
 }
 
 /** What the container gets when the egress proxy holds the key: a placeholder, and how the proxy sends the real one. */
@@ -71,6 +71,8 @@ export interface AgentRuntime {
   readonly syncsChatMode: boolean;
   /** True when the plan mode of this CLI has a tool that takes the checklist. */
   readonly planModeHasPlanTool: boolean;
+  /** True when this CLI can give a print launch read-only helpers on another model. */
+  readonly hasHelpers: boolean;
   readonly priceSource: string;
   credential(keys: RuntimeKeys): { name: string; value: string };
   /** The secrets of these keys that this runtime launches with. */
@@ -88,7 +90,6 @@ export interface AgentRuntime {
   /** The CLI args that let the agent read one more directory. */
   readDirArgs(dir: string): string[];
   printArgs(input: AgentPrintInput): string[];
-  terminalArgs(input: AgentTerminalInput): string[];
   /** Files written into the CLI home before every print launch. */
   homeFiles(): HomeFile[];
   /** The levels this CLI supports for a model. None when it has no way to set one. */

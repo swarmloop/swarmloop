@@ -3,7 +3,6 @@ import { SwarmloopError } from '../../core/swarmloop-error';
 import type {
   AgentPrintInput,
   AgentRuntime,
-  AgentTerminalInput,
   EffortLaunch,
   EgressCredential,
   HomeFile,
@@ -18,6 +17,7 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract readonly command: 'agent' | 'claude' | 'codex';
   abstract readonly syncsChatMode: boolean;
   abstract readonly planModeHasPlanTool: boolean;
+  abstract readonly hasHelpers: boolean;
   abstract readonly priceSource: string;
 
   get component(): `agent-${RuntimeName}` {
@@ -71,17 +71,6 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
     }
     this.appendPrintFlags(args, input);
     args.push(input.prompt);
-    return args;
-  }
-
-  terminalArgs(input: AgentTerminalInput): string[] {
-    if (input.vendor.length > 0) {
-      return [...input.vendor];
-    }
-    const args = ['--model', input.model, ...this.workspaceArgs(input.workspace)];
-    if (input.resumeChatId) {
-      args.push('--resume', input.resumeChatId);
-    }
     return args;
   }
 

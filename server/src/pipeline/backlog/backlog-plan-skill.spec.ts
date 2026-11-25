@@ -35,6 +35,17 @@ describe('the backlog-plan skill', () => {
     expect(section).toContain('No change is the usual answer.');
   });
 
+  it('hands heavy reading to a helper, rereads the lines a fact rests on, and names no runtime, model or tool', () => {
+    const start = skill.indexOf('## Reading with a helper');
+    const section = skill.slice(start, skill.indexOf('\n## ', start + 1));
+    expect(section).toContain('hand it the heavy reading: code, long briefs, logs and diffs');
+    expect(section).toContain('Ask it for the facts you need, each with its file and line');
+    expect(section).toContain('Before you act on a fact, read yourself the lines it rests on');
+    expect(section).toContain('The decisions, the actions and the result block are yours');
+    expect(section).not.toMatch(/claude|codex|cursor|sonnet|opus|haiku|gpt/i);
+    expect(section).not.toMatch(/\b(Task|Agent|Grep|Glob|Bash|Explore)\b/);
+  });
+
   it('lists the pass-on action among the run actions it hands back', () => {
     expect(skill).toContain("pass a run's question to the person");
   });
