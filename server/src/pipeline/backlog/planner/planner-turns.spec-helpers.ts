@@ -8,6 +8,7 @@ import { RunStop } from '../../../agent/run-stop';
 import { AppConfig } from '../../../config/env';
 import { testEnv } from '../../../config/env.spec-helpers';
 import type { LiveBacklog } from '../../../contract/backlog-chat';
+import type { StateReason } from '../../../contract/run-state';
 import { AttachmentStore } from '../../../history/attachment-store';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import { RuntimeCooldownRepository } from '../../../history/runtime-cooldown.repository';
@@ -38,14 +39,18 @@ export class ScriptedTurnAgent {
   script: TurnAnswer[] = [];
   /** Held back until a spec lets it go, so it can add messages while a turn runs. */
   gate: Promise<void> | null = null;
+  /** Runs before the launch answers, with what the launch tells when its start waits. */
+  started: ((told?: () => Promise<void>) => Promise<void>) | null = null;
 
   async run(input: {
+    onStartWait?: () => Promise<void>;
     runtime: string;
     prompt: string;
     mounts: { readonly?: boolean }[];
     helper?: AgentHelper;
   }): Promise<AgentRunResult> {
     this.launches.push({ runtime: input.runtime, prompt: input.prompt, mounts: input.mounts, helper: input.helper });
+    await this.started?.(input.onStartWait);
     await this.gate;
     const next = this.script.shift() ?? { say: '', actions: [] };
     const base = {
@@ -113,7 +118,21 @@ export async function plannerTurnsHarness(
     db.app.get(VisitRepository),
   );
   const runStop = new RunStop();
-  const launcher = new AgentLauncher(agent as never, db.app.get(VisitRepository), runStop, failover, config);
+  const startWait = { now: null as StateReason | null };
+  const startWaits = {
+    changed: (_key: string, store?: (wait: StateReason | null) => Promise<void>) => store?.(startWait.now),
+  };
+  const launcher = new AgentLauncher(
+    agent as never,
+    db.app.get(VisitRepository),
+    runStop,
+    failover,
+    config,
+    undefined,
+    undefined,
+    undefined,
+    startWaits as never,
+  );
   const failingOpen = { next: null as Error | null };
   const workspace = {
     opened: [] as string[],
@@ -139,6 +158,7 @@ export async function plannerTurnsHarness(
   };
   const prompt = { build: async (name: string, key: string) => `plan ${name} in ${key}` };
   const attachments = new AttachmentStore(config, db.clock);
+  const live = new LiveHub();
   const runner = new BacklogTurnRunner(
     h.backlogs,
     chat,
@@ -150,8 +170,8 @@ export async function plannerTurnsHarness(
     config,
     runStop,
     attachments,
+    live,
   );
-  const live = new LiveHub();
   const shown: LiveBacklog[] = [];
   live.onBacklog((entry) => shown.push(entry));
   const planner = () => new BacklogPlanner(h.backlogs, chat, runner, turns, h.scheduler(), db.clock, live);
@@ -165,6 +185,7 @@ export async function plannerTurnsHarness(
     planner: started,
     agent,
     runStop,
+    startWait,
     workspace,
     sent,
     shown,

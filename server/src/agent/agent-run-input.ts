@@ -56,6 +56,11 @@ export interface AgentRunInput {
   loop?: { pending(): 'hint' | 'end' | null; resumePrompt(): string | null };
   /** Called with each chunk of the agent's output as it arrives. */
   onOutput?: (chunk: string) => void;
+  /**
+   * Called when what the agent start waits for changes before its first output: it waits for the pause or a place, and
+   * once more when the spawn is over. The launch awaits each call.
+   */
+  onStartWait?: () => Promise<void>;
   /** `onLaunchEnd` runs when a launch ends, whatever the reason. */
   onLaunchEnd?: () => void;
   /** Run in the project image with the CLI mounted into it, instead of the agent image. */

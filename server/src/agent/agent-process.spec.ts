@@ -114,6 +114,30 @@ describe('AgentProcess', () => {
   });
 });
 
+describe('AgentProcess end', () => {
+  it('kills the container and the docker client of a child that has not closed, and waits for its close', async () => {
+    const child = fakeChild();
+    child.kill.mockImplementation(
+      (signal: string) => signal === 'SIGKILL' && setImmediate(() => child.emit('close', 137)),
+    );
+    const kill = jest.fn().mockResolvedValue(undefined);
+    const process = new AgentProcess(child as unknown as SandboxChild, { kill } as unknown as SandboxService);
+    await process.end();
+    expect(kill).toHaveBeenCalledWith('box');
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+  });
+
+  it.each(['close', 'error'])('leaves a child that already ended with %s alone', async (event) => {
+    const child = fakeChild();
+    const kill = jest.fn().mockResolvedValue(undefined);
+    const process = new AgentProcess(child as unknown as SandboxChild, { kill } as unknown as SandboxService);
+    child.emit(event, event === 'close' ? 0 : new Error('gone'));
+    await process.end();
+    expect(kill).not.toHaveBeenCalled();
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+});
+
 function fakeChild(): EventEmitter & {
   stdout: PassThrough;
   stderr: PassThrough;

@@ -90,6 +90,14 @@ describe('chatRows', () => {
     expect(chatRows(running, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn' }]);
   });
 
+  it('shows what the start of a running turn waits for, and the working row once it does not', () => {
+    const place = 'Waiting for a free agent place (4 of 4 busy)';
+    const waiting = backlogChatView({ messages: [], turns: [{ status: 'running', reason: place, nextTryAt: null }] });
+    expect(chatRows(waiting, backlogView(), 'ada')).toEqual([{ type: 'info', key: 'turn', sentence: place }]);
+    const started = backlogChatView({ messages: [], turns: [{ status: 'running', reason: '', nextTryAt: null }] });
+    expect(chatRows(started, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn' }]);
+  });
+
   it('shows a waiting turn and an applied turn that waits for a host with their next try, not the working row', () => {
     const next = '2026-11-22T14:36:41.506Z';
     const reason = 'github.com did not answer';

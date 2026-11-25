@@ -185,6 +185,14 @@ describe('stateWord', () => {
     expect(actionsFor('running', reason.code)).toContain('stop');
   });
 
+  it('reads the words of a running run whose agent start waits for the server pause', () => {
+    const reason = {
+      code: REASON.serverPause,
+      message: 'The server is about to restart; this step starts right after it.',
+    };
+    expect(word('running', reason)).toMatchObject({ word: reason.message, tone: 'working', icon: 'queued' });
+  });
+
   it.each([ERROR_CODES.SPEND_LIMIT, REASON.loopLimit, ERROR_CODES.PIPELINE_UNFIXED])(
     'reads Blocked with the reason in the tip for %s',
     (code) => {

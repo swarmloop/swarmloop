@@ -394,14 +394,15 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 
 **Today.**
 - Waits are kept in many ways:
-  - the run's state and reason (13 states, 29 error codes, 17 reason codes);
+  - the run's state and reason (13 states, 29 error codes, 18 reason codes);
   - `run_waits` stretches;
   - runtime and credential cooldowns;
   - agent places and check slots;
   - backlog turn waits and holds;
   - child-run waits.
 - The reconciler has seven separate timed resumes: limits, host, CI not started, docker, disk, stalled and git auth.
-- c04, model-host-wait and agent-start-hang close this in M1; wait-frees-place and held-run-says-so come after.
+- An agent start that waits before its first output, for a free agent place (with how many are busy) or for the server's pause, stores that wait with its run's state (on its turn row for a backlog planner turn) through `steps/shared/start-waits.ts`, and the run page, the run list and the backlog chat show it. A place comes back when its launch ends, because the launch ends its container in every ending (`agent/agent-launch.ts`).
+- c04 closes this in M1; wait-frees-place and held-run-says-so come after.
 
 ## 3.16 Recovery after a crash or restart
 

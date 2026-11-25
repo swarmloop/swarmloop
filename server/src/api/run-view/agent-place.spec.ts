@@ -1,15 +1,7 @@
 import type { FlowView } from '../../contract/api';
-import { runPlace, withPlaceChips } from './agent-place';
+import { withPlaceChips } from './agent-place';
 
 const text = 'Waiting for a free agent place (4 of 4 busy)';
-
-describe('runPlace', () => {
-  it('gives the words only when an agent of the run waits and none of its agents runs', () => {
-    expect(runPlace({ steps: ['implement'], running: 0, text })).toBe(text);
-    expect(runPlace({ steps: ['code-review-a'], running: 4, text })).toBeUndefined();
-    expect(runPlace({ steps: [], running: 0, text })).toBeUndefined();
-  });
-});
 
 describe('withPlaceChips', () => {
   const chip = (name: string, status: string) => ({ name, status, current: false, attempts: 1 });

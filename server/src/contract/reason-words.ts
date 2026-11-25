@@ -34,6 +34,7 @@ export const REASON = {
   skipped: 'SKIPPED',
   stalled: 'STALLED',
   agentPlace: 'AGENT_PLACE',
+  serverPause: 'SERVER_PAUSE',
   asksPlanner: 'ASKS_PLANNER',
   sameInput: 'SAME_INPUT',
 } as const;
@@ -120,6 +121,7 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
   [REASON.skipped]: 'state',
   [REASON.stalled]: 'state',
   [REASON.agentPlace]: 'place',
+  [REASON.serverPause]: 'place',
   [REASON.asksPlanner]: 'planner',
   [REASON.sameInput]: 'planner',
   [NEEDS_ANSWERS]: 'state',
@@ -129,7 +131,7 @@ export function kindOf(code: string): ReasonKind {
   return (REASON_WORDS as Readonly<Record<string, ReasonKind | undefined>>)[code] ?? 'state';
 }
 
-/** A run whose agent waits for a free place reads what the gate says: the reason carries the words. */
+/** A run whose agent start waits for a free place or for the server's pause reads what the gate says: the reason carries the words. */
 function placeWord(reason: StateReason | null): WordShape {
   return { word: reason?.message ?? '', tone: 'working', icon: 'queued' };
 }

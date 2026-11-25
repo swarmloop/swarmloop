@@ -73,7 +73,6 @@ export async function runState(
   run: RunEntity,
   open: FlowItem[],
   parkedConflict: boolean,
-  agentPlace?: string,
 ): Promise<Pick<FlowView, 'resume' | 'state' | 'stateReason' | 'merge' | 'actions' | 'revision'>> {
   const pending = await commands.pending(run.id);
   const stored = { parkedConflict };
@@ -82,7 +81,6 @@ export async function runState(
     {
       stopping: pending.some((command) => command.type === 'stop'),
       queued: pending.some((command) => command.type !== 'stop'),
-      agentPlace,
     },
     stored,
   );

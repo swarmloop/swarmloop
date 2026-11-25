@@ -400,6 +400,37 @@ describe('SandboxService memory cap', () => {
       expect(gate.running()).toBe(0);
     });
 
+    describe('an agent spawn that holds a place', () => {
+      const agent = { step: 'implement', onWait: () => undefined };
+      const held = { onPaused: () => undefined, agent };
+
+      it('gives the place back when its egress lease fails', async () => {
+        const { sandbox, gate } = gated(1);
+        sandbox.egress = () => ({ lease: () => Promise.reject(new Error('no lease')) }) as never;
+        await expect(sandbox.spawn(launch('implement', { allowHosts: ['api.anthropic.com'] }), held)).rejects.toThrow(
+          'no lease',
+        );
+        expect(gate.agentWait('k').running).toBe(0);
+      });
+
+      it('gives the place back when docker fails to start it', async () => {
+        const { sandbox, gate } = gated(1);
+        sandbox.spawnDocker = () => {
+          throw new Error('docker run failed');
+        };
+        await expect(sandbox.spawn(launch('implement'), held)).rejects.toThrow('docker run failed');
+        expect(gate.agentWait('k').running).toBe(0);
+      });
+
+      it('keeps the place until its child closes', async () => {
+        const { sandbox, gate } = gated(1);
+        await sandbox.spawn(launch('implement'), held);
+        expect(gate.agentWait('k').running).toBe(1);
+        children[0]?.emit('close', 0);
+        expect(gate.agentWait('k').running).toBe(0);
+      });
+    });
+
     it('counts a held container until it closes, and a pause never stops it', async () => {
       const { sandbox, gate, dockerCalls } = gated();
       await sandbox.spawn(launch('plan'), { onPaused: () => undefined });

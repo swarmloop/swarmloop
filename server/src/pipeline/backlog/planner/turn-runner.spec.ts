@@ -40,6 +40,23 @@ describe('BacklogTurnRunner', () => {
       expect(h.workspace.closed).toEqual(['turn-a']);
     }));
 
+  it('stores what the start of a running turn waits for on its row, shows it, and clears it when the wait ends', () =>
+    withTurn(async (h) => {
+      const place = 'Waiting for a free agent place (4 of 4 busy)';
+      const seen: string[] = [];
+      h.agent.started = async (told) => {
+        h.startWait.now = { code: 'AGENT_PLACE', message: place };
+        await told?.();
+        seen.push((await h.chat.findTurn('turn-a'))?.reason ?? 'no turn');
+        h.startWait.now = null;
+        await told?.();
+        seen.push((await h.chat.findTurn('turn-a'))?.reason ?? 'no turn');
+      };
+      await h.runner.run('one', 'turn-a');
+      expect(seen).toEqual([place, '']);
+      expect(h.shown.map((entry) => entry.turn?.reason)).toEqual([place, '']);
+    }));
+
   it('launches a turn whose messages have no files with no attachments', () =>
     withTurn(async (h) => {
       await h.runner.run('one', 'turn-a');

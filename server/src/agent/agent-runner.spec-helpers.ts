@@ -131,3 +131,19 @@ export async function start(
     clock?.mockRestore();
   }
 }
+
+/** A docker client of a CLI that runs as PID 1: it ignores SIGTERM and closes only on SIGKILL. */
+export function stubbornChild(chunks: string[]): EventEmitter {
+  const stdout = new PassThrough();
+  const child = new EventEmitter();
+  for (const chunk of chunks) {
+    stdout.write(chunk);
+  }
+  const kill = (signal: string): boolean => {
+    if (signal === 'SIGKILL') {
+      setImmediate(() => child.emit('close', 137));
+    }
+    return true;
+  };
+  return Object.assign(child, { stdout, stderr: new PassThrough(), containerName: 'box', kill });
+}

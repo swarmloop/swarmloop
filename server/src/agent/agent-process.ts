@@ -25,6 +25,7 @@ export class AgentProcess {
   private readonly earlyOut: Buffer[] = [];
   private readonly earlyErr: Buffer[] = [];
   private closedEarly: number | null = null;
+  private ended = false;
 
   constructor(
     private readonly child: SandboxChild,
@@ -33,6 +34,8 @@ export class AgentProcess {
     this.child.stdout?.on('data', this.keepOut);
     this.child.stderr?.on('data', this.keepErr);
     this.child.on('close', this.rememberClose);
+    this.child.on('close', this.markEnded);
+    this.child.on('error', this.markEnded);
   }
 
   static async spawn(
@@ -53,6 +56,20 @@ export class AgentProcess {
     if (force) {
       setTimeout(() => this.child.kill('SIGKILL'), 2000).unref();
     }
+  }
+
+  /**
+   * Ends the container of a launch that is over, so its agent place comes back. A child that has closed or died is left alone.
+   * One that has not (a CLI as PID 1 ignores SIGTERM) loses its container and its docker client, and its close is awaited.
+   */
+  async end(): Promise<void> {
+    if (this.ended) {
+      return;
+    }
+    const closed = new Promise<void>((resolve) => this.child.once('close', () => resolve()));
+    await this.sandbox.kill(this.child.containerName);
+    this.child.kill('SIGKILL');
+    await closed;
   }
 
   async wait(
@@ -122,6 +139,9 @@ export class AgentProcess {
     return exitCode;
   }
 
+  private readonly markEnded = (): void => {
+    this.ended = true;
+  };
   private readonly keepOut = (chunk: Buffer): void => {
     this.earlyOut.push(chunk);
   };

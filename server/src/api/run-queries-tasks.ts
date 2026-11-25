@@ -8,11 +8,9 @@ import type { RunRepository } from '../history/run.repository';
 import type { RunWaitLog } from '../history/run-wait.log';
 import type { VisitRepository } from '../history/visit.repository';
 import type { LiveHub } from '../live/live.hub';
-import type { ContainerGate } from '../sandbox/container-gate';
 import type { PipelineService } from '../pipeline/pipeline.service';
 import { parseSubtasks, SUBTASKS_KIND } from '../contract/subtask';
 import type { EtaSummary } from './eta-summary';
-import { runPlace } from './run-view/agent-place';
 import { taskView } from './run-view/documents';
 import { latest } from './run-view/flow';
 import { liveRunOf, runViewEta, taskEtas } from './run-view/run-eta';
@@ -25,7 +23,6 @@ export interface TaskSources {
   commands: CommandRepository;
   pipeline: PipelineService;
   live?: LiveHub;
-  gate: ContainerGate;
   config: AppConfig;
   clock: Clock;
   waitLog: RunWaitLog;
@@ -57,7 +54,6 @@ export async function tasksAndEta(
     { documents: sources.documents, commands: sources.commands },
     waits,
     sources.live,
-    (key) => runPlace(sources.gate.agentWait(key)),
   );
   const plan = parseSubtasks(latest(documents, SUBTASKS_KIND));
   const now = sources.clock.now();

@@ -53,7 +53,6 @@ export async function taskRuns(
   sources: StateSources & { documents: Pick<DocumentRepository, 'latestDocuments'> },
   waits: ReadonlyMap<number, RunWaitEntity[]>,
   live?: LiveHub,
-  place: (key: string) => string | undefined = () => undefined,
 ): Promise<TaskRunViews> {
   const children: TaskRuns = new Map();
   const lives = new Map<string, LiveRun>();
@@ -63,7 +62,7 @@ export async function taskRuns(
   }
   const durations = await runs.durationByRun(rows.map((row) => row.id));
   const planned = rows.filter((child) => child.taskId && tasks.some((task) => task.id === child.taskId));
-  const states = await ownStates(sources, planned, (key) => pipeline.claimed(key), place);
+  const states = await ownStates(sources, planned, (key) => pipeline.claimed(key));
   const stored = await sources.documents.latestDocuments(
     planned.map((child) => child.id),
     ['interruption', ARTIFACTS.mergeRequest.kind, ARTIFACTS.mergedFiles.kind, ARTIFACTS.commit.kind],

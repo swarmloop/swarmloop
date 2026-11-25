@@ -4,6 +4,7 @@ import { repositoryDatabase } from './repository.spec-helpers';
 import { RunEntity } from './run.entity';
 import { RunFactsRepository } from './run-facts.repository';
 import { RunRepository } from './run.repository';
+import { startWaitColumns } from './run-state';
 
 const WAITING = {
   state: 'waiting',
@@ -78,5 +79,35 @@ describe('RunFactsRepository', () => {
     } finally {
       await db.close();
     }
+  });
+
+  describe('recordStartWait', () => {
+    const wait = startWaitColumns({ code: 'AGENT_PLACE', message: 'Waiting for a free agent place (4 of 4 busy)' });
+
+    it('stores the wait of a running run without a new revision, and nothing when it is unchanged', async () => {
+      const { db, dataSource, facts, run, noticed, row } = await setup();
+      try {
+        await dataSource.getRepository(RunEntity).update({ id: run.id }, { status: 'running' });
+        const seen = await row();
+        expect(await facts.recordStartWait(seen, wait)).toBe(true);
+        expect(await row()).toMatchObject({ ...wait, revision: seen.revision });
+        expect(noticed).toEqual([run.key]);
+        expect(await facts.recordStartWait(await row(), wait)).toBe(false);
+        expect(noticed).toEqual([run.key]);
+      } finally {
+        await db.close();
+      }
+    });
+
+    it('writes nothing once the run no longer runs', async () => {
+      const { db, facts, row } = await setup();
+      try {
+        const seen = await row();
+        expect(await facts.recordStartWait(seen, wait)).toBe(false);
+        expect(await row()).toMatchObject({ state: seen.state, stateReason: seen.stateReason });
+      } finally {
+        await db.close();
+      }
+    });
   });
 });

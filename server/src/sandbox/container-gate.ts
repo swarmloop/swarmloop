@@ -1,12 +1,16 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { agentPlaceText } from '../contract/agent-place';
-import { STOP_NOTE } from '../contract/run-state';
+import { STOP_NOTE, REASON } from '../contract/run-state';
+import type { StateReason } from '../contract/run-state';
+import { SERVER_PAUSE_NOTE } from '../contract/server-pause';
 
 type Listener = (paused: boolean) => void;
 
 interface Held {
   key: string;
+  /** The start is an agent's: a check held by the pause is not. */
+  agent: boolean;
   go: () => void;
   drop: (error: ContainerDropped) => void;
 }
@@ -43,6 +47,7 @@ export class ContainerGate {
   private agents = 0;
   private readonly agentsOfRun = new Map<string, number>();
   private readonly listeners = new Set<Listener>();
+  private readonly placeListeners = new Set<() => void>();
 
   constructor(@Optional() private readonly config?: AppConfig) {}
 
@@ -61,6 +66,21 @@ export class ContainerGate {
       running: this.agentsOfRun.get(key) ?? 0,
       text: agentPlaceText(this.agents, this.limit()),
     };
+  }
+
+  /**
+   * What the agent starts of a run wait for now, in one rule: nothing while one of its agents runs; the server's pause
+   * while the server is paused and a start of the run is held; a free place while one waits in the line.
+   */
+  startWait(key: string): StateReason | null {
+    if ((this.agentsOfRun.get(key) ?? 0) > 0) {
+      return null;
+    }
+    const inLine = this.line.some((held) => held.key === key);
+    if (this.isPaused && (inLine || this.waiting.some((held) => held.key === key && held.agent))) {
+      return { code: REASON.serverPause, message: SERVER_PAUSE_NOTE };
+    }
+    return inLine ? { code: REASON.agentPlace, message: agentPlaceText(this.agents, this.limit()) } : null;
   }
 
   /** An agent that already waits for a place is told of the pause too: no place is handed out until it ends. */
@@ -104,7 +124,7 @@ export class ContainerGate {
   async admit(onPaused: () => void, key: string, agent?: AgentHold): Promise<() => void> {
     if (this.isPaused) {
       onPaused();
-      await new Promise<void>((go, drop) => this.waiting.push({ key, go, drop }));
+      await new Promise<void>((go, drop) => this.waiting.push({ key, agent: agent !== undefined, go, drop }));
     }
     if (agent) {
       await this.takePlace(key, agent, onPaused);
@@ -122,6 +142,18 @@ export class ContainerGate {
     };
   }
 
+  /** The runs that have an agent start held by the pause or waiting in the line. */
+  waitingKeys(): string[] {
+    const held = this.waiting.filter((entry) => entry.agent).map((entry) => entry.key);
+    return [...new Set([...held, ...this.line.map((entry) => entry.key)])];
+  }
+
+  /** Told after an agent place was given back and the line moved on, so what each run waits for may have changed. */
+  onPlaces(listener: () => void): () => void {
+    this.placeListeners.add(listener);
+    return () => this.placeListeners.delete(listener);
+  }
+
   onChange(listener: Listener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -137,7 +169,7 @@ export class ContainerGate {
       return;
     }
     agent.onWait(agentPlaceText(this.agents, this.limit()));
-    await new Promise<void>((go, drop) => this.line.push({ key, step: agent.step, onPaused, go, drop }));
+    await new Promise<void>((go, drop) => this.line.push({ key, agent: true, step: agent.step, onPaused, go, drop }));
   }
 
   private enter(key: string): void {
@@ -154,6 +186,9 @@ export class ContainerGate {
       this.agentsOfRun.delete(key);
     }
     this.startLine();
+    for (const listener of this.placeListeners) {
+      listener();
+    }
   }
 
   /** Starts the head of the line while a place is free, and never while the server is paused. */

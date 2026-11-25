@@ -127,6 +127,7 @@ export const AUTO_RETRY_CODES: readonly string[] = [
   ERROR_CODES.SUBTASKS_RUNNING,
   ERROR_CODES.SUBTASK_WAITING,
   REASON.agentPlace,
+  REASON.serverPause,
   REASON.asksPlanner,
   REASON.sameInput,
 ];
