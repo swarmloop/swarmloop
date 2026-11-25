@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -28,7 +29,7 @@ describe('RunUsageReader', () => {
     try {
       const run = await save(runs, 'proj-u1', 'implement', 'running');
       run.spentUsd = 1.5;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       hub.log({
         key: 'proj-u1',
         step: 'implement',
@@ -59,13 +60,13 @@ describe('RunUsageReader', () => {
       const parent = await save(runs, 'proj-u2', 'implement', 'waiting');
       parent.split = true;
       parent.spentUsd = 2;
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       await app.get(DocumentRepository).putDocument(parent, 'subtasks', `${JSON.stringify([{ id: 'a' }])}\n`);
       const child = await save(runs, 'proj-u2-a', 'implement', 'waiting');
       child.parentRunId = parent.id;
       child.taskId = 'a';
       child.spentUsd = 3;
-      await runs.saveRun(child);
+      await storeRun(runs, child);
 
       const flow = await queries.flow('proj-u2');
       const [own] = await reader.entries('proj-u2');

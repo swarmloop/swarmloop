@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import type { TestingModule } from '@nestjs/testing';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
@@ -57,7 +58,7 @@ export async function seedRuns(app: TestingModule, total: number): Promise<void>
   await documents.putDocument(parent, SUBTASKS_KIND, JSON.stringify([task('a', 'waits for b'), task('b')]));
   const done = await runs.openSubtask(SEEDED.done, parent.id, 'a');
   writeRunState(done, { status: 'done', currentStep: 'commit' });
-  await runs.saveRun(done);
+  await storeRun(runs, done);
   await runs.openSubtask(SEEDED.open, parent.id, 'b');
   const untitled = await runs.openWaiting(SEEDED.untitled, '/target');
   await documents.putDocument(

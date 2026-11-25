@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { writeFileSync } from 'fs';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -27,7 +28,7 @@ async function rebasedSubtask(key: string, clash: boolean, status = 'done') {
   const documents = app.get(DocumentRepository);
   const run = await remember(runs, documents, key, status === 'done' ? 'done' : 'pipeline', status);
   run.parentRunId = run.id;
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   await documents.putDocument(run, 'implementation', '- changed the field\n');
   git(tree, ['push', '-u', 'origin', `feature/${key}-ship-the-field`]);
   return { app, runs, documents, flows: app.get(FlowRepository) };

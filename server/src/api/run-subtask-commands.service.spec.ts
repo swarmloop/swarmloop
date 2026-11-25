@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -29,7 +30,7 @@ describe('a part of a slug run', () => {
       const parent = await save(runs, 'epic-conflict-implement-mwu2hcx3', 'implement', 'waiting');
       parent.split = true;
       parent.projects = 'demo\n';
-      await runs.saveRun(parent);
+      await storeRun(runs, parent);
       const documents = app.get(DocumentRepository);
       await documents.putDocument(parent, 'requirements', `${JSON.stringify({ prompt: 'Move it\n', tickets: [] })}\n`);
       await documents.putDocument(parent, 'contract', '- decided: keep it\n');

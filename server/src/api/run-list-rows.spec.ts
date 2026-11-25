@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -84,7 +85,8 @@ describe('RunListRows', () => {
       expect((await rows.read()).recomputed).toBe(1);
 
       const child = await runOf(app, SEEDED.open);
-      await app.get(RunRepository).saveRun(child);
+      await storeRun(app.get(RunRepository), child);
+      app.get(RunRepository).notify(child.key);
       expect((await rows.read()).recomputed).toBe(2);
     }));
 
@@ -103,7 +105,7 @@ describe('RunListRows', () => {
       const open = await runOf(app, SEEDED.open);
       open.status = 'failed';
       open.currentStep = 'checks';
-      await runs.saveRun(open);
+      await storeRun(runs, open);
       await same();
 
       let release!: () => void;
@@ -152,7 +154,7 @@ describe('RunListRows', () => {
 
       const done = await runOf(app, SEEDED.done);
       done.mergeOutcome = JSON.stringify({ merged: {} });
-      await runs.saveRun(done);
+      await storeRun(runs, done);
       await same();
     }));
 
