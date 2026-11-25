@@ -6,6 +6,8 @@ import { ExchangeReportedTotals1797200000000 } from './1797200000000-exchange-re
 import { VisitOwnCosts1797200000001 } from './1797200000001-visit-own-costs';
 import { VisitStartLanes1797300000000 } from './1797300000000-visit-start-lanes';
 import { RunBaseTips1797400000000 } from './1797400000000-run-base-tips';
+import { PersonAvatar1797500000000 } from './1797500000000-person-avatar';
+import { FlowCause1797500000001 } from './1797500000001-flow-cause';
 import { VisitCostDeltas1797000000001 } from './1797000000001-visit-cost-deltas';
 import { IntegrationSecrets1796000000000 } from './1796000000000-integration-secrets';
 import { CredentialCooldowns1796000000001 } from './1796000000001-credential-cooldowns';
@@ -105,4 +107,6 @@ export const migrations = [
   VisitOwnCosts1797200000001,
   VisitStartLanes1797300000000,
   RunBaseTips1797400000000,
+  PersonAvatar1797500000000,
+  FlowCause1797500000001,
 ];

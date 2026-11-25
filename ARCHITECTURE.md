@@ -33,7 +33,7 @@ How the page is used:
 | **Visit** | One pass of a step: one or more agent launches (*attempts*) in one chat, with its cost, tokens, samples and outcome. |
 | **Document** | Everything a run produces is a document of a named *kind*: requirements, plan, implementation, review, report, logs and so on. A step declares the kinds it reads and writes. |
 | **Generation and gate** | A run's *generation* goes up with every Replay or Rebase. A *gate* is a document that judges work (a review, a CI result). It is stamped with the generation and the files it judged, and counts only for them. |
-| **Agent** | A runtime (`claude`, `codex`, `cursor`), a model and an effort, written `runtime:model[:effort]`. Each *role* (plan, implement, review, subtask roles, backlog plan) has an ordered list of agents, and the next one takes over when a provider's limit stops the first. |
+| **Agent** | A runtime (`claude`, `codex`, `cursor`), a model and an effort, written `runtime:model[:effort]`. Each *role* (plan, implement, review, subtask roles, backlog plan) has an ordered list of agents, and the next one takes over when a provider's limit stops the first. An entry without an effort runs at the level of the entry before it, else at the `defaults.env` level of its role and tier, capped to what its runtime offers. |
 | **Chat** | The session an agent keeps across visits. Research, plan and plan-improve share one chat; implement and implement-improve share another; each reviewer has its own. |
 | **Skill** | The instructions of one step's agent, kept in `skills/`. A skill is generic and knows no project. A project's own rules come from its `AGENTS.md`. |
 | **Result block** | The only way an agent hands data to the server: a JSON block that is checked against the step's schema. An answer that fails the check gets one follow-up that lists every error. |
@@ -313,7 +313,7 @@ When `main` moves while the epic waits, the epic takes it (rule 6). A conflict g
 
 The journal makes a rebase that a crash cut finish or roll back. Every git operation on a worktree takes that worktree's lock, so two operations never touch one worktree at once.
 
-**Today.** About eight paths move a branch:
+**Today.** A relaunch after a rebase is marked on its flow row (`cause: rebase`). The run view and the history read its reason from the subtask's handoff `rebase` note, or say `Rebased onto main`, and show it until its steps ran on the new head; it is not a return. About eight paths move a branch:
 1. a person's Rebase, or a parent's or the machine's (`steps/run-rebase.ts`, `api/run-rebase.service.ts`);
 2. implement finishing a parked rebase (`implement-rebase.ts`);
 3. an epic's own edits (`implement-own-conflict.ts`, `subtask-worktrees.commitOwnEdits`);
@@ -453,7 +453,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 
 A limit stops the run in a wait that names it (rule 18). Every visit stores only its own cost and tokens, by one rule for a resumed chat. The estimate of time left comes from the history of finished runs of the same kind, and an epic's estimate from its tasks. The statistics read the same records.
 
-**Today.** Holds (`steps/shared/spend-limit.ts`, `agent/limits.ts`, `visit-costs`, `eta/`, `api/stats*`). Limit stops are still blocks, not waits.
+**Today.** Holds (`steps/shared/spend-limit.ts`, `agent/limits.ts`, `visit-costs`, `eta/`, `api/stats*`). A relaunched run's time left is the visit times of the steps it runs. Stats count two units, epic and task, defined in `api/stats-units.ts`. Limit stops are still blocks, not waits.
 
 ## 3.19 Storage and housekeeping
 
@@ -479,7 +479,7 @@ A limit stops the run in a wait that names it (rule 18). Every visit stores only
   - come from an allowed host and origin.
 - **Secrets** are never logged, never put in a URL, and never sent to the browser.
 
-**Today.** Holds (`auth/`, `config/redact.ts`, `api/request-guard.ts`).
+**Today.** Holds (`auth/`, `config/redact.ts`, `api/request-guard.ts`). The photo is stored with the person.
 
 ## 3.21 Integrations
 
@@ -516,9 +516,9 @@ Adapters are found by folder. A fake of each kind serves the tests.
 
 The text is plain words for a person: no raw JSON and no internal ids. A cut text says how much is left out and where the whole is.
 
-**Today.** Holds in the main. Gaps:
+**Today.** Holds in the main. The board shows no return lines, a muted ×N of agent visits, and plain names. Gaps:
 - held runs read as failures (held-run-says-so);
-- several screens are still being reworked in M1 (f95, f121, f131, f132, done-lately, b04, f26).
+- several screens are still being reworked in M1 (f121, f131, f132, done-lately, b04, f26).
 
 ## 3.24 Tests, CI and releases
 
