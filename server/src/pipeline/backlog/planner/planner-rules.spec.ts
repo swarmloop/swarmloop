@@ -57,7 +57,7 @@ describe('PlannerRules', () => {
       expect(await refusal(harness, { action: 'stop', run: 'going-1' })).toBeNull();
     }));
 
-  it('accepts an answer and a pass-on for a run below a task run, which holds a subtask question, but no other command', () =>
+  it('accepts every run command for a run below a task run, and refuses a run outside the backlog', () =>
     withPlanner(async (harness) => {
       const { backlogId } = await harness.seed();
       await harness.task(backlogId, null, 'going', { runKey: 'going-1', status: 'running' });
@@ -67,9 +67,15 @@ describe('PlannerRules', () => {
       const answers = [{ body: 'yes' }];
       expect(await refusal(harness, { action: 'answerRun', run: 'going-1-a', answers })).toBeNull();
       expect(await refusal(harness, { action: 'passQuestion', run: 'going-1-a', reason: 'Yours.' })).toBeNull();
-      expect(await refusal(harness, { action: 'stop', run: 'going-1-a' })).toBe(
-        'going-1-a is not a run of this backlog',
-      );
+      const below = 'going-1-a';
+      expect(await refusal(harness, { action: 'planChat', run: below, message: 'hi' })).toBeNull();
+      expect(await refusal(harness, { action: 'resume', run: below })).toBeNull();
+      expect(
+        await refusal(harness, { action: 'replay', run: below, step: 'implement', instruction: 'Go.' }),
+      ).toBeNull();
+      expect(await refusal(harness, { action: 'rebase', run: below })).toBeNull();
+      expect(await refusal(harness, { action: 'skipTask', run: below, task: 'a' })).toBeNull();
+      expect(await refusal(harness, { action: 'stop', run: below })).toBeNull();
       expect(await refusal(harness, { action: 'answerRun', run: 'other-1', answers })).toBe(
         'other-1 is not a run of this backlog',
       );

@@ -6,7 +6,8 @@ import { SwarmloopError } from '../../../core/swarmloop-error';
 export type PlannerRunCommand =
   | { type: 'answer'; run: string; answers: TurnAnswer[] }
   | { type: 'resume'; run: string }
-  | { type: 'replay'; run: string; step: string }
+  | { type: 'replay'; run: string; step: string; instruction: string }
+  | { type: 'rebase'; run: string }
   | { type: 'skipTask'; run: string; task: string }
   | { type: 'stop'; run: string }
   | { type: 'planChat'; run: string; message: string }

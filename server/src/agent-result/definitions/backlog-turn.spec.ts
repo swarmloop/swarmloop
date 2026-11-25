@@ -24,7 +24,8 @@ describe('backlog turn result', () => {
           { action: 'planChat', run: 'r', message: 'm' },
           { action: 'passQuestion', run: 'r', question: 'q', reason: 'Only you can choose.' },
           { action: 'resume', run: 'r' },
-          { action: 'replay', run: 'r', step: 'implement' },
+          { action: 'replay', run: 'r', step: 'implement', instruction: 'Fix it.' },
+          { action: 'rebase', run: 'r' },
           { action: 'skipTask', run: 'r', task: 't' },
           { action: 'stop', run: 'r' },
           { action: 'pause' },
@@ -48,6 +49,13 @@ describe('backlog turn result', () => {
     expect(errorsOf({ say: '', actions: [{ action: 'closeRequirement', id: 'M1.R1' }] })).toEqual([
       'actions.0: closeRequirement needs evidence',
     ]);
+  });
+
+  it('refuses a replay without an instruction and reads a rebase of a run', () => {
+    expect(errorsOf({ say: '', actions: [{ action: 'replay', run: 'r', step: 'implement' }] })).toEqual([
+      'actions.0: replay needs instruction',
+    ]);
+    expect(errorsOf({ say: '', actions: [{ action: 'rebase', run: 'r' }] })).toEqual([]);
   });
 
   it('refuses a pass-on with no reason and reads one that names no question', () => {

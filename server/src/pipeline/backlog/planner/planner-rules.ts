@@ -29,11 +29,6 @@ type Judgement = { action: BacklogTurnAction } | { refusal: string };
 
 const refuse = (refusal: string): Judgement => ({ refusal });
 
-/** The run actions on a question: its run may lie below a task's run, since a subtask's question waits there. */
-function questionAction(action: RunAction): boolean {
-  return action.action === 'answerRun' || action.action === 'passQuestion';
-}
-
 /** The server's rules for the planner, read from the database; the model does not keep them. */
 @Injectable()
 export class PlannerRules {
@@ -51,12 +46,12 @@ export class PlannerRules {
       : this.backlogAction(reads, backlog, tasks, given);
   }
 
-  /** A command to a run: the run is one of this backlog's, and a resume is not a repeat. */
+  /** A command to a run: the run is a task's run or lies below one, and a resume is not a repeat. */
   private async runAction(backlog: BacklogRecord, tasks: BacklogTaskRecord[], action: RunAction): Promise<Judgement> {
     const own = this.ownRun(tasks, action.run);
-    if (own !== null && questionAction(action) && (await this.belowTaskRun(tasks, action.run))) return { action };
-    if (action.action !== 'resume') return this.verdict(action, own);
-    return this.verdict(action, own ?? (await this.repeatedResume(backlog, action.run)));
+    if (own !== null && !(await this.belowTaskRun(tasks, action.run))) return refuse(own);
+    if (action.action !== 'resume') return { action };
+    return this.verdict(action, await this.repeatedResume(backlog, action.run));
   }
 
   private async backlogAction(

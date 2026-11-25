@@ -17,6 +17,7 @@ const COMMAND_WORDS: Record<PlannerRunCommand['type'], string> = {
   answer: 'answer run',
   resume: 'resume run',
   replay: 'replay run',
+  rebase: 'rebase run',
   skipTask: 'skip task of run',
   stop: 'stop run',
   planChat: 'write to run planner',
@@ -40,7 +41,9 @@ export function commandOf(action: RunAction): PlannerRunCommand {
     case 'resume':
       return { type: 'resume', run: action.run };
     case 'replay':
-      return { type: 'replay', run: action.run, step: action.step };
+      return { type: 'replay', run: action.run, step: action.step, instruction: action.instruction };
+    case 'rebase':
+      return { type: 'rebase', run: action.run };
     case 'skipTask':
       return { type: 'skipTask', run: action.run, task: action.task };
     case 'stop':

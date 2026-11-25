@@ -25,6 +25,8 @@ export function describeCommand(command: PlannerRunCommand): string {
       return `resume ${command.run}`;
     case 'replay':
       return `replay ${command.step} of ${command.run}`;
+    case 'rebase':
+      return `rebase ${command.run}`;
     case 'skipTask':
       return `skip a task of ${command.run}`;
     case 'stop':
