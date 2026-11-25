@@ -7,7 +7,7 @@ import type { BacklogRecord, BacklogTaskRecord, BacklogWriters } from '../../../
 import { BacklogRepository } from '../../../history/backlog.repository';
 import { RunRepository } from '../../../history/run.repository';
 
-/** The newest events the rules read; a turn's own events and the last main-green are always among them. */
+/** The newest events the rules read, among them the recorded run-needs-person ends that repeatRefusal counts. */
 const EVENT_WINDOW = 1000;
 
 /** What only the owner does: the planner is refused, and the reason says whose it is. */
