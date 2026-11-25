@@ -20,6 +20,7 @@ import { HostAppsService } from './auth/host-apps.service';
 import { codeHostAdapters } from './integrations/code-host/code-host-adapters';
 import { allowedOrigins } from './live/origins';
 import { SandboxService } from './sandbox/sandbox.service';
+import { closeOnStop } from './server-close';
 
 async function bootstrap(): Promise<void> {
   try {
@@ -48,7 +49,7 @@ async function bootstrap(): Promise<void> {
     }
     app.use(app.get(RequestTiming).middleware());
     secureHttp(app, env.SWARMLOOP_PUBLIC_URL);
-    app.enableShutdownHooks();
+    closeOnStop(app);
     app.enableCors({ origin: allowedOrigins(env.SWARMLOOP_PUBLIC_URL), credentials: true });
     app.useWebSocketAdapter(new IoAdapter(app));
     await warmRuntimeModelLists(env, app.get(SandboxService), app.get(Clock));
