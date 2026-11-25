@@ -11,10 +11,18 @@ export function reviewBriefMount(statePath: string, step: string): SandboxMount 
   if (!sessionGroup(step) && !step.startsWith('code-review-')) {
     return null;
   }
+  return { hostPath: briefDir(statePath), containerPath: '/work/brief', readonly: true };
+}
+
+/**
+ * The host folder of a chat's brief files, mounted read only at `/work/brief`. It holds an empty `attachments`
+ * folder, so the run's files can be mounted inside the read-only brief: Docker cannot make a mount point there.
+ */
+function briefDir(statePath: string): string {
   const dir = join(statePath, 'briefs');
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(join(dir, 'attachments'), { recursive: true });
   chmodSync(dir, 0o755);
-  return { hostPath: dir, containerPath: '/work/brief', readonly: true };
+  return dir;
 }
 
 export function briefMounts(statePath: string, step: string, spilled: SandboxMount[]): SandboxMount[] {
@@ -39,9 +47,7 @@ export function spillPrompt(prompt: string, statePath: string, step: string): { 
     return { text: prompt, mounts: [] };
   }
   const name = briefName(step);
-  const dir = join(statePath, 'briefs');
-  mkdirSync(dir, { recursive: true });
-  chmodSync(dir, 0o755);
+  const dir = briefDir(statePath);
   const file = join(dir, name);
   writeFileSync(file, prompt);
   chmodSync(file, 0o644);
