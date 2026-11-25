@@ -5,7 +5,7 @@ import { ARTIFACTS } from '../contract/artifacts';
 import type { InputReader } from '../contract/input-reader';
 import { openQuestions } from '../shared/answers';
 import type { SubtaskOps } from '../shared/subtask-ops';
-import { returnedNotes } from '../shared/handoff';
+import { latestReturnedNotes } from '../shared/handoff';
 import { gapOf, gapTaken } from './review-gaps';
 
 /**
@@ -30,7 +30,7 @@ export async function implementRunner(
   const closed = settledAll && (await gapTaken(documents, run, taken));
   const asking = openQuestions((await reader.reread(key, ARTIFACTS.subtaskQuestions)) ?? '', []).length > 0;
   if (marker.startsWith('pending')) return 'agent';
-  const notes = !!(await returnedNotes(documents, run.id));
+  const notes = !!(await latestReturnedNotes(documents, run.id));
   const round = ((await reader.reread(key, ARTIFACTS.epicRound)) ?? '').trim() === 'open';
   const fixing = notes && (round || (settledAll && !gap && !closed && !asking));
   return fixing ? 'agent' : 'split';

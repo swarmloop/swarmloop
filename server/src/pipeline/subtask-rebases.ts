@@ -11,7 +11,11 @@ import { mergeHandoff } from '../steps/shared/handoff';
 import type { RunRebase } from '../steps/run-rebase';
 import type { CommandService } from './command.service';
 
-/** The rebase commands of the subtask runs of a parent. */
+/**
+ * The rebase commands of the subtask runs of a parent. One rule decides which open parts move for every path that
+ * moves an epic's branch: a part that waits on a question or a sibling moves and keeps its wait, a stopped part is
+ * left as it is, and any other part moves as its state allows.
+ */
 export class SubtaskRebases {
   constructor(
     private readonly runs: RunRepository,
@@ -23,55 +27,64 @@ export class SubtaskRebases {
     private readonly logger: Logger,
   ) {}
 
+  /** True when the run waits on a question or a sibling: a move puts it on the new tree and leaves it waiting. */
+  async keepsWait(run: RunEntity): Promise<boolean> {
+    const { state, reason } = storedState(run);
+    return state === 'waiting' && (reason?.code === ERROR_CODES.SUBTASK_WAITING || (await this.asking(run)));
+  }
+
+  /** True when the run goes on after the move; false when it was not moved or was moved and keeps its wait. */
   async rebase(run: RunEntity, event?: RebaseEvent): Promise<boolean> {
-    if (!(await this.canTakeRebase(run, !!event))) return false;
+    const take = await this.canTakeRebase(run, !!event);
+    if (!take) return false;
     if (storedState(run).state === 'running') {
       if (event) await this.queueRebase(run, event.note);
       return !!event;
     }
     try {
-      await this.sendRebase(run, event);
+      await this.sendRebase(run, take.keepsWait, event);
     } catch (error) {
       this.logger.warn(`${run.key} was not rebased: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
     if (event) await this.noteRebase(run, event.note);
-    return true;
+    return !take.keepsWait;
   }
 
   /**
    * Sends the Rebase. The key names the event; when the command of that key died, the next try is a new event named
    * after the command that died, so a rebase that failed once is sent again and never the same one twice.
    */
-  private async sendRebase(run: RunEntity, event?: RebaseEvent): Promise<void> {
+  private async sendRebase(run: RunEntity, keepsWait: boolean, event?: RebaseEvent): Promise<void> {
+    const payload = keepsWait ? { byParent: true, keepsWait: true } : { byParent: true };
     if (!event) {
-      await this.commands.accept(
-        'rebase',
-        run.key,
-        { byParent: true },
-        { idempotencyKey: `subtask-rebase-${run.revision}-${run.generation}` },
-      );
+      await this.commands.accept('rebase', run.key, payload, {
+        idempotencyKey: `subtask-rebase-${run.revision}-${run.generation}`,
+      });
       return;
     }
     let idempotencyKey = `subtask-rebase-${run.key}-${event.tip}`;
     for (;;) {
-      const sent = await this.commands.accept('rebase', run.key, { byParent: true }, { idempotencyKey });
+      const sent = await this.commands.accept('rebase', run.key, payload, { idempotencyKey });
       if (!sent.replayed || sent.command.state !== 'failed') return;
       idempotencyKey = `${idempotencyKey}-after-${sent.command.id}`;
     }
   }
 
-  /** A run that waits for a person or a sibling is never resumed by a rebase, and a stopped one is a person's. */
-  private async canTakeRebase(run: RunEntity, byEvent: boolean): Promise<boolean> {
-    const { state, reason } = storedState(run);
+  /**
+   * How the run takes a rebase, or null when it does not: a stopped run is a person's, and a blocked or working one
+   * is moved only for an event. A run that keeps its wait moves when it has worktrees, a merge request or not.
+   */
+  private async canTakeRebase(run: RunEntity, byEvent: boolean): Promise<{ keepsWait: boolean } | null> {
     const states = byEvent
       ? ['failed', 'done', 'waiting', 'idle', 'blocked', 'running']
       : ['failed', 'done', 'waiting', 'idle'];
-    if (!states.includes(state)) return false;
-    if (state === 'waiting' && (reason?.code === ERROR_CODES.SUBTASK_WAITING || (await this.asking(run)))) return false;
-    if ((await this.mergeRequests(run)).length > 0) return true;
-    // A subtask moved by an event has worktrees to move even before it made a merge request.
-    return byEvent && !!(await this.documents.latestBody(run.key, ARTIFACTS.repos.kind));
+    if (!states.includes(storedState(run).state)) return null;
+    // A subtask moved by an event or kept in its wait has worktrees to move even before it made a merge request.
+    const worktrees = !!(await this.documents.latestBody(run.key, ARTIFACTS.repos.kind));
+    if (await this.keepsWait(run)) return worktrees ? { keepsWait: true } : null;
+    if ((await this.mergeRequests(run)).length > 0 || (byEvent && worktrees)) return { keepsWait: false };
+    return null;
   }
 
   private async queueRebase(run: RunEntity, note: string): Promise<void> {

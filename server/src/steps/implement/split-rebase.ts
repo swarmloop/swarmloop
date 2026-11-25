@@ -21,8 +21,9 @@ function rebasedNote(sibling: string, files: string[]): string {
 
 /**
  * The part of the merge queue that keeps every open task on top of the feature branch. After a merge, a task whose
- * merge request conflicts is rebased whatever its state; a green task behind the feature branch is rebased before it
- * merges. A task a person stopped, or that waits for a person or a sibling, is left as it is.
+ * merge request conflicts is rebased whatever its state, and a task that waits on a person or a sibling is moved
+ * onto the new tip and keeps its wait; a green task behind the feature branch is rebased before it merges. A task a
+ * person stopped is left as it is.
  */
 @Injectable()
 export class SplitRebase {
@@ -31,14 +32,14 @@ export class SplitRebase {
     private readonly hosts: CodeHostRegistry,
   ) {}
 
-  /** After `merged` was merged into the feature branch at `tip`: every other open task that now conflicts is rebased. */
+  /** After `merged` was merged into the feature branch at `tip`: every other open task that now conflicts, or waits, is rebased. */
   async afterMerge(parent: RunEntity, tasks: Subtask[], merged: Subtask, tip: string): Promise<Subtask[]> {
     const next: Subtask[] = [];
     for (const task of tasks) {
       const child = settled(task) || task.id === merged.id ? null : await this.subtasks.find(parent, task.id);
-      next.push(
-        child && (await this.conflicts(parent, child)) ? await this.move(parent, task, child, merged, tip) : task,
-      );
+      if (child && (await this.conflicts(parent, child))) next.push(await this.move(parent, task, child, merged, tip));
+      else if (child && (await this.subtasks.keepsWait(child))) next.push(await this.follow(task, child, merged, tip));
+      else next.push(task);
     }
     return next;
   }
@@ -57,6 +58,12 @@ export class SplitRebase {
       if ((await host.readMergeRequest(request.project, request.iid)).conflicts) return true;
     }
     return false;
+  }
+
+  /** A task that waits on a person or a sibling is moved onto the new tip and keeps its wait. */
+  private async follow(task: Subtask, child: RunEntity, merged: Subtask, tip: string): Promise<Subtask> {
+    await this.subtasks.rebase(child, { tip, note: rebasedNote(merged.id, []) });
+    return task;
   }
 
   private async move(

@@ -5,7 +5,6 @@ import { RunRepository } from '../../history/run.repository';
 import type { RunEntity } from '../../history/entities';
 import { Clock } from '../../core/clock';
 import { RunRebase } from '../../steps/run-rebase';
-import { betweenPasses } from '../../steps/shared/epic-between-passes';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import { CommandService } from '../command.service';
 import { BacklogEvents } from './backlog-events';
@@ -46,7 +45,7 @@ export class EpicMainMoves {
       for (const task of await this.backlogs.tasks(backlog.id as number)) {
         if (task.runKey === null || settled(task)) continue;
         const epic = await this.runs.findRun(task.runKey);
-        if (!epic?.split || !betweenPasses(epic) || !(await this.rebaser.subtasksIdle(epic))) continue;
+        if (!epic || !(await this.rebaser.takesMain(epic)) || !(await this.rebaser.subtasksIdle(epic))) continue;
         await readMains(this.host, task.repositories, backlog.owner, mains);
         const heads = await this.newHeads(epic, task, mains);
         if (heads.length > 0) await this.move(backlog, task, epic, heads);

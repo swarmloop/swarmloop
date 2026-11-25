@@ -31,6 +31,8 @@ import { BacklogMerge } from './backlog-merge';
 import { EpicMainMoves } from './epic-main-moves';
 import type { MainHeld } from './main-held';
 import type { RunRebase } from '../../steps/run-rebase';
+import { takesMain } from '../../steps/shared/epic-between-passes';
+import type { RunEntity } from '../../history/entities';
 import { BacklogScheduler } from './backlog-scheduler';
 import { BacklogStartPort, type BacklogStart } from './backlog-start-port';
 
@@ -128,7 +130,10 @@ export async function backlogHarness(parallel = 3) {
   const epicMoves = new EpicMainMoves(
     backlogs,
     runs,
-    { subtasksIdle: async () => epics.idle } as unknown as RunRebase,
+    {
+      subtasksIdle: async () => epics.idle,
+      takesMain: (epic: RunEntity) => takesMain(documents, runs, epic),
+    } as unknown as RunRebase,
     {
       holds: async (_key: string, repo: string, sha: string) => epics.held.has(`${repo}@${sha}`),
     } as unknown as MainHeld,
@@ -302,6 +307,7 @@ export async function backlogHarness(parallel = 3) {
       if (!run) throw new Error(`no run ${key}`);
       run.split = true;
       await runs.saveRun(run);
+      await documents.putDocument(run, 'subtasks', JSON.stringify([{ id: 'a', title: 'a', status: 'waiting' }]));
     },
     /** The task as stored now. */
     async task(backlogId: number, slug: string) {

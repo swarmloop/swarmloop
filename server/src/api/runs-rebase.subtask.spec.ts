@@ -73,4 +73,21 @@ describe('the rebase of a done subtask by its parent', () => {
       await app.close();
     }
   });
+
+  it.each([false, true])('keeps a waiting subtask in its wait after the rebase (conflict: %s)', async (clash) => {
+    const key = `proj-8${clash ? 6 : 5}`;
+    const { app, runs, documents } = await rebasedSubtask(key, clash, 'waiting');
+    try {
+      const next = await app.get(RunRebase).rebase(key, false, true, false, true);
+
+      const fresh = await runs.findRun(key);
+      expect(next).toBe('stay');
+      expect(fresh?.status).toBe('waiting');
+      expect(fresh?.currentStep).toBe('pipeline');
+      const pending = await documents.latestBody(key, 'rebase_conflict');
+      expect(pending?.startsWith('pending') ?? false).toBe(clash);
+    } finally {
+      await app.close();
+    }
+  });
 });

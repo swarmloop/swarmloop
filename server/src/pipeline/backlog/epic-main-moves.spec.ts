@@ -87,6 +87,19 @@ describe('EpicMainMoves', () => {
       expect(rebases(h)).toHaveLength(1);
     }));
 
+  it("takes an epic whose pass waits on a part's question", () =>
+    withHarness(async (h) => {
+      const { key } = await epicBetweenPasses(h);
+      const head = h.fake.headOf('acme/web');
+      await h.moveRun(key, {
+        status: 'waiting',
+        currentStep: 'implement',
+        reason: { code: 'ASKS_PLANNER', message: 'waiting for the backlog planner' },
+      });
+      await h.tick();
+      expect(rebases(h)).toEqual([{ type: 'rebase', key, idempotencyKey: `epic-main-${key}-web@${head}` }]);
+    }));
+
   it('leaves a running epic alone', () =>
     withHarness(async (h) => {
       const { key } = await epicBetweenPasses(h);

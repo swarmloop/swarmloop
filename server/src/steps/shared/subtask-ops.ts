@@ -99,10 +99,13 @@ export abstract class SubtaskOps {
   abstract fastForward(parent: RunEntity): Promise<string | null>;
   /**
    * Moves a subtask run onto the feature branch, when it has a merge request and is in a state that takes it. A run
-   * that works takes it when its current step ends, and a run that waits for a person or a sibling is left alone.
-   * With `event` the move and its note are one for that event. True when the run was sent the rebase or will take it.
+   * that works takes it when its current step ends, and a run a person stopped is left alone. A run that waits on a
+   * question or a sibling is moved and keeps its wait. With `event` the move and its note are one for that event.
+   * True when the run goes on after the move: it was sent the rebase or will take it, and does not keep a wait.
    */
   abstract rebase(run: RunEntity, event?: RebaseEvent): Promise<boolean>;
+  /** True when a move keeps the run in its wait: it waits on a question or a sibling. */
+  abstract keepsWait(run: RunEntity): Promise<boolean>;
   /** The tip of the feature branch when the head of a subtask run, and so its last CI, does not contain it; null when it does. */
   abstract behindTip(parent: RunEntity, run: RunEntity): Promise<string | null>;
   /** The files in which the head of a subtask run conflicts with the feature branch. Empty when git names none. */
