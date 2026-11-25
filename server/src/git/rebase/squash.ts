@@ -8,6 +8,8 @@ import { cloneArgs, cloneAuthor, cloneSource, cloneUnmerged, indexDirty } from '
 import { landConflict, resetHard } from './conflict';
 import { gitAt, rebaseStderr } from './workflow';
 
+const SCRATCH_TIME = '2000-01-01T00:00:00Z';
+
 export async function squashOffMount(input: {
   cwd: string;
   tmp: string;
@@ -122,9 +124,11 @@ async function standOnBase(input: {
  */
 async function carryOwnChange(tmp: string, tipSha: string, ownBase: string, author: CommitIdentity): Promise<string> {
   try {
+    // The scratch commit has a fixed time, so its id, which git names in a conflict message, is the same on every move of the same change.
+    const fixedTime = { GIT_AUTHOR_DATE: SCRATCH_TIME, GIT_COMMITTER_DATE: SCRATCH_TIME };
     const scratch = await git(
       cloneArgs(tmp, [...author.args, 'commit-tree', `${tipSha}^{tree}`, '-p', ownBase, '-m', 'own change']),
-      author.env,
+      { ...author.env, ...fixedTime },
     );
     await git(cloneArgs(tmp, [...author.args, 'cherry-pick', '--no-commit', scratch]), author.env);
     return '';
