@@ -1,5 +1,6 @@
 import type { OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ConnectionsService } from '../auth/connections.service';
 import { AppConfig } from '../config/env';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
@@ -27,6 +28,7 @@ import { StallWatch } from './stall-watch';
 import { StoppedCleanup } from './stopped-cleanup';
 import { ReconcilerResumes } from './reconciler-resumes';
 import { StartGate } from './start-gate';
+import { MessageTurnEntry } from './message-turn-entry';
 import { SubtaskPort } from './subtask-port';
 
 /**
@@ -71,6 +73,7 @@ export class Reconciler implements OnModuleDestroy {
     @Optional() connections?: ConnectionsService,
     @Optional() credentials?: PersonalCredentials,
     @Optional() planChat?: PlanChatStore,
+    @Optional() modules?: ModuleRef,
   ) {
     this.cleanup = new StoppedCleanup(runs, documents, sandbox, config);
     this.leftovers = new EpicLeftovers(runs, documents, subtasks);
@@ -90,6 +93,13 @@ export class Reconciler implements OnModuleDestroy {
       connections,
       credentials,
       planChat,
+      modules
+        ? (key, outage) => {
+            // Found when called: PipelineService depends on the reconciler.
+            modules.get(MessageTurnEntry, { strict: false }).takeMessages(key, outage);
+            return Promise.resolve();
+          }
+        : undefined,
     );
   }
 
@@ -153,6 +163,7 @@ export class Reconciler implements OnModuleDestroy {
       await this.settleEndedRelaunches();
       await this.resumeLimited();
       await this.resumeHostUnavailable();
+      await this.resumeMessageHostWait();
       await this.resumeCiNotStarted();
       await this.resumeDocker();
       await this.resumeDiskLow();
@@ -189,6 +200,10 @@ export class Reconciler implements OnModuleDestroy {
 
   resumeHostUnavailable(): Promise<void> {
     return this.resumes.resumeHostUnavailable();
+  }
+
+  resumeMessageHostWait(): Promise<void> {
+    return this.resumes.resumeMessageHostWait();
   }
 
   resumeCiNotStarted(): Promise<void> {

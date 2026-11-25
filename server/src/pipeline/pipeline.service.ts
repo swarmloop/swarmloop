@@ -147,14 +147,15 @@ export class PipelineService implements OnApplicationBootstrap {
   /**
    * A message to a run no step drives, taken in a pass of its own. A done run takes it in the plan step's turn, and
    * only a reply with a plan reopens it, with its merge requests back to draft; a reply without one leaves it as it is.
-   * Any other run takes it in the planner's own turn, which answers and may resume or replay.
+   * Any other run takes it in the planner's own turn, which answers and may resume or replay. An `outage` key names
+   * the model host wait a timed retry answers.
    */
-  takeMessages(key: string): void {
+  takeMessages(key: string, outage?: string): void {
     this.turns.background(async () => {
       const run = await this.runs.findRun(key);
       if (run && storedState(run).state !== 'done') {
         // A start that is in flight takes the message at its next hop, as a held run does.
-        await this.ownTurn.take(key, () => this.lifecycle.busy(key));
+        await this.ownTurn.take(key, () => this.lifecycle.busy(key), outage);
         return;
       }
       const outcome = await this.turns.take(key, () => this.step('plan', key, { auto: true }), new Set());

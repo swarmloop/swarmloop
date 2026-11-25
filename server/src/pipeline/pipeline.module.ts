@@ -95,6 +95,7 @@ import { StartWaits } from '../steps/shared/start-waits';
 import { QuestionHolds } from '../steps/shared/question-holds';
 import { QuestionPassOn } from './question-pass-on';
 import { RunSettler } from './run-settler';
+import { MessageTurnEntry } from './message-turn-entry';
 import { PipelineService } from './pipeline.service';
 import { AuthModule } from '../auth/auth.module';
 import { RunRebase, RunRebaseEnvironment } from '../steps/run-rebase';
@@ -158,6 +159,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     StepKernel,
     StepRegistry,
     PipelineService,
+    { provide: MessageTurnEntry, useExisting: PipelineService },
     CommandService,
     StartGate,
     RunGuards,

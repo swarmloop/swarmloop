@@ -42,6 +42,8 @@ export class ReconcilerResumes {
     private readonly connections?: ConnectionsService,
     private readonly credentials?: PersonalCredentials,
     private readonly planChat?: PlanChatStore,
+    /** Takes a run's pending messages in the planner's turn, under the key of the outage it answers. */
+    private readonly takeMessages?: (key: string, outage: string) => Promise<void>,
   ) {}
 
   /**
@@ -65,6 +67,28 @@ export class ReconcilerResumes {
   /** A run that waits for a host goes on by itself, once, when the next try its reason names has come. */
   async resumeHostUnavailable(): Promise<void> {
     await this.resumeTimed(ERROR_CODES.HOST_UNAVAILABLE, 'host');
+  }
+
+  /**
+   * A run no step of this process holds, and that is not running, takes its pending message again once the next try
+   * of the model host wait the message carries has come. The key names the message and that try, so one outage is
+   * taken once.
+   */
+  async resumeMessageHostWait(): Promise<void> {
+    if (!this.planChat || !this.takeMessages) return;
+    for (const run of await this.runs.listRuns()) {
+      if (run.status === 'running' || this.claimed()(run.key)) continue;
+      try {
+        const [first] = await this.planChat.pending(run.key);
+        const wait = first?.wait;
+        if (!first || wait?.on !== 'model-host' || this.clock.now() < Date.parse(wait.retryAt)) continue;
+        await this.takeMessages(run.key, `host-${first.key}-${wait.retryAt}`);
+      } catch (error) {
+        this.logger.warn(
+          `message turn of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
   }
 
   /** A run whose CI did not start looks again, once, when the next look its reason names has come. */

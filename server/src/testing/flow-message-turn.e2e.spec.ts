@@ -11,6 +11,7 @@ import { sessionFileName } from '../history/session-group';
 import { storedState, writeRunState, type RunStateChange } from '../history/run-state';
 import { VisitStartRepository } from '../history/visit-start.repository';
 import { CommandService } from '../pipeline/command.service';
+import { Reconciler } from '../pipeline/reconciler';
 import { PlannerTurns } from '../pipeline/planner-turns';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
@@ -42,13 +43,16 @@ class ProbedRunner extends BlockAgentRunner {
   seen: (() => Promise<Seen>) | null = null;
   atTurn: Seen | null = null;
   turnSessions: (string | undefined)[] = [];
+  /** The fake clock's now: an outage ends there, so its next try is on the fake clock. */
+  now: () => number = () => 0;
 
   override async run(input: Parameters<BlockAgentRunner['run']>[0]) {
     if (input.step === 'plan' && input.prompt?.includes('No step runs now')) this.turnSessions.push(input.sessionFile);
     if (this.seen && input.step === 'plan' && !this.atTurn && input.prompt?.includes('No step runs now')) {
       this.atTurn = await this.seen();
     }
-    return super.run(input);
+    const result = await super.run(input);
+    return result.outage ? { ...result, finishedAt: new Date(this.now()).toISOString() } : result;
   }
 }
 
@@ -65,6 +69,7 @@ describe('a person writes to the planner of a run no step drives', () => {
       repoFiles: { 'AGENTS.md': '# rules\n\n- keep it small\n' },
     });
     flow.fastWaits();
+    blocks.now = () => flow.app.clock.now();
     blocks.seen = async () => {
       const queries = flow.app.app.get(RunQueriesService);
       const view = await queries.flow(KEY);
@@ -158,6 +163,67 @@ describe('a person writes to the planner of a run no step drives', () => {
     expect(last?.text).toContain('stays stopped');
     expect(await store().pending(KEY)).toEqual([]);
     expect(blocks.steps).toHaveLength(count);
+    await assertInvariants(flow.app);
+  });
+
+  const OUTAGE = { outage: { host: 'api.anthropic.com', detail: 'API Error: 502' } };
+  const planTurns = () => blocks.prompts.filter((launch) => launch.step === 'plan-turn').length;
+
+  /** A stopped run gets a message and the model host does not answer; the server restarts. Returns the pending wait. */
+  async function stoppedByOutage() {
+    await writeAt(STOPPED, 'Please go on');
+    expect((await runOf())?.status).toBe('blocked');
+    expect(storedState((await runOf())!).state).toBe('stopped');
+    expect((await flow.app.app.get(RunQueriesService).flow(KEY)).actions).toContain('resume');
+    const [message] = await store().pending(KEY);
+    expect(message.wait).toMatchObject({ on: 'model-host', message: expect.stringContaining('api.anthropic.com') });
+    expect((await store().read(KEY)).entries.filter((entry) => entry.role === 'planner')).toEqual([]);
+    await flow.restart();
+    expect((await store().pending(KEY))[0].wait).toEqual(message.wait);
+    return message.wait!;
+  }
+
+  it('keeps a stopped run stopped when the model host does not answer, and takes the message once at the next try', async () => {
+    await start({ 'plan-turn': [OUTAGE, block({ reply: 'Going on.', resume: true })] });
+    const wake = () => flow.app.app.get(Reconciler).resumeMessageHostWait();
+    const idle = async () => {
+      await flow.app.app.get(PlannerTurns).idle();
+      await flow.app.pipeline.whenIdle(KEY);
+    };
+
+    const wait = await stoppedByOutage();
+    await wake();
+    await idle();
+    expect(planTurns()).toBe(1);
+
+    flow.app.clock.advance(Date.parse(wait.retryAt) - flow.app.clock.now() + 1);
+    await wake();
+    await idle();
+    expect(planTurns()).toBe(2);
+    expect(await store().pending(KEY)).toEqual([]);
+    expect((await runOf())?.currentStep).toBe('done');
+    const starts = (await turnStarts()).map((row) => row.startedBy);
+    expect(starts).toEqual(['person', 'person']);
+
+    await wake();
+    await idle();
+    expect(planTurns()).toBe(2);
+    await assertInvariants(flow.app);
+  });
+
+  it('clears the wait when the retried reply fails for another reason, and the next pass does not launch it again', async () => {
+    await start({ 'plan-turn': [OUTAGE, { text: 'no result block here' }] });
+    const wait = await stoppedByOutage();
+    flow.app.clock.advance(Date.parse(wait.retryAt) - flow.app.clock.now() + 1);
+
+    for (let pass = 0; pass < 2; pass++) {
+      await flow.app.app.get(Reconciler).resumeMessageHostWait();
+      await flow.app.app.get(PlannerTurns).idle();
+    }
+
+    expect(planTurns()).toBe(2);
+    expect(await store().pending(KEY)).toEqual([]);
+    expect(storedState((await runOf())!).state).toBe('stopped');
     await assertInvariants(flow.app);
   });
 

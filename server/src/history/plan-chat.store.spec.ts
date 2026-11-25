@@ -143,4 +143,34 @@ describe('PlanChatStore', () => {
       await db.close();
     }
   });
+
+  it('stores a wait on pending entries, keeps since on a later one, clears it, and drops it when the entry is taken', async () => {
+    const db = await repositoryDatabase();
+    try {
+      await db.app.get(RunRepository).openWaiting('run-1', '/target');
+      const store = db.app.get(PlanChatStore);
+      await store.appendEntry('run-1', entry('message-a', '2026-01-01T00:00:00.000Z'));
+      await store.appendEntry('run-1', entry('message-b', '2026-01-01T00:00:01.000Z'));
+      const wait = (since: string, retryAt: string) => ({
+        on: 'model-host' as const,
+        since,
+        message: 'host down',
+        retryAt,
+      });
+      await store.wait('run-1', ['message-a'], wait('2026-01-01T00:01:00.000Z', '2026-01-01T00:08:00.000Z'));
+      await store.wait('run-1', ['message-a'], wait('2026-01-01T00:09:00.000Z', '2026-01-01T00:16:00.000Z'));
+      let { entries } = await store.read('run-1');
+      expect(entries[0].wait).toEqual(wait('2026-01-01T00:01:00.000Z', '2026-01-01T00:16:00.000Z'));
+      expect(entries[1].wait).toBeUndefined();
+      await store.wait('run-1', ['message-a'], null);
+      expect((await store.read('run-1')).entries[0].wait).toBeUndefined();
+      await store.wait('run-1', ['message-a'], wait('2026-01-01T00:01:00.000Z', '2026-01-01T00:08:00.000Z'));
+      await store.markTaken('run-1', ['message-a']);
+      ({ entries } = await store.read('run-1'));
+      expect(entries[0]).toMatchObject({ state: 'taken' });
+      expect(entries[0].wait).toBeUndefined();
+    } finally {
+      await db.close();
+    }
+  });
 });

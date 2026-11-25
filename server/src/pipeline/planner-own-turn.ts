@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Clock } from '../core/clock';
+import type { RunEntity } from '../history/entities';
 import type { PlanChatEntry } from '../contract/plan-chat';
 import { isSubtask } from '../contract/subtask';
 import { PlanChatStore } from '../history/plan-chat.store';
@@ -8,6 +9,7 @@ import { planReplyFor, type PlanReplyResult } from '../agent-result/definitions/
 import { resultPromptFor } from '../agent-result/result-prompt';
 import { planChatTakes } from '../steps/plan/plan.prompts';
 import { PlanConversation } from '../steps/shared/plan-conversation';
+import { hostRoute, ModelHostUnavailable } from '../steps/shared/model-host-unavailable';
 import { CommandService } from './command.service';
 import { PlannerTurns } from './planner-turns';
 import { StartGate } from './start-gate';
@@ -35,6 +37,8 @@ const STAYS_STOPPED = 'The run stays stopped. Resume starts it.';
 export class PlannerOwnTurn {
   private readonly logger = new Logger(PlannerOwnTurn.name);
   private readonly tails = new Map<string, Promise<void>>();
+  /** The outage keys of the takes in flight: a take under one of them returns at once. */
+  private readonly outages = new Set<string>();
 
   constructor(
     private readonly turns: PlannerTurns,
@@ -49,11 +53,15 @@ export class PlannerOwnTurn {
   /**
    * Takes the messages of the run that wait, in one turn. Takes of one run go one after another and ask `busy` once
    * their turn comes, so a take that waited behind a reply's resume sees the run started and leaves the messages that
-   * resume handed to the resumed run. With none pending it ends.
+   * resume handed to the resumed run. With none pending it ends. A take with an `outage` key (`host-<message>-<retryAt>`)
+   * runs only while the first pending message still waits for that next try, and once at a time per key.
    */
-  async take(key: string, busy: () => Promise<boolean>): Promise<void> {
+  async take(key: string, busy: () => Promise<boolean>, outage?: string): Promise<void> {
+    if (outage && this.outages.has(outage)) return;
+    if (outage) this.outages.add(outage);
     const before = this.tails.get(key) ?? Promise.resolve();
     const mine = before.then(async () => {
+      if (outage && !(await this.waitsFor(key, outage))) return;
       if (!(await busy())) await this.takeNow(key);
     });
     const tail = mine.catch(() => undefined);
@@ -61,7 +69,17 @@ export class PlannerOwnTurn {
     void tail.then(() => {
       if (this.tails.get(key) === tail) this.tails.delete(key);
     });
-    await mine;
+    try {
+      await mine;
+    } finally {
+      if (outage) this.outages.delete(outage);
+    }
+  }
+
+  /** Whether the first pending message still waits for the model host at the next try this key names. */
+  private async waitsFor(key: string, outage: string): Promise<boolean> {
+    const first = (await this.chat.pending(key))[0];
+    return !!first?.wait && `host-${first.key}-${first.wait.retryAt}` === outage;
   }
 
   private async takeNow(key: string): Promise<void> {
@@ -83,15 +101,26 @@ export class PlannerOwnTurn {
     const subtask = isSubtask(run);
     const shape = planReplyFor({ split: false, subtask, answerOnly: true, acts: true });
     const opened = openedFor(run, this.clock);
-    const visit = await this.conversation.visit(
-      opened,
-      (received) => planChatTakes(messages, resultPromptFor(shape, received), subtask),
-      shape,
-      hasReply,
-      messages.map((message) => message.text),
-      { by: 'person' },
-      true,
-    );
+    let visit: Awaited<ReturnType<PlanConversation['visit']>>;
+    try {
+      visit = await this.conversation.visit(
+        opened,
+        (received) => planChatTakes(messages, resultPromptFor(shape, received), subtask),
+        shape,
+        hasReply,
+        messages.map((message) => message.text),
+        { by: 'person' },
+        true,
+      );
+    } catch (error) {
+      if (!(error instanceof ModelHostUnavailable)) {
+        // Any other end settles the wait too, so no pass launches the same outage's reply again.
+        await this.chat.wait(key, keys, null);
+        throw error;
+      }
+      await this.hostDown(run, keys, error);
+      return null;
+    }
     if (!visit || 'refused' in visit) {
       this.logger.warn(`${key}: the planner took no message: ${visit ? visit.refused.message : 'no usable reply'}`);
       await this.chat.markTaken(key, keys);
@@ -114,9 +143,35 @@ export class PlannerOwnTurn {
       await this.turns.escalate(run, escalation);
       return null;
     }
-    // A resume leaves the messages for the resumed run; any other turn takes them.
+    // A resume leaves the messages for the resumed run, with no wait of the outage that came before; any other turn takes them.
     if (act?.command !== 'resume') await this.chat.markTaken(key, keys);
+    else await this.chat.wait(key, keys, null);
     return act;
+  }
+
+  /**
+   * The model host did not answer. On a run a person stopped, the messages stay pending with the wait and its next
+   * try, and the run stays stopped. On any other run the run waits for the host, as a step does, and the messages
+   * stay pending for the resumed run.
+   */
+  private async hostDown(run: RunEntity, keys: string[], error: ModelHostUnavailable): Promise<void> {
+    if (await this.gate.stopped(run)) {
+      await this.chat.wait(run.key, keys, {
+        on: 'model-host',
+        since: this.clock.iso(),
+        message: `${error.host} did not answer: ${error.detail}`,
+        retryAt: error.retryAt,
+      });
+      return;
+    }
+    await this.chat.wait(run.key, keys, null);
+    const route = hostRoute(error) as Extract<ReturnType<typeof hostRoute>, { to: 'wait' }>;
+    const fresh = (await this.runs.findRun(run.key)) ?? run;
+    await this.runs.release(fresh, {
+      status: 'waiting',
+      reason: { code: error.code, message: route.reason, retryAt: route.retryAt },
+      stepStartedAt: null,
+    });
   }
 
   private actOf(reply: PlanReplyResult, messages: string[]): Act | null {

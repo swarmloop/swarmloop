@@ -273,6 +273,23 @@ describe('pipeline service', () => {
     }
   });
 
+  it('passes the outage key of a message turn to the take', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-outage-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const waiting = await runs.begin('PROJ-83', 'implement');
+      writeRunState(waiting, { status: 'waiting', currentStep: 'implement' });
+      await runs.saveRun(waiting);
+      const own = jest.spyOn(app.get(PlannerOwnTurn), 'take').mockResolvedValue();
+      app.get(PipelineService).takeMessages('PROJ-83', 'host-message-1-2026-01-01T00:08:00.000Z');
+      await app.get(PlannerTurns).idle();
+      expect(own).toHaveBeenCalledWith('PROJ-83', expect.any(Function), 'host-message-1-2026-01-01T00:08:00.000Z');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('settles when a detached run releases its key', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-idle-'));
     const app = await boot(root);
