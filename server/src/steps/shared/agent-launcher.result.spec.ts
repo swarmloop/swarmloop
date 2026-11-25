@@ -125,8 +125,22 @@ describe('AgentLauncher result', () => {
     const { launcher, prompts } = launcherOf([prose, ok()]);
     await launcher.launch(requestOf());
     expect(prompts()[1]).not.toContain('FULL PROMPT');
-    expect(prompts()[1]).not.toContain('items (');
+    expect(prompts()[1]).toContain('- items (array of string, required)');
     expect(prompts()[1]).toContain('Send the result block again and change nothing else.');
+  });
+
+  it('shows the part of a wrong field in the follow-up', async () => {
+    const { launcher, prompts } = launcherOf([{ block: { items: ['a'], decision: 'maybe' } }, ok()]);
+    await launcher.launch(requestOf());
+    expect(prompts()[1]).toContain('- decision (one of "ok", "return", required)');
+    expect(prompts()[1]).not.toContain('FULL PROMPT');
+  });
+
+  it('shows the part of the definition under a stored error, in the same chat and in a fresh one', async () => {
+    const { launcher, prompts, fresh } = launcherOf([ok()]);
+    await launcher.launch(requestOf({ answerErrors: ['decision: "decision" must be one of [ok, return]'] }));
+    expect(prompts()[0]).toContain('- decision (one of "ok", "return", required)');
+    expect(fresh()).toContain('- decision (one of "ok", "return", required)');
   });
 
   it('starts a relaunch with the stored errors in the same chat, and the full prompt with them in a fresh chat', async () => {
