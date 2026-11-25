@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { mkdirSync, writeFileSync } from 'fs';
 
@@ -70,7 +71,7 @@ describe('implement step', () => {
     const parent = await runs.openWaiting('PROJ-147', '/target');
     await seed(app, 'PROJ-147-t1', 'approve');
     const child = await runs.findRun('PROJ-147-t1');
-    await runs.saveRun({ ...child!, parentRunId: parent.id, taskId: 't1' });
+    await storeRun(runs, { ...child!, parentRunId: parent.id, taskId: 't1' });
     await seed(app, 'PROJ-148', 'approve', 'other\n');
     const head = git(subtaskTree, ['rev-parse', 'HEAD']);
 
@@ -167,7 +168,7 @@ describe('implement step', () => {
       const documents = app.get(DocumentRepository);
       const run = (await runs.findRun(key))!;
       run.split = true;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await documents.putDocument(run, 'contract', 'decisions:\n- subtask a: store UTC\n');
       await documents.putDocument(
         run,
@@ -490,7 +491,7 @@ describe('implement step', () => {
       const run = (await app.get(RunRepository).findRun(key))!;
       const documents = app.get(DocumentRepository);
       run.attemptsChecks = 2;
-      await app.get(RunRepository).saveRun(run);
+      await storeRun(app.get(RunRepository), run);
       await documents.putDocument(run, 'return', `## ${issues[0]?.source}\n${issues[0]?.body}\n`);
       await documents.putDocument(run, ARTIFACTS.issues.kind, ARTIFACTS.issues.format(issues));
       const rerun = jest.spyOn(app.get(EnvironmentService), 'rerun');

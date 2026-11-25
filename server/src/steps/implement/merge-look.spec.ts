@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { AGENT_RUNNER, type AgentRunInput, type AgentRunResult } from '../../agent/agent-runner';
@@ -80,7 +81,7 @@ describe('merge look', () => {
       currentStep: 'done',
       merge: { merged: { demo: { sha, by: null, at: '2026-11-19T00:07:10.000Z', url: null } } },
     });
-    await app.app.get(RunRepository).saveRun(run);
+    await storeRun(app.app.get(RunRepository), run);
     const documents = app.app.get(DocumentRepository);
     if (files) await documents.putDocument(run, 'merged_files', files.join('\n'));
     if (handoff) await documents.putDocument(run, 'handoff', mergeHandoff(null, 'implement', handoff));

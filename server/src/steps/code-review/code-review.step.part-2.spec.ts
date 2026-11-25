@@ -1,6 +1,7 @@
 import { handoffText } from '../shared/handoff';
 import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -246,7 +247,7 @@ describe('code-review step', () => {
       await seed(app, 'PROJ-91');
       const run = await app.get(RunRepository).findRun('PROJ-91');
       run!.split = true;
-      await app.get(RunRepository).saveRun(run!);
+      await storeRun(app.get(RunRepository), run!);
       const documents = app.get(DocumentRepository);
       await documents.putDocument(run!, 'contract', 'decisions:\n- subtask a: store UTC\n');
       await documents.putDocument(
@@ -366,7 +367,7 @@ describe('code-review step', () => {
       const run = await runs.findRun('PROJ-97');
       run!.currentStep = 'code-review';
       run!.status = 'failed';
-      await runs.saveRun(run!);
+      await storeRun(runs, run!);
       await putStamped(app, run!, 'review_quality', 'notes\n\ndecision: ok\n', ['billing-api']);
       await documents.putDocument(run!, REBASE_CONFLICT, 'review\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-97');
@@ -409,7 +410,7 @@ describe('code-review step', () => {
       seeded.ownerPid = null;
       seeded.projects = 'app\n';
       seeded.prompt = 'https://example/browse/PROJ-88\nbranch: feature/other\n';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       await flows.noteFlow('PROJ-88', ['planning', 'code-review'], null);
       await documents.putDocument(seeded, 'requirements', '{}\n');
       const done = await app.get(PipelineService).step('code-review', 'PROJ-88');
@@ -456,7 +457,7 @@ describe('code-review step', () => {
       seeded.ownerPid = null;
       seeded.projects = 'app\n';
       seeded.prompt = 'Review the checkout\n';
-      await runs.saveRun(seeded);
+      await storeRun(runs, seeded);
       await flows.noteFlow('PROJ-89', ['code-review'], null);
       const done = await app.get(PipelineService).step('code-review', 'PROJ-89');
       expect(done.exitCode).toBe(0);

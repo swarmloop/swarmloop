@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -269,7 +270,7 @@ describe('code-review step', () => {
       throw new Error('run is missing');
     }
     seeded.prompt = 'branch: feature/other\n';
-    await runs.saveRun(seeded);
+    await storeRun(runs, seeded);
     const done = await app.get(PipelineService).step('code-review', 'PROJ-93');
     expect(done.exitCode).toBe(0);
     const run = await runs.findRun('PROJ-93');
@@ -308,7 +309,7 @@ describe('code-review step', () => {
     const run = await runs.findRun('PROJ-201');
     run!.status = 'failed';
     run!.currentStep = 'code-review';
-    await runs.saveRun(run!);
+    await storeRun(runs, run!);
     for (const name of ['requirements', 'quality', 'regressions', 'security']) {
       await putStamped(app, run!, `review_${name}`, `notes\ndecision: ok\n`, ['billing-api']);
     }
@@ -373,7 +374,7 @@ describe('code-review step', () => {
     run.agentCalls = 15;
     run.status = 'waiting';
     run.currentStep = 'code-review';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     agent.mockClear();
     const second = await app.get(PipelineService).step('code-review', 'PROJ-100', { auto: true });
     expect(second.exitCode).toBe(0);
@@ -396,7 +397,7 @@ describe('code-review step', () => {
     const run = await runs.findRun('PROJ-88');
     run!.status = 'waiting';
     run!.currentStep = 'code-review';
-    await runs.saveRun(run!);
+    await storeRun(runs, run!);
     const now = new Date().toISOString();
     await visits.finishVisit(run!, {
       step: 'code-review',
@@ -447,7 +448,7 @@ describe('code-review step', () => {
     const run = await runs.findRun('PROJ-94');
     run!.status = 'failed';
     run!.currentStep = 'code-review';
-    await runs.saveRun(run!);
+    await storeRun(runs, run!);
     await putStamped(app, run!, 'review_requirements', 'notes\ndecision: return\n', ['billing-api']);
     for (const name of ['quality', 'regressions', 'performance']) {
       await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);

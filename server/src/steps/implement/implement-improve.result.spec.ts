@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { AgentRunInput } from '../../agent/agent-runner';
@@ -22,7 +23,7 @@ async function seedFirstPass(app: Awaited<ReturnType<typeof boot>>, key: string)
   const seeded = await runs.begin(key, 'implement-improve');
   seeded.status = 'waiting';
   seeded.currentStep = 'implement-improve';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   const plan = { name: '', overview: '', items: ['add the field'], decision: 'approve' };
   await documents.putDocument(seeded, 'requirements', `${JSON.stringify({ prompt: 'Ship the field\n', plan })}\n`);
   await documents.putDocument(seeded, 'repos', 'billing-api\n');

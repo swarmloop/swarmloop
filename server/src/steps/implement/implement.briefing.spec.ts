@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { AgentRunInput } from '../../agent/agent-runner';
@@ -49,7 +50,7 @@ async function subtask(key: string, parentContract = CONTRACT) {
   const run = (await runs.findRun(key))!;
   run.parentRunId = parent.id;
   run.taskId = 'a';
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   return { app, runs, documents, parent, sibling, run };
 }
 

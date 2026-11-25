@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { DocumentRepository } from '../../history/document.repository';
 import { FetchFailed } from '../../core/swarmloop-error';
 import { SubtaskOps } from '../shared/subtask-ops';
@@ -14,7 +15,7 @@ import { child, parentState, pass, seedParent, task, tasksOf, work, world } from
 async function block(app: TestApp, id: string): Promise<void> {
   const run = await child(app, id);
   writeRunState(run, { status: 'blocked', reason: { code: 'BLOCKED', message: 'x' } });
-  await app.app.get(RunRepository).saveRun(run);
+  await storeRun(app.app.get(RunRepository), run);
 }
 
 describe('split implement, a blocked task', () => {
@@ -69,7 +70,7 @@ describe('split implement, a blocked task', () => {
     await app.app.get(DocumentRepository).putDocument(green, 'repos', 'demo\n');
     await app.app.get(DocumentRepository).putDocument(green, 'merge_request', renderMergeRequest([record]));
     writeRunState(green, { status: 'done', currentStep: 'done' });
-    await app.app.get(RunRepository).saveRun(green);
+    await storeRun(app.app.get(RunRepository), green);
     jest
       .spyOn(app.app.get(SubtaskOps), 'behindTip')
       .mockRejectedValue(new FetchFailed('main of demo could not be fetched'));
