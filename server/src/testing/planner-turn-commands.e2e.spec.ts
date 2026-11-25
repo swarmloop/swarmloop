@@ -70,7 +70,11 @@ describe('a backlog planner turn sends its commands to a run that waits on a que
   let blocks: BlockAgentRunner;
 
   beforeEach(async () => {
-    blocks = new BlockAgentRunner({ plan: [adds], 'plan-improve': [improved] });
+    blocks = new BlockAgentRunner({
+      plan: [adds],
+      'plan-improve': [improved],
+      'plan-turn': [block({ reply: 'Going on.', resume: true })],
+    });
     flow = await createFlowHarness(KEY, { blocks, realImplement: 'all' });
   });
 
@@ -113,20 +117,13 @@ describe('a backlog planner turn sends its commands to a run that waits on a que
     await waitingEpic();
     flow.app.clock.advance(1000);
 
-    // The answer starts the run at once; that one start is held until the message is sent, as a turn sends both before the run's first hop.
-    const pipeline = flow.app.app.get(PipelineService);
-    let release!: () => void;
-    const held = new Promise<void>((resolve) => (release = resolve));
-    let started: Promise<unknown> = Promise.resolve();
-    jest.spyOn(pipeline, 'startDetached').mockImplementationOnce(() => {
-      started = held.then(() => flow.app.pipeline.runThrough(KEY, { auto: true }));
-      return Promise.resolve({ exitCode: 0, message: 'started' });
-    });
+    // The answer's own start is swallowed: no step drives the run when the message arrives, so its planner takes it in a turn of its own, which resumes the run.
+    jest
+      .spyOn(flow.app.app.get(PipelineService), 'startDetached')
+      .mockImplementationOnce(() => Promise.resolve({ exitCode: 0, message: 'started' }));
 
     await send({ type: 'answer', run: KEY, answers: [{ body: 'Out of scope.' }] }, 'turn-0');
     await send({ type: 'planChat', run: KEY, message: 'Also add d' }, 'turn-1');
-    release();
-    await started;
     await flow.app.app.get(PlannerTurns).idle();
     await flow.app.app.get(CommandService).idle();
     await flow.app.pipeline.whenIdle(KEY);

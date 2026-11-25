@@ -18,7 +18,7 @@ interface TurnContext {
 
 /** Runs whose work ended without a merge request waiting to be merged. */
 const ENDED: readonly RunState[] = ['merged', 'closed'];
-/** Runs that stand still without being done: a message does what Resume does for them. */
+/** Runs that stand still without being done: their planner answers a message in a turn of its own. */
 const STALLED: readonly RunState[] = ['stopped', 'failed', 'blocked'];
 /** Runs that stand still with work left or done: a message reopens them. */
 const REOPENED: readonly RunState[] = ['done', ...STALLED];
@@ -41,9 +41,4 @@ export function messageTurn(run: Pick<RunEntity, 'currentStep' | 'workspace'>, c
   if (!implementStarted(run.currentStep)) return 'planning';
   if (REOPENED.includes(context.state)) return 'reopen';
   return context.split && !context.parentKey ? 'add-tasks' : 'amend';
-}
-
-/** True when the message starts the run again: a reopened run, or a stopped, failed or blocked run in planning. */
-export function startsRun(turn: MessageTurn, state: RunState): boolean {
-  return turn === 'reopen' || (turn === 'planning' && STALLED.includes(state));
 }

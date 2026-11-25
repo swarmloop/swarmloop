@@ -8,6 +8,7 @@ import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { writeEnvOverrides } from '../testing/env.spec-helpers';
 import { RunRepository } from '../history/run.repository';
+import { writeRunState } from '../history/run-state';
 import { DocumentRepository } from '../history/document.repository';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -20,6 +21,8 @@ import { renderMergeRequest } from '../steps/merge-request/merge-request-record'
 import { PipelineModule } from './pipeline.module';
 import { CommandService } from './command.service';
 import { PipelineService } from './pipeline.service';
+import { PlannerOwnTurn } from './planner-own-turn';
+import { PlannerTurns } from './planner-turns';
 
 describe('pipeline service', () => {
   it('continues Resume requested by the shared automatic rebase action without starting a second runner', async () => {
@@ -242,6 +245,30 @@ describe('pipeline service', () => {
       expect(logged).not.toContain('user:pass');
     } finally {
       error.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('takes the messages of a run that is not done in the planner own turn, and a done run in the plan step', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-take-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const waiting = await runs.begin('PROJ-81', 'implement');
+      writeRunState(waiting, { status: 'waiting', currentStep: 'implement' });
+      await runs.saveRun(waiting);
+      const done = await runs.begin('PROJ-82', 'done');
+      writeRunState(done, { status: 'done', currentStep: 'done' });
+      await runs.saveRun(done);
+      const own = jest.spyOn(app.get(PlannerOwnTurn), 'take').mockResolvedValue();
+      const planTurn = jest.spyOn(app.get(PlannerTurns), 'take').mockResolvedValue('none');
+      const pipeline = app.get(PipelineService);
+      pipeline.takeMessages('PROJ-81');
+      pipeline.takeMessages('PROJ-82');
+      await app.get(PlannerTurns).idle();
+      expect(own.mock.calls).toEqual([['PROJ-81']]);
+      expect(planTurn.mock.calls.map(([key]) => key)).toEqual(['PROJ-82']);
+    } finally {
       await app.close();
     }
   });

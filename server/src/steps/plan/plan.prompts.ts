@@ -53,6 +53,24 @@ export function planChatFollowUp(messages: readonly { text: string }[], resultTe
 const SUBTASK_SCOPE =
   'You plan one task of an epic. Change only what this task owns. Send anything about another task or the contract as `decisions`, `question`, `outOfScope` or `escalate`, and do not change it yourself.';
 
+/** What the planner may do when it takes a person's message and no step runs. */
+export const NO_STEP_RUNS =
+  'No step runs now. You may only answer; or resume, and the run takes the change this message asks for before its next step; or replay from a step with an instruction, which is the replay prompt (to plan again, replay from plan). Give resume or replay only when the message asks for work, never both.';
+
+/** What the planner is told in its own chat when a person wrote to a run that no step drives: it answers, resumes or replays. */
+export function planChatTakes(messages: readonly { text: string }[], resultText: string, subtask = false): string {
+  const words = messages.map((message) => message.text.trim()).join('\n\n');
+  return [
+    skillSection('plan', 'Answer a person'),
+    decideWhatYouHold(),
+    escalateWhatYouDoNotHold(),
+    ...(subtask ? [SUBTASK_SCOPE] : []),
+    NO_STEP_RUNS,
+    `${PERSON_WORDS}\n${words}`,
+    resultText,
+  ].join('\n\n');
+}
+
 /** The rules of an amendment: the run already implemented, so the plan is changed and not made again. */
 const AMEND_RULES =
   'The run already implemented part of this plan. Items already done stay done. In `plan`, give the whole checklist: keep every done item as it is, and add or change items only for what the message asks. Do not split the run into tasks.';

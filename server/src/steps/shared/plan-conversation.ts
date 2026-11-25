@@ -107,10 +107,22 @@ export class PlanConversation {
     return this.gate ? this.gate.exclusive(key, turn, work) : work();
   }
 
+  /** The plan chat of the run, or a new one when `startSession` asks for it. Null when there is none to talk in. */
+  private async chatOf(
+    key: string,
+    runtime: string,
+    startSession: boolean,
+  ): Promise<{ received: string | null; fresh: boolean } | null> {
+    const chat = await resumableChat(root(this.config), key, 'plan', runtime);
+    if (chat?.chatId) return { received: chat.resultName ?? null, fresh: false };
+    return startSession ? { received: null, fresh: true } : null;
+  }
+
   /**
    * A follow-up visit of the plan step in the plan chat of the run, in plan mode with the read-only plan tools and the
-   * plan step's mounts, recorded like any visit of that step. Null when the run has no plan chat yet or the planner
-   * gave no usable answer. `prompt` gets the name of the result the chat last received.
+   * plan step's mounts, recorded like any visit of that step. Null when the run has no plan chat yet (unless
+   * `startSession` starts one, as the plan step's first visit does, with the requirements brief ahead of the prompt)
+   * or the planner gave no usable answer. `prompt` gets the name of the result the chat last received.
    */
   async visit(
     opened: OpenedStep,
@@ -119,14 +131,15 @@ export class PlanConversation {
     check: (value: unknown) => string[] = () => [],
     entries: string[] = [],
     start?: LookStart,
+    startSession = false,
   ): Promise<{ value: unknown } | { refused: StartRefused } | null> {
     const run = opened.run;
     const env = this.config.env;
     const { runtime, model, ...effort } = agentFor(env, run, 'plan');
     const dir = root(this.config);
-    const chat = await resumableChat(dir, run.key, 'plan', runtime);
-    if (!chat?.chatId) return null;
-    const text = prompt(chat.resultName ?? null);
+    const chat = await this.chatOf(run.key, runtime, startSession);
+    if (!chat) return null;
+    let text = prompt(chat.received);
     let result: LaunchResult | null = null;
     let failure: string | null = null;
     const started: { id: string | null } = { id: null };
@@ -134,6 +147,8 @@ export class PlanConversation {
       const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
       const plan = (await currentPlan(this.documents, run.key))?.items ?? [];
       const brief = requirementsBrief((await this.documents.latestBody(run.key, ARTIFACTS.requirements.kind)) ?? '');
+      // A new chat knows nothing of the run yet: the brief goes ahead of the prompt.
+      if (chat.fresh) text = `${brief}\n\n${text}`;
       result = await this.door.outside(
         {
           step: 'plan',

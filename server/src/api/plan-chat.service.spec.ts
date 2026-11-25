@@ -178,7 +178,7 @@ describe('PlanChatService', () => {
   });
 
   describe('for a split run', () => {
-    const splitChat = (app: Awaited<ReturnType<typeof seededBoot>>, turns: PlannerTurns, amendDone: jest.Mock) =>
+    const splitChat = (app: Awaited<ReturnType<typeof seededBoot>>, turns: PlannerTurns, takeMessages: jest.Mock) =>
       new PlanChatService(
         app.get(RunRepository),
         app.get(RunQueriesService),
@@ -187,7 +187,7 @@ describe('PlanChatService', () => {
         turns,
         app.get(AttachmentStore),
         app.get(Clock),
-        { amendDone } as never,
+        { takeMessages } as never,
       );
 
     it('starts the background turn for a done run, so it can reopen on added tasks', async () => {
@@ -197,9 +197,9 @@ describe('PlanChatService', () => {
         run.split = true;
         writeRunState(run, { status: 'done', currentStep: 'done' });
         await runs.saveRun(run);
-        const amendDone = jest.fn();
-        await splitChat(app, turns, amendDone).record('proj-7', { message: 'add d' }, 'cmd-1');
-        expect(amendDone).toHaveBeenCalledWith('proj-7');
+        const takeMessages = jest.fn();
+        await splitChat(app, turns, takeMessages).record('proj-7', { message: 'add d' }, 'cmd-1');
+        expect(takeMessages).toHaveBeenCalledWith('proj-7');
       });
     });
 
@@ -209,11 +209,32 @@ describe('PlanChatService', () => {
         const run = await save(runs, 'proj-8', 'implement', 'waiting');
         run.split = true;
         await runs.saveRun(run);
-        const amendDone = jest.fn();
-        await splitChat(app, turns, amendDone).record('proj-8', { message: 'add d' }, 'cmd-1');
-        expect(amendDone).not.toHaveBeenCalled();
+        const takeMessages = jest.fn();
+        await splitChat(app, turns, takeMessages).record('proj-8', { message: 'add d' }, 'cmd-1');
+        expect(takeMessages).toHaveBeenCalledWith('proj-8');
         expect(turns.pending('proj-8').map((turn) => turn.text)).toEqual(['add d']);
       });
+    });
+  });
+
+  it('keeps the message for the driver while the run runs', async () => {
+    await withPlanChat(async ({ app, turns }) => {
+      const runs = app.get(RunRepository);
+      await save(runs, 'proj-9', 'implement', 'running');
+      const takeMessages = jest.fn();
+      const chat = new PlanChatService(
+        runs,
+        app.get(RunQueriesService),
+        app.get(CommandService),
+        app.get(PlanChatStore),
+        turns,
+        app.get(AttachmentStore),
+        app.get(Clock),
+        { takeMessages } as never,
+      );
+      await chat.record('proj-9', { message: 'also add a flag' }, 'cmd-1');
+      expect(takeMessages).not.toHaveBeenCalled();
+      expect(turns.pending('proj-9').map((turn) => turn.text)).toEqual(['also add a flag']);
     });
   });
 
@@ -226,7 +247,7 @@ describe('PlanChatService', () => {
       ]) {
         await save(runs, key, 'plan', status);
       }
-      const resume = jest.fn();
+      const takeMessages = jest.fn();
       const chat = new PlanChatService(
         runs,
         app.get(RunQueriesService),
@@ -235,13 +256,12 @@ describe('PlanChatService', () => {
         turns,
         app.get(AttachmentStore),
         app.get(Clock),
-        undefined,
-        { resume } as never,
+        { takeMessages } as never,
       );
 
       for (const key of ['proj-11', 'proj-12']) await chat.record(key, { message: 'split it differently' }, 'cmd-1');
 
-      expect(resume.mock.calls.map(([key]) => key)).toEqual(['proj-11', 'proj-12']);
+      expect(takeMessages.mock.calls.map(([key]) => key)).toEqual(['proj-11', 'proj-12']);
       expect(turns.pending('proj-11').map((turn) => turn.text)).toEqual(['split it differently']);
     });
   });
