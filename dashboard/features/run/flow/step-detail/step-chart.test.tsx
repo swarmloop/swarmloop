@@ -55,14 +55,7 @@ describe('StepChart', () => {
     expect(screen.getByText('This step started no container.')).toBeInTheDocument();
   });
 
-  it('draws no resource charts for a visit shorter than a minute', () => {
-    render(<StepChart visit={visitView({ status: 'done', durationMs: 30_000, samples: minute(2) })} />);
-
-    expect(screen.queryByText(/^Resources:/)).toBeNull();
-    expect(screen.queryByRole('img')).toBeNull();
-  });
-
-  it('shows a collapsed Resources line that opens the CPU and the memory chart', async () => {
+  it('shows a visit with samples with both charts open, and a click on Resources folds them', async () => {
     const user = userEvent.setup({ delay: null });
     render(
       <StepChart
@@ -78,24 +71,22 @@ describe('StepChart', () => {
     );
 
     const line = screen.getByRole('button', { name: 'Resources: 2.6 cores avg · 6.8 peak · 4 GB peak' });
-    expect(line).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('img')).toBeNull();
-    await user.click(line);
+    expect(line).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('img', { name: 'CPU' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Memory' })).toBeInTheDocument();
+    await user.click(line);
+    expect(line).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('img')).toBeNull();
   });
 
-  it('gives each chart its own axis', async () => {
-    const user = userEvent.setup({ delay: null });
+  it('gives each chart its own axis', () => {
     render(<StepChart visit={visitView({ status: 'done', durationMs: 180_000, samples: minute(3) })} />);
 
-    await user.click(screen.getByRole('button', { name: /^Resources:/ }));
     expect(within(screen.getByRole('img', { name: 'CPU' })).getByText('1.0')).toBeInTheDocument();
     expect(within(screen.getByRole('img', { name: 'Memory' })).getByText('300 KB')).toBeInTheDocument();
   });
 
-  it('draws one line for each source and the step total', async () => {
-    const user = userEvent.setup({ delay: null });
+  it('draws one line for each source and the step total', () => {
     const at = (index: number) => new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString();
     render(
       <StepChart
@@ -112,7 +103,6 @@ describe('StepChart', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /^Resources:/ }));
     for (const label of ['setup', 'command 0', 'command 1', 'total']) {
       // One legend entry in the CPU chart and one in the memory chart.
       expect(screen.getAllByText(new RegExp(`^${label}`))).toHaveLength(2);
@@ -121,10 +111,17 @@ describe('StepChart', () => {
     expect(screen.getByText('total 0.8 cores')).toBeInTheDocument();
   });
 
-  it('shows the chart while the visit runs', () => {
-    render(<StepChart visit={visitView({ status: 'running', samples: minute(2) })} />);
+  it('shows both charts open while the visit runs, over 20 seconds of samples', () => {
+    const at = (second: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, second)).toISOString();
+    const samples = [
+      { at: at(0), cpu: 10, memory: 100, source: 'agent' },
+      { at: at(25), cpu: 20, memory: 200, source: 'agent' },
+    ];
+    render(<StepChart visit={visitView({ status: 'running', samples })} />);
 
-    expect(screen.getByRole('button', { name: /^Resources:/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Resources:/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('img', { name: 'CPU' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Memory' })).toBeInTheDocument();
   });
 
   it('shows the chart when the visit has samples', () => {
@@ -141,8 +138,7 @@ describe('StepChart', () => {
     expect(screen.getByRole('button', { name: /^Resources:/ })).toBeInTheDocument();
   });
 
-  it('draws the step total only when asked, without a line for each command', async () => {
-    const user = userEvent.setup({ delay: null });
+  it('draws the step total only when asked, without a line for each command', () => {
     const at = (index: number) => new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString();
     const samples = [
       { at: at(0), cpu: 10, memory: 100, source: '0' },
@@ -150,7 +146,6 @@ describe('StepChart', () => {
     ];
     render(<StepChart total visit={visitView({ status: 'done', durationMs: 120_000, samples })} />);
 
-    await user.click(screen.getByRole('button', { name: /^Resources:/ }));
     expect(screen.getAllByText('total 0.3 cores')).toHaveLength(1);
     expect(screen.queryByText(/command 0/)).toBeNull();
   });

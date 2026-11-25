@@ -1,7 +1,7 @@
 'use client';
 
-import type { ReactElement } from 'react';
-import Autorenew from '@mui/icons-material/Autorenew';
+import type { ComponentType, ReactElement } from 'react';
+import type { SvgIconProps } from '@mui/material/SvgIcon';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
 import PauseCircleOutline from '@mui/icons-material/PauseCircleOutline';
@@ -10,10 +10,15 @@ import SkipNext from '@mui/icons-material/SkipNext';
 import Undo from '@mui/icons-material/Undo';
 import type { StepState, StepIcon } from '@contract/step-state';
 import { toneColor } from './run-state-word';
+import { WorkingIcon } from './working-icon';
 
-const ICONS: Record<StepIcon, typeof Autorenew> = {
-  working: Autorenew,
-  preparing: Autorenew,
+function PreparingIcon(props: SvgIconProps): ReactElement {
+  return <WorkingIcon dashed {...props} />;
+}
+
+const ICONS: Record<StepIcon, ComponentType<SvgIconProps>> = {
+  working: WorkingIcon,
+  preparing: PreparingIcon,
   done: CheckCircle,
   failed: ErrorOutline,
   skipped: SkipNext,

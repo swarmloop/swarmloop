@@ -1,6 +1,7 @@
 export { HistoryScreen } from './history-screen';
 export { RunScreen } from './flow/run-screen';
 export { RunStateIcon, toneColor } from './run-state-word';
+export { WorkingIcon } from './working-icon';
 export { runWord } from './run-word';
 export { isLong } from './conversation/conversation-words';
 export { FeedLog } from './conversation/feed-log';
