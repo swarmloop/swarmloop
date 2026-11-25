@@ -12,6 +12,7 @@ import { resultAnswer } from '../../testing/result-answer';
 import { planChatFollowUp } from './plan.prompts';
 import { readPlan, withPlan } from './plan-record';
 import { boot, planBlock, result, seed, writeChat, writeEnv } from './plan.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const KEY = 'PROJ-60';
 const OLD = ['add the field - files: a.ts - proof: a.spec.ts'];
@@ -228,7 +229,7 @@ describe('plan step with a person message on a split run', () => {
     ]);
     const run = (await flow.runs.findRun(KEY))!;
     run.split = true;
-    await flow.runs.saveRun(run);
+    await storeRun(flow.runs, run);
     await flow.documents.putDocument(run, 'subtasks', `${JSON.stringify([task('a', status)])}\n`);
     await flow.documents.putDocument(run, 'contract', '- store UTC\n');
     await flow.store.appendEntry(KEY, message('Also add b'));

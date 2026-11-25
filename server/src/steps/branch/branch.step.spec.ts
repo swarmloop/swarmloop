@@ -17,6 +17,7 @@ import { git } from '../../testing/git-fixture';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { PASTE_READER } from '../../integrations/linked-pages/paste-page.reader';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 describe('branch step', () => {
   it('creates the feature branch only in the repos document', async () => {
@@ -139,7 +140,7 @@ describe('branch step', () => {
       const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
       const run = await app.get(RunRepository).findRun('PROJ-34');
       run!.split = true;
-      await app.get(RunRepository).saveRun(run!);
+      await storeRun(app.get(RunRepository), run!);
       await documents.save(
         documents.create({
           runId: run?.id,
@@ -208,7 +209,7 @@ async function seed(app: TestingModule, key: string, repos: string, summary: str
   const seeded = await runs.begin(key, 'branch');
   seeded.status = 'waiting';
   seeded.currentStep = 'branch';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   const documents = app.get<Repository<DocumentEntity>>(getRepositoryToken(DocumentEntity));
   const row = (kind: string, body: string) =>
     documents.create({

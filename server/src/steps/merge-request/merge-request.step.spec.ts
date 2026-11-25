@@ -22,6 +22,7 @@ import { stampGate } from '../shared/gate';
 import { boot, call, featureTree, result, seed, TOKEN } from './merge-request.spec-helpers';
 
 import type * as GitFault from '../../testing/git-fault.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 jest.mock('child_process', () =>
   jest.requireActual<typeof GitFault>('../../testing/git-fault.spec-helpers').faultyChildProcess(),
@@ -420,7 +421,7 @@ describe('merge-request step', () => {
       await seed(app, 'PROJ-212');
       const runs = app.get(RunRepository);
       const run = await runs.findRun('PROJ-212');
-      await runs.saveRun({ ...run!, prompt: 'Ship the field\nbranch: feature/PARENT-1-epic\n' });
+      await storeRun(runs, { ...run!, prompt: 'Ship the field\nbranch: feature/PARENT-1-epic\n' });
       const opened = await app.get(PipelineService).step('merge-request', 'PROJ-212');
       expect(opened.exitCode).toBe(0);
       expect(open.mock.calls[0]?.[0]?.target).toBe('feature/PARENT-1-epic');
@@ -447,7 +448,7 @@ describe('merge-request step', () => {
         await seed(app, 'PROJ-212');
         if (prompt) {
           const runs = app.get(RunRepository);
-          await runs.saveRun({ ...(await runs.findRun('PROJ-212'))!, prompt });
+          await storeRun(runs, { ...(await runs.findRun('PROJ-212'))!, prompt });
         }
         await app.get(PipelineService).step('merge-request', 'PROJ-212');
         return open.mock.calls[0]?.[0]?.target;
@@ -678,7 +679,7 @@ describe('merge-request step', () => {
         await staleStamp(app, 'PROJ-243');
         run.currentStep = 'merge-request';
         run.status = 'waiting';
-        await runs.saveRun(run);
+        await storeRun(runs, run);
 
         const done = await app.get(PipelineService).step('merge-request', 'PROJ-243');
 

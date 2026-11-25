@@ -19,6 +19,7 @@ import { agentFailure, combineAgentResults } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE, skillPrompt, workingDirectoryBlock } from './shared/skill-prompt';
 import { HOST_VISIT, ModelHostUnavailable } from './shared/model-host-unavailable';
+import { storeRun } from '../testing/store-run.spec-helpers';
 
 describe('working directory block', () => {
   it('names the single scratch directory mounted at /work', () => {
@@ -361,7 +362,7 @@ describe('agent step without requirements', () => {
         const run = await golden.runs.begin('PROJ-30', 'prepare');
         run.status = 'waiting';
         run.currentStep = 'research';
-        await golden.runs.saveRun(run);
+        await storeRun(golden.runs, run);
         if (stored !== null) {
           await golden.seedDocuments.putDocument(run, 'requirements', stored);
         }
@@ -400,7 +401,7 @@ describe('agent step failure', () => {
       const run = await golden.runs.begin('PROJ-31', 'prepare');
       run.status = 'waiting';
       run.currentStep = 'research';
-      await golden.runs.saveRun(run);
+      await storeRun(golden.runs, run);
       await golden.seedDocuments.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
       const step = new ResearchStep(
         new StepKernel(
@@ -447,7 +448,7 @@ describe('agent step during a passing outage', () => {
       const run = await golden.runs.begin('PROJ-32', 'prepare');
       run.status = 'waiting';
       run.currentStep = 'research';
-      await golden.runs.saveRun(run);
+      await storeRun(golden.runs, run);
       await golden.seedDocuments.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
       const kernel = new StepKernel(
         golden.runs,
@@ -538,7 +539,7 @@ describe('agent step whose start the door refused', () => {
       const run = await golden.runs.begin('PROJ-33', 'prepare');
       run.status = 'waiting';
       run.currentStep = 'research';
-      await golden.runs.saveRun(run);
+      await storeRun(golden.runs, run);
       await golden.seedDocuments.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
       const kernel = new StepKernel(
         golden.runs,

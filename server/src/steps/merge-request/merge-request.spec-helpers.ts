@@ -16,6 +16,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 export const TOKEN = 'super-secret-token';
 
@@ -105,7 +106,7 @@ export async function seed(
   seeded.status = 'waiting';
   seeded.currentStep = 'commit';
   seeded.codeHost = 'gitlab';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(
     seeded,
     'requirements',

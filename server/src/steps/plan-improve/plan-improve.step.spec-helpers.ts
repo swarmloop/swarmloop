@@ -13,6 +13,7 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { withPlan } from '../plan/plan-record';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 export function result(responseText: string): AgentRunResult {
   const now = new Date().toISOString();
@@ -57,7 +58,7 @@ export async function seed(app: Awaited<ReturnType<typeof boot>>, key: string): 
   const seeded = await runs.begin(key, 'plan-improve');
   seeded.status = 'waiting';
   seeded.currentStep = 'plan-improve';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(
     seeded,
     'requirements',
@@ -137,7 +138,7 @@ export async function improveSplit(
     await seed(app, key);
     const runs = app.get(RunRepository);
     const run = (await runs.findRun(key))!;
-    await runs.saveRun({ ...run, split: options.split ?? true });
+    await storeRun(runs, { ...run, split: options.split ?? true });
     const documents = app.get(DocumentRepository);
     if (options.tasks ?? true) {
       await documents.putDocument(run, 'subtasks', `${JSON.stringify(options.stored ?? storedTasks)}\n`);

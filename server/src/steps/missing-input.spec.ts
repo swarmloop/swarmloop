@@ -8,6 +8,7 @@ import { RunRepository } from '../history/run.repository';
 import { boot } from './prepare/prepare.step.spec-helpers';
 import { StepRegistry } from './step.registry';
 import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
+import { storeRun } from '../testing/store-run.spec-helpers';
 
 const KEY = 'PROJ-60';
 
@@ -48,7 +49,7 @@ describe('missing input of every step', () => {
     const runs = app.get(RunRepository);
     const run = await runs.begin(KEY, 'requirements');
     run.status = 'waiting';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
   });
 
   afterEach(async () => {

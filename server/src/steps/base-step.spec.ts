@@ -28,6 +28,7 @@ import { git } from '../git/git';
 import { Clock } from '../core/clock';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { StepEventLog } from '../history/step-event.log';
+import { storeRun } from '../testing/store-run.spec-helpers';
 
 const STUB_INPUTS = {
   repos: { artifact: ARTIFACTS.repos, need: 'start', late: true },
@@ -319,7 +320,7 @@ describe('base step', () => {
         const runs = app.get(RunRepository);
         const seeded = await runs.begin('BASE-30', 'branch');
         seeded.status = 'waiting';
-        await runs.saveRun(seeded);
+        await storeRun(runs, seeded);
         await app.get(DocumentRepository).putDocument(seeded, 'repos', 'demo\n');
         const step = new PreparingStub(app.get(StepKernel));
         await step.execute('BASE-30');
@@ -350,7 +351,7 @@ describe('base step', () => {
         const runs = app.get(RunRepository);
         const seeded = await runs.begin(key, 'branch');
         seeded.status = 'waiting';
-        await runs.saveRun(seeded);
+        await storeRun(runs, seeded);
         await app.get(DocumentRepository).putDocument(seeded, 'repos', 'demo\nbilling\n');
       }
       const result = await step.execute(key);

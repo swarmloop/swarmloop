@@ -19,6 +19,7 @@ import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-t
 import { CheckoutService } from '../shared/checkout.service';
 import { PrepareStep } from './prepare.step';
 import { boot, git, repoWithMain, seedRequirements } from './prepare.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const KEY = 'PROJ-9';
 
@@ -46,7 +47,7 @@ describe('prepare step golden traces', () => {
     const runs = app.get(RunRepository);
     const run = (await runs.findRun(KEY))!;
     run.projects = 'app\n';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     const real = app.get(DocumentRepository);
     const store = Object.create(real) as DocumentRepository;
     if (failOn) {

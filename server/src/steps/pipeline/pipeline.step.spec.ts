@@ -44,6 +44,7 @@ import {
 import { EnvironmentService } from '../../environment/environment.service';
 import { REBASE_JOURNAL, parseJournal } from '../../git/rebase';
 import { featureWorktree, git, hostFetch } from '../../testing/runs.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 describe('pipeline step', () => {
   it.each(['start', 'resume', 'failure', 'dirty', 'limit', 'stop'] as const)(
@@ -77,7 +78,7 @@ describe('pipeline step', () => {
           const run = (await runs.findRun(key))!;
           run.currentStep = mode === 'resume' ? 'pipeline' : 'implement';
           run.status = 'waiting';
-          await runs.saveRun(run);
+          await storeRun(runs, run);
           return mode === 'resume' ? 'resume' : 'start';
         });
         if (mode === 'dirty') await writeFile(join(cwd, 'manual.txt'), 'manual edit');
@@ -104,7 +105,7 @@ describe('pipeline step', () => {
         expect(git(cwd, ['rev-parse', 'HEAD'])).toBe(sha);
         const again = (await runs.findRun(key))!;
         again.currentStep = 'pipeline';
-        await runs.saveRun(again);
+        await storeRun(runs, again);
         action.mockClear();
         const repeated = await app.get(PipelineService).step('pipeline', key);
         expect(repeated.message).toContain('already attempted');

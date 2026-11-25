@@ -10,6 +10,7 @@ import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { ARTIFACTS } from '../contract/artifacts';
 import { answer, boot, seed, writeEnv } from './research.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const NINE: Requirement[] = Array.from({ length: 9 }, (_, index) => ({
   id: `R${index + 1}`,
@@ -44,7 +45,7 @@ async function openSubtask(agent: jest.Mock, parentList: Requirement[] | null, s
   child.currentStep = 'research';
   child.parentRunId = parent.id;
   child.taskId = 't1';
-  await runs.saveRun(child);
+  await storeRun(runs, child);
   await documents.putDocument(child, 'requirements', '{"prompt":"add the column"}\n');
   if (stored) await documents.putDocument(child, KIND, ARTIFACTS.requirementList.format(stored));
   return { app, documents };

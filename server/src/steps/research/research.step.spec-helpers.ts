@@ -11,6 +11,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { resultAnswer } from '../../testing/result-answer';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 export async function seed(
   app: Awaited<ReturnType<typeof boot>>,
@@ -25,7 +26,7 @@ export async function seed(
   seeded.status = 'waiting';
   seeded.currentStep = 'research';
   seeded.agentCalls = agentCalls;
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
 }
 

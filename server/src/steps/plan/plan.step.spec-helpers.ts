@@ -15,6 +15,7 @@ import { SandboxService } from '../../sandbox/sandbox.service';
 import { resultAnswer } from '../../testing/result-answer';
 import { StepEventLog } from '../../history/step-event.log';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 export function result(responseText: string): AgentRunResult {
   const now = new Date().toISOString();
@@ -64,7 +65,7 @@ export async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, q
   const seeded = await runs.begin(key, 'plan');
   seeded.status = 'waiting';
   seeded.currentStep = 'plan';
-  await runs.saveRun(seeded);
+  await storeRun(runs, seeded);
   await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
   await documents.putDocument(seeded, 'repos', 'billing-api\n');
   await documents.putDocument(seeded, 'questions', questions);
@@ -128,7 +129,7 @@ export async function runSplit(key: string, answer: string, options: SplitOption
     await seed(app, key, '');
     const seeded = (await runs.findRun(key))!;
     const parent = options.subtask ? await runs.openWaiting(`${key}-parent`, '/target') : null;
-    await runs.saveRun({
+    await storeRun(runs, {
       ...seeded,
       split: options.split ?? true,
       ...(options.rules ? { agents: { main: { plan: [{ runtime: 'claude', model: 'm-claude' }] } } } : {}),

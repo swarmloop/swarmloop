@@ -15,6 +15,7 @@ import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { issueOf } from '../shared/handoff';
 import { boot, featureTree, reply, result, seed, writeEnv } from '../implement/implement.step.spec-helpers';
+import { storeRun } from '../../testing/store-run.spec-helpers';
 
 const failure =
   'billing-api: required check failed (exit 1):\n$ npm run lint\nerror: no-unused-vars\n\n' +
@@ -30,7 +31,7 @@ async function booted(key: string) {
   const runs = app.get(RunRepository);
   const run = (await runs.findRun(key))!;
   run.currentStep = 'checks';
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   return { app, runs, agent };
 }
 
@@ -168,7 +169,7 @@ describe('checks step', () => {
       const check = jest.spyOn(app.get(EnvironmentService), 'check');
       const run = (await runs.findRun('PROJ-204'))!;
       run.currentStep = 'implement';
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await app.get(PipelineService).step('implement', 'PROJ-204');
       await app.get(PipelineService).step('implement-improve', 'PROJ-204');
       expect(check).not.toHaveBeenCalled();
