@@ -273,7 +273,7 @@ export class RunRepository {
     }
   }
 
-  /** Stores a run copy that is not stored yet, makes it the stored row and tells the dashboard. The only insert of a run row. */
+  /** Stores a run copy that is not stored yet, makes it the stored row and tells the dashboard. A run row is created only here and in `CommandRepository.accept`, which creates the row of a command for a run that does not exist yet, inside its own transaction. */
   async insertRun(run: RunEntity): Promise<RunEntity> {
     await this.runs.save(run);
     adoptRow(run, await this.runs.findOneByOrFail({ id: run.id }));
