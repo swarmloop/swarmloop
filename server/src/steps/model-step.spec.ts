@@ -18,6 +18,7 @@ import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { agentFailure, combineAgentResults } from './shared/agent-result';
 import { modelVisit } from './shared/model-visit';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE, skillPrompt, workingDirectoryBlock } from './shared/skill-prompt';
+import { HOST_VISIT, ModelHostUnavailable } from './shared/model-host-unavailable';
 
 describe('working directory block', () => {
   it('names the single scratch directory mounted at /work', () => {
@@ -480,6 +481,19 @@ describe('agent step during a passing outage', () => {
     });
     expect(ended.stats).toEqual(['waiting']);
     expect(failedLaunches([{ id: 1, step: 'research', status: ended.stats[0] }], 'research', 0)).toBe(0);
+  });
+
+  it("waits with the model host and its next try, and stores the try's cost as HOST_VISIT", async () => {
+    const result = { ...emptyAgent(), usd: 0.5, tokensIn: 7, finishedAt: '2026-11-12T14:00:00.000Z' };
+    const thrown = new ModelHostUnavailable({ host: 'api.anthropic.com', detail: 'API Error: 502' }, result);
+    const ended = await waitingRun(thrown);
+    expect(ended.status).toBe('waiting');
+    expect(JSON.parse(ended.stateReason ?? '{}')).toEqual({
+      code: 'HOST_UNAVAILABLE',
+      message: thrown.message,
+      retryAt: thrown.retryAt,
+    });
+    expect(ended.stats).toEqual([HOST_VISIT.status]);
   });
 
   it('waits with DOCKER_UNAVAILABLE when docker is down, one tick ahead', async () => {

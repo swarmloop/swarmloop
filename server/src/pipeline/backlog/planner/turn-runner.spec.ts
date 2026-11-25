@@ -106,6 +106,16 @@ describe('BacklogTurnRunner', () => {
       expect(await h.lines(id)).toEqual(['person: plan it']);
     }));
 
+  it("ends with the next try of the model host and records the try's cost on the turn", () =>
+    withTurn(async (h) => {
+      h.agent.script = ['outage'];
+      const outcome = await h.runner.run('one', 'turn-a');
+
+      expect(outcome).toMatchObject({ status: 'waiting', reason: expect.stringContaining('api.anthropic.com') });
+      expect(h.agent.launches).toHaveLength(1);
+      expect((await h.chat.findTurn('turn-a'))?.tokensIn).toBe(10);
+    }));
+
   it('runs again on Resume after a launch halted its key', () =>
     withTurn(async (h) => {
       h.runStop.halt('turn-a');
