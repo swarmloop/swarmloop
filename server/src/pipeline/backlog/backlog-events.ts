@@ -1,16 +1,21 @@
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { Injectable } from '@nestjs/common';
+import { AppConfig } from '../../config/env';
+import { ERROR_CODES } from '../../contract/error-codes';
 import { etaPhase } from '../../contract/eta';
 import { settled } from '../../contract/subtask';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
+import { root } from '../../history/run-paths';
 import { storedState } from '../../history/run-state';
 import { VisitRepository } from '../../history/visit.repository';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { QuestionHolds } from '../../steps/shared/question-holds';
 import { RepositoryHost } from '../../steps/shared/repository-host';
+import { headsOf } from '../../steps/shared/visit-input';
 import { backlogProgress } from './backlog-progress';
 import { heldBack } from './held-back';
 import { readMains } from './main-readings';
@@ -32,6 +37,7 @@ export class BacklogEvents {
     private readonly host: RepositoryHost,
     private readonly chats: PlanChatStore,
     private readonly holds: QuestionHolds,
+    private readonly config: AppConfig,
   ) {}
 
   taskMerged(backlogId: number, slug: string): Promise<boolean> {
@@ -82,13 +88,17 @@ export class BacklogEvents {
       const { state, reason } = storedState(run);
       if (etaPhase(state, reason) === 'person') {
         const visit = visits.get(run.id)?.id;
-        await this.backlogs.recordEvent(backlogId, `needs-person:${run.key}:${visit ?? 'none'}`, 'run-needs-person', {
+        const key = `needs-person:${run.key}:${visit ?? 'none'}`;
+        const facts = {
           slug: record.slug,
           runKey: run.key,
           state,
           reason: reason?.message ?? '',
           holds: heldBack(record.slug, tasks).join(', '),
-        });
+        };
+        // The end is read only for a key not told yet, so a run that keeps waiting makes no git read on later ticks.
+        const end = (await this.backlogs.hasEvent(backlogId, key)) ? {} : await this.endFacts(run, reason?.code);
+        await this.backlogs.recordEvent(backlogId, key, 'run-needs-person', { ...facts, ...end });
       } else if (state === 'done' && !(await this.documents.latestBody(run.key, 'merge_request'))) {
         await this.backlogs.recordEvent(backlogId, `no-request:${run.key}`, 'run-done-without-request', {
           slug: record.slug,
@@ -96,6 +106,35 @@ export class BacklogEvents {
         });
       }
     }
+  }
+
+  /** The run that ended (an epic held by a part: the first part that needs a person), its step, its reason code and the heads of its worktrees. */
+  private async endFacts(run: RunEntity, code: string | undefined) {
+    let ended = run;
+    if (code === ERROR_CODES.SUBTASK_BLOCKED) {
+      for (const child of await this.runs.children(run)) {
+        const { state, reason } = storedState(child);
+        if (etaPhase(state, reason) === 'person') {
+          ended = child;
+          break;
+        }
+      }
+    }
+    const worktrees = join(root(this.config), 'worktrees', ended.key);
+    // A run with no work trees yet has no heads; that is an end with no tree, not a failure of the tick.
+    const heads = await headsOf({ documents: this.documents, worktrees }, ended).then(
+      (found) => found.heads,
+      () => [],
+    );
+    return {
+      endRun: ended.key,
+      endStep: ended.currentStep,
+      endCode: storedState(ended).reason?.code ?? '',
+      endHeads: heads
+        .map(({ repo, commit }) => `${repo}=${commit}`)
+        .sort()
+        .join('\n'),
+    };
   }
 
   /** One event per question of the run, or of a run below it, that waits for the planner; the key names the run, its visit and the question. */

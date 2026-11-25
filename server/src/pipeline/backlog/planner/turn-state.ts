@@ -130,7 +130,7 @@ export class BacklogTurnState {
   private async eventsOf(owner: string, turnKey: string): Promise<TurnEvent[]> {
     const events: TurnEvent[] = [];
     for (const event of (await this.chat.itemsOfTurn(turnKey)).events) {
-      events.push({ kind: event.kind, at: event.createdAt, facts: await this.facts.of(owner, event) });
+      events.push({ kind: event.kind, at: event.createdAt, facts: await this.facts.of(owner, event, turnKey) });
     }
     return events;
   }

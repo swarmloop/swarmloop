@@ -1,7 +1,15 @@
+import { readFileSync, statSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import type { BacklogEventKind } from '../../../contract/backlog';
+import { checkOutputPath } from '../../../core/check-output';
+import { runLogPath } from '../../../core/run-logs';
+import { CheckCommandRepository } from '../../../history/check-command.repository';
+import { attachmentsDir } from '../../../history/run-paths';
+import { repositoryVisit } from '../../../history/repository.spec-helpers';
+import { VisitRepository } from '../../../history/visit.repository';
 import { ARTIFACTS } from '../../../steps/contract/artifacts';
 import { mergeHandoff } from '../../../steps/shared/handoff';
-import { EventFacts } from './event-facts';
+import type { EventFacts } from './event-facts';
 import { plannerFacts } from './planner-facts.spec-helpers';
 
 type Harness = Awaited<ReturnType<typeof plannerFacts>>;
@@ -9,7 +17,7 @@ type Harness = Awaited<ReturnType<typeof plannerFacts>>;
 async function withFacts(body: (h: Harness, facts: EventFacts) => Promise<void>): Promise<void> {
   const h = await plannerFacts();
   try {
-    await body(h, new EventFacts(h.backlogs, h.documents, h.host));
+    await body(h, h.eventFacts());
   } finally {
     await h.close();
   }
@@ -41,7 +49,7 @@ describe('EventFacts', () => {
       await h.addRun('a-1', { question_parts: JSON.stringify(parts) });
       const event = await eventOf(h, id, 'run-needs-person', { slug: 'a', runKey: 'a-1' });
 
-      expect(await facts.of('owner', event)).toMatchObject({
+      expect(await facts.of('owner', event, 'turn-1')).toMatchObject({
         slug: 'a',
         question: 'Is the review right?',
         sides: 'quality: it is slow\nimplement: no',
@@ -63,7 +71,7 @@ describe('EventFacts', () => {
         question: 'Q2',
       });
 
-      expect(await facts.of('owner', event)).toMatchObject({
+      expect(await facts.of('owner', event, 'turn-1')).toMatchObject({
         questionId: 'Q2',
         question: 'Decide Q2',
         sides: 'security: security says',
@@ -78,8 +86,8 @@ describe('EventFacts', () => {
       const asked = await eventOf(h, id, 'run-needs-person', { runKey: 'a-1' });
       const none = await eventOf(h, id, 'run-needs-person', { runKey: 'b-1' });
 
-      expect((await facts.of('owner', asked)).question).toBe('Which library?');
-      expect((await facts.of('owner', none)).note).toBe('the run has no stored question');
+      expect((await facts.of('owner', asked, 'turn-1')).question).toBe('Which library?');
+      expect((await facts.of('owner', none, 'turn-1')).note).toBe('the run has no stored question');
     }));
 
   it('gives a merged task its report, its requirement statuses and its commit note', () =>
@@ -99,7 +107,7 @@ describe('EventFacts', () => {
       });
       const event = await eventOf(h, id, 'task-merged', { slug: 'a' });
 
-      expect(await facts.of('owner', event)).toMatchObject({
+      expect(await facts.of('owner', event, 'turn-1')).toMatchObject({
         slug: 'a',
         report: 'Ready to merge',
         requirements: 'R1 is met: in x.ts',
@@ -117,7 +125,7 @@ describe('EventFacts', () => {
       });
       const event = await eventOf(h, id, 'task-merged', { slug: 'a' });
 
-      const marks = (await facts.of('owner', event)).marks ?? '';
+      const marks = (await facts.of('owner', event, 'turn-1')).marks ?? '';
 
       expect(marks).toContain('not built: docs - out of time');
       expect(marks).toContain('its merge request changed files outside its plan: src/other.spec.ts');
@@ -144,7 +152,7 @@ describe('EventFacts', () => {
       });
       const event = await eventOf(h, id, 'task-merged', { slug: 'a' });
 
-      const marks = (await facts.of('owner', event)).marks ?? '';
+      const marks = (await facts.of('owner', event, 'turn-1')).marks ?? '';
 
       expect(marks).toContain('its merge request changed files outside its plan: src/b.ts');
       expect(marks).toContain('requirement R2 is partial: half done');
@@ -157,7 +165,7 @@ describe('EventFacts', () => {
       await h.addTask(id, 'a');
       const event = await eventOf(h, id, 'task-merged', { slug: 'a' });
 
-      expect((await facts.of('owner', event)).note).toBe('the task has no run');
+      expect((await facts.of('owner', event, 'turn-1')).note).toBe('the task has no run');
     }));
 
   it('gives a red main its failing job and the tail of its log, and says how much is left out and where the whole is', () =>
@@ -166,7 +174,7 @@ describe('EventFacts', () => {
       h.redMain('web', Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join('\n'));
       const event = await eventOf(h, id, 'main-red', { repository: 'web', head: 'h1' });
 
-      const given = await facts.of('owner', event);
+      const given = await facts.of('owner', event, 'turn-1');
 
       expect(given.job).toBe('unit tests');
       const lines = (given.log ?? '').split('\n');
@@ -181,7 +189,7 @@ describe('EventFacts', () => {
       h.redMain('web', 'boom\n');
       const event = await eventOf(h, id, 'main-red', { repository: 'web', head: 'h1' });
 
-      expect((await facts.of('owner', event)).log).toBe('boom');
+      expect((await facts.of('owner', event, 'turn-1')).log).toBe('boom');
     }));
 
   it('turns a read that fails into a note instead of failing the turn', () =>
@@ -189,7 +197,7 @@ describe('EventFacts', () => {
       const id = await h.addBacklog();
       const event = await eventOf(h, id, 'main-red', { repository: 'unknown', head: 'h1' });
 
-      expect((await facts.of('owner', event)).note).toMatch(/^its facts could not be read: /);
+      expect((await facts.of('owner', event, 'turn-1')).note).toMatch(/^its facts could not be read: /);
     }));
 
   it('passes the person message and the planner reply of a run chat through', () =>
@@ -197,6 +205,132 @@ describe('EventFacts', () => {
       const id = await h.addBacklog();
       const event = await eventOf(h, id, 'run-chat', { slug: 'a', message: 'use x', reply: 'done' });
 
-      expect(await facts.of('owner', event)).toEqual({ slug: 'a', message: 'use x', reply: 'done' });
+      expect(await facts.of('owner', event, 'turn-1')).toEqual({ slug: 'a', message: 'use x', reply: 'done' });
+    }));
+});
+
+const hundred = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join('\n');
+const WHOLE = '/work/brief/attachments';
+
+/** A run on `step`, with a finished visit of that step that stored `documents`. Returns the visit's stat. */
+async function visited(h: Harness, key: string, step: string, documents: Record<string, string> = {}) {
+  await h.addRun(key);
+  const run = (await h.runs.findRun(key)) as NonNullable<Awaited<ReturnType<typeof h.runs.findRun>>>;
+  run.currentStep = step;
+  await h.runs.saveRun(run);
+  const visits = h.app.get(VisitRepository);
+  let stat = await visits.finishVisit(run, { ...repositoryVisit(), step, document: null });
+  for (const [kind, body] of Object.entries(documents)) {
+    stat = await visits.finishVisit(run, {
+      ...repositoryVisit(),
+      step,
+      document: { kind, fileName: `${kind}.md`, body },
+    });
+  }
+  return { run, stat, visits };
+}
+
+describe('EventFacts of a run that ended', () => {
+  it('names the step a failed run stopped at and the error its window shows, masked, and leaves out an error of an older visit', () =>
+    withFacts(async (h, facts) => {
+      const id = await h.addBacklog();
+      const { run, visits } = await visited(h, 'run-1', 'implement', { error: 'boom\nBearer abc123secret' });
+      const event = await eventOf(h, id, 'run-needs-person', { runKey: 'run-1', state: 'failed', reason: '' });
+
+      const given = await facts.of('owner', event, 'turn-1');
+
+      expect(given.step).toBe('implement');
+      expect(given.error).toBe('boom\nBearer ***');
+      expect(given.part).toBeUndefined();
+
+      await visits.finishVisit(run, { ...repositoryVisit(), step: 'implement', document: null });
+      expect((await facts.of('owner', event, 'turn-1')).error).toBeUndefined();
+    }));
+
+  it('gives each failed check command of the latest checks visit its last lines, and says how much is left out and where the whole is', () =>
+    withFacts(async (h, facts) => {
+      const id = await h.addBacklog();
+      const { run } = await visited(h, 'run-1', 'checks');
+      const commands = h.app.get(CheckCommandRepository);
+      const row = { runId: run.id, attemptId: 'att-2', repo: 'web' };
+      await commands.add({
+        ...row,
+        command: 'npm run lint',
+        name: 'lint',
+        commandIndex: 0,
+        status: 'failed',
+        exitCode: 1,
+      });
+      await commands.add({ ...row, command: 'npm run build', commandIndex: 1, status: 'done', exitCode: 0 });
+      await commands.add({ ...row, command: 'npm test', commandIndex: 2, status: 'done', exitCode: 2 });
+      for (const [index, text] of [hundred, 'fine', 'short failure'].entries()) {
+        writeFileSync(checkOutputPath(h.root, 'run-1', 'checks', 'att-2', index), text);
+      }
+      const event = await eventOf(h, id, 'run-needs-person', { runKey: 'run-1', state: 'failed', reason: '' });
+
+      const given = await facts.of('owner', event, 'turn-1');
+
+      const entries = (given.checks ?? '').split('\n\n');
+      expect(entries).toHaveLength(2);
+      const lint = entries[0].split('\n');
+      expect(lint[0]).toBe('web: lint');
+      expect(lint[1]).toBe(`40 earlier lines are left out; the whole text is in ${WHOLE}/run-1-checks-1.txt.`);
+      expect(lint.at(-1)).toBe('line 100');
+      expect(entries[1]).toBe('web: npm test\nshort failure');
+      expect(readFileSync(join(attachmentsDir(h.config, 'turn-1'), 'run-1-checks-1.txt'), 'utf8')).toBe(hundred);
+      expect(statSync(join(attachmentsDir(h.config, 'turn-1'), 'run-1-checks-1.txt')).mode & 0o777).toBe(0o644);
+    }));
+
+  it('gives each failed CI job its log tail with the cut note, and the block of a job whose trace was not saved', () =>
+    withFacts(async (h, facts) => {
+      const id = await h.addBacklog();
+      const report = [
+        'result: fail\nproject: acme/web\npipeline: 7\njob: unit\nstage: test\n\nsummary of unit',
+        'project: acme/web\npipeline: 7\njob: lint\nstage: test\n\nlint broke',
+      ].join('\n\n');
+      const { stat, visits } = await visited(h, 'run-1', 'pipeline', { pipeline_log: report });
+      stat.attemptId = 'att-3';
+      await visits.saveStat(stat);
+      writeFileSync(runLogPath(h.root, 'run-1', 'pipeline-att-3-job-0'), hundred);
+      const event = await eventOf(h, id, 'run-needs-person', { runKey: 'run-1', state: 'failed', reason: '' });
+
+      const given = await facts.of('owner', event, 'turn-1');
+
+      const entries = (given.ci ?? '').split('\n\n');
+      expect(entries[0].split('\n').slice(0, 2)).toEqual([
+        'acme/web: unit',
+        `40 earlier lines are left out; the whole text is in ${WHOLE}/run-1-ci-1.txt.`,
+      ]);
+      expect(entries[0].endsWith('line 100')).toBe(true);
+      expect(given.ci).toContain('acme/web: lint\nproject: acme/web\npipeline: 7\njob: lint');
+      expect(given.ci).toContain('lint broke');
+      expect(readFileSync(join(attachmentsDir(h.config, 'turn-1'), 'run-1-ci-1.txt'), 'utf8')).toBe(hundred);
+    }));
+
+  it('names the part that holds an epic, with the part facts, and a command refused or a question of a run gets its facts too', () =>
+    withFacts(async (h, facts) => {
+      const id = await h.addBacklog();
+      await visited(h, 'epic-1', 'implement');
+      await visited(h, 'part-1', 'review', { error: 'part broke' });
+      const held = await eventOf(h, id, 'run-needs-person', {
+        runKey: 'epic-1',
+        state: 'blocked',
+        reason: '',
+        endRun: 'part-1',
+      });
+      const refused = await eventOf(h, id, 'command-refused', {
+        run: 'part-1',
+        refusedCommand: 'resume',
+        reason: 'no',
+      });
+      const asked = await eventOf(h, id, 'run-asks-planner', { runKey: 'epic-1', questionId: 'q' });
+
+      expect(await facts.of('owner', held, 'turn-1')).toMatchObject({
+        part: 'part-1',
+        step: 'review',
+        error: 'part broke',
+      });
+      expect(await facts.of('owner', refused, 'turn-1')).toMatchObject({ step: 'review', error: 'part broke' });
+      expect(await facts.of('owner', asked, 'turn-1')).toMatchObject({ step: 'implement' });
     }));
 });

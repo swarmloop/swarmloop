@@ -1,6 +1,5 @@
 import { writeRunState, type RunStateChange } from '../../../history/run-state';
 import { SUBTASKS_KIND } from '../../../contract/subtask';
-import { EventFacts } from './event-facts';
 import { plannerFacts } from './planner-facts.spec-helpers';
 import { BacklogTurnState } from './turn-state';
 
@@ -9,10 +8,7 @@ type Harness = Awaited<ReturnType<typeof plannerFacts>>;
 async function withState(body: (h: Harness, state: BacklogTurnState) => Promise<void>): Promise<void> {
   const h = await plannerFacts();
   try {
-    await body(
-      h,
-      new BacklogTurnState(h.backlogs, h.chat, h.runs, h.documents, new EventFacts(h.backlogs, h.documents, h.host)),
-    );
+    await body(h, new BacklogTurnState(h.backlogs, h.chat, h.runs, h.documents, h.eventFacts()));
   } finally {
     await h.close();
   }
