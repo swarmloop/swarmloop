@@ -545,10 +545,14 @@ describe('StepDetail', () => {
 
       await screen.findByRole('button', { name: /npm run lint/ });
       const lines = screen.getAllByRole('listitem').filter((line) => within(line).queryByRole('button'));
-      expect(lines).toHaveLength(5);
-      expect(
-        lines.map((line) => within(line).getByText(/^(queued|running|passed|failed|skipped)$/).textContent),
-      ).toEqual(['passed', 'failed', 'running', 'queued', 'skipped']);
+      expect(lines).toHaveLength(4);
+      expect(lines.map((line) => within(line).getByText(/^(queued|running|passed|failed)$/).textContent)).toEqual([
+        'passed',
+        'failed',
+        'running',
+        'queued',
+      ]);
+      expect(screen.getByText('skipped')).toBeInTheDocument();
       expect(lines[1]).toHaveTextContent('2m 3s');
       expect(lines[1]).toHaveTextContent('exit 2');
     });
@@ -574,10 +578,10 @@ describe('StepDetail', () => {
       expect(screen.getByText('npm test')).toBeInTheDocument();
     });
 
-    it('shows passed/total and the slowest command in the header', async () => {
+    it('shows passed/run, the skipped count and the slowest command in the header', async () => {
       detail({ step: 'checks' });
 
-      expect(await screen.findByText(/^2\/5 passed · slowest: npm run lint 2m 3s$/)).toBeInTheDocument();
+      expect(await screen.findByText(/^1\/4 passed · 1 skipped · slowest: npm run lint 2m 3s$/)).toBeInTheDocument();
     });
 
     it('opens the full output of a finished command from its stored file', async () => {

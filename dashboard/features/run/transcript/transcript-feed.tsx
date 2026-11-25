@@ -23,6 +23,7 @@ import { CommandCard } from './command-card';
 import { HandoffCard } from './handoff-card';
 import { InputCard } from './input-card';
 import { IssueCard } from './issue-card';
+import { SLOT_WAIT } from '../check-commands';
 import { useFollowBottom } from '../use-follow-bottom';
 import { problemId } from './problem-card';
 import { RADIUS, SIZE, SPACE, useBubbleWidth, useMotionMs } from './tokens';
@@ -32,10 +33,13 @@ import { actorOf, groupByActor, groupByAttempt, type IssueLinks, type Transcript
 /** A running step that has been silent for longer than this is said to have no output. */
 const SILENT_MS = 2 * 60_000;
 
-/** `live`, `no output for <n> min`, or nothing when the step is not running. A `now` of 0 means the time is not known. */
-function statusLine(live: boolean, now: number, lastTime: string | undefined): string | null {
+/** `live`, `no output for <n> min`, the wait for a check slot, or nothing when the step is not running. A `now` of 0 means the time is not known. */
+function statusLine(live: boolean, now: number, lastTime: string | undefined, waitsForSlot: boolean): string | null {
   if (!live) {
     return null;
+  }
+  if (waitsForSlot) {
+    return SLOT_WAIT;
   }
   const silent = lastTime && now > 0 ? now - Date.parse(lastTime) : 0;
   return silent > SILENT_MS ? `no output for ${Math.floor(silent / 60_000)} min` : 'live';
@@ -141,6 +145,7 @@ export function TranscriptFeed({
   live = false,
   now = 0,
   activities = true,
+  waitsForSlot = false,
   note,
 }: {
   runKey: string;
@@ -160,6 +165,8 @@ export function TranscriptFeed({
   now?: number;
   /** Whether the activity cards show. The checks window leaves them out: it lists its commands itself. */
   activities?: boolean;
+  /** The checks step has no running command and a waiting one: the line says so in place of the silence. */
+  waitsForSlot?: boolean;
   /** A quiet sentence for the top line, beside the problems chip. */
   note?: string;
 }): ReactElement {
@@ -232,7 +239,7 @@ export function TranscriptFeed({
               ) : null}
             </Box>
             <Typography variant="caption" color="text.secondary">
-              {statusLine(live, now, lastTime)}
+              {statusLine(live, now, lastTime, waitsForSlot)}
             </Typography>
           </Box>
           {events === null ? <SkeletonBubbles /> : null}
