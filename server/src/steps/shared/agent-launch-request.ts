@@ -44,7 +44,6 @@ export interface AgentLaunchRequest extends EffortFields {
   liveStep?: string;
   allowHosts?: string[];
   manifestHosts?: ManifestHosts;
-  approveMcps?: boolean;
   auto?: boolean;
   resume?: boolean;
   continuePrompt?: string | null;

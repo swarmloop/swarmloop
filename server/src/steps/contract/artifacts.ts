@@ -335,9 +335,6 @@ export function reviewResultOf(reviewer: string): Artifact<ReviewResult> {
 
 /** Kinds owned outside `steps`, each with the module that owns it. */
 export const SERVICE_KINDS: Readonly<Record<string, string>> = {
-  chat_lock: 'pipeline/chat-lock',
-  shell_resume: 'pipeline/worktree-snapshot',
-  snapshot: 'pipeline/worktree-snapshot',
   environment: 'environment/project-environments',
   checks_pass: 'environment/project-environments',
   checks_skipped: 'environment/project-environments',

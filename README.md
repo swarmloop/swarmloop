@@ -16,7 +16,7 @@
   <img alt="Built with NestJS and Next.js" src="https://img.shields.io/badge/built%20with-NestJS%20%2B%20Next.js-e0234e.svg">
 </p>
 
-[Quick start](#-quick-start) · [CI](#-commit-merge-request-and-ci) · [Features](#-features) · [JetBrains](#-jetbrains) · [Settings](#-settings)
+[Quick start](#-quick-start) · [CI](#-commit-merge-request-and-ci) · [Features](#-features) · [Settings](#-settings)
 
 </div>
 
@@ -39,7 +39,7 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 | 🔍 **Five reviewers** | Requirements, quality, regressions, security, performance. A finding sends the work back. |
 | 🔄 **Rebase** | One button rebases onto the latest base branch, hands conflicts to the agent, and reviews again. The same rebase runs by itself when the host reports a merge conflict on the merge request. |
 | 💰 **Limits** | Dollars, tokens, time, silence, and retries are server settings, not the agent's choice. |
-| 🖥 **Live panel, CLI, IDE** | The panel updates as each step runs. The CLI and JetBrains AI Chat start the same runs, with the same steps, rules, and history. |
+| 🖥 **Live panel, CLI** | The panel updates as each step runs. The CLI starts the same runs, with the same steps, rules, and history. |
 | 📊 **Statistics** | Spend, tokens, and CPU and memory charts for every step, plus every external HTTP call. |
 | 👥 **Team server** | One machine, one flow, shared rules in `skills/`, one bill. Login with GitHub or GitLab. |
 
@@ -69,13 +69,13 @@ The installation folder can sit anywhere: it does not need to be next to your re
 
 To change a setting, copy its line from [`defaults.env`](https://github.com/swarmloop/swarmloop/blob/main/defaults.env) into a `.env` next to `compose.yml`, or set it in the shell. A variable set in the shell wins over `.env`, and `.env` wins over `defaults.env`.
 
-The repository list is every clone in the `swarmloop-checkouts` volume, or only the ones named in `SWARMLOOP_REPOS`. The server only resolves, fetches and works in those; a run that names another repository is refused. `POST /runs/shell` and a run `path` must lie inside one of those clones or inside the worktrees. `sloop` and the IDE agent, started from a clone on your host, use swarmloop's clone with the same origin. The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
+The repository list is every clone in the `swarmloop-checkouts` volume, or only the ones named in `SWARMLOOP_REPOS`. The server only resolves, fetches and works in those; a run that names another repository is refused. A run `path` must lie inside one of those clones or inside the worktrees. The agent edits its own worktree, not your working copy. Nothing is pushed, and Jira is not called.
 
 **Update:** from a release folder, `docker compose pull && docker compose up -d --wait && echo "swarmloop is ready: $(docker compose exec -T dashboard node -p process.env.SWARMLOOP_PUBLIC_URL)"`; from a clone, `git pull && docker compose up -d --build --wait && echo "swarmloop is ready: $(docker compose exec -T dashboard node -p process.env.SWARMLOOP_PUBLIC_URL)"`. To stay on one release, set `SWARMLOOP_VERSION` in `.env`, for example `0.2.0`. `SWARMLOOP_HOME`, `UID` and `COMPOSE_FILE` are Compose controls, not server settings. **If your `.env` still has a `COMPOSE_FILE=compose.yml:compose.build.yml` line, delete it:** that file is gone, and Compose refuses to start while the line is there. Before it migrates the database, the server copies it to `data/backups/` (the last 3 are kept). An older version refuses a database a newer one migrated and names the backup. To go back: `docker compose down`, restore that backup from `data/backups/` over `data/swarmloop.sqlite` (`gunzip -c` for a `.gz` backup; a copy of the database is always a backup from `data/backups/` and never the live `data/swarmloop.sqlite`, whose latest commits may still be in its WAL), delete `data/swarmloop.sqlite-wal` and `-shm`, copy the session files from its `.sessions` folder into `data/`, set the older `SWARMLOOP_VERSION` and `docker compose up -d`.
 
 ### 🚢 Commit, merge request, and CI
 
-Start: `docker compose up -d`, open the dashboard, then **Connect GitHub** (a private GitHub App made from a manifest, on the account that owns your repositories) or **Connect GitLab**. After the app is made, the page asks you to install it on the repositories, and the login comes after the install. Every run then uses the access of the person who started it, and a run whose token was revoked waits with `GIT_AUTH` until that person reconnects. The browser needs a session; the CLI, ACP and scripts act as a person through a personal API token (`SWARMLOOP_TOKEN` or `sloop login`). Secrets are stored encrypted with `SWARMLOOP_SECRET` (or a key made in `data/secret`).
+Start: `docker compose up -d`, open the dashboard, then **Connect GitHub** (a private GitHub App made from a manifest, on the account that owns your repositories) or **Connect GitLab**. After the app is made, the page asks you to install it on the repositories, and the login comes after the install. Every run then uses the access of the person who started it, and a run whose token was revoked waits with `GIT_AUTH` until that person reconnects. The browser needs a session; the CLI and scripts act as a person through a personal API token (`SWARMLOOP_TOKEN`). Secrets are stored encrypted with `SWARMLOOP_SECRET` (or a key made in `data/secret`).
 
 For a headless setup, or for runs started by the CLI or a script, copy the empty `GITHUB_TOKEN` or `GITLAB_TOKEN` line from `defaults.env` into `.env` (or set it in the shell) and set a git token instead and run `docker compose up -d` again. This time leave **ci** ticked. When the reviewers pass, the server pushes a feature branch, opens a merge request, and watches the pipeline. Nobody has to click in between.
 
@@ -256,7 +256,7 @@ A person is asked where it matters:
 
 With **ci** ticked there is no click between the plan and the merge request. Your time comes last: you open it when the reviewers and your pipeline are green.
 
-The instructions for every step are Markdown files in `skills/`. Edit one, rebuild the server, and every run after that follows it, for everyone on the server. The rules live in the repo and get reviewed like code. They are not a setting in someone's IDE.
+The instructions for every step are Markdown files in `skills/`. Edit one, rebuild the server, and every run after that follows it, for everyone on the server. The rules live in the repo and get reviewed like code. They are not a setting on someone's machine.
 
 Every agent step ends its answer with one JSON block, and that block is all the server reads from it. The server checks the block against the step's schema. A missing or wrong block gets up to two follow-ups in the same chat, each listing every error, and then the step fails with those errors. The prose before the block is for people and is never read.
 
@@ -321,11 +321,10 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 - **All history** totals tokens by model and lists every call to Jira and the git host: method, URL without credentials, status, and duration. The `Authorization` header is never stored.
 - The run header shows the running totals. The sidebar shows the cost and duration of every run.
 
-### 🖥 Panel, CLI, and IDE
+### 🖥 Panel and CLI
 
 - **Panel** at [http://127.0.0.1:3921](http://127.0.0.1:3921). A live board over a websocket, a filter by key, and light, dark, and system themes.
-- **CLI.** `bin/swarmloop run KEY --prompt "…"`, `bin/swarmloop step NAME KEY`, and `bin/swarmloop fetch PROJ-123`. Review any local folder with `bin/swarmloop step code-review KEY --path /absolute/dir`. The CLI runs the same pipeline in its own process and writes the same history. The panel shows a CLI run after a reload, not live.
-- **IDE.** `bin/sloop` speaks ACP, so an ACP client such as JetBrains AI Chat can start and continue runs. It goes through the API, so the panel follows those runs live. [Set up JetBrains](#-jetbrains).
+- **CLI.** `bin/swarmloop run KEY --prompt "…"`, `bin/swarmloop step NAME KEY`, and `bin/swarmloop fetch PROJ-123`. Review any local folder with `bin/swarmloop step code-review KEY --path /absolute/dir`. The CLI runs the same pipeline in its own process and writes the same history. The panel shows a CLI run after a reload, not live. `run` and `step` need `SWARMLOOP_TOKEN`. The machine token is gone: an old `SWARMLOOP_TOKEN` becomes the first admin's token.
 
 **Run again** replays a step, and you choose which later phases run. A replay never moves a run that is further ahead back. The same dialog adds another repository to an open run. Removing a run deletes its rows, its worktrees, and its files.
 
@@ -339,59 +338,12 @@ npm run build --prefix server
 bin/swarmloop run PROJ-123 --prompt "what this ticket is"
 ```
 
-## 🧩 JetBrains
-
-⛵ **`sloop` — not slop.**
-
-JetBrains IDEs do not have a swarmloop plugin. From 2025.3 on, AI Assistant starts `bin/sloop` as a custom ACP agent and talks to it in AI Chat. The chat then reads and writes the same runs as the CLI. An older version shows only the built-in models in that chat, and **Add Custom Agent** is not in the menu.
-
-The swarmloop API has to be up on `127.0.0.1:3920`. Started from a clone (`compose.override.yml`), `docker compose up` also copies the built client to `server/dist`, which is what `bin/sloop` runs. The IDE does not need a separate `npm run build`.
-
-Then, in the IDE:
-
-1. Install the **AI Assistant** plugin if it is not already there: **Settings | Plugins**, search for AI Assistant.
-2. Open the **AI Chat** tool window.
-3. Open **About**. The version has to be 2025.3 or newer. In an older IDE the `⋮` menu of AI Chat has Rename Chat, Settings, and Show Toolbar, and no way to add an agent. Update the IDE first.
-4. Leave the model list at the bottom alone. That list is Gemini, GPT, LM Studio, and Ollama. In the top-right of AI Chat, next to the clock icon, open the `⋮` menu and choose **Add Custom Agent**.
-5. The IDE creates `~/.jetbrains/acp.json` and opens it. Replace the contents with this, using the absolute path of `bin/sloop` on your machine:
-
-```json
-{
-  "default_mcp_settings": {
-    "use_custom_mcp": true,
-    "use_idea_mcp": true
-  },
-  "agent_servers": {
-    "sloop": {
-      "command": "/Users/you/www/swarmloop/bin/sloop",
-      "args": ["acp"],
-      "env": {}
-    }
-  }
-}
-```
-
-6. Save the file. **sloop** appears in the agent list at the top of AI Chat. Select it.
-7. Type a prompt and send it. A prompt with no open run starts one. The next prompt continues that run.
-
-On 2025.3 or newer, if **sloop** does not show up, restart the IDE. The same block is in `acp.json` at the repo root. Writing that file on an older IDE does nothing: the chat never reads it.
-
-Open a chat whose session id is the run key, such as `PROJ-123`, and the stored history loads. `/review <path>` starts a code review of that checkout. `/step <name>` runs that step. `/replay` followed by a prompt starts the run again from requirements.
-
-When the API is on another machine, set the URL in `env`:
-
-```json
-"env": { "SWARMLOOP_API_URL": "http://your-server:3920" }
-```
-
-`sloop` calls `http://127.0.0.1:3920`, the value in `defaults.env`, when that variable is not set. `sloop login` prints a short code and a link; open the link signed in and approve the code, and `sloop` keeps the token in `~/.config/swarmloop/cli.json` (readable only by you). `sloop login --token <value>` stores a token made in Settings → API tokens, and `sloop logout` revokes it. `SWARMLOOP_TOKEN` in the environment wins over that file. `run` and `step` need `SWARMLOOP_TOKEN`. The machine token is gone: an old `SWARMLOOP_TOKEN` becomes the first admin's token. Any other ACP client starts the same command. The Cursor desktop app runs its own agent and does not load this file.
-
 ## 🔧 Settings
 
 | Variable | Values |
 | --- | --- |
 | `AGENTS_PLAN` | Agents of the `plan` role (research, plan, plan improve, the merge request text), `runtime:model[:effort]`, comma-separated. The first is used, the rest are the fallback order. The default is `high`. Each person can override it in Settings. |
-| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts, chat and shell). The default is `high`. Each person can override it in Settings. |
+| `AGENTS_IMPLEMENT` | Agents of the `implement` role (implement, implement improve, rebase conflicts). The default is `high`. Each person can override it in Settings. |
 | `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). The default is `high`. Each person can override it in Settings. |
 | `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent; the default is `medium`. Empty: the main role. Each person can override it in Settings. |
 | `AGENTS_BACKLOG_PLAN` | Agents of the backlog planner (plan role only), `runtime:model[:effort]`, comma-separated; the default is `xhigh`. Empty: `AGENTS_PLAN`. Each person can override it in Settings. |
@@ -406,7 +358,7 @@ When the API is on another machine, set the URL in `env`:
 | `SWARMLOOP_API_HOST`, `SWARMLOOP_API_PORT` | Where the API listens. `defaults.env` uses `127.0.0.1:3920`. Without a login provider the server refuses to start on another address. |
 | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `GITLAB_OAUTH_CLIENT_ID`, `GITLAB_OAUTH_CLIENT_SECRET` | Login with GitHub or GitLab. See [Login](#login). |
 | `SWARMLOOP_ALLOW` | Who may log in: `github:<user>`, `github-org:<org>`, `gitlab:<user>`, `gitlab-group:<group>`. Empty: a person who can push to a repository this server works on, or the first person to log in on the server's own machine while nobody is connected; a plain GitHub OAuth App from `.env` keeps the owner of `GITHUB_TOKEN`. |
-| `SWARMLOOP_TOKEN` | A personal token from Settings → API tokens, for the CLI, ACP and scripts. The queue runner's token must be an admin's. |
+| `SWARMLOOP_TOKEN` | A personal token from Settings → API tokens, for the CLI and scripts. The queue runner's token must be an admin's. |
 
 Spend, tokens, retries, and timeouts are in [Limits](#-limits-on-money-tokens-and-time). A missing model key does not stop the start: readiness names the runtime and links to its card. To change a setting, copy its line from `defaults.env` into `.env` next to `compose.yml`, or set it in the shell.
 
@@ -428,7 +380,7 @@ The GitHub App made from the dashboard is private and belongs to the account tha
 
 The Settings page lets each person choose the agents per role and tier for their own runs. The `AGENTS_*` values (set in `defaults.env`, overridden by `.env` or the shell) are the server default. The choice is read when a run starts and kept on the run.
 
-A session lasts 14 days, or until Logout. Every run records who started it, and the run page shows it. The CLI, ACP and scripts send a personal token from Settings → API tokens as `Authorization: Bearer <token>`; it acts as the person who made it, with their keys and settings. Pausing the server is for admins, so the queue runner's token must be an admin's.
+A session lasts 14 days, or until Logout. Every run records who started it, and the run page shows it. The CLI and scripts send a personal token from Settings → API tokens as `Authorization: Bearer <token>`; it acts as the person who made it, with their keys and settings. Pausing the server is for admins, so the queue runner's token must be an admin's.
 
 Without a provider the server answers only on loopback and the panel works for one person on this machine, as before. A server that listens on another address without a provider refuses to start and says which variables to set. The compose file publishes the ports on `127.0.0.1`: to reach them from other machines, set a provider and `SWARMLOOP_PUBLIC_URL`, then publish the ports on an address your team can reach. Do not put this on the public internet.
 

@@ -49,7 +49,6 @@ describe('env schema', () => {
       'SWARMLOOP_REGISTRY',
       'SWARMLOOP_VERSION',
       'SWARMLOOP_UID',
-      'SWARMLOOP_API_URL',
       'GIT_AUTHOR_NAME',
       'GIT_AUTHOR_EMAIL',
       'PROJECT_HOSTS_ALLOW',

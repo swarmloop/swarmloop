@@ -304,7 +304,6 @@ jobs:
           for (const [service, folder] of Object.entries(contexts)) {
             check(plain.services[service]?.build?.context === path.join(root, folder).replace(/\/$/, ''), service + ' does not build from its folder');
           }
-          check(Boolean(plain.services.sloop), 'the sloop service is missing');
           checkVolumes(plain, 'the plain resolve');
           const stack = bind(plain, '/app/stack');
           check(stack?.source === root && stack.read_only === true, 'the stack folder is not mounted read-only');

@@ -52,25 +52,6 @@ export interface SetRoleBody {
   role: Role;
 }
 
-export interface CliLoginStart {
-  machine: string;
-}
-
-export interface CliLoginStarted {
-  id: string;
-  code: string;
-  url: string;
-  expiresAt: string;
-}
-
-export type CliLoginPoll = { status: 'waiting' } | { status: 'approved'; token: string } | { status: 'expired' };
-
-/** What the approval page shows of a login code. */
-export interface CliLoginView {
-  machine: string;
-  expiresAt: string;
-}
-
 /** The `madeBy` and `startedBy` of rows recorded while the server had a machine token. */
 export const LEGACY_MACHINE = 'machine';
 

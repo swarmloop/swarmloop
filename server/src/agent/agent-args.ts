@@ -67,7 +67,6 @@ export function buildAgentArgs(
     resumeChatId: string | null;
     mode?: string;
     tools: AgentTools;
-    approveMcps?: boolean;
   },
 ): string[] {
   return runtimeForCommand(command).printArgs(input);

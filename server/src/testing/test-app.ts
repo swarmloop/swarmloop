@@ -14,7 +14,6 @@ import { PersonalTokens } from '../auth/personal-tokens.service';
 import { SESSION_COOKIE, SessionService } from '../auth/session.service';
 import type { Role } from '../contract/people';
 import { CommandHandlers } from '../api/command-handlers';
-import { ChatService } from '../api/chat.service';
 import { BacklogChatService } from '../api/backlog-chat.service';
 import { PlannerRunCommands } from '../api/planner-run-commands';
 import { PlanChatService } from '../api/plan-chat.service';
@@ -34,7 +33,6 @@ import { ReadinessController } from '../api/readiness.controller';
 import { RunsController } from '../api/runs.controller';
 import { ServerController } from '../api/server.controller';
 import { ReadinessModule } from '../readiness/readiness.module';
-import { ShellService } from '../api/shell.service';
 import { AGENT_RUNNER, type AgentRunInput } from '../agent/agent-runner';
 import { SwarmloopConfigModule } from '../config/config.module';
 import type { SwarmloopEnv } from '../config/env';
@@ -198,11 +196,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       RunSubtaskCommandsService,
       SubtaskClose,
       RunRebaseService,
-      ChatService,
       PlanChatService,
       PlannerRunCommands,
       BacklogChatService,
-      ShellService,
       CommandHandlers,
       LiveGateway,
     ],

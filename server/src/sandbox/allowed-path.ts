@@ -5,7 +5,7 @@ import { SwarmloopError } from '../core/swarmloop-error';
 import { resolveRepoRoot } from '../config/repo-root';
 import { listGitProjects, resolveCheckoutPath } from '../config/checkout-path';
 
-/** The folders a sandbox or shell may work in: the repositories the server is given and its own `worktrees/`. */
+/** The folders a sandbox may work in: the repositories the server is given and its own `worktrees/`. */
 export function workRoots(config: AppConfig): string[] {
   return workRootsAt(
     resolveRepoRoot(config.env.SWARMLOOP_ROOT, __dirname),

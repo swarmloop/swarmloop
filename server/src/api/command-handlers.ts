@@ -4,18 +4,12 @@ import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { startByOf } from '../pipeline/resume-sender';
 import { SubtaskPort } from '../pipeline/subtask-port';
-import { ChatService } from './chat.service';
 import { RunAnswersService } from './run-answers.service';
 import { RunCommandsService, StartPlan } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunRebaseService } from './run-rebase.service';
 import { AttachmentStore } from '../history/attachment-store';
 import { PlanChatService } from './plan-chat.service';
-import { ShellService } from './shell.service';
-
-/** What the shell command carries: one of the three shell actions. */
-export type ShellPayload =
-  { op: 'open'; path: string } | { op: 'lock'; container: string; userId?: number } | { op: 'unlock' };
 
 /** What the step and replay commands carry next to the step name. */
 export interface StepPayload {
@@ -40,8 +34,6 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     private readonly answering: RunAnswersService,
     private readonly taskCommands: RunSubtaskCommandsService,
     private readonly rebases: RunRebaseService,
-    private readonly chat: ChatService,
-    private readonly shell: ShellService,
     private readonly subtasks: SubtaskPort,
     private readonly planChat: PlanChatService,
     private readonly files: AttachmentStore,
@@ -84,13 +76,6 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
         ? this.rebases.rebase(key, false, payload.main)
         : this.rebases.rebase(key, payload.byParent === true),
     );
-    on('chat', (key, payload) => this.chat.speak(key, payload));
-    on('rewind', (key, payload) => this.shell.rewind(key, Number(payload.id)));
-    on('shell', (key, payload, context) => {
-      const action = payload as unknown as ShellPayload;
-      if (action.op === 'open') return this.shell.open(action.path, context.created);
-      return action.op === 'lock' ? this.shell.lock(key, action.container, action.userId) : this.shell.unlock(key);
-    });
   }
 
   /** The commands a server that stopped left behind: the reconciler settles them. */

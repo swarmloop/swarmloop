@@ -18,7 +18,7 @@ import { VisitRepository } from '../history/visit.repository';
 import { RuntimeCooldownRepository } from '../history/runtime-cooldown.repository';
 import { DiskGuard } from './disk-guard';
 import { SandboxService } from '../sandbox/sandbox.service';
-import { CHAT_LOCK, readChatLock } from './chat-lock';
+import { releaseLegacyChatLock } from './legacy-chat-lock';
 import { CommandService } from './command.service';
 import { EpicLeftovers } from './epic-leftovers';
 import { MergeWatch } from './merge-watch';
@@ -28,9 +28,6 @@ import { StoppedCleanup } from './stopped-cleanup';
 import { ReconcilerResumes } from './reconciler-resumes';
 import { StartGate } from './start-gate';
 import { SubtaskPort } from './subtask-port';
-import { settleChat, settleShell } from './shell-lock';
-
-export { silentMessage } from './run-settler';
 
 /**
  * One idempotent look at the runs and commands that a process left behind. It runs at startup and every
@@ -243,14 +240,8 @@ export class Reconciler implements OnModuleDestroy {
   async reconcile(seen: RunEntity): Promise<void> {
     const run = await this.runs.findRun(seen.key);
     if (run?.status !== 'running') return;
-    const body = await this.documents.latestBody(run.key, CHAT_LOCK);
-    const lock = readChatLock(body);
-    if (lock?.container) {
-      await settleShell(this.runs, this.documents, this.sandbox, run, this.clock);
-      return;
-    }
-    if (this.ownedHere(run, lock?.pid)) return;
-    if (await settleChat(this.runs, this.documents, run, body)) return;
+    if (this.ownedHere(run)) return;
+    if (await releaseLegacyChatLock(this.runs, this.documents, this.sandbox, run)) return;
     if (await this.settler.settleRebase(run)) return;
     const deadAttempt = run.activeAttempt;
     const decision = await this.settler.settleAttempt(run, this.slept, () => this.relaunchDecision(run, deadAttempt));
@@ -314,9 +305,8 @@ export class Reconciler implements OnModuleDestroy {
     await this.settler.endRelaunch(run, cut, relaunch);
   }
 
-  /** The owner is this process and its step is in flight, or a chat of this process holds the run. */
-  private ownedHere(run: RunEntity, chatPid: number | undefined): boolean {
-    const chat = chatPid !== undefined && chatPid === run.ownerPid && run.ownerPid === process.pid;
-    return chat || (run.ownerInstance === SERVER_INSTANCE && this.claimed(run.key));
+  /** The owner is this process and its step is in flight. */
+  private ownedHere(run: RunEntity): boolean {
+    return run.ownerInstance === SERVER_INSTANCE && this.claimed(run.key);
   }
 }

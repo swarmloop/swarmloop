@@ -87,7 +87,7 @@ function fakeDocker(state: State) {
 function setup(
   state: State,
   now = 1_000,
-  users: { uid: number; own: number; adopt?: boolean; startMs?: number } = { uid: 501, own: 501 },
+  users: { uid: number; own: number; startMs?: number } = { uid: 501, own: 501 },
 ) {
   const policyDir = join(mkdtempSync(join(tmpdir(), 'swarmloop-egress-')), 'egress');
   const fake = fakeDocker(state);
@@ -194,21 +194,6 @@ describe('Egress', () => {
     } finally {
       jest.useRealTimers();
     }
-  });
-
-  it('borrows a running proxy that someone else started when told to', async () => {
-    const proxy = { running: true, image: 'sha256:abc', user: '1000', ip: EGRESS_IP, bridge: true };
-    const network = { internal: true, subnet: EGRESS_SUBNET };
-    const own = setup({ network, image: 'sha256:abc', proxy: { ...proxy } });
-    await own.egress.ensure();
-    expect(own.calls.some((call) => call[0] === 'run')).toBe(true);
-    const shell = setup({ network, image: 'sha256:abc', proxy: { ...proxy } }, 1_000, {
-      uid: 501,
-      own: 501,
-      adopt: true,
-    });
-    await shell.egress.ensure();
-    expect(shell.calls.some((call) => call[0] === 'run' || call[0] === 'rm')).toBe(false);
   });
 
   it('drops the policy of a container that is gone once it is no longer fresh', async () => {

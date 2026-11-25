@@ -272,7 +272,7 @@ describe('CommandService', () => {
       await commands.recover();
       await commands.idle();
 
-      expect(ran).toEqual([['proj-1', { prompt: 'go' }, { commandId: acceptedId, created: false }]]);
+      expect(ran).toEqual([['proj-1', { prompt: 'go' }, { commandId: acceptedId }]]);
       expect((await second.get(CommandRepository).find(acceptedId))?.state).toBe('succeeded');
     } finally {
       await second.close();
@@ -305,6 +305,34 @@ describe('CommandService', () => {
       expect(stored?.state).toBe('failed');
       expect(stored?.result).toContain('server restarted');
       expect(handler).not.toHaveBeenCalled();
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('ends a stored accepted command of a type that has no handler failed with its reason', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-command-removed-'));
+    const first = await seededBoot(root);
+    let removedId = '';
+    try {
+      await save(first.get(RunRepository), 'proj-1', 'implement', 'waiting');
+      const accepted = await first
+        .get(CommandRepository)
+        .accept({ type: 'chat' as never, key: 'proj-1', payload: {}, admit: () => undefined });
+      removedId = accepted.command.id;
+    } finally {
+      await first.close();
+    }
+    const second = await seededBoot(root);
+    try {
+      const commands = second.get(CommandService);
+
+      await commands.recover();
+      await commands.idle();
+
+      const stored = await second.get(CommandRepository).find(removedId);
+      expect(stored?.state).toBe('failed');
+      expect(stored?.result).toContain('chat has no handler');
     } finally {
       await second.close();
     }

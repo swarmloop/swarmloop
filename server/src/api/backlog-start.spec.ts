@@ -6,7 +6,6 @@ import { BacklogStart } from './backlog-start';
 import type { RunCommandsService } from './run-commands.service';
 import type { RunQueriesService } from './run-queries.service';
 import { RunsController } from './runs.controller';
-import type { ShellService } from './shell.service';
 
 const agents = { main: { implement: [{ runtime: 'claude', model: 'm' }] } };
 
@@ -27,7 +26,6 @@ describe('BacklogStart', () => {
       {} as RunQueriesService,
       posted.runs as unknown as RunCommandsService,
       posted.commands as unknown as CommandService,
-      {} as ShellService,
       posted.settings as unknown as UserSettingRepository,
     );
     await controller.create(

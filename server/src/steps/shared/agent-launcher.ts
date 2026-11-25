@@ -166,7 +166,6 @@ export class AgentLauncher {
       mode: request.mode,
       tools: request.tools,
       timeLimitMs: request.timeLimitMs,
-      approveMcps: request.approveMcps,
       auto: request.auto,
       continuePrompt: request.continuePrompt,
       answerEnding: ending,

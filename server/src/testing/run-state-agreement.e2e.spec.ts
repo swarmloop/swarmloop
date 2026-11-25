@@ -1,11 +1,8 @@
 import 'reflect-metadata';
-import { mkdir, mkdtemp } from 'fs/promises';
+import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { INestApplicationContext } from '@nestjs/common';
-import { RunStop } from '../agent/run-stop';
-import type { AgentRunInput, AgentRunResult } from '../agent/agent-runner';
-import { ChatService } from '../api/chat.service';
 import { RunListRows } from '../api/run-list-rows';
 import { RunQueriesService } from '../api/run-queries.service';
 import { StatsController } from '../api/stats.controller';
@@ -24,9 +21,6 @@ import { MergeWatch } from '../pipeline/merge-watch';
 import { RunRetention } from '../pipeline/run-retention';
 import { EventRepository } from '../history/event.repository';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
-import { AgentLauncher } from '../steps/shared/agent-launcher';
-import { WRITE_REFUSAL } from '../steps/shared/start-refused';
-import { doorAround } from './agent-door.spec-helpers';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { seededBoot } from '../api/runs-boot.spec-helpers';
 
@@ -223,67 +217,7 @@ describe('every reader of a run state agrees with the stored state', () => {
     expect(line.reason).toBe('The merge request was merged on GitHub while the run was stopped; the run is done.');
     expect(storedState((await runs.findRun(run.key))!).state).toBe('merged');
   });
-
-  it('keeps a run stopped at plan stopped, with Resume, after a chat', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-agreement-chat-'));
-    const project = join(root, 'project');
-    await mkdir(project, { recursive: true });
-    const before = await readings({
-      change: {
-        status: 'blocked',
-        currentStep: 'plan',
-        reason: { code: REASON.stopped, message: 'Stopped by request.' },
-      },
-    });
-    expectAgreement(before, 'stopped', REASON.stopped);
-    const key = `proj-agree-${counter}`;
-    const chat = new ChatService(
-      app.get(RunRepository),
-      app.get(DocumentRepository),
-      app.get(AppConfig),
-      app.get(Clock),
-      { assertReady: async () => undefined } as never,
-      doorAround(
-        app,
-        new AgentLauncher(
-          { run: async (input: AgentRunInput) => answer(input.prompt) } as never,
-          { tokenTotal: async () => 1 } as never,
-          new RunStop(),
-        ),
-      ),
-      { block: async () => '' } as never,
-      { ensureForRequest: async () => undefined } as never,
-    );
-    await expect(chat.speak(key, { prompt: 'look at it', cwd: project })).rejects.toThrow(WRITE_REFUSAL);
-    await app.get(RunStateRefresh).settled();
-    const stored = (await app.get(RunRepository).findRun(key))!;
-    const flow = await app.get(RunQueriesService).flow(key);
-    const { view } = await app.get(RunListRows).read();
-    expect(storedState(stored)).toMatchObject({ state: 'stopped', reason: { code: REASON.stopped } });
-    expect(flow).toMatchObject({ state: 'stopped', actions: expect.arrayContaining(['resume']) });
-    expect(view.runs.find((row) => row.key === key)).toMatchObject({ state: 'stopped' });
-  });
 });
-
-function answer(prompt: string): AgentRunResult {
-  const now = new Date().toISOString();
-  return {
-    responseText: 'answered',
-    chatId: null,
-    tokensIn: 2,
-    tokensOut: 1,
-    usd: 0.01,
-    killReason: null,
-    exitCode: 0,
-    output: prompt,
-    resumed: false,
-    calls: 1,
-    samples: [],
-    durationMs: 5,
-    startedAt: now,
-    finishedAt: now,
-  };
-}
 
 describe('the backlog observer agrees with the stored state', () => {
   const cases: [string, RunStateChange][] = [

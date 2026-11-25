@@ -35,7 +35,6 @@ const serverLayers = [
   'pipeline',
   'eta',
   'api',
-  'acp',
   'cli',
 ];
 const layerImports = {
@@ -84,7 +83,6 @@ const layerImports = {
     'pipeline',
     'eta',
   ],
-  acp: ['core', 'config', 'integrations', 'sandbox'],
   cli: ['core', 'config', 'history', 'pipeline'],
 };
 
@@ -363,7 +361,6 @@ export default tseslint.config(
       'server/src/cli/**',
       'server/src/main.ts',
       'server/src/api-main.ts',
-      'server/src/acp/shell.ts',
       'server/src/integrations/linked-pages/paste-page.reader.ts',
     ],
     rules: {

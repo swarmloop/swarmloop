@@ -106,7 +106,7 @@ The tables of allowed returns and jumps are the only place a route is decided.
 
 | Layer | Folders | Job |
 |---|---|---|
-| Input and output | `api/`, `api/run-view/`, `cli/`, `live/` | HTTP routes, the run page's view model, the CLI, the websocket. They translate; they decide nothing. (`acp/`, the IDE bridge, is being removed.) |
+| Input and output | `api/`, `api/run-view/`, `cli/`, `live/` | HTTP routes, the run page's view model, the CLI, the websocket. They translate; they decide nothing. |
 | Orchestration | `pipeline/`, `pipeline/backlog/`, `pipeline/backlog/planner/` | Driving runs from step to step, the reconciler, commands, waits, merges, the backlog scheduler and planner turns. |
 | Steps | `steps/<step>/`, `steps/shared/`, `steps/contract/` | One folder per step. Shared services hold whatever more than one step needs, and the contract holds routes, returns and document kinds. |
 | Agents | `agent/`, `agent-result/`, `integrations/agent-runtime/` | Launching an agent process, streaming it, limits, sessions, prices, result blocks and their schemas. |
@@ -148,7 +148,7 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 - Holds through `POST /runs`, `backlog-start` ("as `POST /runs` starts a run") and `run-subtask-commands`.
 - The CLI runs the pipeline in its own process, which writes the same history, so the panel shows a CLI run only after a reload.
 - part-keys (merged) validates task ids at plan time.
-- The IDE bridge (`bin/sloop`, `server/src/acp/`) still exists; it is being removed (decision 5 of Part 4).
+- The IDE bridge is gone: `bin/sloop`, `server/src/acp/` and what only they used were removed.
 
 ## 3.2 Steps one by one
 
@@ -369,9 +369,9 @@ f129 joins the rest into one path.
 Each one is a command with an idempotency key that names its event (rule 11) and an expected revision. The server says which actions each state allows. A dangerous action asks through one confirm dialog. A planner sends the same commands.
 
 **Today.**
-- There are 14 command types: `start`, `resume`, `replay`, `rebase`, `answer`, `plan-chat`, `stop`, `step`, `chat`, `shell`, `rewind`, `remove`, `skip` and `projects`.
-- `chat`, `shell`, `rewind` and `step` serve only the IDE bridge, and they bypass the planners (rule 9). They are being removed with it (decision 5 of Part 4), which leaves ten.
 - The backlog planner sends Resume, Replay of a step with its instruction, Rebase, an answer, Stop, Skip and a message on every run of its backlog, an epic's parts included, through `PlannerRunCommands.send`, and reads a run's failed step, check output and failed CI jobs (`pipeline/backlog/planner/run-facts.ts`, cut in `event-facts.ts`).
+- There are 11 command types: `start`, `resume`, `replay`, `rebase`, `answer`, `plan-chat`, `stop`, `step`, `remove`, `skip` and `projects`.
+- `step` is used by the dashboard's `Run again` / `Retry` of a reviewer, until f129 takes that button off, and by `swarmloop step`.
 
 ## 3.15 Waits, places and timers
 

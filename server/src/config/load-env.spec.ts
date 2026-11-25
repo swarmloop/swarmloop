@@ -171,8 +171,6 @@ describe('settings loading', () => {
     ['SANDBOX_EGRESS', 'unknown'],
     ['SANDBOX_DOCKER_RUNTIME', '../bad'],
     ['SWARMLOOP_ALLOW', 'unknown:person'],
-    ['SWARMLOOP_API_URL', 'not a url'],
-    ['SWARMLOOP_API_URL', ''],
     ['SWARMLOOP_API_PORT', ''],
     ['MAX_RETURNS', ''],
     ['AGENTS_PLAN', ''],

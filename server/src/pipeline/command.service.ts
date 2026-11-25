@@ -20,8 +20,6 @@ import { RunStop } from '../agent/run-stop';
 
 interface CommandContext {
   commandId: string;
-  /** This command created the run. */
-  created: boolean;
 }
 
 /** Runs a command against the run. The services that did the work before the command path are the handlers. */
@@ -47,7 +45,7 @@ const TAKEOVER_TYPES: readonly CommandType[] = ['resume', 'replay', 'rebase'];
 type Outcome = { ok: true; value: unknown } | { ok: false; error: unknown };
 
 /** A command that is accepted while a writer holds the run is refused. */
-const BUSY_TYPES: readonly CommandType[] = ['start', 'resume', 'rebase', 'answer', 'chat'];
+const BUSY_TYPES: readonly CommandType[] = ['start', 'resume', 'rebase', 'answer'];
 
 /**
  * The one door to a run. `accept` checks the transition and stores the command in one short transaction.
@@ -291,7 +289,7 @@ export class CommandService {
         throw new SwarmloopError(`${command.type} has no handler`);
       }
       const payload = JSON.parse(command.payload) as Record<string, unknown>;
-      const value = await handler(key, payload, { commandId: command.id, created: payload.created === true });
+      const value = await handler(key, payload, { commandId: command.id });
       await this.commands.finish(command.id, 'succeeded', { value });
       this.runs.notify(key);
       this.settle(command.id, { ok: true, value });

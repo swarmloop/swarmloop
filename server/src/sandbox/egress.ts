@@ -84,8 +84,6 @@ interface EgressDeps {
   uid: number;
   /** The user of this process. A root server hands the policies to `uid`; anyone else is `uid` already. */
   own: number;
-  /** Use a running proxy of the current image whoever started it. The terminal shell borrows the server's. */
-  adopt?: boolean;
   /** How long a new proxy may take to listen. */
   startMs?: number;
 }
@@ -264,7 +262,7 @@ export class Egress {
       return (
         running === true &&
         (labels as Record<string, string> | null)?.['swarmloop.image'] === imageId &&
-        (this.deps.adopt === true || (labels as Record<string, string>)['swarmloop.user'] === String(this.reader)) &&
+        (labels as Record<string, string>)['swarmloop.user'] === String(this.reader) &&
         nets[EGRESS_NETWORK]?.IPAddress === EGRESS_IP &&
         nets.bridge !== undefined
       );

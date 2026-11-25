@@ -16,13 +16,10 @@ import { assertKey, isStep } from '../core/pipeline-result';
 import { storedState, writeRunState } from '../history/run-state';
 import { REASON, STOP_NOTE, TIMED_RETRY_CODES } from '../contract/run-state';
 import { reportFailure } from '../steps/shared/step-failure';
-import { CHAT_LOCK, chatHeld } from './chat-lock';
 import { flagError } from './flag-error';
 import { STOP_CLEANUP } from './stopped-cleanup';
 import { closeStopped, stepElapsed } from './stop-close';
 import type { Reconciler } from './reconciler';
-import { silentMessage } from './reconciler';
-import { settleShell, shellHolding } from './shell-lock';
 import type { RunDriver } from './run-driver';
 import type { StartGate } from './start-gate';
 import type { RunInstructions } from './run-instructions';
@@ -161,13 +158,6 @@ export class RunLifecycle implements OnApplicationBootstrap {
     if (!this.inflight.has(key) && run.status !== 'running' && !this.runStop.halted(key)) {
       return { exitCode: 0, message: `${key} is stopped` };
     }
-    const lockBody = await this.documents.latestBody(key, CHAT_LOCK);
-    if (chatHeld(lockBody, run.status, run.ownerPid)) {
-      if ((await this.sandbox.stopRun(key, 'shell', this.config.env.STOP_GRACE_S)) === 'unknown') {
-        return { exitCode: 1, message: silentMessage(key) };
-      }
-      return { exitCode: 0, message: `${key} stopped` };
-    }
     const stopped = await this.stopRunning(key, run);
     if (stopped) {
       return stopped;
@@ -278,11 +268,7 @@ export class RunLifecycle implements OnApplicationBootstrap {
     if (!existing) {
       return false;
     }
-    const settled = await settleShell(this.runs, this.documents, this.sandbox, existing, this.clock);
-    if (shellHolding(await this.documents.latestBody(key, CHAT_LOCK), settled.status)) {
-      return true;
-    }
-    return this.runs.held(settled);
+    return this.runs.held(existing);
   }
 
   keyError(key: string): PipelineResult | null {

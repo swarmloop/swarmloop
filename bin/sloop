@@ -1,9 +1,0 @@
-#!/bin/sh
-set -eu
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-MAIN="$ROOT/server/dist/acp/main.js"
-if [ ! -f "$MAIN" ]; then
-  echo "sloop: build the server app first (npm run build --prefix server)" >&2
-  exit 1
-fi
-exec node "$MAIN" "$@"

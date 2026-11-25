@@ -63,7 +63,7 @@ describe('the role of a step', () => {
     const roles = (role: string): string[] =>
       Object.keys(ROLE_OF_STEP).filter((step) => ROLE_OF_STEP[step as never] === role);
     expect(roles('plan')).toEqual(['research', 'plan', 'plan-improve', 'merge-request', 'backlog-plan']);
-    expect(roles('implement')).toEqual(['implement', 'implement-improve', 'chat', 'shell', 'rebase']);
+    expect(roles('implement')).toEqual(['implement', 'implement-improve', 'rebase']);
     expect(roles('review')).toContain('code-review');
     expect(roles('review')).toHaveLength(7);
     for (const step of NO_AGENT) {
@@ -81,7 +81,7 @@ describe('agentFor', () => {
     });
     const child = { parentRunId: 1 };
     const planned = ['research', 'plan', 'plan-improve', 'merge-request', 'code-review', 'code-review-report'];
-    const built = ['implement', 'implement-improve', 'chat', 'shell', 'rebase'];
+    const built = ['implement', 'implement-improve', 'rebase'];
     for (const step of [...planned, ...CODE_REVIEWERS.map((name) => `code-review-${name}`)]) {
       expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'plan-m' });
       expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'plan-m' });

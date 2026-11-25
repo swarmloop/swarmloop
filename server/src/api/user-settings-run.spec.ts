@@ -12,7 +12,6 @@ import { seededBoot } from './runs-boot.spec-helpers';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
 import { RunsController } from './runs.controller';
-import type { ShellService } from './shell.service';
 
 const MINE: SettingsBody = {
   agents: {
@@ -41,7 +40,6 @@ async function world() {
     app.get(RunQueriesService),
     app.get(RunCommandsService),
     commands as unknown as CommandService,
-    {} as ShellService,
     settings,
   );
   const start = (key: string, actor: string | null, body: object = {}) =>

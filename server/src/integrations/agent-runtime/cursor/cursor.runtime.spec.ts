@@ -48,7 +48,6 @@ describe('CursorRuntime', () => {
         resumeChatId: 'chat-1',
         mode: 'agent',
         tools: 'write',
-        approveMcps: true,
       }),
     ).toEqual([
       '--print',
@@ -65,7 +64,6 @@ describe('CursorRuntime', () => {
       '--force',
       '--sandbox',
       'disabled',
-      '--approve-mcps',
       'write the server',
     ]);
   });

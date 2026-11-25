@@ -12,11 +12,9 @@ import { ProvidersModule } from '../integrations/providers.module';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
 import { CommandHandlers } from './command-handlers';
-import { ChatService } from './chat.service';
 import { PlanChatController } from './plan-chat.controller';
 import { UploadsController } from './uploads.controller';
 import { PlanChatService } from './plan-chat.service';
-import { ShellService } from './shell.service';
 import { BacklogChatController } from './backlog-chat.controller';
 import { BacklogChatService } from './backlog-chat.service';
 import { BacklogsController } from './backlogs.controller';
@@ -79,9 +77,7 @@ import { RequestTiming } from './request-timing';
     RunSubtaskCommandsService,
     SubtaskClose,
     RunRebaseService,
-    ChatService,
     PlanChatService,
-    ShellService,
     RepositoryOrigins,
     SettingsService,
     CommandHandlers,

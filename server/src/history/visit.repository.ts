@@ -356,17 +356,6 @@ export class VisitRepository {
     return totals;
   }
 
-  async latestChatId(runId: number): Promise<string | null> {
-    const stats = await this.stepStats.find({ where: { runId }, order: { id: 'DESC' } });
-    for (const stat of stats) {
-      const exchange = await this.exchanges.findOne({ where: { stepStatId: stat.id }, order: { id: 'DESC' } });
-      if (exchange?.chatId) {
-        return exchange.chatId;
-      }
-    }
-    return null;
-  }
-
   async tokenTotal(runId: number): Promise<number> {
     const rows: { total: number | string | null }[] = await this.stepStats.query(
       'SELECT SUM(tokens_in + tokens_out) AS total FROM step_stats WHERE run_id = ?',

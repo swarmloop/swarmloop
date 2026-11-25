@@ -34,10 +34,6 @@ import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 /** Waits between the read-only probes of a docker that does not answer. */
 const PROBE_BACKOFF_MS = [1_000, 2_000];
 
-export function silentMessage(key: string): string {
-  return `${key} is blocked: docker did not answer`;
-}
-
 /** Whether a cut attempt is started again. The one decision, made by the reconciler. */
 export type RelaunchDecision =
   { relaunch: true; idempotencyKey: string } | { relaunch: false; cause: 'limit' | 'stop' | null };

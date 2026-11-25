@@ -91,7 +91,7 @@ export class SandboxService implements OnModuleDestroy {
     this.ownership = new SandboxOwnership(handOver);
   }
 
-  /** Prepares writable volume subpaths once per Git index and user, shared by server and host shells. */
+  /** Prepares writable volume subpaths once per Git index and user, shared by the server's containers. */
   prepareMounts(mounts: SandboxMount[], uid: number): Promise<string[]> {
     return this.ownership.prepare(mounts, uid);
   }
@@ -327,20 +327,6 @@ export class SandboxService implements OnModuleDestroy {
       await this.docker(['rm', '-f', name]);
     } catch {
       return;
-    }
-  }
-
-  /** True while the container is running, false when it is gone or stopped, null when docker did not answer. */
-  async containerExists(name: string): Promise<boolean | null> {
-    try {
-      const raw = await this.docker(['inspect', '--format', '{{.State.Running}}', name]);
-      return raw.trim() === 'true';
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      if (text.includes('No such object') || text.includes('No such container')) {
-        return false;
-      }
-      return null;
     }
   }
 

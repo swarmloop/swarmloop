@@ -16,7 +16,7 @@ interface CliRefusal {
 }
 
 const NO_PERSON_MESSAGE =
-  'run and step act as a person: create a token in Settings → API tokens (or run `sloop login`) and set SWARMLOOP_TOKEN';
+  'run and step act as a person: create a token in Settings → API tokens and set SWARMLOOP_TOKEN';
 
 /** Turns `SWARMLOOP_TOKEN` into the person a run or step acts for, or the refusal to print. */
 @Injectable()

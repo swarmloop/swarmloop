@@ -16,7 +16,7 @@ export interface SandboxLaunch {
   runtime: RuntimeName;
   runKey: string;
   step: string;
-  /** The attempt that starts the container. Empty for a container that no attempt owns, such as the shell. */
+  /** The attempt that starts the container. Empty for a container that no attempt owns. */
   attemptId: string;
   mounts: SandboxMount[];
   /** The folders a `/work` mount may come from: the repositories the server is given and `worktrees/`. */
