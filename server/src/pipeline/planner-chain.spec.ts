@@ -1,3 +1,4 @@
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { DocumentRepository } from '../history/document.repository';
 import { repositoryDatabase } from '../history/repository.spec-helpers';
@@ -161,7 +162,7 @@ describe('PlannerChain', () => {
     const h = await setup();
     try {
       await seedBacklogTask(h.db.app, 'ALONE-1');
-      await h.runs.saveRun({ ...h.alone, currentStep: 'implement' });
+      await storeRun(h.runs, { ...h.alone, currentStep: 'implement' });
       h.turns.push(null);
 
       await h.chain.askUp(h.alone, question, 0);
@@ -177,7 +178,7 @@ describe('PlannerChain', () => {
     const h = await setup();
     try {
       await seedBacklogTask(h.db.app, 'EPIC-1');
-      await h.runs.saveRun({ ...h.epic, split: true, currentStep: 'implement' });
+      await storeRun(h.runs, { ...h.epic, split: true, currentStep: 'implement' });
       h.epicAnswers.push(null);
 
       await h.chain.askUp(h.task, question, 1);

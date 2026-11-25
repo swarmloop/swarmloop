@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { ERROR_CODES } from '../contract/error-codes';
 import { NEEDS_PERSON } from '../contract/run-state';
 import { CommandRepository } from '../history/command.repository';
@@ -71,7 +72,7 @@ describe('reconciler passes', () => {
       activeAttempt: null,
       reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: 'reason', retryAt },
     });
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     const reconciler = world.app.get(Reconciler);
 
     await Promise.all([reconciler.reconcileAll(), reconciler.reconcileAll()]);

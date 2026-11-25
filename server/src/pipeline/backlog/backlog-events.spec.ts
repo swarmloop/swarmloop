@@ -1,3 +1,4 @@
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import type { BacklogEventKind } from '../../contract/backlog';
 import { join } from 'path';
 import { DocumentRepository } from '../../history/document.repository';
@@ -168,7 +169,7 @@ describe('BacklogEvents', () => {
         for (const key of ['p-1', 'p-2']) {
           const part = (await h.runs.findRun(key)) as NonNullable<Awaited<ReturnType<typeof h.runs.findRun>>>;
           part.parentRunId = epic.id;
-          await h.runs.saveRun(part);
+          await storeRun(h.runs, part);
         }
 
         await h.tick();

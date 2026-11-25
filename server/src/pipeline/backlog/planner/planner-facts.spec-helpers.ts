@@ -1,3 +1,4 @@
+import { storeRun } from '../../../testing/store-run.spec-helpers';
 import { AppConfig } from '../../../config/env';
 import { AttachmentStore } from '../../../history/attachment-store';
 import { BacklogRepository, type BacklogTaskRecord } from '../../../history/backlog.repository';
@@ -60,7 +61,7 @@ export async function plannerFacts() {
     chats: db.app.get(PlanChatStore),
     /** A run that holds the documents `kinds` names, each with its body. */
     async addRun(key: string, kinds: Record<string, string> = {}): Promise<void> {
-      await runs.saveRun(runs.newWaitingRun(key, null, 'owner'));
+      await storeRun(runs, runs.newWaitingRun(key, null, 'owner'));
       const run = (await runs.findRun(key)) as NonNullable<Awaited<ReturnType<RunRepository['findRun']>>>;
       for (const [kind, body] of Object.entries(kinds)) await documents.putDocument(run, kind, body);
     },

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -46,7 +47,7 @@ async function refusedRun() {
   const runs = app.app.get(RunRepository);
   const run = await save(runs, KEY, 'implement', 'waiting');
   run.targetPath = mkdtempSync(join(tmpdir(), 'swarmloop-same-input-'));
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   await app.app
     .get(DocumentRepository)
     .putDocument(run, 'requirements', `${JSON.stringify({ prompt: 'p', tickets: [] })}\n`);
@@ -83,7 +84,7 @@ async function refusedRun() {
       message: 'Not started again: same input as visit 1; asked the planner of this run',
     },
   });
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   return { app, run, steps };
 }
 

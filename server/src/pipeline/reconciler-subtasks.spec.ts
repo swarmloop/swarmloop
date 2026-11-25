@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { ERROR_CODES } from '../contract/error-codes';
 import type { Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
@@ -44,11 +45,11 @@ async function waitingParent(app: TestApp, recorded: boolean, blocked = false) {
       ? { status: 'blocked', reason: { code: ERROR_CODES.SUBTASK_BLOCKED, message: 'subtask a is blocked' } }
       : { status: 'waiting', reason: { code: ERROR_CODES.SUBTASKS_RUNNING, message: 'running' } },
   );
-  await runs.saveRun(parent);
+  await storeRun(runs, parent);
   const child = await save(runs, `${KEY}-a`, 'research', 'running');
   child.parentRunId = parent.id;
   child.taskId = 'a';
-  await runs.saveRun(child);
+  await storeRun(runs, child);
   if (recorded) await runs.recordSubtaskFingerprint(parent, await runs.subtaskFingerprint(parent));
   return { runs, child };
 }
@@ -85,7 +86,7 @@ describe('reconciler and the subtasks of a parent', () => {
   it('resumes a parent once when a subtask changed without an event', async () => {
     const { runs, child } = await waitingParent(app, true);
     writeRunState(child, { status: 'done', currentStep: 'done' });
-    await runs.saveRun(child);
+    await storeRun(runs, child);
 
     await ticks(1);
 
@@ -109,7 +110,7 @@ describe('reconciler and the subtasks of a parent', () => {
       currentStep: 'done',
       merge: { merged: { demo: { sha: 'abc', by: null, at: '2026-11-19T00:07:10.000Z', url: null } } },
     });
-    await runs.saveRun(child);
+    await storeRun(runs, child);
     await runs.recordSubtaskFingerprint(parent, await runs.subtaskFingerprint(parent));
 
     await ticks(1);
@@ -124,7 +125,7 @@ describe('reconciler and the subtasks of a parent', () => {
     expect(resumed).toEqual([]);
 
     writeRunState(child, { status: 'done', currentStep: 'done' });
-    await runs.saveRun(child);
+    await storeRun(runs, child);
     await ticks(1);
 
     expect(resumed).toEqual([KEY]);
@@ -148,7 +149,7 @@ describe('the agents of an epic parent and of its subtasks', () => {
     const { runs, child } = await waitingParent(app, true);
     const parent = (await runs.findRun(KEY))!;
     parent.epicAt = '2026-11-13T10:00:00.000Z';
-    await runs.saveRun(parent);
+    await storeRun(runs, parent);
 
     const { env } = app.app.get(AppConfig);
 

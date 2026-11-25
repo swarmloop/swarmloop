@@ -1,3 +1,4 @@
+import { storeRun } from '../../../testing/store-run.spec-helpers';
 import { readFileSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { BacklogEventKind } from '../../../contract/backlog';
@@ -217,7 +218,7 @@ async function visited(h: Harness, key: string, step: string, documents: Record<
   await h.addRun(key);
   const run = (await h.runs.findRun(key)) as NonNullable<Awaited<ReturnType<typeof h.runs.findRun>>>;
   run.currentStep = step;
-  await h.runs.saveRun(run);
+  await storeRun(h.runs, run);
   const visits = h.app.get(VisitRepository);
   let stat = await visits.finishVisit(run, { ...repositoryVisit(), step, document: null });
   for (const [kind, body] of Object.entries(documents)) {

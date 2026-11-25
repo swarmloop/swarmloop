@@ -1,3 +1,4 @@
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { mkdirSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -152,7 +153,7 @@ export async function backlogHarness(parallel = 3) {
       start.key,
       (await runs.listRuns()).map((run) => run.key),
     );
-    await runs.saveRun(runs.newWaitingRun(key, null, start.owner));
+    await storeRun(runs, runs.newWaitingRun(key, null, start.owner));
     if (mode.current === 'timeout') throw new Error('start request timed out');
     return key;
   });
@@ -225,10 +226,10 @@ export async function backlogHarness(parallel = 3) {
     async seedDoneRun(key: string, requests: { repo: string; iid: number; branch?: string }[], outcome?: MergeOutcome) {
       const run = runs.newWaitingRun(key, null, 'ada');
       run.codeHost = fake.name;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const saved = (await runs.findRun(key)) as NonNullable<Awaited<ReturnType<RunRepository['findRun']>>>;
       writeRunState(saved, { status: 'done', merge: outcome });
-      await runs.saveRun(saved);
+      await storeRun(runs, saved);
       const refs = requests.map(
         ({ repo, branch }) => `project: acme/${repo}\nref: ${branch ?? `swarmloop/${repo}`}\nsha: s1\n`,
       );
@@ -299,14 +300,14 @@ export async function backlogHarness(parallel = 3) {
       const run = await runs.findRun(key);
       if (!run) throw new Error(`no run ${key}`);
       writeRunState(run, change);
-      await runs.saveRun(run);
+      await storeRun(runs, run);
     },
     /** Marks the run an epic that splits into subtasks. */
     async markSplit(key: string) {
       const run = await runs.findRun(key);
       if (!run) throw new Error(`no run ${key}`);
       run.split = true;
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await documents.putDocument(run, 'subtasks', JSON.stringify([{ id: 'a', title: 'a', status: 'waiting' }]));
     },
     /** The task as stored now. */

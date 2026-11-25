@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { actionsFor, type MergeOutcome } from '../contract/run-state';
@@ -41,10 +42,10 @@ describe('EpicLeftovers', () => {
     }
     const failed = await child(app, 'b');
     writeRunState(failed, { status: 'failed', currentStep: 'commit' });
-    await runs.saveRun(failed);
+    await storeRun(runs, failed);
     const merged = await child(app, 'c');
     writeRunState(merged, { status: 'done', currentStep: 'done', merge: MERGED });
-    await runs.saveRun(merged);
+    await storeRun(runs, merged);
     const parent = (await runs.findRun(KEY))!;
     const list = [
       { ...task('a'), status: 'skipped', note: 'nothing left to do' },
@@ -53,7 +54,7 @@ describe('EpicLeftovers', () => {
     ];
     await app.app.get(DocumentRepository).putDocument(parent, 'subtasks', `${JSON.stringify(list)}\n`);
     writeRunState(parent, { status: 'done', currentStep: 'done', merge: outcome });
-    await runs.saveRun(parent);
+    await storeRun(runs, parent);
     return built.host;
   }
 

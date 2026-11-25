@@ -1,3 +1,4 @@
+import { storeRun } from '../../testing/store-run.spec-helpers';
 import { BacklogChatRepository } from '../../history/backlog-chat.repository';
 import { backlogHarness } from './backlog.spec-helpers';
 
@@ -264,7 +265,7 @@ describe('BacklogScheduler run keys and requirement cycles', () => {
     withHarness(async (h) => {
       const { id, milestoneId } = await activeBacklog(h);
       const taken = `a-${h.db.clock.now().toString(36)}`;
-      await h.runs.saveRun(h.runs.newWaitingRun(taken, null, 'ada'));
+      await storeRun(h.runs, h.runs.newWaitingRun(taken, null, 'ada'));
       await h.seedTask(id, 'a', { milestoneId });
       await h.tick();
       expect((await h.task(id, 'a')).runKey).toBe(`${taken}--2`);

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdtemp } from 'fs/promises';
@@ -184,7 +185,7 @@ describe('CommandService', () => {
         status: 'blocked',
         reason: { code: REASON.checkFailed, message: 'a required check failed again' },
       });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       await testApp
         .get(DocumentRepository)
         .putDocument(run, 'error', 'repo: npm test failed again on unchanged files after a relaunch\n');
@@ -208,7 +209,7 @@ describe('CommandService', () => {
           status: 'blocked',
           reason: { code: 'REBASE_CONFLICT', message: 'app conflicts with main' },
         });
-        await runs.saveRun(run);
+        await storeRun(runs, run);
         if (marker) await documents.putDocument(run, 'rebase_conflict', marker);
         const entry = { app: { path: '/w', branch: 'b', checkpoint, generation: run.generation } };
         await documents.putDocument(run, 'rebase_journal', JSON.stringify(entry));
