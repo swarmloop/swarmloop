@@ -2,13 +2,18 @@ import { ERROR_CODES } from '../../contract/error-codes';
 import { REASON, TIMED_RETRY_CODES } from '../../contract/run-state';
 import type { StepStatEntity } from '../../history/entities';
 import type { VisitStartEntity } from '../../history/visit-start.entity';
+import { KILL_REASONS } from '../../core/kill-reason';
+import { visitKillReason } from './model-visit';
 
 /** What the same-input check reads of a step's past: its visits, how each was started, and why the run waits now. */
 interface SameInputFacts {
   step: string;
   /** The digest of the input the step is about to start on. */
   digest: string | null;
-  stats: Pick<StepStatEntity, 'id' | 'step' | 'attempt' | 'attemptId' | 'status' | 'killReason'>[];
+  stats: (Pick<StepStatEntity, 'id' | 'step' | 'attempt' | 'attemptId' | 'status' | 'killReason'> & {
+    /** The errors stored with the visit as its answer-errors document: its answer stayed invalid. */
+    answerErrors?: readonly string[];
+  })[];
   starts: Pick<VisitStartEntity, 'step' | 'attemptId' | 'inputDigest'>[];
   /** The code of the run's stored reason now, or null. */
   reasonCode: string | null;
@@ -24,21 +29,28 @@ const FINISHED = ['done', 'waiting', 'blocked'];
 /** The waits on something outside swarmloop that the reconciler clears by itself: the retry runs the visit again. */
 const OUTSIDE_WAIT_CODES: readonly string[] = [...TIMED_RETRY_CODES, ERROR_CODES.GIT_AUTH];
 
-/** A visit that ended on its own: it was not killed, and it did not fail, crash or wait for an outage or a limit. */
-function finished(stat: Pick<StepStatEntity, 'status' | 'killReason'>): boolean {
-  return FINISHED.includes(stat.status) && !stat.killReason;
+/**
+ * A visit that ended on its own, so it counts as finished on its input: it finished (not killed, not failed, no outage
+ * or limit wait), its answer stayed invalid after its follow-ups (it has stored answer errors), or the agent's own
+ * limit killed it (calls, loop, tokens, spend, time or idle). Every other end runs again on its input: a process that
+ * died (no stored visit), a model host outage, a usage limit, an outside wait, a person's Stop and any other failure.
+ */
+function endedOnItsOwn(stat: SameInputFacts['stats'][number]): boolean {
+  if (FINISHED.includes(stat.status) && !stat.killReason) return true;
+  if ((stat.answerErrors?.length ?? 0) > 0) return true;
+  return KILL_REASONS.some((reason) => visitKillReason(reason) === stat.killReason);
 }
 
 /**
- * Whether a start of the step is a rerun of a visit that did not finish: the newest attempt that started has no stored
- * visit (the process died), or its visit ended by a kill, a failure, an outage or a limit.
+ * Whether a start of the step is a rerun of a visit that did not end on its own: the newest attempt that started has
+ * no stored visit (the process died), or its visit ended by an outage, a limit wait, a Stop or another failure.
  */
 function unfinishedTail(facts: SameInputFacts): boolean {
   const own = facts.stats.filter((stat) => stat.step === facts.step);
   const lastStart = [...facts.starts].reverse().find((start) => start.step === facts.step);
   if (lastStart && !facts.stats.some((stat) => stat.attemptId === lastStart.attemptId)) return true;
   const last = own.at(-1);
-  return last !== undefined && !finished(last);
+  return last !== undefined && !endedOnItsOwn(last);
 }
 
 /**
@@ -74,10 +86,17 @@ export function refusalLine(visit: number, who: string): string {
 }
 
 /**
- * The question a refused start puts up the planners' chain: the refusal line, then the step's last words whole. The
+ * The question a refused start puts up the planners' chain: the refusal line, then the step's last words whole, then the errors its answer was refused for. The
  * line names the person, who the question ends with, so the text is the same at every level.
  */
-export function refusalQuestion(step: string, visit: number, lastWords: string): { from: string; text: string } {
+export function refusalQuestion(
+  step: string,
+  visit: number,
+  lastWords: string,
+  answerErrors: readonly string[] = [],
+): { from: string; text: string } {
   const head = `${refusalLine(visit, STARTER_WHO)}.`;
-  return { from: step, text: lastWords.trim() ? `${head}\n\n${lastWords}` : head };
+  const words = lastWords.trim() ? `${head}\n\n${lastWords}` : head;
+  const refused = answerErrors.map((error) => `- ${error}`).join('\n');
+  return { from: step, text: refused ? `${words}\n\nThe answer was refused for:\n${refused}` : words };
 }

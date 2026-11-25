@@ -5,6 +5,7 @@ import type { OpenedStep } from '../../steps/step-run';
 import type { StepName } from '../../contract/steps';
 import { effortFields } from '../../contract/effort';
 import type { EffortFields } from '../../contract/effort';
+import type { KillReason } from '../../core/kill-reason';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 
 /** The one exchange of an agent's launch: what it was asked, what it answered and how the chat went. */
@@ -23,6 +24,11 @@ export function agentExchange(agent: AgentRunResult, model: string, prompt: stri
   };
 }
 
+/** How a visit killed by its agent's own limit is stored. */
+export function visitKillReason(reason: KillReason): string {
+  return `process killed: ${reason}`;
+}
+
 /** What the agent's result adds to a visit: its end, its spend and the one exchange. A step that ran no agent adds none. */
 function agentPart(
   agent: AgentRunResult | null,
@@ -30,7 +36,7 @@ function agentPart(
   prompt: string,
 ): Pick<VisitDraft, 'killReason' | 'tokensIn' | 'tokensOut' | 'usd' | 'exchange' | 'resumed' | 'shellEdits'> {
   return {
-    killReason: agent?.killReason ? `process killed: ${agent.killReason}` : null,
+    killReason: agent?.killReason ? visitKillReason(agent.killReason) : null,
     tokensIn: agent?.tokensIn ?? 0,
     tokensOut: agent?.tokensOut ?? 0,
     usd: agent?.usd ?? 0,

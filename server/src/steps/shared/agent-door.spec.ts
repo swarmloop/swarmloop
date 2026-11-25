@@ -8,7 +8,8 @@ import { RunStop } from '../../agent/run-stop';
 import { StepStopped } from '../../agent/step-stopped';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { REASON } from '../../contract/run-state';
-import { AgentExchangeEntity, StepStatEntity } from '../../history/entities';
+import { ARTIFACTS } from '../contract/artifacts';
+import { AgentExchangeEntity, DocumentEntity, StepStatEntity } from '../../history/entities';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { writeRunState } from '../../history/run-state';
@@ -45,7 +46,7 @@ async function setup(env: Record<string, string> = {}) {
     input: { texts },
   });
   /** The visit an earlier start stored: its exchange holds the last words, and the start row links it. */
-  const store = async (startId: string, words: string) => {
+  const store = async (startId: string, words: string, status = 'done', errors: string[] = []) => {
     const now = new Date().toISOString();
     const stat = Object.assign(new StepStatEntity(), {
       runId: run.id,
@@ -55,9 +56,23 @@ async function setup(env: Record<string, string> = {}) {
       startedAt: now,
       finishedAt: now,
       durationMs: 0,
-      status: 'done',
+      status,
     });
     await app.get(VisitRepository).saveStat(stat);
+    if (errors.length > 0) {
+      await app
+        .get(DataSource)
+        .getRepository(DocumentEntity)
+        .insert({
+          runId: run.id,
+          stepStatId: stat.id,
+          kind: ARTIFACTS.answerErrors.kind,
+          attempt: 1,
+          body: ARTIFACTS.answerErrors.format(errors),
+          path: 'answer-errors.md',
+          createdAt: now,
+        });
+    }
     await app.get(DataSource).getRepository(AgentExchangeEntity).insert({
       stepStatId: stat.id,
       model: 'm',
@@ -123,6 +138,25 @@ describe('AgentDoor', () => {
       expect(door.takeRefusal('proj-1')).toBeNull();
       expect(launched).toHaveLength(1);
       expect(await rows()).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses an outside start after a visit whose answer stayed invalid, with its errors in the question', async () => {
+    const { app, door, launched, request, start, store } = await setup();
+    try {
+      let startId = '';
+      await door.outside({ ...start('machine'), admitted: (id) => void (startId = id) }, request());
+      await store(startId, 'last words', 'failed', ['keep line names unknown task']);
+
+      const refused = await door.outside(start('machine'), request()).catch((error: unknown) => error);
+
+      expect((refused as StartRefused).kind).toBe('same-input');
+      expect((refused as StartRefused).question?.text).toContain(
+        'The answer was refused for:\n- keep line names unknown task',
+      );
+      expect(launched).toHaveLength(1);
     } finally {
       await app.close();
     }
