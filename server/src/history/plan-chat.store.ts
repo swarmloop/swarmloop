@@ -4,6 +4,7 @@ import {
   readPlanChat,
   type PlanChatEntry,
   type PlanChatLog,
+  type PlanChatWait,
   type PlanRevision,
 } from '../contract/plan-chat';
 import { DocumentRepository } from './document.repository';
@@ -75,12 +76,34 @@ export class PlanChatStore {
       log.entries.some((entry) => entry.state === 'pending' && entryKeys.includes(entry.key))
         ? {
             ...log,
-            entries: log.entries.map((entry) =>
-              entry.state === 'pending' && entryKeys.includes(entry.key) ? { ...entry, state: 'taken' } : entry,
-            ),
+            entries: log.entries.map((entry) => {
+              if (entry.state !== 'pending' || !entryKeys.includes(entry.key)) return entry;
+              const { wait: _dropped, ...taken } = entry;
+              return { ...taken, state: 'taken' };
+            }),
           }
         : log,
     );
+  }
+
+  /**
+   * Sets the wait of the pending entries with these keys, or clears it with null. A wait already there keeps its
+   * `since`; a later outage replaces its message and next try. Nothing is written when nothing changes.
+   */
+  wait(key: string, entryKeys: readonly string[], wait: PlanChatWait | null): Promise<void> {
+    const marked = (entry: PlanChatEntry): boolean => entry.state === 'pending' && entryKeys.includes(entry.key);
+    const next = (entry: PlanChatEntry): PlanChatEntry => {
+      if (!marked(entry)) return entry;
+      if (!wait) {
+        const { wait: _cleared, ...rest } = entry;
+        return rest;
+      }
+      return { ...entry, wait: { ...wait, since: entry.wait?.since ?? wait.since } };
+    };
+    return this.change(key, (log) => {
+      const entries = log.entries.map(next);
+      return JSON.stringify(entries) === JSON.stringify(log.entries) ? log : { ...log, entries };
+    });
   }
 
   /** Runs after every earlier change of the same run, and ends before the returned promise does. */

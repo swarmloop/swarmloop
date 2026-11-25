@@ -80,4 +80,42 @@ describe('plan reply result', () => {
     expect(readResult(answer, block({ reply: 'It stands.' })).ok).toBe(false);
     expect(readResult(answer, block({ reply: 'It stands.', finding: 'maybe' })).ok).toBe(false);
   });
+
+  describe('acts', () => {
+    const shape = { split: false, subtask: false, answerOnly: true, acts: true };
+    const acting = planReplyFor(shape);
+
+    it('shows resume and replay after the answer-only fields, and in no other shape', () => {
+      expect(fields(shape)).toEqual(['reply', 'escalate', 'resume', 'replay']);
+      expect(fields({ split: false, subtask: false, answerOnly: true })).toEqual(['reply', 'escalate']);
+      expect(fields({ split: true, subtask: false })).not.toEqual(expect.arrayContaining(['resume', 'replay']));
+    });
+
+    it('reads a resume, and a replay with its step and instruction', () => {
+      const resume = readResult(acting, block({ reply: 'On it.', resume: true }));
+      expect(resume.ok && resume.value).toMatchObject({ resume: true });
+      const replay = readResult(
+        acting,
+        block({ reply: 'Again.', replay: { step: 'implement', instruction: 'Fix it.' } }),
+      );
+      expect(replay.ok && replay.value).toMatchObject({ replay: { step: 'implement', instruction: 'Fix it.' } });
+    });
+
+    it('refuses resume and replay together', () => {
+      const both = readResult(
+        acting,
+        block({ reply: 'x', resume: true, replay: { step: 'plan', instruction: 'Plan again.' } }),
+      );
+      expect(both.ok === false && both.errors).toEqual(['result: resume and replay cannot both be given']);
+    });
+
+    it('refuses a replay with no step, no instruction, a blank one, done or an unknown step', () => {
+      const replay = (value: unknown) => readResult(acting, block({ reply: 'x', replay: value })).ok;
+      expect(replay({ instruction: 'Fix it.' })).toBe(false);
+      expect(replay({ step: 'implement' })).toBe(false);
+      expect(replay({ step: 'implement', instruction: '  ' })).toBe(false);
+      expect(replay({ step: 'done', instruction: 'Fix it.' })).toBe(false);
+      expect(replay({ step: 'nowhere', instruction: 'Fix it.' })).toBe(false);
+    });
+  });
 });

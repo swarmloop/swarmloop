@@ -339,10 +339,8 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 **Today.**
 - Holds through `steps/plan/`, `steps/shared/plan-conversation.ts` (visits and turns ordered one at a time), `pipeline/subtask-planner-answer.ts`, `pipeline/backlog/planner/`, `pipeline/run-reopen.ts` and `pipeline/plan-chat-route.ts`.
 - Gaps:
-  - a planner's change can overwrite one it did not see (f130);
-  - person tools still bypass the planners (3.14, f129).
+  - a planner's change can overwrite one it did not see (f130).
 - A backlog planner turn hands heavy reading to the helpers of `AGENTS_BACKLOG_READ` (`pipeline/backlog/planner/turn-runner.ts`, `skills/backlog-plan/SKILL.md`); the turn stays read-only and its row counts the helpers' tokens and dollars. `AgentLauncher` asks for the code-only-by-helper rights with the helper on every launch that gets one, Claude Code's adapter denies the turn's agent its own Read and Glob of the code and Bash, and a settled task shows in the turn's brief as one line. Only Claude Code turns get a helper today (3.21).
-- For the backlog planner only the f129 gap differs from the target: it sends a person's commands on every run of its backlog and reads why a run stopped (3.14).
 
 ## 3.13 Questions to a person
 
@@ -352,7 +350,7 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 3. An answer is matched to its question, goes back down to the step that asked, and the step takes it in its next visit.
 4. A question the person has answered is never asked again.
 
-**Today.** About 25 files take part:
+**Today.** Since f129 a message and an answer take one route (`pipeline/plan-chat-route.ts`). About 25 files take part, and these question paths still have their own code:
 - starter answers and asks (`steps/shared/starter-*`);
 - research questions;
 - split questions;
@@ -361,11 +359,9 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 - question parts and holds;
 - the answers route.
 
-Two gaps remain:
-- a starter answer had no way to escalate; part-escalate, inside f124, adds it;
-- an escalation in a top-level run's message reply can be dropped; message-escalation closes it.
+A part's starter answer escalates on main (`starter-answer.ts`, `StarterExchange`). One gap remains: an escalation in a top-level run's message reply can be dropped; message-escalation closes it.
 
-f129 joins the rest into one path.
+They join in one path after M1 (one-question-path).
 
 ## 3.14 Commands and a person's actions
 
@@ -380,7 +376,8 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 **Today.**
 - The backlog planner sends Resume, Replay of a step with its instruction, Rebase, an answer, Stop, Skip and a message on every run of its backlog, an epic's parts included, through `PlannerRunCommands.send`, and reads a run's failed step, check output and failed CI jobs (`pipeline/backlog/planner/run-facts.ts`, cut in `event-facts.ts`).
 - There are 11 command types: `start`, `resume`, `replay`, `rebase`, `answer`, `plan-chat`, `stop`, `step`, `remove`, `skip` and `projects`.
-- `step` is used by the dashboard's `Run again` / `Retry` of a reviewer, until f129 takes that button off, and by `swarmloop step`.
+- `step` stays as the type through which the local CLI's `swarmloop step` records its run. A reviewer's `Run again` and its route are gone.
+- A run's planner answers a message in a turn of its own when no step drives the run (`pipeline/planner-own-turn.ts`). It sends Resume, which leaves the message for the resumed run, or Replay of a step with its instruction.
 
 ## 3.15 Waits, places and timers
 
@@ -404,8 +401,9 @@ Each one is a command with an idempotency key that names its event (rule 11) and
   - runtime and credential cooldowns;
   - agent places and check slots;
   - backlog turn waits and holds;
-  - child-run waits.
-- The reconciler has seven separate timed resumes: limits, host, CI not started, docker, disk, stalled and git auth.
+  - child-run waits;
+  - a stopped run's pending message in its plan chat, which waits for the model host (`wait` of the entry).
+- The reconciler has eight separate timed resumes: limits, host, CI not started, docker, disk, stalled, git auth and a stopped run's message turn.
 - An agent start that waits before its first output, for a free agent place (with how many are busy) or for the server's pause, stores that wait with its run's state (on its turn row for a backlog planner turn) through `steps/shared/start-waits.ts`, and the run page, the run list and the backlog chat show it. A place comes back when its launch ends, because the launch ends its container in every ending (`agent/agent-launch.ts`).
 - c04 closes this in M1; wait-frees-place and held-run-says-so come after.
 
@@ -553,5 +551,5 @@ The text is plain words for a person: no raw JSON and no internal ids. A cut tex
 2. **`blocked` goes.** A block becomes *waiting on a person* or *failed*. *Done* means merged, closed or skipped, and a run whose merge request is ready waits on its merge.
 3. **One merge rule and one merge path** for children into an epic and for tasks into `main` (rule 7).
 4. **A waiting run holds no place.** A run that waits on a person, a merge or a sibling frees its place, and takes one again when it goes on.
-5. **The IDE bridge goes**, and with it `chat`, `shell`, `rewind`, `step`, the snapshots and the CLI login flow. A person steers only through planners (rule 9).
+5. **The IDE bridge goes**, and with it `chat`, `shell`, `rewind`, the snapshots and the CLI login flow. A person steers only through planners (rule 9).
 6. **The backlog planner's turns go through the same door** as every other agent start (rule 2).

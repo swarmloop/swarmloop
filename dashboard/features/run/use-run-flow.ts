@@ -33,7 +33,6 @@ export function useRunFlow(runKey: string): {
   stopRun: () => Promise<void>;
   rebaseRun: () => Promise<void>;
   startReplay: (step: string, prompt: string, phases: PhaseName[], attachments?: string[]) => Promise<void>;
-  startReviewer: (step: string) => Promise<void>;
   resumeRun: () => void;
 } {
   const [flow, setFlow] = useState<FlowView | null>(null);

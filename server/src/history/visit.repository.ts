@@ -320,6 +320,24 @@ export class VisitRepository {
   /** Whether an agent ran in a finished (done or waiting) visit of this step: a visit with a stored exchange. */
   async hasAgentVisit(runId: number, step: string): Promise<boolean> {
     const stats = await this.stepStats.find({ where: { runId, step, status: In(['done', 'waiting']) } });
+    return this.hasExchange(stats);
+  }
+
+  /** Like `hasAgentVisit`, for the visits the step made itself: a start from outside the step (a planner's turn) does not count. */
+  async hasStepVisit(runId: number, step: string): Promise<boolean> {
+    const stats = await this.stepStats
+      .createQueryBuilder('stat')
+      .where('stat.runId = :runId AND stat.step = :step AND stat.status IN (:...status)', {
+        runId,
+        step,
+        status: ['done', 'waiting'],
+      })
+      .andWhere('stat.id NOT IN (SELECT stat_id FROM visit_starts WHERE outside = 1 AND stat_id IS NOT NULL)')
+      .getMany();
+    return this.hasExchange(stats);
+  }
+
+  private async hasExchange(stats: { id: number }[]): Promise<boolean> {
     if (stats.length === 0) {
       return false;
     }

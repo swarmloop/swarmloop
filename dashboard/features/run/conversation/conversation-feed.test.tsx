@@ -61,6 +61,26 @@ describe('ConversationFeed', () => {
     expect(within(articles[0]).queryByText('Pending')).toBeNull();
   });
 
+  it('says in plain words that a pending message waits for the model host, since when and until when', () => {
+    const waiting: PlanChatEntry = {
+      ...entry('message-3', 'person', 'Please plan it small', 'pending'),
+      wait: {
+        on: 'model-host',
+        since: '2026-11-15T07:12:00.000Z',
+        message: 'the model host did not answer',
+        retryAt: '2026-11-15T07:20:00.000Z',
+      },
+    };
+    feed(flowView({ conversation: conversation({ entries: [waiting] }) }), [waiting]);
+
+    const [article] = screen.getAllByRole('article');
+    const time = (iso: string) => new Intl.DateTimeFormat('en-GB', { timeStyle: 'short' }).format(new Date(iso));
+    expect(within(article).getByText('Pending')).toBeInTheDocument();
+    expect(article.textContent).toContain(
+      `The planner's reply waits for the model host since ${time(waiting.wait!.since)}: the model host did not answer. Next try at ${time(waiting.wait!.retryAt)}.`,
+    );
+  });
+
   it('streams the reply of the running plan visit, without its result block', async () => {
     vi.mocked(getStepEvents).mockResolvedValue({
       events: [

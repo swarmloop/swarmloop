@@ -57,7 +57,7 @@ export class PlannerRunCommands implements OnModuleInit {
         await this.commands.submit('stop', command.run, {}, options);
         return;
       case 'planChat':
-        await this.chat.send(command.run, command.message, owner, idempotencyKey);
+        await this.chat.sendToPlanner(command.run, command.message, owner, idempotencyKey);
         return;
       case 'passOn':
         await this.passOn.passOrRefuse(command.run, command.question, command.line);

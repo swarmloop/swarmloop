@@ -37,7 +37,7 @@ const findingAnswer = planReplyFor({ split: false, subtask: false, answerOnly: t
 /** An answer to a question about a reviewer's finding also decides the finding. */
 const answerOnly = (question: PlanChatEntry) => (question.about === 'finding' ? findingAnswer : plainAnswer);
 
-const hasReply = (value: unknown): string[] =>
+export const hasReply = (value: unknown): string[] =>
   (value as PlanReplyResult).reply.trim() ? [] : ['reply: give the answer'];
 
 /** The planner's answer to the step that asked, kept for the step to read once. */

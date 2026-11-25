@@ -49,6 +49,8 @@ export interface AgentLaunchRequest extends EffortFields {
   manifestHosts?: ManifestHosts;
   auto?: boolean;
   resume?: boolean;
+  /** The step whose session file the launch reads and writes, when it is not `step`'s: a one-off chat names one no step shares. */
+  session?: string;
   continuePrompt?: string | null;
   /** The full prompt for a fresh chat when `prompt` is a follow-up and the CLI no longer has the chat. */
   freshPrompt?: string;

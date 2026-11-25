@@ -1,6 +1,6 @@
 import { skillSection } from '../shared/skill-prompt';
 import type { Subtask } from '../../contract/subtask';
-import { planAnswersStep, planChatFollowUp, subtaskAsks } from './plan.prompts';
+import { planAnswersStep, planChatFollowUp, planChatTakes, subtaskAsks } from './plan.prompts';
 
 const answer = skillSection('plan', 'Answer a person');
 const section = skillSection('plan', 'Decide what you hold');
@@ -11,6 +11,13 @@ describe('the plan skill, Answer a person', () => {
     expect(answer).toContain('Decide as `Decide what you hold` says');
     expect(answer).toContain('escalate as `Escalate what you do not hold` says');
     expect(answer).toContain('never invent a product decision');
+  });
+
+  it('names only what its actions do and asks up the chain for the rest', () => {
+    const sentence =
+      'Your reply names only what your actions do. What you have no action for, such as bringing main into a tree or acting on a run that is not your own, you ask up the chain, and you never write it as done.';
+    expect(answer).toContain(sentence);
+    expect(planChatFollowUp([{ text: 'hi' }], 'RESULT')).toContain(sentence);
   });
 });
 
@@ -53,6 +60,16 @@ describe('the planner prompts that carry the rule', () => {
     expect(prompt).toContain(answer);
     expect(prompt).toContain(section);
     expect(prompt).toContain(escalation);
+  });
+
+  it("tells the planner of a run no step drives what it may do, with the person's words", () => {
+    const prompt = planChatTakes([{ text: ' first ' }, { text: 'second' }], 'RESULT');
+    for (const part of [answer, section, escalation, "The person's words:\nfirst\n\nsecond", 'RESULT'])
+      expect(prompt).toContain(part);
+    expect(prompt).toContain('No step runs now. You may only answer; or resume,');
+    expect(prompt).toContain('replay from a step with an instruction, which is the replay prompt');
+    expect(prompt).not.toContain('You plan one task of an epic');
+    expect(planChatTakes([{ text: 'hi' }], 'RESULT', true)).toContain('You plan one task of an epic');
   });
 
   it('gives a subtask question the decide rule and the escalate section, with and without the task list', () => {

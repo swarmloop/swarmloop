@@ -32,11 +32,10 @@ import { requiredDocument } from '../step';
 import { writeReviewDiff } from './review-diff';
 import { approvedPlan, foreignReviewOf, storedCheckout } from './review-input';
 import { closeReview, failed } from './review-report';
-import { othersOpen, reportDue, runRound } from './review-round';
+import { reportDue, runRound } from './review-round';
 import { settleAsked } from './review-ask';
 import { ReviewPlannerAnswers } from './review-planner-answers';
 import { ReviewSettle } from './review-settle';
-import { onlyReviewer } from './reviewer';
 import { prepareReview, type PrepareDeps } from './review-prepare';
 import { renderImplementation } from '../implement/implement-record';
 import { storedImpact } from '../shared/research-reads';
@@ -175,10 +174,6 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const env = this.config.env;
     const { key } = ctx.opened.run;
     try {
-      const only = onlyReviewer(ctx.options.reviewer);
-      if (only) {
-        this.openRounds?.open(key, { reviewers: [only], reportDue: false, reportStarted: false });
-      }
       if (ctx.options.path) {
         assertInsideWork(ctx.options.path, workRoots(this.config));
         ctx.opened.run.targetPath = realpathSync(ctx.options.path);
@@ -229,7 +224,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       onReportStart: () => this.openRounds?.reportStarted(key),
     };
     const prepared = await ctx.activity('Preparing', () => prepareReview(this.prepareDeps(), notes, ctx));
-    const { requirements, thirdParty, mounts, only, fresh, retry, exchanges, returned, diff, fingerprint } = prepared;
+    const { requirements, thirdParty, mounts, fresh, retry, exchanges, returned, diff, fingerprint } = prepared;
     const answered = await this.answers.settle(ctx, prepared);
     if ('closed' in answered) {
       return answered.closed;
@@ -237,7 +232,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     const { kept, pending, recovered } = answered;
     this.openRounds?.open(key, {
       reviewers: pending.map((item) => item.name),
-      reportDue: reportDue(only, kept, pending) && !(only !== undefined && othersOpen(only, kept)),
+      reportDue: reportDue(kept, pending),
       reportStarted: false,
     });
     const settled = await settleAsked(
@@ -248,7 +243,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     if (settled) {
       return settled;
     }
-    const calls = pending.length + (reportDue(only, kept, pending) ? 1 : 0);
+    const calls = pending.length + (reportDue(kept, pending) ? 1 : 0);
     if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
       return closeReview(
         ctx,
@@ -294,7 +289,6 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       kept,
       recovered,
       fingerprint,
-      only,
       mounts,
       requirements,
       notes,

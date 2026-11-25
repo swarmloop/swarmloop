@@ -45,7 +45,7 @@ describe('a person writes to the planner after implement started, on a run that 
   let blocks: MessageDuringImplement;
 
   async function start(scripts: Record<string, ScriptedAnswer[]>, split = false): Promise<void> {
-    blocks = new MessageDuringImplement({ plan: [firstPlan, ...(scripts.plan ?? [])] });
+    blocks = new MessageDuringImplement({ ...scripts, plan: [firstPlan, ...(scripts.plan ?? [])] });
     flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', implementCommits: true });
     flow.fastWaits();
     blocks.advance = () => flow.app.clock.advance(1000);
@@ -158,6 +158,7 @@ describe('a person writes to the planner after implement started, on a run that 
 
   it('takes the message of a failed run before the resumed step and resumes', async () => {
     await start({
+      'plan-turn': [block({ reply: 'Resuming.', resume: true })],
       plan: [block({ reply: 'Added.', summary: ['more'], plan: AMENDED, covers: [['R1'], ['R1'], ['R1']] })],
     });
     await flow.app.pipeline.runThrough(KEY, { auto: true });
@@ -169,6 +170,7 @@ describe('a person writes to the planner after implement started, on a run that 
     flow.app.clock.advance(1000);
 
     await flow.app.app.get(PlanChatService).send(KEY, 'Also keep the old rows', 'ana');
+    await flow.app.app.get(PlannerTurns).idle();
     await flow.app.pipeline.whenIdle(KEY);
 
     expect(blocks.steps.slice(before, before + 3)).toEqual(['plan', 'plan-improve', 'implement']);

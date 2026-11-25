@@ -17,7 +17,6 @@ import { limitRoute } from '../shared/limit-failover';
 import { stampGate } from '../shared/gate';
 import { textDocument } from '../shared/handoff';
 import { ARTIFACTS } from '../contract/artifacts';
-import { opinionSummary, othersOpenLine } from './code-review-round-result';
 import { askPerson, reviewAsks } from './review-ask';
 import type { PlanChatStore } from '../../history/plan-chat.store';
 import { waitForPlanner } from '../implement/implement-question';
@@ -25,7 +24,7 @@ import { isSubtask } from '../../contract/subtask';
 import { askedReviewer } from '../shared/reviewer-labels';
 import type { Exchange } from './review-exchange';
 import { closeReview, failed, noteHandoff, usageOf, writeReport } from './review-report';
-import { openOthers, othersOpen, routeReview, tallyRound } from './review-round';
+import { routeReview, tallyRound } from './review-round';
 import type { Finished, ReviewDeps } from './reviewer';
 import type { Opinion } from './code-review-record';
 import type { FlowRepository } from '../../history/flow.repository';
@@ -41,7 +40,6 @@ interface SettleInput {
   kept: Opinion[];
   recovered: DocumentDraft[];
   fingerprint: string;
-  only: string | undefined;
   mounts: SandboxMount[];
   requirements: string;
   notes: string | null;
@@ -91,7 +89,7 @@ export class ReviewSettle {
   ) {}
 
   async settle(input: SettleInput): Promise<PipelineResult> {
-    const { ctx, deps, env, finished, kept, recovered, fingerprint, only } = input;
+    const { ctx, deps, env, finished, kept, recovered, fingerprint } = input;
     const { mounts, requirements, notes, impact, list, exchanges, fresh, thirdParty } = input;
     const { opened, options } = ctx;
     const { key } = opened.run;
@@ -110,18 +108,6 @@ export class ReviewSettle {
     const questions = plannerQuestions(finished, toPlanner ? disagreed : []);
     if (this.chat && questions.length > 0) return this.waitForPlanner(this.chat, input, tally.stored, questions);
     const noted = await noteHandoff(this.documents, key, opinions, stored);
-    if (only && othersOpen(only, opinions)) {
-      const summary = opinionSummary(opinions);
-      const waiting = await closeReview(
-        ctx,
-        { to: 'wait', reason: 'other reviewers are open' },
-        `${opened.startedAt} ${othersOpenLine(openOthers(only, opinions))}\n${summary}`,
-        noted,
-        [],
-      );
-      await this.stamp(opened.run, stored, fingerprint);
-      return waiting;
-    }
     let written: Awaited<ReturnType<typeof writeReport>>;
     try {
       written = await writeReport(
