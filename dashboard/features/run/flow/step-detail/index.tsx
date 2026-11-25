@@ -6,10 +6,7 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
-import { interruptionSentence } from '@contract/interruption';
 import type { PlanRevision } from '@contract/plan-chat';
-import { restartWaitSentence } from '@contract/restart-wait';
-import { localTime } from '../../../../lib/format';
 import { useStep } from '../../use-step';
 import { issueLinks, problemSummary } from '../../transcript/transcript-model';
 import { slowestBeforeAttempt } from '../../transcript/prepared-wait';
@@ -20,6 +17,7 @@ import { shownStatus, stepText, visitChecks } from '../../step-view';
 import { useVisitLog } from '../../use-visit-log';
 import { StepDocuments } from './step-documents';
 import { StepHeader } from './step-header';
+import { StepNotice } from './step-notice';
 
 export function StepDetail({
   runKey,
@@ -36,6 +34,7 @@ export function StepDetail({
   liveCommands,
   restartedAt,
   planRevision,
+  returnWords,
 }: {
   runKey: string;
   step: string;
@@ -54,6 +53,8 @@ export function StepDetail({
   restartedAt?: string;
   /** For the plan step: the latest plan change, marked in the plan checklist. */
   planRevision?: PlanRevision | null;
+  /** Why this step sent work back, in words from the server. */
+  returnWords?: string;
 }): React.ReactElement | null {
   const { view, attempt, setAttempt, error, loading, retry, follow } = useStep(runKey, step, live, revision, attempts);
   const [check, setCheck] = useState<string | null>(null);
@@ -136,15 +137,11 @@ export function StepDetail({
             : null
         }
       />
-      {restartWait && restartedAt ? (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-          {restartWaitSentence(restartedAt, localTime)}
-        </Typography>
-      ) : visit?.interruption ? (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-          {interruptionSentence(visit.interruption, localTime)}
-        </Typography>
-      ) : null}
+      <StepNotice
+        returnWords={returnWords}
+        restartedAt={restartWait ? restartedAt : undefined}
+        interruption={visit?.interruption}
+      />
       {eventsError ? (
         <Typography color="error" sx={{ mt: 2 }}>
           {eventsError}

@@ -20,6 +20,12 @@ function dependentsOf(task: TaskEntry, tasks: TaskEntry[]): string[] {
   return tasks.filter((other) => other.depends.includes(task.id)).map((other) => other.title);
 }
 
+/** `4 tasks, all merged`, or how many are merged and skipped. */
+function tasksLine(total: number, merged: number, skipped: number): string {
+  const done = skipped === 0 && merged === total && total > 0 ? 'all merged' : `${merged} merged`;
+  return `${total} tasks, ${done}${skipped > 0 ? `, ${skipped} skipped` : ''}`;
+}
+
 /** The tasks of a split plan: the open ones in the shared task order, the merged and skipped ones folded into one line, then the merge queue and the decisions. `epic` is set once a task has started, with the parent's own cost in `ownUsd`. */
 export function TaskLayers({
   tasks: planned,
@@ -61,6 +67,7 @@ export function TaskLayers({
         { money, duration },
       )
     : null;
+  const summary = [tasksLine(tasks.length, merged, skipped), ...(figures ? [figures.tasksMoney] : [])].join(' · ');
   const row = (task: TaskEntry): ReactElement => (
     <TaskRow
       key={`${task.title} ${task.proof}`}
@@ -76,9 +83,21 @@ export function TaskLayers({
     <Box component="section" aria-label="Tasks" sx={{ my: 2, display: 'grid', gap: 1, minWidth: 0 }}>
       <Typography variant="subtitle2">Tasks</Typography>
       <Tooltip title={figures?.workedTip ?? ''}>
-        <Typography variant="body2">
-          {[`${tasks.length} tasks`, `${merged} merged`, ...(figures ? [figures.tasksMoney] : [])].join(' · ')}
-        </Typography>
+        <Box sx={{ justifySelf: 'start' }}>
+          {settled.length > 0 ? (
+            <Button
+              size="small"
+              color="inherit"
+              aria-expanded={settledOpen}
+              onClick={() => setSettledOpen(!settledOpen)}
+              sx={{ p: 0, minWidth: 0, textTransform: 'none', fontWeight: 400 }}
+            >
+              {summary}
+            </Button>
+          ) : (
+            <Typography variant="body2">{summary}</Typography>
+          )}
+        </Box>
       </Tooltip>
       <LinearProgress
         variant="determinate"
@@ -89,16 +108,9 @@ export function TaskLayers({
       <Box component="ul" sx={{ m: 0, p: 0, display: 'grid', gap: 0.5 }}>
         {open.map(row)}
       </Box>
-      {settled.length > 0 ? (
-        <Box>
-          <Button size="small" aria-expanded={settledOpen} onClick={() => setSettledOpen(!settledOpen)}>
-            {`✓ ${merged} merged${skipped > 0 ? ` · ${skipped} skipped` : ''}`}
-          </Button>
-          {settledOpen ? (
-            <Box component="ul" sx={{ m: 0, p: 0, display: 'grid', gap: 0.5 }}>
-              {settled.map(row)}
-            </Box>
-          ) : null}
+      {settledOpen ? (
+        <Box component="ul" sx={{ m: 0, p: 0, display: 'grid', gap: 0.5 }}>
+          {settled.map(row)}
         </Box>
       ) : null}
       {mergeQueue?.length ? (

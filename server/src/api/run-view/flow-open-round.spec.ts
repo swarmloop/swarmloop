@@ -53,14 +53,14 @@ describe('chips of an open code-review round', () => {
     const chips = board(only, { 'code-review-requirements': 'starting\n' }, stored);
     expect(shown(chips, 'code-review-requirements')).toEqual(['running', true]);
     expect(shown(chips, 'code-review-quality')).toEqual(['done', false]);
-    expect(shown(chips, 'code-review-regressions')).toEqual(['returned', false]);
+    expect(shown(chips, 'code-review-regressions')).toEqual(['done', false]);
     expect(shown(chips, 'code-review-security')).toEqual(['done', false]);
     expect(shown(chips, 'code-review-performance')).toEqual(['done', false]);
   });
 
   it('shows the stored status of the report when the round does not write it', () => {
     expect(shown(board(only, { 'code-review-requirements': 'starting\n' }, stored), 'code-review')).toEqual([
-      'returned',
+      'done',
       false,
     ]);
   });
@@ -73,7 +73,7 @@ describe('chips of an open code-review round', () => {
     };
     const chips = board(round, { 'code-review-quality': 'starting\n' }, { security: 'ok', performance: 'return' });
     expect(shown(chips, 'code-review-security')).toEqual(['done', false]);
-    expect(shown(chips, 'code-review-performance')).toEqual(['returned', false]);
+    expect(shown(chips, 'code-review-performance')).toEqual(['done', false]);
     for (const name of ['requirements', 'quality', 'regressions']) {
       expect(shown(chips, `code-review-${name}`)).toEqual(['running', true]);
     }

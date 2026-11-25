@@ -174,12 +174,12 @@ export class RunQueriesService {
       ),
       phases: withRestartWait(
         withPlaceChips(
-          phases(shown, stats, documents, root(this.config), loops, this.openRounds?.of(run.key)),
+          phases(shown, stats, documents, root(this.config), loops, this.openRounds?.of(run.key), checkCommands),
           this.gate.agentWait(run.key),
         ),
         run,
       ),
-      returns: returns(shown, loops),
+      returns: returns(shown, loops, checkCommands),
       ...(checkCommands.length > 0 ? { checkCommands } : {}),
       items: open,
       paths: run.currentStep === 'commit' ? parsePaths(latest(documents, 'commit') ?? '') : [],

@@ -122,7 +122,7 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    await userEvent.setup({ delay: null }).click(within(region).getByRole('button', { name: /^✓ 1 merged/ }));
+    await userEvent.setup({ delay: null }).click(within(region).getByRole('button', { name: /^\d+ tasks, .*merged/ }));
     expect(region).toHaveTextContent('Add the column');
     expect(region).not.toHaveTextContent('b.spec.ts');
     expect(within(region).getAllByRole('button', { name: 'Plan' })).toHaveLength(2);
@@ -161,8 +161,8 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('3 tasks · 1 merged');
-    expect(region).toHaveTextContent('✓ 1 merged');
+    expect(region).toHaveTextContent('3 tasks, 1 merged');
+    expect(region).not.toHaveTextContent('✓');
     expect(region).toHaveTextContent('Show it');
     expect(region).toHaveTextContent('waiting for b');
     expect(within(region).getAllByRole('button', { name: 'Skip task' })).toHaveLength(1);
@@ -221,7 +221,7 @@ describe('RunScreen', () => {
     render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
 
     const region = await screen.findByRole('region', { name: 'Tasks' });
-    expect(region).toHaveTextContent('1 tasks · 0 merged');
+    expect(region).toHaveTextContent('1 tasks, 0 merged');
     expect(region).toHaveTextContent('Working · implement');
     expect(within(region).getByRole('region', { name: 'Merge queue' })).toBeInTheDocument();
     expect(within(region).getByRole('region', { name: 'Decisions' })).toBeInTheDocument();
