@@ -2,14 +2,18 @@ import type { Subtask } from '../../contract/subtask';
 import { starterAnswerWithoutEscalate } from '../../agent-result/definitions/starter-answer';
 import { resultPromptFor } from '../../agent-result/result-prompt';
 import { STARTER_ACTIONS, taskLines } from '../plan/plan.prompts';
+import { skillSection } from '../shared/skill-prompt';
 
-/** What the parent planner is asked when a task merged: the usual answer is that nothing changes. */
-const LOOK_RULES = [
-  'A task of this run merged. Look at what landed against the plan. No change is the usual answer.',
-  'Change a task that has not started only when what landed makes it wrong, missing or unnecessary, and say why in its reason. Never change a started or merged task: tell those what they must know in `decision`.',
-  'Do not use `waitFor`: the merged task waits for nothing.',
-  'Give `decision` as one short line: what the tasks that started must know, or that nothing changes.',
-].join('\n');
+/** What the parent planner is asked when a task merged: the core's look after a merge, and the epic's own answer lines. */
+function lookRules(): string {
+  return [
+    'A task of this run merged. Look at what landed against the plan.',
+    skillSection('plan', 'The look after a merge'),
+    'Tell a started or merged task what it must know in `decision`.',
+    'Do not use `waitFor`: the merged task waits for nothing.',
+    'Give `decision` as one short line: what the tasks that started must know, or that nothing changes.',
+  ].join('\n');
+}
 
 /** What the planner is told of a merged task: its summary, and the marks the server made where it differs from its plan. */
 interface MergedTask {
@@ -41,7 +45,7 @@ export function mergeLookPrompt(
     'The tasks that have not started:',
     notStarted.length > 0 ? taskLines(notStarted) : '(none)',
     '',
-    LOOK_RULES,
+    lookRules(),
     '',
     STARTER_ACTIONS,
     '',

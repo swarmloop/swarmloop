@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { checksStillRed, implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
 import { NEAR_TESTS_MARK, NEAR_TESTS_RULE } from './near-tests-rule';
-import { skillPrompt, skillText } from './skill-prompt';
+import { PLANNER_CORE_MARK, plannerCore } from './planner-core';
+import { skillPrompt, skillSection, skillText } from './skill-prompt';
 
 const skill = (name: string): string => readFileSync(join(__dirname, '../../../../skills', name, 'SKILL.md'), 'utf8');
 
@@ -296,6 +297,21 @@ describe('skillText', () => {
 
   it('swaps the near-tests mark for the rule', () => {
     expect(skillText(['a', NEAR_TESTS_MARK, 'b'].join('\n'), true)).toBe(['a', NEAR_TESTS_RULE, 'b'].join('\n'));
+  });
+
+  it('swaps the planner core mark for the core text', () => {
+    expect(skillText(['a', PLANNER_CORE_MARK, 'b'].join('\n'), true)).toBe(['a', plannerCore(), 'b'].join('\n'));
+  });
+
+  it('reads a part of the core by its heading through skillSection', () => {
+    const part = skillSection('plan', 'Pass up what you do not hold');
+    expect(part).not.toBe('');
+    expect(plannerCore()).toContain(part);
+  });
+
+  it('gives the core to a reader of the backlog skill and to no reader of the implement skill', () => {
+    expect(skillPrompt('backlog-plan', '{}', ['api'])).toContain(plannerCore());
+    expect(skillPrompt('implement', '{}', ['api'])).not.toContain(plannerCore());
   });
 
   it('leaves a text without markers as it is', () => {
