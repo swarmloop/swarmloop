@@ -15,6 +15,10 @@ export class PersonEntity {
   /** When `SWARMLOOP_TOKEN` was made this person's token; it is imported once, so a revoke lasts. */
   @Column({ name: 'env_token_imported_at', type: 'text', nullable: true })
   envTokenImportedAt!: string | null;
+
+  /** The photo the sign-in provider gave at the latest login. */
+  @Column({ name: 'avatar_url', type: 'text', nullable: true })
+  avatarUrl!: string | null;
 }
 
 /** A personal API token. Only the sha256 of the value is stored. */

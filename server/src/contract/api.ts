@@ -7,6 +7,7 @@ import type { SubtaskStatus } from './subtask';
 import type { RunBacklog } from './backlog';
 import type { Role } from './people';
 import type { ConversationView } from './plan-chat';
+import type { RelaunchView } from './relaunch';
 
 export type { SettingsBody, StoredAgents } from './settings';
 export type {
@@ -185,7 +186,19 @@ export interface FlowView {
       restartedAt?: string;
     }[];
   }[];
-  returns: { counter: string; count: number; from: string; to: 'implement'; why?: string }[];
+  returns: {
+    counter: string;
+    count: number;
+    from: string;
+    to: 'implement';
+    why?: string;
+    /** The time of the latest loop event of this counter, as an ISO time. */
+    at?: string;
+    /** The return in plain words, such as `Code review sent it back: requirements, quality`. */
+    words?: string;
+  }[];
+  /** Relaunches after a rebase, oldest first. */
+  relaunches?: RelaunchView[];
   /** The commands of the latest checks attempt. Missing when the run has none. */
   checkCommands?: CheckCommandView[];
   items: FlowItem[];
@@ -280,6 +293,8 @@ export interface StepView {
 }
 
 export interface HistoryView {
+  /** Relaunches after a rebase, oldest first. */
+  relaunches?: RelaunchView[];
   launches: LaunchView[];
   documents: { kind: string; attempt: number; body: string; createdAt: string }[];
   files: { name: string; path: string; body: string | null }[];
@@ -410,4 +425,6 @@ export interface MeView {
   /** Source repository URL of the server image; null when it is not an http(s) address. */
   sourceUrl?: string | null;
   role?: Role;
+  /** The first 7 characters of the commit the image was built from; absent when it is unknown. */
+  revision?: string;
 }

@@ -230,6 +230,10 @@ export class FlowEntity {
   @Column({ name: 'from_step', type: 'text', nullable: true })
   fromStep!: string | null;
 
+  /** `rebase` marks a relaunch after a rebase. */
+  @Column({ type: 'text', nullable: true })
+  cause!: string | null;
+
   @Column({ name: 'created_at' })
   createdAt!: string;
 }
