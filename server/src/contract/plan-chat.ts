@@ -3,6 +3,17 @@ import type { AttachmentRef } from './attachments';
 /** The kind of the document that holds the plan chat. */
 export const PLAN_CHAT_KIND = 'plan_chat';
 
+/** What a person's pending message waits for: the model host did not answer the planner's reply. */
+export interface PlanChatWait {
+  on: 'model-host';
+  /** ISO time the first outage of this wait began. */
+  since: string;
+  /** The host's words. */
+  message: string;
+  /** ISO time of the next try. */
+  retryAt: string;
+}
+
 /** One message of the plan chat: a person's text, or the planner's reply. */
 export interface PlanChatEntry {
   /** Names the event that made it (`message-<command id>`), so a replayed command writes it once. */
@@ -19,6 +30,8 @@ export interface PlanChatEntry {
   version?: number;
   /** The files sent with the message. */
   attachments?: AttachmentRef[];
+  /** What a pending person's message waits for, while the planner's reply waits for the model host. Gone once it is taken. */
+  wait?: PlanChatWait;
   /**
    * `question` is a step's question to the planner; `answer` is the planner's answer to it; `escalation` is what the
    * planner could not settle and left to whoever started the run; `info` tells the parent's chat that a person

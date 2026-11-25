@@ -44,7 +44,7 @@ export function pipelineStepOf(value: string): string {
   return isReviewStep(value) ? 'code-review' : value;
 }
 
-export function reviewerOf(value: string): string | undefined {
+function reviewerOf(value: string): string | undefined {
   return isReviewStep(value) ? value.slice('code-review-'.length) : undefined;
 }
 

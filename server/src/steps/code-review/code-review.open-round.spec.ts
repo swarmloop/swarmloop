@@ -7,9 +7,7 @@ import { StepStopped } from '../../agent/step-stopped';
 import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { RunRepository } from '../../history/run.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
-import { SandboxService } from '../../sandbox/sandbox.service';
 import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
-import { putStamped } from '../shared/gate.spec-helpers';
 import { OpenReviewRounds, type OpenReviewRound } from '../shared/open-review-rounds';
 import { answerFor, boot, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
@@ -48,19 +46,6 @@ describe('open round of the code-review visit', () => {
     await seed(app, key);
   }
 
-  it('holds only the reviewer of a Run again, with no report due while another reviewer is open', async () => {
-    await start('OPEN-1');
-    const run = await app.get(RunRepository).findRun('OPEN-1');
-    for (const name of ['requirements', 'security', 'performance']) {
-      await putStamped(app, run!, `review_${name}`, 'notes\ndecision: ok\n', ['billing-api']);
-    }
-    await putStamped(app, run!, 'review_regressions', 'notes\ndecision: return\n', ['billing-api']);
-    await app.get(PipelineService).step('code-review', 'OPEN-1', { reviewer: 'quality' });
-    expect(seen.map((item) => item.step)).toEqual(['code-review-quality']);
-    expect(seen[0]?.round).toEqual({ reviewers: ['quality'], reportDue: false, reportStarted: false });
-    expect(rounds().of('OPEN-1')).toBeUndefined();
-  });
-
   it('holds all five reviewers and a due report, and marks the report started when its agent launches', async () => {
     await start('OPEN-2');
     await app.get(PipelineService).step('code-review', 'OPEN-2');
@@ -75,9 +60,9 @@ describe('open round of the code-review visit', () => {
   });
 
   describe('clears the round whatever the end', () => {
-    async function ended(key: string, options?: { reviewer: string }): Promise<void> {
+    async function ended(key: string): Promise<void> {
       await start(key);
-      await app.get(PipelineService).step('code-review', key, options);
+      await app.get(PipelineService).step('code-review', key);
       expect(seen.length).toBeGreaterThan(0);
       expect(seen[0]?.round).toBeDefined();
       expect(rounds().of(key)).toBeUndefined();
@@ -100,12 +85,12 @@ describe('open round of the code-review visit', () => {
     it('on a stop', async () => {
       await start('OPEN-5');
       let setDuring: OpenReviewRound | undefined;
-      jest.spyOn(app.get(SandboxService), 'assertReady').mockImplementationOnce(async () => {
+      current = async () => {
         setDuring = rounds().of('OPEN-5');
         throw new StepStopped();
-      });
-      await app.get(PipelineService).step('code-review', 'OPEN-5', { reviewer: 'quality' });
-      expect(setDuring?.reviewers).toEqual(['quality']);
+      };
+      await app.get(PipelineService).step('code-review', 'OPEN-5');
+      expect(setDuring?.reviewers).toEqual(['requirements', 'quality', 'regressions', 'security', 'performance']);
       expect((await app.get(RunRepository).findRun('OPEN-5'))?.status).toBe('blocked');
       expect(rounds().of('OPEN-5')).toBeUndefined();
     });
@@ -113,12 +98,12 @@ describe('open round of the code-review visit', () => {
     it('on a crash after the round was set', async () => {
       await start('OPEN-6');
       let setDuring: OpenReviewRound | undefined;
-      jest.spyOn(app.get(SandboxService), 'assertReady').mockImplementationOnce(async () => {
+      current = async () => {
         setDuring = rounds().of('OPEN-6');
         throw new Error('docker is gone');
-      });
-      await app.get(PipelineService).step('code-review', 'OPEN-6', { reviewer: 'quality' });
-      expect(setDuring?.reviewers).toEqual(['quality']);
+      };
+      await app.get(PipelineService).step('code-review', 'OPEN-6');
+      expect(setDuring?.reviewers).toEqual(['requirements', 'quality', 'regressions', 'security', 'performance']);
       expect(rounds().of('OPEN-6')).toBeUndefined();
     });
   });

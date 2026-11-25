@@ -21,11 +21,6 @@ export interface CreateRunBody extends CommandInput {
   attachments?: string[];
 }
 
-export interface StartStepBody extends CommandInput {
-  prompt?: string;
-  path?: string;
-}
-
 export interface ReplayBody extends CommandInput {
   prompt?: string;
   phases?: string[];

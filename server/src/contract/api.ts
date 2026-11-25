@@ -24,7 +24,6 @@ export type {
   TicketKeysBody,
   TicketKeysView,
   CreateRunBody,
-  StartStepBody,
   ReplayBody,
   ResumeBody,
   AnswersBody,

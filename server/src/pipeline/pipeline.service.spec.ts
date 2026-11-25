@@ -8,6 +8,7 @@ import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { writeEnvOverrides } from '../testing/env.spec-helpers';
 import { RunRepository } from '../history/run.repository';
+import { writeRunState } from '../history/run-state';
 import { DocumentRepository } from '../history/document.repository';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -20,6 +21,8 @@ import { renderMergeRequest } from '../steps/merge-request/merge-request-record'
 import { PipelineModule } from './pipeline.module';
 import { CommandService } from './command.service';
 import { PipelineService } from './pipeline.service';
+import { PlannerOwnTurn } from './planner-own-turn';
+import { PlannerTurns } from './planner-turns';
 
 describe('pipeline service', () => {
   it('continues Resume requested by the shared automatic rebase action without starting a second runner', async () => {
@@ -90,6 +93,26 @@ describe('pipeline service', () => {
       const body = await documents.latestBody('PROJ-62', 'requirements');
       expect((JSON.parse(body ?? '{}') as { plan: { decision: string } }).plan.decision).toBe('revise');
       await settle(pipeline, 'PROJ-62');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('gives startDetached the starter of a replay, and none when nobody is named', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-replay-start-'));
+    const app = await boot(root);
+    try {
+      const pipeline = app.get(PipelineService);
+      const runs = app.get(RunRepository);
+      const seeded = await runs.begin('PROJ-67', 'prepare');
+      seeded.status = 'waiting';
+      seeded.currentStep = 'prepare';
+      await runs.saveRun(seeded);
+      const start = jest.spyOn(pipeline, 'startDetached').mockResolvedValue({ exitCode: 0, message: 'started' });
+      await pipeline.replay('PROJ-67', 'prepare', 'Narrow the scope', { by: 'planner', level: 0 });
+      expect(start.mock.calls[0]?.[1]).toMatchObject({ startBy: 'planner', level: 0 });
+      await pipeline.replay('PROJ-67', 'prepare', 'Narrow the scope');
+      expect(start.mock.calls[1]?.[1]).not.toHaveProperty('startBy');
     } finally {
       await app.close();
     }
@@ -222,6 +245,47 @@ describe('pipeline service', () => {
       expect(logged).not.toContain('user:pass');
     } finally {
       error.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('takes the messages of a run that is not done in the planner own turn, and a done run in the plan step', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-take-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const waiting = await runs.begin('PROJ-81', 'implement');
+      writeRunState(waiting, { status: 'waiting', currentStep: 'implement' });
+      await runs.saveRun(waiting);
+      const done = await runs.begin('PROJ-82', 'done');
+      writeRunState(done, { status: 'done', currentStep: 'done' });
+      await runs.saveRun(done);
+      const own = jest.spyOn(app.get(PlannerOwnTurn), 'take').mockResolvedValue();
+      const planTurn = jest.spyOn(app.get(PlannerTurns), 'take').mockResolvedValue('none');
+      const pipeline = app.get(PipelineService);
+      pipeline.takeMessages('PROJ-81');
+      pipeline.takeMessages('PROJ-82');
+      await app.get(PlannerTurns).idle();
+      expect(own.mock.calls.map(([key]) => key)).toEqual(['PROJ-81']);
+      expect(planTurn.mock.calls.map(([key]) => key)).toEqual(['PROJ-82']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('passes the outage key of a message turn to the take', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-outage-'));
+    const app = await boot(root);
+    try {
+      const runs = app.get(RunRepository);
+      const waiting = await runs.begin('PROJ-83', 'implement');
+      writeRunState(waiting, { status: 'waiting', currentStep: 'implement' });
+      await runs.saveRun(waiting);
+      const own = jest.spyOn(app.get(PlannerOwnTurn), 'take').mockResolvedValue();
+      app.get(PipelineService).takeMessages('PROJ-83', 'host-message-1-2026-01-01T00:08:00.000Z');
+      await app.get(PlannerTurns).idle();
+      expect(own).toHaveBeenCalledWith('PROJ-83', expect.any(Function), 'host-message-1-2026-01-01T00:08:00.000Z');
+    } finally {
       await app.close();
     }
   });

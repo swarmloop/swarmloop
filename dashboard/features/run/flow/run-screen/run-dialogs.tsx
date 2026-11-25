@@ -4,10 +4,9 @@ import type { ReactElement } from 'react';
 import type { PhaseName } from '@contract/steps';
 import type { FlowView } from '@contract/api';
 import { ConfirmDialog } from '../../../shell';
-import { stepLabel } from '../../phases';
-import { replayBody, reviewerBody, stopAndStartBody, stopBody } from './confirm-texts';
+import { replayBody, stopAndStartBody, stopBody } from './confirm-texts';
 
-/** The confirms of Stop, Replay and Run again of a reviewer. Replay asks after its instructions form; it is Stop and start when another step is running. */
+/** The confirms of Stop and Replay. Replay asks after its instructions form; it is Stop and start when another step is running. */
 export function RunDialogs({
   flow,
   confirmStop,
@@ -18,9 +17,6 @@ export function RunDialogs({
   runningElsewhere,
   stopRun,
   startReplay,
-  reviewer,
-  setReviewer,
-  startReviewer,
 }: {
   flow: FlowView;
   confirmStop: boolean;
@@ -31,10 +27,6 @@ export function RunDialogs({
   runningElsewhere: boolean;
   stopRun: () => Promise<void>;
   startReplay: (step: string, prompt: string, phases: PhaseName[], attachments?: string[]) => Promise<void>;
-  /** The reviewer step whose Run again waits for a confirm. */
-  reviewer: string | null;
-  setReviewer: (step: string | null) => void;
-  startReviewer: (step: string) => Promise<void>;
 }): ReactElement {
   return (
     <>
@@ -59,15 +51,6 @@ export function RunDialogs({
             : Promise.resolve()
         }
         onClose={() => setPending(null)}
-      />
-      <ConfirmDialog
-        open={reviewer !== null}
-        title={`Run ${stepLabel(reviewer ?? '')} again?`}
-        body={reviewerBody(reviewer ?? '')}
-        verb="Run again"
-        tone="danger"
-        onConfirm={() => (reviewer ? startReviewer(reviewer) : Promise.resolve())}
-        onClose={() => setReviewer(null)}
       />
     </>
   );

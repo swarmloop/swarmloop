@@ -24,7 +24,6 @@ import {
   ResumeBody,
   SkipTaskBody,
   RunRef,
-  StartStepBody,
   StepView,
   TicketKeysBody,
   TicketKeysView,
@@ -35,7 +34,7 @@ import type { CommandInput, CommandReceipt } from '../contract/command';
 import type { StepEventPage } from '../contract/step-events';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { CommandService } from '../pipeline/command.service';
-import type { ReplayPayload, StepPayload } from './command-handlers';
+import type { ReplayPayload } from './command-handlers';
 import { dispatchCommand } from './run-command-dispatch';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
@@ -141,23 +140,6 @@ export class RunsController {
       expectedRevision: body.expectedRevision,
       actor,
     });
-  }
-
-  @Post('runs/:key/steps/:step')
-  async startStep(
-    @Param('key') key: string,
-    @Param('step') step: string,
-    @Body() body: StartStepBody,
-    @Res({ passthrough: true }) response: { status(code: number): void },
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ): Promise<RunRef & CommandReceipt> {
-    const { expectedRevision, ...rest } = body ?? {};
-    const payload: StepPayload = { step, body: rest };
-    const result = await dispatchCommand<RunRef>(this.commands, 'step', key, payload, idempotencyKey, {
-      expectedRevision,
-    });
-    response.status(httpStatus(result));
-    return result;
   }
 
   @Post('runs/:key/steps/:step/replay')

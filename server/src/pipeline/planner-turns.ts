@@ -121,7 +121,7 @@ export class PlannerTurns implements OnModuleDestroy {
       const deps = { chat: this.chat, conversation: this.conversation, clock: this.clock };
       const outcome = await askPlanner(deps, run, question);
       if (outcome.kind === 'answered') declined.delete(question.key);
-      else if (outcome.kind === 'escalated') await this.escalate(this.documents, run, outcome.escalation);
+      else if (outcome.kind === 'escalated') await this.escalate(run, outcome.escalation);
       else this.logger.warn(`${key}: the planner did not answer the question of ${question.from ?? 'a step'}`);
       return outcome.kind === 'answered';
     } finally {
@@ -133,7 +133,7 @@ export class PlannerTurns implements OnModuleDestroy {
    * The question goes to the person: it waits in the run's questions, and the run waits for the answer without the step.
    * A subtask never asks a person: the entry stays pending for the planner of its parent, which asks whoever started the run.
    */
-  private async escalate(documents: DocumentRepository, run: RunEntity, escalation: PlanChatEntry): Promise<void> {
+  async escalate(run: RunEntity, escalation: PlanChatEntry): Promise<void> {
     if (isSubtask(run)) {
       const message = asksParentReason(escalation.from ?? 'a step');
       const waiting = await this.runs?.findRun(run.key);
@@ -141,7 +141,7 @@ export class PlannerTurns implements OnModuleDestroy {
         await this.runs?.release(waiting, { status: 'waiting', reason: { code: REASON.asksPlanner, message } });
       return;
     }
-    await escalateToPerson(documents, run, escalation);
+    if (this.documents) await escalateToPerson(this.documents, run, escalation);
     if (this.runs) await releaseAsked(this.runs, this.holds, run.key);
   }
 

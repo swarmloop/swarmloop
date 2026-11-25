@@ -13,7 +13,6 @@ export function StepWindow({
   restartedAt,
   now,
   planRevision,
-  onReviewer,
   onReplay,
   onResume,
 }: {
@@ -23,8 +22,6 @@ export function StepWindow({
   restartedAt?: string;
   now: number;
   planRevision?: PlanRevision | null;
-  /** Opens the reviewer's replay choice. */
-  onReviewer: (step: string) => void;
   onReplay: (step: string) => void;
   onResume: () => void;
 }): ReactElement {
@@ -42,11 +39,12 @@ export function StepWindow({
       now={now}
       liveCommands={flow.checkCommands}
       onReplay={
-        step === 'code-review' || flow.status === 'running' || !flow.actions.includes('replay')
+        step === 'code-review' ||
+        REVIEW_STEPS.includes(step) ||
+        flow.status === 'running' ||
+        !flow.actions.includes('replay')
           ? undefined
-          : REVIEW_STEPS.includes(step)
-            ? () => onReviewer(step)
-            : () => onReplay(pipelineStepOf(step))
+          : () => onReplay(pipelineStepOf(step))
       }
       runStatus={current ? flow.status : undefined}
       onResume={

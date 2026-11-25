@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Optional } from '@nestjs/common';
 import { Clock } from '../core/clock';
 import type { CommandReceipt } from '../contract/command';
 import type { FlowView } from '../contract/api';
@@ -10,8 +10,7 @@ import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { PlannerTurns } from '../pipeline/planner-turns';
-import { messageTurn, startsRun } from '../pipeline/plan-chat-route';
-import { RunCommandsService } from './run-commands.service';
+import { messageTurn, waitingItems } from '../pipeline/plan-chat-route';
 import { requireRun, RunQueriesService } from './run-queries.service';
 
 /** What a message of a person is stored as: its text, the login that sent it and the files it came with. */
@@ -33,16 +32,34 @@ export class PlanChatService {
     private readonly files: AttachmentStore,
     private readonly clock: Clock,
     @Optional() private readonly pipeline?: PipelineService,
-    @Optional() private readonly runCommands?: RunCommandsService,
   ) {}
 
-  private readonly logger = new Logger(PlanChatService.name);
-
-  /** Checks the message against the run, then sends it as the command for its place. */
+  /** Checks the message against the run, then sends it as the command for its place: the answer while a question waits. */
   async send(
     key: string,
     message: string | undefined,
     author: string | null,
+    idempotencyKey?: string,
+    attachments?: string[],
+  ): Promise<FlowView & CommandReceipt> {
+    return this.route(key, message, author, true, idempotencyKey, attachments);
+  }
+
+  /** A message for the run's planner, whatever the run's open items: it is never the answer to a question. */
+  async sendToPlanner(
+    key: string,
+    message: string | undefined,
+    author: string | null,
+    idempotencyKey?: string,
+  ): Promise<FlowView & CommandReceipt> {
+    return this.route(key, message, author, false, idempotencyKey);
+  }
+
+  private async route(
+    key: string,
+    message: string | undefined,
+    author: string | null,
+    mayAnswer: boolean,
     idempotencyKey?: string,
     attachments?: string[],
   ): Promise<FlowView & CommandReceipt> {
@@ -52,9 +69,13 @@ export class PlanChatService {
     }
     const run = await requireRun(this.runs, key);
     const view = await this.queries.flow(key);
-    const turn = messageTurn(run, { state: view.state, parentKey: view.parentKey, openItems: view.items.length });
+    const turn = messageTurn(run, {
+      state: view.state,
+      parentKey: view.parentKey,
+      openItems: waitingItems(view.items),
+    });
     if (turn === 'to-parent' && view.parentKey) {
-      return this.send(view.parentKey, `About ${run.taskId}: ${text}`, author, idempotencyKey, attachments);
+      return this.route(view.parentKey, `About ${run.taskId}: ${text}`, author, mayAnswer, idempotencyKey, attachments);
     }
     if (turn === 'follow-up' || turn === 'to-parent') {
       const ended = view.state === 'merged' || view.state === 'closed' ? view.state : 'removed';
@@ -67,7 +88,7 @@ export class PlanChatService {
       ...(refs.length > 0 ? { attachments: refs } : {}),
     };
     const options = { idempotencyKey: idempotencyKey?.trim() || undefined, actor: author };
-    if (turn === 'answer') {
+    if (turn === 'answer' && mayAnswer) {
       const sent = await this.commands.submit<FlowView>('answer', key, payload, options);
       await this.store.appendEntry(key, this.entry(sent.receipt.commandId, payload, 'taken'));
       return { ...sent.value, ...sent.receipt };
@@ -76,37 +97,19 @@ export class PlanChatService {
     return { ...sent.value, ...sent.receipt };
   }
 
-  /** The `plan-chat` command: stores the message as pending and offers it to the planner's turns. */
+  /**
+   * The `plan-chat` command: stores the message as pending and offers it to the planner's turns. When no driver holds
+   * the run and it is not running, the message is taken now, in a turn of its own; otherwise it waits for the driver's
+   * next hop or the plan step.
+   */
   async record(key: string, payload: Record<string, unknown>, commandId: string): Promise<FlowView> {
     const entry = this.entry(commandId, payload as MessagePayload, 'pending');
     await this.store.appendEntry(key, entry);
     this.turns.offer(key, { id: entry.key, at: entry.at, text: entry.text });
     const view = await this.queries.flow(key);
     const run = await this.runs.findRun(key);
-    const turn =
-      run && messageTurn(run, { state: view.state, parentKey: view.parentKey, openItems: view.items.length });
-    if (turn && startsRun(turn, view.state)) {
-      await this.reopen(key, view.state);
-    }
+    if (run && !this.runs.held(run) && view.state !== 'running') this.pipeline?.takeMessages(key);
     return view;
-  }
-
-  /**
-   * A done run takes the message in a pass of its own. A stopped, failed or blocked run does what Resume does, and the
-   * driver takes the message before the resumed step. When Resume is refused the message stays pending and the run as it is.
-   */
-  private async reopen(key: string, state: string): Promise<void> {
-    if (state === 'done') {
-      this.pipeline?.amendDone(key);
-      return;
-    }
-    try {
-      await this.runCommands?.resume(key);
-    } catch (error) {
-      this.logger.warn(
-        `${key}: Resume was refused, the message waits: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
   }
 
   private entry(commandId: string, payload: MessagePayload, state: PlanChatEntry['state']): PlanChatEntry {

@@ -11,16 +11,15 @@ import type { PlannerRunCommand } from './planner-run-port';
 /** The planner's line above a question its turn left. */
 const LEFT_LINE = "The planner's turn ended without answering this question, so it goes to you.";
 
-/** True when the command answered, passed on or wrote about this question: one that names other questions does not. */
+/** True when the command answered or passed on this question: one that names other questions does not, and a message to the run is not an answer. */
 function handles(command: PlannerRunCommand, runKey: string, questionId: string): boolean {
   if (command.run !== runKey) return false;
   switch (command.type) {
-    case 'planChat':
-      return true;
     case 'passOn':
       return command.question === undefined || command.question === questionId;
     case 'answer':
       return command.answers.some((answer) => answer.id === undefined || answer.id === questionId);
+    case 'planChat':
     case 'replay':
     case 'rebase':
     case 'resume':
@@ -45,7 +44,7 @@ interface TurnQuestion {
 /**
  * The one rule of a question that stays with the planner only while a turn has it. A turn has the questions of its
  * own and taken-over `run-asks-planner` events and of the `command-refused` events it reads. As it ends it passes on
- * each one that is still held and that no command the run took answered, wrote about or passed on, and that no refusal
+ * each one that is still held and that no command the run took answered or passed on, and that no refusal
  * carried on to the next turn.
  */
 @Injectable()
@@ -59,7 +58,7 @@ export class LeftQuestions {
     private readonly clock: Clock,
   ) {}
 
-  /** The ids of the turn's questions that the command answers, writes about or passes on. */
+  /** The ids of the turn's questions that the command answers or passes on. */
   async about(turnKey: string, command: PlannerRunCommand): Promise<string[]> {
     const questions = await this.questionsOf(turnKey);
     return questions

@@ -8,12 +8,13 @@ import { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { StartGate } from '../pipeline/start-gate';
 import { assertKey, isStep, nextSessionKey, ticketKey } from '../core/pipeline-result';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import type { SubtaskStart } from '../steps/shared/subtask-ops';
 import { SubtaskClose } from './subtask-close';
 import { storedState, writeRunState } from '../history/run-state';
-import { PhaseName, pipelineStepOf, reviewerOf, STEPS } from '../contract/steps';
+import { PhaseName, pipelineStepOf, STEPS } from '../contract/steps';
 import { REASON, STOP_NOTE } from '../contract/run-state';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import { RunFolders } from '../pipeline/run-folders';
@@ -21,15 +22,7 @@ import { ProjectAppendService } from '../steps/prepare/project-append.service';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { type IssueTracker, runKeys } from '../integrations/issue-tracker/issue-tracker';
 import { ISSUE_TRACKER } from '../integrations/issue-tracker/tokens';
-import {
-  CreateRunBody,
-  TicketKeysBody,
-  TicketKeysView,
-  ProjectsView,
-  RemovedRunView,
-  RunRef,
-  StartStepBody,
-} from '../contract/api';
+import { CreateRunBody, TicketKeysBody, TicketKeysView, ProjectsView, RemovedRunView, RunRef } from '../contract/api';
 import { requireRun, RunQueriesService } from './run-queries.service';
 
 /** What `plan` decided for a new run. It is the payload of the start command. */
@@ -65,6 +58,7 @@ export class RunCommandsService {
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
     private readonly subtasks: SubtaskPort,
     private readonly closing: SubtaskClose,
+    private readonly gate: StartGate,
   ) {}
 
   async addProject(key: string, name: string): Promise<ProjectsView> {
@@ -154,25 +148,7 @@ export class RunCommandsService {
     return this.accepted(key, result);
   }
 
-  async startStep(key: string, step: string, body: StartStepBody = {}): Promise<RunRef> {
-    const name = pipelineStepOf(step);
-    if (!isStep(name) || name === 'done') {
-      throw new BadRequestException(`${step} is unknown`);
-    }
-    await requireRun(this.runs, key);
-    const prompt = body.prompt?.trim();
-    const path = body.path?.trim();
-    return this.accepted(
-      key,
-      await this.pipeline.startDetached(
-        key,
-        { prompt: prompt || undefined, path: path || undefined, reviewer: reviewerOf(step) },
-        name,
-      ),
-    );
-  }
-
-  async replay(key: string, step: string, prompt: string, phases?: string[]): Promise<RunRef> {
+  async replay(key: string, step: string, prompt: string, phases?: string[], start?: SubtaskStart): Promise<RunRef> {
     const name = pipelineStepOf(step);
     if (!isStep(name) || name === 'done') {
       throw new BadRequestException(`${step} is unknown`);
@@ -182,6 +158,9 @@ export class RunCommandsService {
       throw new BadRequestException('prompt is missing');
     }
     const run = await requireRun(this.runs, key);
+    if (start && start.by !== 'person' && (await this.gate.stopped(run))) {
+      throw new ConflictException(`${key} is stopped. ${name} was not started; only a person's Resume starts it`);
+    }
     if (STEPS.indexOf(name) <= STEPS.indexOf('plan-improve')) {
       await this.dropSubtasks(run);
     }
@@ -189,7 +168,10 @@ export class RunCommandsService {
     if (phases !== undefined) {
       await this.flows.noteFlow(key, phaseNames(phases), name);
     }
-    return this.accepted(key, await this.pipeline.replay(key, name, text));
+    const result = start
+      ? await this.pipeline.replay(key, name, text, start)
+      : await this.pipeline.replay(key, name, text);
+    return this.accepted(key, result);
   }
 
   async stop(key: string): Promise<RunRef> {

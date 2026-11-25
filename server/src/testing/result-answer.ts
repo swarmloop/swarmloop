@@ -1,5 +1,5 @@
 import { OWN_CONFLICT_LEAD } from '../steps/implement/implement.prompts';
-import { PERSON_WORDS } from '../steps/plan/plan.prompts';
+import { NO_STEP_RUNS, PERSON_WORDS } from '../steps/plan/plan.prompts';
 import { CODE_REVIEWERS } from '../contract/steps';
 import { emptyResult } from '../agent/agent-result';
 import type { AgentRunResult } from '../agent/agent-result';
@@ -28,6 +28,9 @@ const DEFAULT_PLAN = {
 
 /** The planner's reply to a person's message: it answers and keeps the plan. */
 const DEFAULT_PLAN_REPLY = { reply: 'Noted.' };
+
+/** The planner's reply when it takes a message in a turn of its own: it answers and the run stays as it is. */
+const DEFAULT_OWN_TURN = { reply: 'Noted.' };
 
 /** The review of that plan: it keeps the plan. */
 const DEFAULT_PLAN_IMPROVE = { summary: ['checked the plan'], plan: [] };
@@ -69,6 +72,7 @@ const DEFAULT_ANSWERS: Record<string, unknown> = {
   'code-review-report': DEFAULT_REPORT,
   research: DEFAULT_RESEARCH,
   plan: DEFAULT_PLAN,
+  'plan-turn': DEFAULT_OWN_TURN,
   'plan-improve': DEFAULT_PLAN_IMPROVE,
   implement: DEFAULT_IMPLEMENT,
   'implement-improve': DEFAULT_IMPLEMENT_IMPROVE,
@@ -81,8 +85,12 @@ export function resultAnswer(prose: string, value: unknown): string {
   return `${prose}\n\n${FENCE}json\n${JSON.stringify(value)}\n${FENCE}`;
 }
 
-/** The script a launch belongs to: a conflict resolution is the implement step's agent, and has its own script, `rebase`. */
+/**
+ * The script a launch belongs to: a conflict resolution is the implement step's agent, and has its own script,
+ * `rebase`; the planner's turn on a message while no step runs is no step, and has its own script, `plan-turn`.
+ */
 function scriptOf(input: { step: string; prompt?: string }): string {
+  if (input.step === 'plan' && input.prompt?.includes(NO_STEP_RUNS)) return 'plan-turn';
   const resolving = input.prompt?.includes('The commit being replayed is') || input.prompt?.includes(OWN_CONFLICT_LEAD);
   return input.step === 'implement' && resolving ? 'rebase' : input.step;
 }
@@ -100,7 +108,7 @@ function textOf(answer: ScriptedAnswer): string {
 /**
  * A fake `AGENT_RUNNER` that answers every launch with a result block. It records the steps it ran, like
  * `ScriptedFakeAgentRunner`, and the prompt of each launch. A step's script is answered in order, then the step's
- * default value (every step that has one: research, plan, plan-improve, implement, implement-improve, rebase, backlog-plan, each code reviewer and the report) is answered for every later launch, so a spec scripts only the answers it cares about.
+ * default value (every step that has one, and the planner's turn on a message: research, plan, plan-improve, implement, implement-improve, rebase, backlog-plan, each code reviewer and the report) is answered for every later launch, so a spec scripts only the answers it cares about.
  */
 export class BlockAgentRunner {
   readonly steps: string[] = [];
@@ -123,7 +131,7 @@ export class BlockAgentRunner {
     runKey?: string;
   }): Promise<AgentRunResult> {
     const script = scriptOf(input);
-    this.steps.push(script);
+    if (script !== 'plan-turn') this.steps.push(script);
     this.prompts.push({ step: script, prompt: input.prompt ?? '', freshPrompt: input.freshPrompt });
     const next = this.scripts.get(script)?.shift();
     const asked =

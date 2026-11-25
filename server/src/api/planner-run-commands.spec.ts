@@ -16,7 +16,7 @@ function wired() {
     },
   } as unknown as CommandService;
   const chat = {
-    send: async (key: string, message: string, author: string, idempotencyKey: string) => {
+    sendToPlanner: async (key: string, message: string, author: string, idempotencyKey: string) => {
       sent.push({ service: 'plan-chat', type: 'message', key, payload: { message, author, idempotencyKey } });
     },
   } as unknown as PlanChatService;

@@ -134,6 +134,32 @@ describe('PlanConversation.visit', () => {
     expect(finished).toEqual([]);
   });
 
+  it('opens a one-off chat, not the plan chat research and plan share, when the run has none', async () => {
+    const { conversation, launch, run } = setup({ chat: false });
+
+    await conversation.visit(
+      { run, startedAt: '' } as never,
+      () => 'the question',
+      subtaskAnswer,
+      undefined,
+      [],
+      undefined,
+      true,
+    );
+
+    const request = launch.mock.calls[0][0];
+    expect(request.session).toBe('plan-turn');
+    expect(request.prompt.endsWith('the question')).toBe(true);
+  });
+
+  it('resumes the plan chat the run has, in its own session', async () => {
+    const { conversation, launch, run } = setup();
+
+    await conversation.visit({ run, startedAt: '' } as never, () => 'x', subtaskAnswer, undefined, [], undefined, true);
+
+    expect(launch.mock.calls[0][0].session).toBeUndefined();
+  });
+
   it('records a failed visit and gives nothing when the launch fails', async () => {
     const { conversation, launch, finished, run } = setup();
     launch.mockRejectedValue(new Error('boom'));
