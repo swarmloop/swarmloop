@@ -19,6 +19,7 @@ import { CommandService } from '../../pipeline/command.service';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { Reconciler } from '../../pipeline/reconciler';
+import { HOST_RETRY_MS } from '../../integrations/http';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { reply, reportReply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
@@ -30,6 +31,14 @@ const LIMIT_TEXT = "You've hit your 5-hour limit · resets 9:50pm (UTC)";
 
 function limited(step: string): AgentRunResult {
   return { ...result(LIMIT_TEXT, step), limit: { window: '5-hour', resetsAt: RESETS_AT } };
+}
+
+const RETRY_AT = new Date(START + HOST_RETRY_MS).toISOString();
+
+/** A launch that ended with the model host's API error, finished at the start of the test. */
+function down(): Partial<AgentRunResult> {
+  const at = new Date(START).toISOString();
+  return { outage: { host: 'api.anthropic.com', detail: 'API Error: 502' }, startedAt: at, finishedAt: at };
 }
 
 /** The agents of the review role, in the order a limit moves a launch along. */
@@ -204,6 +213,63 @@ describe('code-review step and a provider limit', () => {
       clock.advance(Date.parse('2026-11-08T21:51:00Z') - START);
       await reconciler.resumeLimited();
       expect(accept).toHaveBeenCalledWith('resume', 'PROJ-302', { by: 'machine', level: null }, expect.anything());
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('a reviewer whose model host did not answer waits with HOST_UNAVAILABLE and keeps the other answers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-host-reviewer-'));
+    await envWith(root, 'claude:m-claude');
+    gitWorktree(join(root, 'worktrees', 'PROJ-307', 'billing-api'));
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      input.step === 'code-review-quality'
+        ? { ...result('API Error', input.step), ...down() }
+        : result(input.step.endsWith('report') ? reportReply('ok') : reply(input.step, 'ok'), input.step),
+    );
+    const app = await boot(root, agent, new FakeClock(START));
+    try {
+      await seed(app, 'PROJ-307');
+      await app.get(PipelineService).step('code-review', 'PROJ-307');
+      const run = (await app.get(RunRepository).findRun('PROJ-307'))!;
+      const reason = storedState(run).reason;
+      const stats = await app.get(VisitRepository).listStats(run.id);
+      const quality = stats.find((stat) => stat.step === 'code-review-quality');
+
+      expect(run.status).toBe('waiting');
+      expect(reason?.code).toBe('HOST_UNAVAILABLE');
+      expect(reason?.retryAt).toBe(RETRY_AT);
+      expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-quality')).toHaveLength(1);
+      expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-report')).toHaveLength(0);
+      expect(quality).toMatchObject({ status: 'interrupted', killReason: 'HOST_UNAVAILABLE', tokensIn: 10, usd: 0.01 });
+      expect(stats.find((stat) => stat.step === 'code-review-security')?.status).toBe('done');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('the report whose model host did not answer waits with HOST_UNAVAILABLE', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-host-report-'));
+    await envWith(root, 'claude:m-claude');
+    gitWorktree(join(root, 'worktrees', 'PROJ-308', 'billing-api'));
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      input.step === 'code-review-report'
+        ? { ...result('API Error', input.step), ...down() }
+        : result(reply(input.step, 'ok'), input.step),
+    );
+    const app = await boot(root, agent, new FakeClock(START));
+    try {
+      await seed(app, 'PROJ-308');
+      await app.get(PipelineService).step('code-review', 'PROJ-308');
+      const run = (await app.get(RunRepository).findRun('PROJ-308'))!;
+      const reason = storedState(run).reason;
+      const review = (await app.get(VisitRepository).listStats(run.id)).find((stat) => stat.step === 'code-review');
+
+      expect(run.status).toBe('waiting');
+      expect(reason?.code).toBe('HOST_UNAVAILABLE');
+      expect(reason?.retryAt).toBe(RETRY_AT);
+      expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-report')).toHaveLength(1);
+      expect(review).toMatchObject({ tokensIn: 10, tokensOut: 4 });
     } finally {
       await app.close();
     }
