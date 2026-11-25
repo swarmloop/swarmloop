@@ -232,7 +232,7 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 
 **Today.**
 - The above holds: f118 and f119 added the cores, and the passes are recorded.
-- Since 24.11 the checks run no tests. From 21.11 to 24.11 the server and dashboard tests took 47 of the 61 hours of checks and failed 47 times, most of them timeouts under load. A test that only fails under load is still broken (3.24): steady-vitest and steady-agent-limit fix those tests.
+- Since 24.11 the checks run no tests. From 21.11 to 24.11 the server and dashboard tests took 47 of the 61 hours of checks and failed 47 times, most of them timeouts under load. A test that only fails under load is still broken (3.24): steady-vitest and steady-agent-limit fix those tests. Dashboard: jsdom's `getComputedStyle` matches every emotion style rule on each call, and role queries, clicks and style reads make one per element, so a test slows with the rules in `document.head`. `dashboard/vitest.setup.ts` now empties emotion's style rules after each test (`dashboard/test/emotion-cache.ts`), and the paging, layout, conversation, dialog and edit tests that cost more than they prove were cut to one flow each. Since 24.11 the dashboard suite runs only in CI, where the `dashboard-test` job judges it; a dialog test still spends a third of its time in `getComputedStyle` on the rules of its own tree, so a test that is slow under load is not ruled out.
 
 ## 3.7 Code review
 

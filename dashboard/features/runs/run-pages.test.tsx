@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
+import { useEffect } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunSummary } from '@contract/api';
@@ -6,7 +7,8 @@ import { listRuns } from '../../lib/endpoints';
 import { fakeIntersectionObserver } from '../../test/intersection-observer';
 import { runSummary } from '../../test/fixtures';
 import { listRunsFrom } from '../../test/runs-page';
-import { LiveBridgeProvider } from '../shell';
+import { LiveBridgeProvider, useLiveActions } from '../shell';
+import { LoadMoreRow } from './load-more-row';
 import { RunColumn } from './run-column';
 import { useRuns } from './use-runs';
 
@@ -27,6 +29,21 @@ function Column() {
       onOpen={vi.fn()}
       onRemove={vi.fn()}
     />
+  );
+}
+
+/** The paging of a part without the rows' own markup: a row costs more to render than a page costs to load. */
+function Pages({ part }: { part: 'done' }) {
+  const list = useRuns();
+  const { showList } = useLiveActions();
+  useEffect(() => showList(part, ''), [showList, part]);
+  return (
+    <>
+      {list.runs.map((item) => (
+        <p key={item.key}>{item.key}</p>
+      ))}
+      {list.next !== null ? <LoadMoreRow onLoadMore={list.loadMore} /> : null}
+    </>
   );
 }
 
@@ -54,9 +71,7 @@ describe('the run list by part and page', () => {
   it('Done loads its first page when chosen and the next when the list is scrolled to its end', async () => {
     const rows = [run('Working'), ...Array.from({ length: 45 }, (_, n) => merged(n))];
     vi.mocked(listRuns).mockImplementation(listRunsFrom(rows));
-    show('done');
-
-    render(<Column />, { wrapper: LiveBridgeProvider });
+    render(<Pages part="done" />, { wrapper: LiveBridgeProvider });
     await act(async () => {});
 
     expect(screen.getByText('Merged 19')).toBeInTheDocument();

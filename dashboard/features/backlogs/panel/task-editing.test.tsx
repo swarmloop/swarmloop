@@ -58,6 +58,12 @@ async function openMenu(title: string): Promise<void> {
   await user.click(screen.getByRole('button', { name: `Actions for ${title}` }));
 }
 
+async function openEdit(title: string): Promise<void> {
+  panel();
+  await openMenu(title);
+  await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
+}
+
 function dropOn(list: HTMLElement, slug: string): void {
   fireEvent.drop(list, { dataTransfer: { getData: () => slug } });
 }
@@ -88,7 +94,8 @@ describe('task editing', () => {
   });
 
   it('adds a backlog item with a null milestone', async () => {
-    await sections();
+    render(<BacklogSections view={view} chat={backlogChatView()} login="ada" onView={vi.fn()} onChat={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: /Backlog items/ }));
     await user.click(screen.getAllByRole('button', { name: '+ Task' }).at(-1)!);
     await user.click(screen.getByLabelText('Title'));
     await user.paste('Fresh');
@@ -99,10 +106,8 @@ describe('task editing', () => {
     ]);
   });
 
-  it('edits the title, description with a preview, repositories, dependencies and milestone', async () => {
-    panel();
-    await openMenu('Pay by card');
-    await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
+  it('edits the title and the description with a preview', async () => {
+    await openEdit('Pay by card');
     const title = screen.getByLabelText('Title');
     await user.clear(title);
     await user.paste('Pay later');
@@ -111,7 +116,16 @@ describe('task editing', () => {
     await user.paste('**bold** text');
     await user.click(screen.getByRole('tab', { name: 'Preview' }));
     expect(screen.getByText('bold').tagName).toBe('STRONG');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
 
+    expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', {
+      title: 'Pay later',
+      description: '**bold** text',
+    });
+  });
+
+  it('edits the repositories and the dependencies', async () => {
+    await openEdit('Pay by card');
     await user.click(screen.getByRole('combobox', { name: 'Repositories' }));
     await user.click(screen.getByRole('option', { name: 'api' }));
     await user.keyboard('{Escape}');
@@ -119,18 +133,22 @@ describe('task editing', () => {
     expect(screen.queryByRole('option', { name: 'Pay by card' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: 'Later one' }));
     await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', {
+      repositories: ['shop', 'api'],
+      depends: ['later'],
+    });
+  });
+
+  it('edits the milestone and does not offer an accepted one', async () => {
+    await openEdit('Pay by card');
     await user.click(screen.getByRole('combobox', { name: 'Milestone' }));
     expect(screen.queryByRole('option', { name: /Old/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: 'Backlog items' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', {
-      title: 'Pay later',
-      description: '**bold** text',
-      repositories: ['shop', 'api'],
-      depends: ['later'],
-      milestone: null,
-    });
+    expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', { milestone: null });
   });
 
   it('moves by Move to and does not offer an accepted milestone', async () => {

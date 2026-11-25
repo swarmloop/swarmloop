@@ -65,6 +65,7 @@ beforeEach(() => {
 
 /** A one-line title may end in an ellipsis and a progress bar trims its fill, an alert keeps MUI's own auto overflow on text that wraps; no other box may clip or scroll. */
 function expectNothingClipped(root: HTMLElement): void {
+  const clipped: string[] = [];
   for (const element of [
     root,
     ...root.querySelectorAll<HTMLElement>(
@@ -72,9 +73,15 @@ function expectNothingClipped(root: HTMLElement): void {
     ),
   ]) {
     const style = getComputedStyle(element);
-    expect(style.overflow === '' || style.overflow === 'visible', element.outerHTML.slice(0, 80)).toBe(true);
-    expect(style.display, element.outerHTML.slice(0, 120)).not.toBe('none');
+    // The label of an element is built only for one that fails: serializing every subtree costs more than the checks.
+    if (style.overflow !== '' && style.overflow !== 'visible') {
+      clipped.push(`overflow ${style.overflow}: ${element.outerHTML.slice(0, 80)}`);
+    }
+    if (style.display === 'none') {
+      clipped.push(`display none: ${element.outerHTML.slice(0, 120)}`);
+    }
   }
+  expect(clipped).toEqual([]);
   expect(getComputedStyle(root).height).toBe('');
 }
 
