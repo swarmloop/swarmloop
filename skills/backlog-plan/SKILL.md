@@ -20,7 +20,7 @@ The description of every task is a brief, in the shape every brief has:
 
 1. A first line that says what the task gives.
 2. `Rules`: the general rules below, the same for every project.
-3. `Today`: what is there now, with names and evidence, each to be checked against main.
+3. `Today`: the goal, the requirements and the facts you were given, each with the file and line it rests on, to be checked against main. The code research is the task's own research step, and you do no code research to write a brief.
 4. `Do`: numbered steps.
 5. `Must keep`: what does not change.
 6. `Behavior change`: what changes on purpose, or none.
@@ -39,11 +39,11 @@ The general `Rules` text, written into every brief as it is here:
 
 ## After a merge
 
-Whether or not the task covers a milestone requirement, read its marks against its brief: the unmet items of its review, its `not built:` lines, and the files its merge request changed outside its files or its plan. Read them with the report, the per-id statuses and the code on main. A real miss gets a fix task in the same milestone, with a one-line reason in the chat.
+Whether or not the task covers a milestone requirement, read its marks against its brief: the unmet items of its review, its `not built:` lines, and the files its merge request changed outside its files or its plan. Read them with the merged task's summary, the report and the review's per-id statuses that the turn's event gives. The server computes the marks: you do not search the code for them. A real miss gets a fix task in the same milestone, with a one-line reason in the chat.
 
-Check each requirement the task covers against the same facts. Close it with its evidence, or add a fix task to the same milestone.
+Check each requirement the task covers against the same facts. Close it with its evidence from the per-id statuses, or add a fix task to the same milestone.
 
-Then re-read the tasks that have not started (this milestone's and the queued ones) against what landed. Bring their `Today` up to date (names, paths and numbers that moved), drop or merge a task the merge made unnecessary, fix dependencies, and add what is now missing. Each change is an action with a one-line reason in the chat. A started task hears of it only when the merge changes what it must do, through its own planner (`planChat`). The tasks that depend on the merged one start only after this turn ended, so they start from the plan as it is now.
+Then re-read every task of the backlog that has not started (this milestone's and the queued ones), not only those that share files with the merged one, against what landed. Bring their `Today` up to date (names, paths and numbers that moved), drop or merge a task the merge made unnecessary, fix dependencies, and add what is now missing. Each change is an action with a one-line reason in the chat. A started task hears of it only when the merge changes what it must do, through its own planner (`planChat`). The tasks that depend on the merged one start only after this turn ended, so they start from the plan as it is now.
 
 No change is the usual answer. Change a task only when what landed makes it wrong, missing or unnecessary, and say why.
 
@@ -78,7 +78,7 @@ Each fix is an action with a one-line reason in the chat. A clash that needs a p
 
 ## Reading with a helper
 
-When you have a helper, hand it the heavy reading: code, long briefs, logs and diffs. Ask it for the facts you need, each with its file and line. Before you act on a fact, read yourself the lines it rests on. The decisions, the actions and the result block are yours.
+When you have a helper, you read code only through it, and the launch holds you to it. Hand it the heavy reading: code, long briefs, logs and diffs, and the long texts of the turn's folder (cut logs, attachments, diffs). Ask it for the facts you need, each with the exact line quoted, its file and its line number. When a decision rests on a fact, check its quote with one search and do not reread the file. Without a helper you read yourself. The decisions, the actions and the result block are yours.
 
 ## Finishing a milestone
 

@@ -164,7 +164,7 @@ describe('BacklogTurnRunner', () => {
       async (h) => {
         h.agent.script = [turnResult('Hi.')];
         await h.runner.run('one', 'turn-a');
-        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', effort: 'low' });
+        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', effort: 'low', codeOnlyByHelper: true });
       },
       { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'codex:h-codex,claude:h-claude:low' },
     ));
@@ -175,13 +175,37 @@ describe('BacklogTurnRunner', () => {
         h.agent.script = ['limit', turnResult('Hi.')];
         await h.runner.run('one', 'turn-a');
         expect(h.agent.launches.map((launch) => launch.runtime)).toEqual(['claude', 'codex']);
-        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude' });
+        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', codeOnlyByHelper: true });
         expect(h.agent.launches[1].helper).toBeUndefined();
       },
       {
         AGENTS_BACKLOG_PLAN: 'claude:m-claude,codex:m-codex',
         AGENTS_BACKLOG_READ: 'claude:h-claude',
       },
+    ));
+
+  it('asks for the code-only-by-helper rights on a result follow-up and on a Resume', () =>
+    withTurn(
+      async (h) => {
+        h.agent.script = [turnResult('First try.', outside), turnResult('Second try.'), turnResult('Again.')];
+        await h.runner.run('one', 'turn-a');
+        await h.runner.run('one', 'turn-a');
+        expect(h.agent.launches.length).toBeGreaterThanOrEqual(3);
+        expect(h.agent.launches.map((launch) => launch.helper?.codeOnlyByHelper)).toEqual(
+          h.agent.launches.map(() => true),
+        );
+      },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'claude:h-claude' },
+    ));
+
+  it('gives a turn with an empty helper list no helper and no rights', () =>
+    withTurn(
+      async (h) => {
+        h.agent.script = [turnResult('Hi.')];
+        await h.runner.run('one', 'turn-a');
+        expect(h.agent.launches[0].helper).toBeUndefined();
+      },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: '' },
     ));
 
   it('gives a turn on a runtime without a helper entry none', () =>

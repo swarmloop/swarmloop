@@ -115,6 +115,31 @@ describe('ClaudeRuntime', () => {
         expect(JSON.parse(flag(launch('read', { model: 'h' }), '--agents')).reader).not.toHaveProperty('effort');
       });
 
+      it('holds a launch that asks for it to its helper with a per-launch hook on the mounts, and leaves the rest', () => {
+        const two = [{ containerPath: '/work/web' }, { containerPath: '/work/api' }];
+        const args = runtime.printArgs({
+          model: 'm',
+          prompt: 'p',
+          mounts: two,
+          resumeChatId: null,
+          mode: 'plan',
+          tools: 'plan',
+          helper: { model: 'h', codeOnlyByHelper: true },
+        });
+        const hook = JSON.parse(flag(args, '--settings')).hooks.PreToolUse[0];
+        expect(hook.matcher).toBe('Read|Glob|Bash');
+        expect(hook.hooks[0].command).toBe('sh /home/sandbox/.claude/read-by-helper.sh /work/web /work/api');
+        const deniedTools = flag(args, '--disallowedTools').split(',');
+        expect(deniedTools).not.toContain('Grep');
+        expect(deniedTools).not.toContain('Agent');
+        expect(JSON.parse(flag(args, '--agents')).reader.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash']);
+        expect(runtime.homeFiles().map((file) => file.path)).toContain('.claude/read-by-helper.sh');
+      });
+
+      it('adds no hook to a launch with a helper that does not ask for it', () => {
+        expect(launch('plan', { model: 'h' })).not.toContain('--settings');
+      });
+
       it('keeps the subagent tool denied and passes no definition without a helper', () => {
         const args = launch('plan');
         expect(flag(args, '--disallowedTools').split(',')).toContain('Task');

@@ -185,7 +185,7 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
    - the run's attachments;
    - for a child run, its parent's tasks, results and contract, but only what changed since its last prompt.
 
-   It mounts the run's worktrees (read-only for reviewers) and the run's log folder, and starts the container behind the egress proxy. The chat of the step's session group resumes. A launch may give its agent read-only helpers on another model of its own runtime, inside its container and on the same mounts; their cost is the visit's.
+   It mounts the run's worktrees (read-only for reviewers) and the run's log folder, and starts the container behind the egress proxy. The chat of the step's session group resumes. A launch may give its agent read-only helpers on another model of its own runtime, inside its container and on the same mounts; their cost is the visit's. A launch that gives its agent helpers leaves the agent no reading of the code of its own but Grep.
 3. **While it runs**, the stream is logged and sampled (CPU and memory). The step's time limit, idle silence (`IDLE_TIMEOUT_MS`), the token ceiling and the loop detector each end it with a reason.
 4. **When a provider's limit** stops the agent, the next agent of the role takes over. When none is left, the run waits until the limit's reset (a cooldown) and then goes on by itself.
 5. **The answer** is the result block, checked against the step's schema plus the server's own checks. An invalid answer gets a follow-up that lists every error and nothing else. An answer that is still invalid after the follow-ups ends the visit, and its errors are kept for the next launch.
@@ -196,7 +196,7 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 - A visit that ended by its own answer (still invalid after its follow-ups) or by its own limit counts as finished in `steps/shared/same-input.ts`, so the next start of the machine or a planner on that input is refused as the same input and asked up the planners' chain once, with its answer errors. A visit cut by something outside the agent (an outage, a usage limit, an outside wait, a process that died, a person's Stop) runs again on its input.
 - A model host that does not answer is a wait. Each runtime adapter reads it (`classifyOutage`), `AgentLauncher` ends such a launch as `HostUnavailable` with its next try, and this holds for a step's agent, a plan visit, a reviewer, the report, the implement chat, the planner's question turns and the backlog planner's turn. The chain asked after a same-input refusal keeps that refusal's wait.
 - The backlog planner's turns start through their own `turn-runner.ts` and are not admitted by the door.
-- Only the backlog planner's turn gives helpers: `AGENTS_BACKLOG_READ` lists them, and `AgentLauncher` picks the first entry of the runtime that runs, on a new turn, a Resume, a follow-up and a failover alike. A visit's cost counts its helpers: each model of a result line is priced at its own price when the runtime reports no cost.
+- Only the backlog planner's turn gives helpers: `AGENTS_BACKLOG_READ` lists them, and `AgentLauncher` picks the first entry of the runtime that runs, on a new turn, a Resume, a follow-up and a failover alike. It sets the code-only-by-helper rights on each helper it gives, so the runtime's adapter holds the agent to its helper for every one of those launches. A visit's cost counts its helpers: each model of a result line is priced at its own price when the runtime reports no cost.
 
 ## 3.4 Documents, gates and generations
 
@@ -334,14 +334,14 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 **Target.**
 - **A run's planner** is the plan chat of that run. It writes the plan, answers a person's messages (a question gets a reply, a change gets a plan revision), and answers the questions of its steps. After implement has started, a change amends the plan: done items stay done and the work goes on, and a done run reopens when its plan changes.
 - **An epic's planner** also answers its child runs, looks at each merge, and turns gaps into tasks.
-- **The backlog planner** works in turns, woken by events: a person's message, a run's state, a merge, `main` going red or green. It acts only through the actions and commands a person has: tasks, milestones, requirements, decisions, starting runs, messages to a run's planner. A turn that fails holds the backlog only while it is the latest. One planner of a level runs at a time. A turn hands heavy reading (code, long briefs, logs, diffs) to read-only helpers and decides itself: it rereads the lines a fact rests on before it acts.
+- **The backlog planner** works in turns, woken by events: a person's message, a run's state, a merge, `main` going red or green. It acts only through the actions and commands a person has: tasks, milestones, requirements, decisions, starting runs, messages to a run's planner. A turn that fails holds the backlog only while it is the latest. One planner of a level runs at a time. A turn hands heavy reading (code, long briefs, logs, diffs) to read-only helpers and decides itself: it reads code only through its read-only helpers, which its launch enforces, and checks a fact it acts on by its quote with one search.
 
 **Today.**
 - Holds through `steps/plan/`, `steps/shared/plan-conversation.ts` (visits and turns ordered one at a time), `pipeline/subtask-planner-answer.ts`, `pipeline/backlog/planner/`, `pipeline/run-reopen.ts` and `pipeline/plan-chat-route.ts`.
 - Gaps:
   - a planner's change can overwrite one it did not see (f130);
   - person tools still bypass the planners (3.14, f129).
-- A backlog planner turn hands heavy reading to the helpers of `AGENTS_BACKLOG_READ` (`pipeline/backlog/planner/turn-runner.ts`, `skills/backlog-plan/SKILL.md`); the turn stays read-only and its row counts the helpers' tokens and dollars. Only Claude Code turns get a helper today (3.21).
+- A backlog planner turn hands heavy reading to the helpers of `AGENTS_BACKLOG_READ` (`pipeline/backlog/planner/turn-runner.ts`, `skills/backlog-plan/SKILL.md`); the turn stays read-only and its row counts the helpers' tokens and dollars. `AgentLauncher` asks for the code-only-by-helper rights with the helper on every launch that gets one, Claude Code's adapter denies the turn's agent its own Read and Glob of the code and Bash, and a settled task shows in the turn's brief as one line. Only Claude Code turns get a helper today (3.21).
 - For the backlog planner only the f129 gap differs from the target: it sends a person's commands on every run of its backlog and reads why a run stopped (3.14).
 
 ## 3.13 Questions to a person
@@ -494,7 +494,7 @@ A limit stops the run in a wait that names it (rule 18). Every visit stores only
 
 Adapters are found by folder. A fake of each kind serves the tests.
 
-**Today.** Holds (`integrations/`, `testing/fake-*`). Only Claude Code has helpers today (its subagent tool, on the helper's model and level, with the tools that read). This change did not read Codex 0.167.0 or Cursor CLI 2025.11.25, so those adapters declare no helpers and launch as before.
+**Today.** Holds (`integrations/`, `testing/fake-*`). Only Claude Code has helpers today (its subagent tool, on the helper's model and level, with the tools that read). Its adapter enforces the code-only-by-helper rights with a per-launch hook that denies the launching agent Bash and Read or Glob of the mounts' paths and leaves its search, the turn's folder and the helper alone. This change did not read Codex 0.167.0 or Cursor CLI 2025.11.25, so those adapters declare no helpers and launch as before.
 
 ## 3.22 Sandbox and network
 

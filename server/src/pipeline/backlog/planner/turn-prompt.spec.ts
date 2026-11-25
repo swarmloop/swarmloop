@@ -85,4 +85,22 @@ describe('BacklogTurnPrompt', () => {
       expect(text).toContain('Gives a thing.');
       expect(text).toContain('/work/web');
     }));
+
+  it('writes a merged and a skipped task as one line and keeps every line of the others', () =>
+    withPrompt(async (h, prompt) => {
+      const id = await h.addBacklog();
+      const lines = { files: ['done.ts'], covers: ['R1'] };
+      await h.addTask(id, 'done', { ...lines, status: 'merged', runKey: 'done-1' });
+      await h.addTask(id, 'dropped', { ...lines, status: 'skipped' });
+      await h.addTask(id, 'later', { files: ['later.ts'], description: 'Later brief.' });
+
+      const text = await prompt.build('alpha', 't1', mounts, ['web']);
+
+      expect(text).toContain(
+        '- done [merged] run done-1: done\n- dropped [skipped]: dropped\n- later [waiting]: later',
+      );
+      expect(text).not.toContain('files: done.ts');
+      expect(text).toContain('files: later.ts');
+      expect(text).toContain('Later brief.');
+    }));
 });

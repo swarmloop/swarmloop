@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { SandboxMount } from '../../../core/sandbox-mount';
+import { settled } from '../../../contract/subtask';
 import { skillPrompt } from '../../../steps/shared/skill-prompt';
 import { BacklogTurnState, type TaskState, type TurnState } from './turn-state';
 
@@ -18,9 +19,10 @@ function list(values: string[]): string {
   return values.length > 0 ? values.join(', ') : NONE;
 }
 
-/** One task: its status and run, what it waits for, and its subtasks. A task that has not started also shows its brief, since only that kind may change. */
+/** One task: its status and run, what it waits for, and its subtasks. A task that has not started also shows its brief, since only that kind may change. A settled task is its head line alone. */
 function taskText(task: TaskState): string {
   const head = `- ${task.slug} [${task.status}]${task.runKey === null ? '' : ` run ${task.runKey}`}: ${task.title}`;
+  if (settled(task)) return head;
   const lines = [
     head,
     `    repositories: ${list(task.repositories)}; covers: ${list(task.covers)}; depends: ${list(task.depends)}`,

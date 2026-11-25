@@ -33,14 +33,31 @@ describe('the backlog-plan skill', () => {
     expect(section).toContain('outside its files or its plan');
     expect(section).toContain('A real miss gets a fix task in the same milestone, with a one-line reason in the chat');
     expect(section).toContain('No change is the usual answer.');
+    expect(section).toContain("the merged task's summary, the report and the review's per-id statuses");
+    expect(section).toContain('The server computes the marks: you do not search the code for them');
+    expect(section).toContain('Close it with its evidence from the per-id statuses');
+    expect(section).toContain('every task of the backlog that has not started');
+  });
+
+  it('writes a brief whose Today carries what the planner was given and leaves code research to the task', () => {
+    expect(skill).toContain(
+      'the goal, the requirements and the facts you were given, each with the file and line it rests on, to be checked against main',
+    );
+    expect(skill).toContain('you do no code research to write a brief');
+    expect(skill).not.toContain('with names and evidence');
   });
 
   it('hands heavy reading to a helper, rereads the lines a fact rests on, and names no runtime, model or tool', () => {
     const start = skill.indexOf('## Reading with a helper');
     const section = skill.slice(start, skill.indexOf('\n## ', start + 1));
-    expect(section).toContain('hand it the heavy reading: code, long briefs, logs and diffs');
-    expect(section).toContain('Ask it for the facts you need, each with its file and line');
-    expect(section).toContain('Before you act on a fact, read yourself the lines it rests on');
+    expect(section).toContain('Hand it the heavy reading: code, long briefs, logs and diffs');
+    expect(section).toContain('Ask it for the facts you need');
+    expect(section).not.toContain('read yourself the lines it rests on');
+    expect(section).toContain('you read code only through it, and the launch holds you to it');
+    expect(section).toContain('each with the exact line quoted, its file and its line number');
+    expect(section).toContain('check its quote with one search and do not reread the file');
+    expect(section).toContain("long texts of the turn's folder (cut logs, attachments, diffs)");
+    expect(section).toContain('Without a helper you read yourself');
     expect(section).toContain('The decisions, the actions and the result block are yours');
     expect(section).not.toMatch(/claude|codex|cursor|sonnet|opus|haiku|gpt/i);
     expect(section).not.toMatch(/\b(Task|Agent|Grep|Glob|Bash|Explore)\b/);

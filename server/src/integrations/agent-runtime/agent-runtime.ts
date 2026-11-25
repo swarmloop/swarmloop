@@ -24,6 +24,8 @@ export type AgentTools = 'none' | 'read' | 'plan' | 'write';
 export interface AgentHelper {
   model: string;
   effort?: Effort;
+  /** The launching agent reads the code mounts only through its helper; it keeps its search tool and the turn's own folder. */
+  codeOnlyByHelper?: boolean;
 }
 
 export interface AgentPrintInput {
