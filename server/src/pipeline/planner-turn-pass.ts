@@ -1,4 +1,6 @@
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
+import { ERROR_CODES } from '../contract/error-codes';
+import { HostUnavailable } from '../core/swarmloop-error';
 import { REASON } from '../contract/run-state';
 import type { StepName } from '../contract/steps';
 import type { RunRepository } from '../history/run.repository';
@@ -32,8 +34,13 @@ export class PlannerTurnPass {
     for (let next = await turns.next(run, declined); next; next = await turns.next(run, declined)) {
       if (next === 'question' || next === 'answer') {
         this.door.takeRefusal(key);
-        if (next === 'question') await turns.answer(key, declined);
-        else await turns.settle(key, declined);
+        try {
+          if (next === 'question') await turns.answer(key, declined);
+          else await turns.settle(key, declined);
+        } catch (error) {
+          if (error instanceof HostUnavailable) return this.hostDown(key, error);
+          throw error;
+        }
         const refusal = this.door.takeRefusal(key);
         if (refusal) return this.refused(key, refusal);
         continue;
@@ -47,6 +54,19 @@ export class PlannerTurnPass {
       }
     }
     return null;
+  }
+
+  /** The model host did not answer: the run waits for its next try, the question stays pending for the host resume. */
+  private async hostDown(key: string, error: HostUnavailable): Promise<TurnPassResult> {
+    const run = await this.runs.findRun(key);
+    if (run?.status === 'waiting') {
+      await this.runs.release(run, {
+        status: 'waiting',
+        reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: error.message, retryAt: error.retryAt },
+        stepStartedAt: null,
+      });
+    }
+    return { message: error.message };
   }
 
   /** The run waits with the same-input reason, and the chain is asked at the refusal's level. */

@@ -47,6 +47,9 @@ import { correctCoverage } from './coverage-correction';
 import { currentPlan } from './current-plan';
 import { storedGraph } from './stored-graph';
 import { modelVisit } from './model-visit';
+import { HOST_VISIT, ModelHostUnavailable } from './model-host-unavailable';
+import { ResultInvalid } from './answer-errors';
+import { answerErrorsDocument } from './stored-answer-errors';
 import { planErrors } from './plan-errors';
 import { buildRevision } from './plan-revision';
 import { withAdditions } from './requirement-additions';
@@ -129,6 +132,8 @@ export class PlanConversation {
     const text = prompt(chat.resultName ?? null);
     let result: LaunchResult | null = null;
     let failure: string | null = null;
+    let hostWait: ModelHostUnavailable | null = null;
+    let answerErrors: string[] | null = null;
     const started: { id: string | null } = { id: null };
     try {
       const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
@@ -164,28 +169,49 @@ export class PlanConversation {
     } catch (error) {
       if (error instanceof StepStopped) throw error;
       if (error instanceof StartRefused) return { refused: error };
+      const kept = keptOf(error, result);
+      ({ result, hostWait, answerErrors } = { result: kept.result, ...kept.rest });
       failure = error instanceof SwarmloopError ? error.message : 'plan failed';
     }
     const value = failure ? undefined : result?.resultValue;
     const ok = value !== undefined;
-    const stat = await this.visits.finishVisit(
-      run,
-      modelVisit({
-        opened,
-        now: this.clock.now(),
-        step: 'plan',
-        mode: 'plan',
-        runtime,
-        model,
-        ...effort,
-        agent: result,
-        prompt: text,
-        status: visitStatus(ok ? 'ok' : 'failed'),
-        exitCode: ok ? 0 : 1,
-      }),
-    );
-    if (started.id) await this.door.linkVisit(started.id, stat.id);
+    const ended = { result, ok, hostWait, answerErrors };
+    await this.storeVisit(opened, { runtime, model, ...effort }, text, ended, started.id);
+    if (hostWait) throw hostWait;
     return ok ? { value } : null;
+  }
+
+  /** Stores the visit with its cost, links it to its start, and keeps what an outage or an invalid answer leaves with it. */
+  private async storeVisit(
+    opened: OpenedStep,
+    agent: { runtime: string; model: string },
+    prompt: string,
+    ended: {
+      result: LaunchResult | null;
+      ok: boolean;
+      hostWait: ModelHostUnavailable | null;
+      answerErrors: string[] | null;
+    },
+    startId: string | null,
+  ): Promise<void> {
+    const { result, ok, hostWait, answerErrors } = ended;
+    const draft = modelVisit({
+      opened,
+      now: this.clock.now(),
+      step: 'plan',
+      mode: 'plan',
+      ...agent,
+      agent: result,
+      prompt,
+      status: hostWait ? HOST_VISIT.status : visitStatus(ok ? 'ok' : 'failed'),
+      exitCode: ok ? 0 : 1,
+      documents: answerErrors ? [answerErrorsDocument(answerErrors)] : undefined,
+    });
+    const stat = await this.visits.finishVisit(
+      opened.run,
+      hostWait ? { ...draft, killReason: HOST_VISIT.killReason } : draft,
+    );
+    if (startId) await this.door.linkVisit(startId, stat.id);
   }
 
   /**
@@ -314,6 +340,17 @@ export class PlanConversation {
       ...(revision ? { version: revision.version } : {}),
     });
   }
+}
+
+/** What a failed launch leaves with the visit: its cost, the model host that did not answer, or the answer's errors. */
+function keptOf(error: unknown, result: LaunchResult | null) {
+  if (error instanceof ModelHostUnavailable) {
+    return { result: error.result, rest: { hostWait: error, answerErrors: null } };
+  }
+  if (error instanceof ResultInvalid) {
+    return { result: error.result ?? result, rest: { hostWait: null, answerErrors: error.errors } };
+  }
+  return { result, rest: { hostWait: null, answerErrors: null } };
 }
 
 /** The plan result with the whole task list of the merged graph, as the planner writes tasks. */

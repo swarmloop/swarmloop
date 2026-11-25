@@ -1,5 +1,6 @@
 import type { StepName } from '../contract/steps';
 import type { StepOptions } from '../core/pipeline-result';
+import { HostUnavailable } from '../core/swarmloop-error';
 import type { RunRepository } from '../history/run.repository';
 import type { AdmittedStart, AgentDoor } from '../steps/shared/agent-door';
 import type { ChainRefusal } from '../steps/shared/start-refused';
@@ -42,7 +43,14 @@ export class HopGate {
   /** Asks the planners' chain the question of a refused start: it goes on from the answer, or ends with the line. */
   async askChain(key: string, refusal: ChainRefusal): Promise<Asked> {
     const run = await this.runs.findRun(key);
-    const asked = run ? await this.subtasks?.askUp(run, refusal.question, refusal.startLevel) : undefined;
+    let asked;
+    try {
+      asked = run ? await this.subtasks?.askUp(run, refusal.question, refusal.startLevel) : undefined;
+    } catch (error) {
+      // A model host that does not answer is no reply: the refusal keeps its wait, and the resume asks again.
+      if (error instanceof HostUnavailable) return { message: error.message };
+      throw error;
+    }
     return asked && asked.answer !== null
       ? { again: { auto: true, startBy: 'planner', level: asked.level } }
       : { message: refusal.message };
