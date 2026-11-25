@@ -1,5 +1,6 @@
 import { handoffText } from '../steps/shared/handoff';
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { ERROR_CODES } from '../contract/error-codes';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
@@ -86,7 +87,7 @@ describe('a task that needs a sibling waits for it', () => {
     const parent = await save(runs(), KEY, 'implement', 'waiting');
     parent.split = true;
     parent.projects = 'demo\n';
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await documents().putDocument(parent, 'requirements', requirements);
     await documents().putDocument(parent, 'repos', 'demo\n');
     await documents().putDocument(parent, 'subtasks', `${JSON.stringify(list)}\n`);
@@ -104,7 +105,7 @@ describe('a task that needs a sibling waits for it', () => {
       currentStep: step,
       reason: { code: ERROR_CODES.SUBTASK_WAITING, message: 'waiting' },
     });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   /** The merge of a task takes time after the need that waited for it was written, unless `sameTime` says it did not. */
@@ -116,7 +117,7 @@ describe('a task that needs a sibling waits for it', () => {
     const record = { project: 'demo', iid, url: `https://code.example/demo/${iid}`, draft: false, summary };
     await documents().putDocument(run, 'merge_request', renderMergeRequest([record]));
     writeRunState(run, { status: 'done', currentStep: 'done' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   it.each(['research', 'plan', 'implement'])(
@@ -301,7 +302,7 @@ describe('a task that needs a sibling waits for it', () => {
     await documents().putDocument(run, 'repos', 'demo\n');
     await documents().putDocument(run, 'review_questions', `- ${question}\n`);
     writeRunState(run, { status: 'waiting', currentStep: 'code-review' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   const REVIEW_QUESTION = 'quality still returns: x Implement answered: nothing. Which holds? (asked t)';

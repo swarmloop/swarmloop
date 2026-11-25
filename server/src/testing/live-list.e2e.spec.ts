@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import type { Socket } from 'socket.io-client';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -45,14 +46,14 @@ describe('the run list follows a run to the end', () => {
   async function finish(): Promise<void> {
     const run = (await runs().findRun(KEY))!;
     writeRunState(run, { status: 'done', currentStep: 'done' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     await pass();
     writeRunState(run, {
       status: 'done',
       currentStep: 'done',
       merge: { merged: { demo: { sha: 'abc', by: 'person', at: new Date().toISOString(), url: null } } },
     });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     await pass();
     held = false;
     await pass();

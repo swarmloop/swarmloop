@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { gitWorktree } from './git-worktree.spec-helpers';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { mkdirSync, writeFileSync } from 'fs';
@@ -122,7 +123,7 @@ describe('crash matrix', () => {
     const runs = app.app.get(RunRepository);
     const waiting = await runs.openWaiting(KEY, '');
     waiting.currentStep = 'research';
-    await runs.saveRun(waiting);
+    await storeRun(runs, waiting);
     await app.app.get(DocumentRepository).putDocument(waiting, 'requirements', '{"prompt":"Ship the field"}\n');
     const crashed = crashAt('after-accept');
     void app.app.get(CommandService).accept('resume', KEY, {});
@@ -427,7 +428,7 @@ describe('crash matrix', () => {
     const documents = app.app.get(DocumentRepository);
     const run = await orphan(app, 'merge-request');
     run.codeHost = 'gitlab';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     await documents.putDocument(run, 'pipeline_ref', 'project: group/app\nref: feature/x\nsha: abc\n');
     const reconciler = app.app.get(Reconciler);
 
@@ -450,7 +451,7 @@ describe('crash matrix', () => {
     const { command } = await commands.accept({ type: 'resume', key: KEY, payload: {}, admit: () => undefined });
     await commands.start(command.id);
     run.status = 'done';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
 
     await app.app.get(Reconciler).reconcileCommands();
 
@@ -489,7 +490,7 @@ describe('crash matrix', () => {
     });
     const run = await orphan(app, 'merge-request');
     run.codeHost = 'gitlab';
-    await app.app.get(RunRepository).saveRun(run);
+    await storeRun(app.app.get(RunRepository), run);
     await documents.putDocument(run, 'pipeline_ref', 'project: group/app\nref: feature/x\nsha: abc\n');
 
     await app.app.get(Reconciler).reconcile(run);
@@ -533,7 +534,7 @@ describe('crash matrix', () => {
     const seeded = await runs.begin(KEY, 'code-review');
     seeded.status = 'waiting';
     seeded.currentStep = 'implement-improve';
-    await runs.saveRun(seeded);
+    await storeRun(runs, seeded);
     await documents.putDocument(seeded, 'requirements', `${JSON.stringify({ prompt: 'Ship the field\n' })}\n`);
     await documents.putDocument(seeded, 'repos', 'billing-api\n');
     await documents.putDocument(seeded, 'implementation', '- changed the field parser\n');

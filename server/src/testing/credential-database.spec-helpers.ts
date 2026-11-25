@@ -1,3 +1,4 @@
+import { storeRun } from './store-run.spec-helpers';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { SecretBox } from '../auth/secret-box';
 import { AppConfig } from '../config/env';
@@ -39,7 +40,7 @@ export async function credentialDatabase() {
     /** A run started by `startedBy`, a subtask of `parentId` when given. */
     run: (key: string, startedBy: string | null, parentId?: number) =>
       parentId === undefined
-        ? runs.saveRun(runs.newWaitingRun(key, null, startedBy, AGENTS))
+        ? storeRun(runs, runs.newWaitingRun(key, null, startedBy, AGENTS))
         : runs.openSubtask(key, parentId, 'a', startedBy, AGENTS),
   };
 }

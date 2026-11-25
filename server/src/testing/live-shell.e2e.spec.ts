@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import type { Socket } from 'socket.io-client';
 import type { RunSummary } from '../contract/api';
 import type { LiveBacklog } from '../contract/backlog-chat';
@@ -96,7 +97,7 @@ describe('the shell follows the server', () => {
   async function moveTo(status: string, currentStep: string, key = KEY): Promise<void> {
     const run = (await runs().findRun(key))!;
     writeRunState(run, { status, currentStep });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     await pass();
   }
 
@@ -140,7 +141,7 @@ describe('the shell follows the server', () => {
     await moveTo('running', 'checks');
     expect(shell.statusStamp).toBe(1);
     const run = (await runs().findRun(KEY))!;
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     await pass();
     expect(shell.statusStamp).toBe(1);
 
@@ -161,7 +162,7 @@ describe('the shell follows the server', () => {
     const retitle = async (title: string): Promise<void> => {
       const run = (await runs().findRun(KEY))!;
       await runs().recordTitle(run, title);
-      await runs().saveRun(run);
+      await storeRun(runs(), run);
     };
     await retitle('First title');
     await pass();
@@ -236,7 +237,7 @@ describe('the shell follows the server', () => {
       expect(shell.backlogStamps).toEqual({ swarmloop: 1 });
 
       const run = (await runs().findRun(KEY))!;
-      await runs().saveRun(run);
+      await storeRun(runs(), run);
       await pass();
       expect(shell.backlogStamps).toEqual({ swarmloop: 1 });
 

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { DocumentRepository } from '../history/document.repository';
@@ -61,7 +62,7 @@ describe('a person writes to the planner while the run plans', () => {
     mkdirSync(join(app.root, 'worktrees', KEY, 'billing-api'), { recursive: true });
     const run = await runs.begin(KEY, 'plan');
     run.status = 'waiting';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     await documents.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
     await documents.putDocument(run, 'repos', 'billing-api\n');
     await documents.putDocument(run, 'requirement_list', '[{"id":"R1","text":"ship the field"}]\n');

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { DataSource } from 'typeorm';
 import { RunCommandsService } from '../api/run-commands.service';
 import { ERROR_CODES } from '../contract/error-codes';
@@ -51,7 +52,7 @@ describe('a person’s Stop and Resume of an epic', () => {
     const parent = await save(runs(), KEY, 'implement', 'waiting');
     parent.split = true;
     parent.projects = 'demo\n';
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await documents().putDocument(parent, 'requirements', requirements);
     await documents().putDocument(parent, 'repos', 'demo\n');
     await documents().putDocument(
@@ -68,7 +69,7 @@ describe('a person’s Stop and Resume of an epic', () => {
     reason?: { code: string; message: string; retryAt?: string },
   ): Promise<void> {
     writeRunState(run, { status, currentStep: 'implement', ...(reason ? { reason } : {}) });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   it('stops a running task and one waiting on an outage, resumes those, and leaves a task the person stopped before and a plain waiting one', async () => {
@@ -83,7 +84,7 @@ describe('a person’s Stop and Resume of an epic', () => {
     });
     await setState(await child('d'), 'waiting');
     await setState(await child('c'), 'blocked', { code: REASON.stopped, message: STOP_NOTE });
-    await runs().saveRun((await runs().findRun(KEY))!);
+    await storeRun(runs(), (await runs().findRun(KEY))!);
 
     await commands().stop(KEY);
     await flow.tick();

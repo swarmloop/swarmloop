@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { RunAnswersService } from '../api/run-answers.service';
@@ -269,7 +270,7 @@ describe('a subtask asks the planner of its parent', () => {
   async function asks(): Promise<string> {
     const run = await child(app, 'a');
     writeRunState(run, { status: 'waiting', currentStep: 'implement' });
-    await app.app.get(RunRepository).saveRun(run);
+    await storeRun(app.app.get(RunRepository), run);
     await app.app.get(PlanChatStore).appendEntry(run.key, {
       key: 'escalate-ask-implement-1',
       role: 'planner',
@@ -305,7 +306,7 @@ describe('a subtask asks the planner of its parent', () => {
     await documents.putDocument(parent, 'contract', `- names are camelCase\n- ${STOP_FIRST}\n`);
     const run = await child(app, 'a');
     writeRunState(run, { status: 'waiting', currentStep: 'code-review' });
-    await app.app.get(RunRepository).saveRun(run);
+    await storeRun(app.app.get(RunRepository), run);
     await documents.putDocument(run, 'review_questions', `- ${OLD_ROWS}\n`);
 
     await pass(app);

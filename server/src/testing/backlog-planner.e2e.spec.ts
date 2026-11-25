@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { attachmentsMount } from '../agent/agent-args';
@@ -127,7 +128,7 @@ describe('a backlog of two repositories is planned, run and accepted through the
     await documents.putDocument(run, 'pipeline_ref', `project: ${project}\nref: ${branch}\nsha: ${sha}\n`);
     run.codeHost = 'gitlab';
     writeRunState(run, { status: 'done', currentStep: 'done' });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   /** Every pass: the scheduler starts and merges, each run it started is delivered, and the server's own pass runs. */
@@ -256,7 +257,7 @@ describe('the planner acts on a run of its backlog that waits for a person', () 
       currentStep: step,
       reason: { code: REASON.loopLimit, message: 'checks ran 3 times (MAX_RETURNS)' },
     });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     return { id, run };
   }
 
@@ -315,7 +316,7 @@ describe('the planner acts on a run of its backlog that waits for a person', () 
       currentStep: 'implement',
       reason: { code: ERROR_CODES.SUBTASK_BLOCKED, message: 'subtask a is blocked' },
     });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
     await runs().openSubtask(`${run.key}-a`, run.id, 'a');
     const part = (await runs().findRun(`${run.key}-a`))!;
     writeRunState(part, {
@@ -323,7 +324,7 @@ describe('the planner acts on a run of its backlog that waits for a person', () 
       currentStep: 'implement',
       reason: { code: REASON.loopLimit, message: 'checks ran 3 times (MAX_RETURNS)' },
     });
-    await runs().saveRun(part);
+    await storeRun(runs(), part);
     answer = (prompt) =>
       prompt.includes(part.key)
         ? { say: 'I resume the part.', actions: [{ action: 'resume', run: part.key, reason: 'the part is blocked' }] }

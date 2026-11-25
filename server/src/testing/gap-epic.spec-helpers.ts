@@ -1,3 +1,4 @@
+import { storeRun } from './store-run.spec-helpers';
 import type { Subtask } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -63,7 +64,7 @@ export function gapEpic(flow: () => Awaited<ReturnType<typeof createFlowHarness>
       currentStep: 'done',
       doneAt: new Date(flow().app.clock.now() + HOUR).toISOString(),
     });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   /** A three-task epic whose tasks merged; the parent went on to its checks. */
@@ -71,7 +72,7 @@ export function gapEpic(flow: () => Awaited<ReturnType<typeof createFlowHarness>
     const parent = await save(runs(), key, 'implement', 'waiting');
     parent.split = true;
     parent.projects = 'demo\n';
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     const list = ['R1', 'R2', 'R3'].map((id) => ({ id, text: `Requirement ${id}` }));
     await documents().putDocument(parent, 'requirements', requirements);
     await documents().putDocument(parent, 'repos', 'demo\n');

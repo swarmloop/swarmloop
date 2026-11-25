@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { createTestApp, type TestApp } from './test-app';
@@ -37,7 +38,7 @@ describe('a paused server', () => {
     await send('POST', '/server/pause');
     const waiting = await app.app.get(RunRepository).openWaiting(KEY, '');
     waiting.currentStep = 'research';
-    await app.app.get(RunRepository).saveRun(waiting);
+    await storeRun(app.app.get(RunRepository), waiting);
     await app.app.get(DocumentRepository).putDocument(waiting, 'requirements', '{"prompt":"Ship the field"}\n');
     await app.pipeline.startDetached(KEY, {}, 'research');
     await app.pipeline.whenIdle(KEY);

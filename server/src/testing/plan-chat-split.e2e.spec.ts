@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { PlanChatService } from '../api/plan-chat.service';
 import { parseSubtasks } from '../contract/subtask';
 import { DocumentRepository } from '../history/document.repository';
@@ -78,7 +79,7 @@ describe('a person writes to the planner of a split run after its tasks started'
     run.codeHost = 'gitlab';
     run.split = true;
     run.projects = 'demo\n';
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
     await flow.app.app.get(DocumentRepository).putDocument(run, 'requirement_list', `${JSON.stringify(REQUESTS)}\n`);
     for (const step of ['plan', 'plan-improve', 'branch', 'implement'] as const) {
       await flow.app.pipeline.step(step, KEY);
@@ -185,7 +186,7 @@ describe('a person writes to the planner of a split run after its tasks started'
     });
     await documents.putDocument(run, 'merge_request', renderMergeRequest([record]));
     writeRunState(run, { status: 'done', currentStep: 'done' });
-    await app().app.get(RunRepository).saveRun(run);
+    await storeRun(app().app.get(RunRepository), run);
     app().clock.advance(1000);
 
     await app().app.get(PlanChatService).send(KEY, 'Also add d', 'ana');
@@ -212,7 +213,7 @@ describe('a person writes to the planner of a split run after its tasks started'
     await documents.putDocument(child, 'repos', 'demo\n');
     await documents.putDocument(child, 'merge_request', renderMergeRequest([forD]));
     writeRunState(child, { status: 'done', currentStep: 'done' });
-    await app().app.get(RunRepository).saveRun(child);
+    await storeRun(app().app.get(RunRepository), child);
     await app().pipeline.step('implement', KEY);
     for (const step of ['checks', 'code-review', 'commit', 'merge-request', 'pipeline'] as const) {
       await app().pipeline.step(step, KEY);
