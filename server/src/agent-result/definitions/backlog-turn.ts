@@ -1,5 +1,6 @@
 import Joi from 'joi';
 import type { AddTaskBody, ChangeTaskBody } from '../../contract/backlog-actions';
+import { requiredBy } from '../required-by';
 import { defineResult } from '../result-definition';
 
 /** One answer to an open question of a run. */
@@ -94,53 +95,50 @@ const taskFields = {
   milestone: Joi.number().integer().description('The number of the milestone'),
 };
 
-const action = Joi.object({
-  action: Joi.string()
-    .valid(...Object.keys(REQUIRED))
-    .required()
-    .description('The action to take; the fields it needs are listed under it'),
-  reason: text(
-    'One line that says why. For answerRun, passQuestion and recordDecision it is shown to the person as an info line; for answerRun it is also kept as a decision. passQuestion needs it',
-  ),
-  ...taskFields,
-  goal: text('proposeMilestone: the goal of the milestone'),
-  texts: list('addRequirements: one requirement per entry'),
-  tasks: Joi.array()
-    .items(
-      Joi.object({
-        id: Joi.string().required().description('The task id: lowercase letters, digits and dashes'),
-        fixesMain: text('The repository whose red main the task fixes'),
-        manual: Joi.boolean().description('The task merges only on the owner OK'),
-        ...taskFields,
-      }).unknown(false),
-    )
-    .description('addTasks: the tasks to add'),
-  task: text(
-    'changeTask, deleteTask, skipBacklogTask, moveItem, dropItem: the task id; skipTask: the id of the run task',
-  ),
-  id: text('addItem: the item id; closeRequirement: the requirement, like M1.R2'),
-  text: text('recordDecision: the decision'),
-  evidence: text('closeRequirement: what shows the requirement is met'),
-  run: text('answerRun, passQuestion, planChat, resume, replay, rebase, skipTask, stop: the run key'),
-  question: text(
-    'passQuestion: the id of the question to pass to the person; leave out to pass every question of the run you hold',
-  ),
-  answers: Joi.array()
-    .items(Joi.object({ kind: Joi.string(), id: Joi.string(), body: Joi.string().required() }))
-    .description(
-      'answerRun: one answer per open question with its kind and id, or one answer with only a body, which answers every open question of the run',
+const action = requiredBy(
+  Joi.object({
+    action: Joi.string()
+      .valid(...Object.keys(REQUIRED))
+      .required()
+      .description('The action to take; the fields it needs are listed under it'),
+    reason: text(
+      'One line that says why. For answerRun, passQuestion and recordDecision it is shown to the person as an info line; for answerRun it is also kept as a decision. passQuestion needs it',
     ),
-  message: text('planChat: the message for the planner of the run'),
-  step: text('replay: the step to run again'),
-  instruction: text('replay: the instruction the step starts with, as a person writes it in Replay'),
-})
-  .unknown(false)
-  .custom((value: Record<string, unknown>, helpers) => {
-    const missing = REQUIRED[value.action as BacklogTurnAction['action']].filter((key) => value[key] === undefined);
-    return missing.length > 0
-      ? helpers.message({ custom: `${String(value.action)} needs ${missing.join(', ')}` })
-      : value;
-  });
+    ...taskFields,
+    goal: text('proposeMilestone: the goal of the milestone'),
+    texts: list('addRequirements: one requirement per entry'),
+    tasks: Joi.array()
+      .items(
+        Joi.object({
+          id: Joi.string().required().description('The task id: lowercase letters, digits and dashes'),
+          fixesMain: text('The repository whose red main the task fixes'),
+          manual: Joi.boolean().description('The task merges only on the owner OK'),
+          ...taskFields,
+        }).unknown(false),
+      )
+      .description('addTasks: the tasks to add'),
+    task: text(
+      'changeTask, deleteTask, skipBacklogTask, moveItem, dropItem: the task id; skipTask: the id of the run task',
+    ),
+    id: text('addItem: the item id; closeRequirement: the requirement, like M1.R2'),
+    text: text('recordDecision: the decision'),
+    evidence: text('closeRequirement: what shows the requirement is met'),
+    run: text('answerRun, passQuestion, planChat, resume, replay, rebase, skipTask, stop: the run key'),
+    question: text(
+      'passQuestion: the id of the question to pass to the person; leave out to pass every question of the run you hold',
+    ),
+    answers: Joi.array()
+      .items(Joi.object({ kind: Joi.string(), id: Joi.string(), body: Joi.string().required() }))
+      .description(
+        'answerRun: one answer per open question with its kind and id, or one answer with only a body, which answers every open question of the run',
+      ),
+    message: text('planChat: the message for the planner of the run'),
+    step: text('replay: the step to run again'),
+    instruction: text('replay: the instruction the step starts with, as a person writes it in Replay'),
+  }).unknown(false),
+  'action',
+  REQUIRED,
+);
 
 export const backlogTurn = defineResult(
   'backlog_turn',

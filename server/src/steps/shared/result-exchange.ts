@@ -33,7 +33,7 @@ export function answerIsReadable(request: AgentLaunchRequest, result: AgentRunRe
 
 /**
  * Reads the result block of the answer. A missing or invalid block, or a failed check, sends every error back in the
- * same chat, at most twice; after that the step fails with the errors of the last answer.
+ * same chat, each with the part of the definition it is about, at most twice; after that the step fails with the errors of the last answer.
  */
 export async function exchangeResult(
   request: AgentLaunchRequest,
@@ -51,7 +51,7 @@ export async function exchangeResult(
       const result = combineAgentResults(results) ?? last;
       throw new ResultInvalid(errors, result.output, result);
     }
-    const next = await again(resultFollowUp(errors));
+    const next = await again(resultFollowUp(errors, request.result));
     results.push(next);
     if (!answerIsReadable(request, next)) {
       return { result: combineAgentResults(results) ?? next, value: undefined };
@@ -73,12 +73,12 @@ export function resultFollowUpRequest(request: AgentLaunchRequest, followUp: str
   };
 }
 
-/** A launch that follows a failed answer starts by telling the agent every error of it. */
+/** A launch that follows a failed answer starts by telling the agent every error of it, each with the part of the definition it is about. */
 export function withAnswerErrors(request: AgentLaunchRequest): AgentLaunchRequest {
   if (!request.answerErrors?.length) {
     return request;
   }
-  const followUp = resultFollowUp(request.answerErrors);
+  const followUp = resultFollowUp(request.answerErrors, request.result);
   const append = (prompt: string): string => `${prompt}\n\n${followUp}`;
   const briefFor = request.briefFor;
   return {

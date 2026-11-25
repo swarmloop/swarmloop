@@ -46,7 +46,7 @@ export async function correctCoverage<T>(
     return before;
   }
   const again = await ctx.launch({
-    prompt: resultFollowUp(before.problems),
+    prompt: resultFollowUp(before.problems, request.result),
     mounts: request.mounts,
     continuePrompt: request.continuePrompt,
     result: request.result,
