@@ -9,14 +9,24 @@ import { RunCommandsService, StartPlan } from './run-commands.service';
 import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunRebaseService } from './run-rebase.service';
 import { AttachmentStore } from '../history/attachment-store';
+import type { SubtaskStart } from '../steps/shared/subtask-ops';
 import { PlanChatService } from './plan-chat.service';
 
 export interface ReplayPayload {
   step: string;
   prompt: string;
   phases?: string[];
+  /** Who asks: a planner with its level, or the person's mark. No `by` is the person's replay. */
+  by?: string;
+  level?: number;
   /** Ids of the uploaded files the run takes. */
   attachments?: string[];
+}
+
+/** A replay with no `by` stays the person's, so it passes no starter. */
+function replayStarter(payload: ReplayPayload): SubtaskStart | undefined {
+  if (payload.by === 'planner' && typeof payload.level === 'number') return { by: 'planner', level: payload.level };
+  return payload.by === 'person' ? { by: 'person', level: null } : undefined;
 }
 
 /** Maps each command type to the service that did the work before the command path. */
@@ -54,9 +64,9 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     );
     on('plan-chat', (key, payload, context) => this.planChat.record(key, payload, context.commandId));
     on('replay', async (key, payload) => {
-      const { step, prompt, phases, attachments } = payload as unknown as ReplayPayload;
-      await this.files.claim(key, attachments);
-      return this.runs.replay(key, step, prompt, phases);
+      const replay = payload as unknown as ReplayPayload;
+      await this.files.claim(key, replay.attachments);
+      return this.runs.replay(key, replay.step, replay.prompt, replay.phases, replayStarter(replay));
     });
     on('stop', (key) => this.runs.stop(key));
     on('remove', (key) => this.runs.remove(key));

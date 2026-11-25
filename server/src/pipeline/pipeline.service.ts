@@ -24,6 +24,7 @@ import { RunLifecycle } from './run-lifecycle';
 import { LimitRelease } from '../steps/shared/limit-release';
 import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
 import { ReportRefresh } from '../steps/shared/report-refresh';
+import type { SubtaskStart } from '../steps/shared/subtask-ops';
 import { PlannerTurns } from './planner-turns';
 import { RunReopen } from './run-reopen';
 
@@ -118,7 +119,7 @@ export class PipelineService implements OnApplicationBootstrap {
     return this.lifecycle.stop(key);
   }
 
-  async replay(key: string, name: string, prompt: string): Promise<PipelineResult> {
+  async replay(key: string, name: string, prompt: string, start?: SubtaskStart): Promise<PipelineResult> {
     const invalid = this.lifecycle.keyError(key);
     if (invalid) return invalid;
     if (!isStep(name) || name === 'done') return { exitCode: 1, message: `${name} is unknown` };
@@ -134,7 +135,10 @@ export class PipelineService implements OnApplicationBootstrap {
     if (failed) return failed;
     await this.runs.release(fresh, { status: 'waiting', currentStep: name });
     this.runStop.clear(key);
-    return this.startDetached(key, this.registryPromptOptions(name, full));
+    return this.startDetached(key, {
+      ...this.registryPromptOptions(name, full),
+      ...(start ? { startBy: start.by, level: start.level } : {}),
+    });
   }
 
   /**

@@ -95,6 +95,26 @@ describe('pipeline service', () => {
     }
   });
 
+  it('gives startDetached the starter of a replay, and none when nobody is named', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-replay-start-'));
+    const app = await boot(root);
+    try {
+      const pipeline = app.get(PipelineService);
+      const runs = app.get(RunRepository);
+      const seeded = await runs.begin('PROJ-67', 'prepare');
+      seeded.status = 'waiting';
+      seeded.currentStep = 'prepare';
+      await runs.saveRun(seeded);
+      const start = jest.spyOn(pipeline, 'startDetached').mockResolvedValue({ exitCode: 0, message: 'started' });
+      await pipeline.replay('PROJ-67', 'prepare', 'Narrow the scope', { by: 'planner', level: 0 });
+      expect(start.mock.calls[0]?.[1]).toMatchObject({ startBy: 'planner', level: 0 });
+      await pipeline.replay('PROJ-67', 'prepare', 'Narrow the scope');
+      expect(start.mock.calls[1]?.[1]).not.toHaveProperty('startBy');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('turns the merge requests of a done run back into drafts before a Replay starts its work', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipeline-replay-draft-'));
     const app = await boot(root);
