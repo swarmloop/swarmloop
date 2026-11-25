@@ -14,8 +14,13 @@ export function parseEnvFile(body: string): Record<string, string> {
   return values;
 }
 
+/** The text of defaults.env, the one source of the server's default settings and of what each one means. */
+export function readDefaultSettingsText(): string {
+  return readFileSync(join(resolveRepoRoot(undefined, __dirname), 'defaults.env'), 'utf8');
+}
+
 export function readDefaultSettings(): Record<string, string> {
-  return parseEnvFile(readFileSync(join(resolveRepoRoot(undefined, __dirname), 'defaults.env'), 'utf8'));
+  return parseEnvFile(readDefaultSettingsText());
 }
 
 function unquote(value: string): string {

@@ -26,6 +26,8 @@ export type SettingSource = 'default' | '.env' | 'environment';
 
 export interface ServerSetting {
   name: string;
+  /** The heading of the block of defaults.env the setting is in. */
+  group: string;
   secret: boolean;
   /** Where the value comes from. */
   source: SettingSource;
