@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
@@ -51,7 +52,7 @@ async function world(
   const parent = await save(runs, KEY, 'implement', 'waiting');
   parent.split = true;
   parent.projects = 'demo\n';
-  await runs.saveRun(parent);
+  await storeRun(runs, parent);
   await documents.putDocument(parent, 'requirements', requirements);
   await documents.putDocument(parent, 'repos', 'demo\n');
   await documents.putDocument(parent, 'contract', 'decisions:\n- subtask a: store UTC\n');
@@ -75,7 +76,7 @@ async function finish(app: TestApp, id: string, iid: number): Promise<void> {
   const record = { project: 'demo', iid, url: `https://code.example/demo/${iid}`, draft: false, summary: '' };
   await documents.putDocument(run, 'merge_request', renderMergeRequest([record]));
   writeRunState(run, { status: 'done', currentStep: 'done' });
-  await app.app.get(RunRepository).saveRun(run);
+  await storeRun(app.app.get(RunRepository), run);
 }
 
 async function settle(app: TestApp): Promise<void> {
@@ -127,7 +128,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     const run = (await parentRun(app))!;
     await app.app.get(DocumentRepository).putDocument(run, 'return', '## requirements\nthe field is missing\n');
     run.currentStep = 'implement';
-    await app.app.get(RunRepository).saveRun(run);
+    await storeRun(app.app.get(RunRepository), run);
     await app.pipeline.step('implement', KEY);
 
     expect((await parentRun(app))?.currentStep).toBe('implement-improve');
@@ -191,7 +192,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     for (const id of ['a', 'b']) {
       const run = (await app.app.get(RunRepository).findRun(`${KEY}-${id}`))!;
       writeRunState(run, { status: 'running', currentStep: 'research', ownerPid: process.pid });
-      await app.app.get(RunRepository).saveRun(run);
+      await storeRun(app.app.get(RunRepository), run);
     }
 
     await app.app.get(CommandService).submit('stop', KEY, {});
@@ -294,10 +295,10 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     await documents.putDocument(child, 'repos', 'demo\n');
     await documents.putDocument(child, 'merge_request', renderMergeRequest([record]));
     writeRunState(child, { status: 'done', currentStep: 'done' });
-    await app.app.get(RunRepository).saveRun(child);
+    await storeRun(app.app.get(RunRepository), child);
     const parent = (await parentRun(app))!;
     parent.codeHost = 'gitlab';
-    await app.app.get(RunRepository).saveRun(parent);
+    await storeRun(app.app.get(RunRepository), parent);
     jest.spyOn(app.app.get(SubtaskOps), 'fastForward').mockRejectedValueOnce(new Error('git merge --ff-only failed'));
 
     for (let tick = 0; tick < 5; tick++) {
@@ -346,7 +347,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     await documents.putDocument(child, 'repos', 'demo\n');
     await documents.putDocument(child, 'merge_request', renderMergeRequest([record]));
     writeRunState(child, { status: 'done', currentStep: 'done' });
-    await app.app.get(RunRepository).saveRun(child);
+    await storeRun(app.app.get(RunRepository), child);
   }
 
   /**
@@ -375,12 +376,12 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     for (const other of tasks.filter((item) => item.id !== 'a')) {
       const run = (await app.app.get(RunRepository).findRun(`${KEY}-${other.id}`))!;
       writeRunState(run, { status: 'running', currentStep: 'implement', ownerPid: process.pid });
-      await app.app.get(RunRepository).saveRun(run);
+      await storeRun(app.app.get(RunRepository), run);
     }
     await deliver('a', { 'src/shared.ts': lines('task one'), 'src/a.ts': 'export const a = 1;\n' });
     const parent = (await parentRun(app))!;
     parent.codeHost = 'gitlab';
-    await app.app.get(RunRepository).saveRun(parent);
+    await storeRun(app.app.get(RunRepository), parent);
     const originHead = () => git(bare, ['rev-parse', `refs/heads/${feature}`]);
     const heads: { worktree: string; origin: string }[] = [];
     // The pass that merged a fails once, as f98's did, with the worktree behind the feature branch and edits in it.
@@ -535,7 +536,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     useGitlabOrigin(app.root, built.tree);
     const gitlab = (await parentRun(app))!;
     gitlab.codeHost = 'gitlab';
-    await app.app.get(RunRepository).saveRun(gitlab);
+    await storeRun(app.app.get(RunRepository), gitlab);
 
     for (const step of ['checks', 'code-review', 'commit', 'merge-request'] as const) {
       await app.pipeline.step(step, KEY);

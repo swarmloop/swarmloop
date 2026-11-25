@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { DocumentRepository } from '../history/document.repository';
@@ -53,7 +54,7 @@ describe('a person writes to the planner after implement started, on a run that 
     const run = await remember(flow.app.app.get(RunRepository), documents, KEY, 'plan', 'waiting');
     // `split` is what the settings let the planner do, not what it did: a run that may split and made one plan has no tasks.
     run.split = split;
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
     await documents.putDocument(run, 'requirement_list', '[{"id":"R1","text":"ship the field"}]\n');
   }
 
@@ -166,7 +167,7 @@ describe('a person writes to the planner after implement started, on a run that 
     const run = (await runOf())!;
     const before = blocks.steps.length;
     writeRunState(run, { status: 'failed', currentStep: 'checks' });
-    await flow.app.app.get(RunRepository).saveRun(run);
+    await storeRun(flow.app.app.get(RunRepository), run);
     flow.app.clock.advance(1000);
 
     await flow.app.app.get(PlanChatService).send(KEY, 'Also keep the old rows', 'ana');
@@ -226,7 +227,7 @@ describe('a person writes to the planner of a done run whose merge request is op
     const documents = flow.app.app.get(DocumentRepository);
     const run = await remember(runs, documents, KEY, 'requirements', 'waiting');
     run.codeHost = 'gitlab';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     await documents.putDocument(run, 'requirement_list', '[{"id":"R1","text":"ship the field"}]\n');
     // The work the scripted agents leave no trace of: a commit on the feature branch for the merge request to carry.
     mkdirSync(join(flow.tree, 'src'), { recursive: true });

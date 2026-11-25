@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { CommandService } from '../pipeline/command.service';
@@ -83,7 +84,7 @@ describe('a task merges with the method the repository allows', () => {
       parent.split = true;
       parent.projects = 'demo\n';
       parent.codeHost = 'gitlab';
-      await runs().saveRun(parent);
+      await storeRun(runs(), parent);
       await documents().putDocument(parent, 'requirements', requirements);
       await documents().putDocument(parent, 'repos', 'demo\n');
       await documents().putDocument(parent, 'subtasks', `${JSON.stringify([task('a'), task('b')])}\n`);
@@ -118,7 +119,7 @@ describe('a task merges with the method the repository allows', () => {
       run.prompt = `branch: ${FEATURE}\n`;
       await documents().putDocument(run, 'merge_request', renderMergeRequest([record]));
       writeRunState(run, { status: 'done', currentStep: 'done' });
-      await runs().saveRun(run);
+      await storeRun(runs(), run);
       return record.iid;
     }
 
@@ -185,7 +186,7 @@ describe('a task merges with the method the repository allows', () => {
       await documents().putDocument(run, 'pipeline_ref', `project: ${project}\nref: ${branch}\nsha: ${sha}\n`);
       run.codeHost = 'gitlab';
       writeRunState(run, { status: 'done', currentStep: 'done' });
-      await runs().saveRun(run);
+      await storeRun(runs(), run);
     }
 
     it('merges the same way, with the title template and the task title', async () => {

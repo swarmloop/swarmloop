@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -282,7 +283,7 @@ export async function observeAnswers(): Promise<Observed['answers']> {
       const run = (await runs().findRun(key))!;
       run.currentStep = 'code-review';
       run.status = 'waiting';
-      await runs().saveRun(run);
+      await storeRun(runs(), run);
       return app.get(PipelineService).step('code-review', key);
     };
     const observe = async (fields: Record<string, unknown> | null) => {

@@ -1,3 +1,4 @@
+import { storeRun } from './store-run.spec-helpers';
 import { AGENT_RUNNER } from '../agent/agent-runner';
 import { StepStopped } from '../agent/step-stopped';
 import { mkdirSync } from 'fs';
@@ -101,7 +102,7 @@ describe('step events', () => {
     const run = await golden.runs.begin(key, 'prepare');
     run.status = 'waiting';
     run.currentStep = 'commit';
-    await golden.runs.saveRun(run);
+    await storeRun(golden.runs, run);
     await golden.seedDocuments.putDocument(run, 'requirements', '{"prompt":"ship the field"}\n');
   }
 

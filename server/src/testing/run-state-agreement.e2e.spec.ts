@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -63,7 +64,7 @@ async function readings(setup: Setup): Promise<Readings> {
   const run = await runs.begin(key, setup.change.currentStep ?? 'implement');
   writeRunState(run, setup.change);
   run.attemptsReview = setup.attemptsReview ?? 0;
-  await runs.saveRun(run);
+  await storeRun(runs, run);
   if (setup.document) await app.get(DocumentRepository).putDocument(run, ...setup.document);
   runs.notify(key);
   await app.get(RunStateRefresh).settled();
@@ -196,7 +197,7 @@ describe('every reader of a run state agrees with the stored state', () => {
       reason: { code: REASON.stopped, message: 'Stopped by request.' },
     });
     run.codeHost = 'github';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     const request = {
       project: 'acme/demo',
       iid: 1,

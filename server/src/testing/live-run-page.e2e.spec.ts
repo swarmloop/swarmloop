@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import type { Socket } from 'socket.io-client';
 import type { StepView } from '../contract/api';
 import { DocumentRepository } from '../history/document.repository';
@@ -49,7 +50,7 @@ describe('the run page follows its run', () => {
   async function moveTo(status: string, currentStep: string): Promise<void> {
     const run = (await runs().findRun(KEY))!;
     writeRunState(run, { status, currentStep });
-    await runs().saveRun(run);
+    await storeRun(runs(), run);
   }
 
   const spend = (usd: number) =>

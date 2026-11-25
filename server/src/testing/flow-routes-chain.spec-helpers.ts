@@ -1,3 +1,4 @@
+import { storeRun } from './store-run.spec-helpers';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
@@ -64,7 +65,7 @@ export async function observeChain(): Promise<ObservedChain> {
     const backlog = await runs.openWaiting('BACK-1', '/target');
     const levels = { alone: await climb(chain, alone, 'one'), task: await climb(chain, task, 'two') };
     await seedBacklogTask(db.app, 'BACK-1');
-    await runs.saveRun({ ...backlog, currentStep: 'implement' });
+    await storeRun(runs, { ...backlog, currentStep: 'implement' });
     turns.push(null);
     await chain.askUp(backlog, { from: 'code-review', text: 'three' }, 0);
     const held = storedState((await runs.findRun('BACK-1'))!).reason?.code === 'ASKS_PLANNER';

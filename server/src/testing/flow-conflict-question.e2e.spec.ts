@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { isAbsolute, join } from 'path';
 import { BacklogChatService } from '../api/backlog-chat.service';
@@ -80,7 +81,7 @@ describe('a conflict that the agent leaves open is a question up the planners', 
     const runs = get(RunRepository);
     const run = await remember(runs, get(DocumentRepository), KEY, 'implement', 'idle');
     run.codeHost = 'gitlab';
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     await get(DocumentRepository).putDocument(run, 'implementation', '- the field\n');
     await get(DocumentRepository).putDocument(
       run,

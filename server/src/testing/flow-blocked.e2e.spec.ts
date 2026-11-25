@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { interruptionSentence, type InterruptionNote } from '../contract/interruption';
 import { parseSubtasks, type Subtask } from '../contract/subtask';
 import { PipelineService } from '../pipeline/pipeline.service';
@@ -57,7 +58,7 @@ async function end(app: TestApp, id: string, status: 'done' | 'blocked', iid = 0
       reason: { code: 'LOOP_LIMIT', message: 'checks ran 3 times (MAX_RETURNS); Resume starts another round' },
     });
   }
-  await runs.saveRun(run);
+  await storeRun(runs, run);
 }
 
 describe('one blocked task holds only its dependents', () => {
@@ -70,7 +71,7 @@ describe('one blocked task holds only its dependents', () => {
     const parent = await save(runs, KEY, 'implement', 'waiting');
     parent.split = true;
     parent.projects = 'demo\n';
-    await runs.saveRun(parent);
+    await storeRun(runs, parent);
     await documents.putDocument(parent, 'requirements', requirements);
     await documents.putDocument(parent, 'repos', 'demo\n');
     const tasks = [task('a'), task('b', ['a']), task('c'), task('d'), task('e')];

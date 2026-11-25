@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { RunQueriesService } from '../api/run-queries.service';
@@ -138,7 +139,7 @@ describe('a subtask that keeps writing the same need on a merged sibling', () =>
     const parent = await save(runs(), KEY, 'implement', 'waiting');
     parent.split = true;
     parent.projects = 'demo\n';
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
     await documents().putDocument(parent, 'requirements', requirements);
     await documents().putDocument(parent, 'repos', 'demo\n');
     await documents().putDocument(parent, 'subtasks', `${JSON.stringify([task('a'), task('b')])}\n`);
@@ -156,14 +157,14 @@ describe('a subtask that keeps writing the same need on a merged sibling', () =>
     };
     await documents().putDocument(merged, 'merge_request', renderMergeRequest([record]));
     writeRunState(merged, { status: 'done', currentStep: 'done' });
-    await runs().saveRun(merged);
+    await storeRun(runs(), merged);
     await flow.app.pipeline.step('implement', KEY);
     await flow.app.app.get(CommandService).idle();
     const waiting = await child();
     await documents().putDocument(waiting, 'requirements', requirements);
     await documents().putDocument(waiting, 'repos', 'demo\n');
     writeRunState(waiting, { status: 'waiting', currentStep: 'implement' });
-    await runs().saveRun(waiting);
+    await storeRun(runs(), waiting);
     mkdirSync(join(flow.app.root, 'worktrees', TASK), { recursive: true });
     flow.app.clock.advance(60_000);
   }
@@ -264,7 +265,7 @@ describe('a subtask that keeps writing the same need on a merged sibling', () =>
       currentStep: 'implement',
       reason: { code: ERROR_CODES.SUBTASK_BLOCKED, message: 'a task is blocked' },
     });
-    await runs().saveRun(parent);
+    await storeRun(runs(), parent);
 
     const seen = await flow.app.app.get(StartGate).admit(KEY, 'implement', { startBy: 'machine' });
 

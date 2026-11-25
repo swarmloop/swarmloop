@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { storeRun } from './store-run.spec-helpers';
 import { DataSource } from 'typeorm';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON, type StateReason } from '../contract/run-state';
@@ -68,7 +69,7 @@ describe('assertInvariants', () => {
     const runs = app.app.get(RunRepository);
     const run = await save(runs, 'PROJ-900', 'implement', item.status);
     writeRunState(run, { status: item.status, reason: item.reason });
-    await runs.saveRun(run);
+    await storeRun(runs, run);
     if (item.visitStatus !== undefined) {
       const now = new Date().toISOString();
       await app.app.get(VisitRepository).saveStat(
@@ -226,7 +227,7 @@ describe('assertInvariants', () => {
       const runs = app.app.get(RunRepository);
       const run = await save(runs, 'PROJ-903', options.step ?? 'implement', options.status);
       writeRunState(run, { status: options.status, currentStep: options.step ?? 'implement', reason: options.reason });
-      await runs.saveRun(run);
+      await storeRun(runs, run);
       const documents = app.app.get(DocumentRepository);
       if (options.marker) await documents.putDocument(run, 'rebase_conflict', options.marker);
       await documents.putDocument(run, 'rebase_journal', journalOf(options.checkpoint, run.generation));
