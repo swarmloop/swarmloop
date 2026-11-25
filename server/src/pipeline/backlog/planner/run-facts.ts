@@ -10,7 +10,7 @@ import { RunRepository } from '../../../history/run.repository';
 import { root } from '../../../history/run-paths';
 import { VisitRepository } from '../../../history/visit.repository';
 import { ARTIFACTS } from '../../../steps/contract/artifacts';
-import { failedJobBlocks } from '../../../steps/contract/artifact-summaries';
+import { failedJobs } from '../../../steps/pipeline/failed-jobs';
 
 /** One whole text of a run with the words that say what it is. */
 export interface LabelledText {
@@ -72,7 +72,7 @@ export class RunFacts {
   /** Each failed job of the latest CI report, with its whole trace when the pipeline step saved one, else the report's own block. */
   private async ci(run: { id: number; key: string }): Promise<LabelledText[]> {
     const report = (await this.documents.latestBody(run.key, ARTIFACTS.pipelineLog.kind)) ?? '';
-    const blocks = failedJobBlocks(report);
+    const blocks = report.includes('result: fail\n') ? failedJobs(report) : [];
     if (blocks.length === 0) return [];
     const attempt = (await this.visits.listStats(run.id)).filter((stat) => stat.step === 'pipeline').at(-1)?.attemptId;
     return blocks.map((block, index) => ({

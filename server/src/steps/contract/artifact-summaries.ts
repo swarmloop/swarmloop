@@ -24,30 +24,6 @@ export function summarizePipeline(body: string): string {
   return result === 'pass' ? 'pass' : firstLine(body);
 }
 
-/** One failed job of a pipeline_log with the project it ran in and its block of the log; a block with no job line is named `pipeline`. */
-interface FailedJobBlock {
-  project: string;
-  job: string;
-  text: string;
-}
-
-/** The blocks of a failing pipeline_log, each starting with its `project:` line, in the order the log has them. Empty for a log that did not fail. */
-export function failedJobBlocks(body: string): FailedJobBlock[] {
-  const marker = 'result: fail\n';
-  const start = body.indexOf(marker);
-  if (start === -1) return [];
-  return body
-    .slice(start + marker.length)
-    .trim()
-    .split(/\n\n(?=project: )/)
-    .filter((block) => block.startsWith('project: '))
-    .map((text) => ({
-      project: /^project: (.*)$/m.exec(text)?.[1] ?? '',
-      job: /^job: (.*)$/m.exec(text)?.[1] ?? 'pipeline',
-      text,
-    }));
-}
-
 /** The decision of a review and the first line of what it found. */
 function reviewLine(decision: string | undefined, text: string): string {
   return [decision ? `decision: ${decision}` : '', firstLine(text)].filter(Boolean).join(' · ');

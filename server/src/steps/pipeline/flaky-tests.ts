@@ -12,6 +12,7 @@ import {
   parseMergeRequests,
   renderMergeRequest,
 } from '../merge-request/merge-request-record';
+import { failedJobs, type FailedJob } from './failed-jobs';
 import { flakyBlock, mainRef } from './pipeline-red';
 import { originProject, parsePipelineRefs, type Seen } from './pipeline-report';
 
@@ -19,33 +20,6 @@ interface FlakyDeps {
   documents: DocumentRepository;
   flaky: FlakyTestRepository;
   root: string;
-}
-
-interface FailedJob {
-  project: string;
-  job: string;
-  text: string;
-}
-
-/** The `project:` blocks of a failed log that name a job, each with its own text. */
-function failedJobs(log: string): FailedJob[] {
-  const lines = log.split('\n');
-  const starts = lines.flatMap((line, index) =>
-    line.startsWith('project: ') && lines[index + 1]?.startsWith('pipeline: ') ? [index] : [],
-  );
-  return starts.flatMap((start, at) => {
-    const block = lines.slice(start, starts[at + 1] ?? lines.length);
-    const job = block.find((line) => line.startsWith('job: '));
-    return job
-      ? [
-          {
-            project: block[0].slice('project: '.length).trim(),
-            job: job.slice('job: '.length).trim(),
-            text: block.join('\n'),
-          },
-        ]
-      : [];
-  });
 }
 
 function flakyTests(document: string | null): string[] {
