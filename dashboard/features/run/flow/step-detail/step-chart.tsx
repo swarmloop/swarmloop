@@ -58,21 +58,9 @@ function NoSamplesLine(): ReactElement {
 /** The sentence of a step that started no container. */
 export const NO_CONTAINER = 'This step started no container.';
 
-/** A visit shorter than this has no resource charts. */
-const MIN_CHART_MS = 60_000;
-
-/** How long the visit ran: its duration, or the span of its samples while it runs. */
-function visitSpanMs(visit: StepView['visits'][number], samples: Sample[]): number {
-  if (visit.status !== 'running') {
-    return visit.durationMs;
-  }
-  const times = samples.map((sample) => Date.parse(sample.at));
-  return times.length > 0 ? Math.max(...times) - Math.min(...times) : 0;
-}
-
-/** The collapsed `Resources` line of a visit; it opens the CPU and memory charts. */
+/** The `Resources` line of a visit with the CPU and memory charts under it; a click folds them. */
 function Resources({ visit, lines }: { visit: StepView['visits'][number]; lines: SeriesLine[] }): ReactElement {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   return (
     <Box sx={{ mt: 2 }}>
       <ButtonBase
@@ -131,7 +119,7 @@ export function StepChart({
       </Typography>
     );
   }
-  if (visitSpanMs(visit, samples) < MIN_CHART_MS) {
+  if (samples.length === 0) {
     return null;
   }
   return <Resources visit={visit} lines={total ? [totalLine(samples)] : sourceLines(samples)} />;
