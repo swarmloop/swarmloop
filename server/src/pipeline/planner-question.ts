@@ -4,6 +4,7 @@ import type { PlanChatStore } from '../history/plan-chat.store';
 import type { RunEntity } from '../history/entities';
 import type { OpenedStep } from '../steps/step-run';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
+import { replyEscalation } from '../steps/shared/reply-escalation';
 import { planAnswersStep, planReadsAnswer } from '../steps/plan/plan.prompts';
 import { planReplyFor, type PlanReplyResult } from '../agent-result/definitions/plan-reply';
 import { resultPromptFor } from '../agent-result/result-prompt';
@@ -53,7 +54,8 @@ async function recordAnswer(
     role: 'planner',
     text: reply.reply.trim(),
     at: deps.clock.iso(),
-    state: 'pending',
+    // Only a step reads an answer (by `from`); the answer to a person's message has no reader and stays a plain chat line.
+    state: question.from ? 'pending' : 'taken',
     kind: 'answer',
     ...(question.from ? { from: question.from } : {}),
     ...(reply.finding ? { finding: reply.finding } : {}),
@@ -82,17 +84,8 @@ export async function askPlanner(
   if (!visit) return { kind: 'none' };
   if ('refused' in visit) return { kind: 'refused' };
   const reply = visit.value as PlanReplyResult;
-  const decide = reply.escalate?.trim();
-  if (decide) {
-    const escalation: PlanChatEntry = {
-      key: `escalate-${question.key}`,
-      role: 'planner',
-      kind: 'escalation',
-      text: decide,
-      at: deps.clock.iso(),
-      state: 'pending',
-      ...(question.from ? { from: question.from } : {}),
-    };
+  const escalation = replyEscalation(reply.escalate, question, deps.clock.iso());
+  if (escalation) {
     await deps.chat.appendEntry(run.key, escalation);
     await deps.chat.markTaken(run.key, [question.key]);
     return { kind: 'escalated', escalation };

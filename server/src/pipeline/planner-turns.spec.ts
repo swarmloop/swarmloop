@@ -401,6 +401,24 @@ describe('PlannerTurns answering a step question', () => {
       expect([...declined]).toEqual([]);
     });
 
+    it("leaves no pending entry when the question was a person's message, which no step reads", async () => {
+      const text = 'Which pagination do you want?';
+      const asking = { ...escalate(), key: 'escalate-message-1' };
+      delete asking.from;
+      const line = `a step asks: ${text} (asked 2026-01-01T00:01:00.000Z)`;
+      const { turns, held, stored } = asked(
+        [{ ...message('message-1', '2026-01-01T00:00:01.000Z'), state: 'taken' }, asking],
+        { reply: 'Cursor then.' },
+        { questions: `- ${line}\n`, answers: `question: ${line}\nanswer: Cursor\n` },
+      );
+
+      expect(await turns.settle('run-1', new Set())).toBe(true);
+
+      expect(held.find((entry) => entry.kind === 'answer')).toMatchObject({ key: 'answer-message-1', state: 'taken' });
+      expect(held.filter((entry) => entry.state === 'pending')).toEqual([]);
+      expect(stored.questions).toBe('');
+    });
+
     it('keeps the escalation, writes nothing and declines it when the door refuses reading the answer', async () => {
       const { turns, held } = asked([escalate()], { refused: new Error('same') }, open('Cursor'));
       const declined = new Set<string>();
@@ -443,5 +461,44 @@ describe('PlannerTurns answering a step question', () => {
     expect(held.filter((entry) => entry.kind !== 'question')).toEqual([]);
     expect([...declined]).toEqual(['ask-1']);
     expect(turns.replying('run-1')).toBe(false);
+  });
+});
+
+describe('PlannerTurns raising an escalation the planner wrote', () => {
+  const written = (): PlanChatEntry => ({
+    key: 'escalate-message-1',
+    role: 'planner',
+    kind: 'escalation',
+    text: 'Which pagination do you want?',
+    at: '2026-01-01T00:01:00.000Z',
+    state: 'pending',
+  });
+
+  it('puts it into the questions of a run without a parent once, and releases the run for the answer', async () => {
+    const { turns, stored, released } = asked([written()], null, {}, { parentRunId: null });
+    const run = { key: 'run-1', parentRunId: null } as RunEntity;
+
+    expect(await turns.raise(run)).toBe(true);
+
+    expect(stored.questions).toContain('Which pagination do you want?');
+    expect(JSON.parse(stored.question_parts)[0].parts.entry).toBe('escalate-message-1');
+    expect(released).toEqual([{ status: 'waiting', facts: { needsAnswers: true } }]);
+    expect(await turns.raise(run)).toBe(false);
+  });
+
+  it("leaves a subtask's escalation to the planner of its parent", async () => {
+    const { turns, stored } = asked([written()], null);
+
+    expect(await turns.raise({ key: 'run-1', parentRunId: 7 } as RunEntity)).toBe(false);
+
+    expect(stored.questions).toBeUndefined();
+  });
+
+  it('writes nothing when no escalation waits', async () => {
+    const { turns, stored } = asked([], null);
+
+    expect(await turns.raise({ key: 'run-1', parentRunId: null } as RunEntity)).toBe(false);
+
+    expect(stored.questions).toBeUndefined();
   });
 });

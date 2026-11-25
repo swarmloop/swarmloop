@@ -109,7 +109,7 @@ export class StarterExchange {
    */
   private async askParent(ctx: ModelStepContext, visit: StarterVisit, texts: string[]): Promise<StepResult> {
     const { startedAt } = ctx.opened;
-    await this.escalate(ctx, visit.step, texts);
+    await this.escalateFor(ctx.opened.run, visit.step, ctx.opened.attemptId, texts);
     const reason = `${asksParentReason(visit.step)}: ${texts.join('; ')}`;
     return {
       route: { to: 'wait', code: REASON.asksPlanner, reason },
@@ -131,15 +131,18 @@ export class StarterExchange {
   async handUp(ctx: ModelStepContext, fields: StarterFields, step: string, more: string[] = []): Promise<void> {
     await this.report(ctx, step, fields);
     const question = fields.question?.trim() ?? '';
-    await this.escalate(ctx, step, [...(question ? [question] : []), ...more, ...this.handBacks(fields)]);
+    await this.escalateFor(ctx.opened.run, step, ctx.opened.attemptId, [
+      ...(question ? [question] : []),
+      ...more,
+      ...this.handBacks(fields),
+    ]);
   }
 
-  /** One pending escalation per text in the run's chat, named by the step and the attempt, so a replay writes each once. */
-  private async escalate(ctx: ModelStepContext, step: string, texts: string[]): Promise<void> {
-    const { run, attemptId } = ctx.opened;
+  /** One pending escalation per text in the run's chat, named by the step and the event, so a replay writes each once. */
+  async escalateFor(run: Pick<RunEntity, 'key'>, step: string, event: string, texts: string[]): Promise<void> {
     for (const [index, text] of texts.entries()) {
       await this.chat?.appendEntry(run.key, {
-        key: `handback-${step}-${attemptId}-${index}`,
+        key: `handback-${step}-${event}-${index}`,
         role: 'planner',
         kind: 'escalation',
         from: step,

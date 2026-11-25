@@ -13,7 +13,7 @@ import { asksParentReason } from '../steps/shared/starter-exchange';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { readPlan } from '../steps/plan/plan-record';
 import { messageTurn } from './plan-chat-route';
-import { closeEscalation, escalateToPerson, escalationLine, releaseAsked } from './escalation';
+import { closeEscalation, escalateToPerson, escalationLine, isAsked, releaseAsked } from './escalation';
 import type { QuestionHolds } from '../steps/shared/question-holds';
 import { answered } from '../steps/shared/answers';
 import { askPlanner, readPersonAnswer } from './planner-question';
@@ -143,6 +143,21 @@ export class PlannerTurns implements OnModuleDestroy {
     }
     if (this.documents) await escalateToPerson(this.documents, run, escalation);
     if (this.runs) await releaseAsked(this.runs, this.holds, run.key);
+  }
+
+  /**
+   * Puts to the person the escalations a step wrote into the run's chat, which are not yet among the run's questions.
+   * True when it raised one. A subtask raises nothing: its parent's planner finds the entry.
+   */
+  async raise(run: RunEntity): Promise<boolean> {
+    if (isSubtask(run) || !this.documents) return false;
+    let raised = false;
+    for (const entry of (await this.chat?.pendingEscalations(run.key)) ?? []) {
+      if (await isAsked(this.documents, run, entry)) continue;
+      await this.escalate(run, entry);
+      raised = true;
+    }
+    return raised;
   }
 
   /** The escalations that wait whose question the person answered, oldest first. */

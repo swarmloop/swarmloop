@@ -51,6 +51,19 @@ describe('open questions of the run view', () => {
     expect(items[0]).toMatchObject({ kind: 'question', id: line, answer: '', parts });
   });
 
+  it('lists an escalated question at any step after plan, and not a line without stored parts', () => {
+    const line = 'implement asks: Which pagination? (asked t)';
+    const parts = { decide: 'Which pagination?', sides: [], full: '', askedAt: 't' };
+    const documents = [
+      doc('questions', `- old line\n- ${line}\n`),
+      doc('question_parts', JSON.stringify([{ question: line, parts }])),
+    ];
+    for (const currentStep of ['plan-improve', 'merge-request'] as const) {
+      const items = openItems({ currentStep, status: 'waiting' } as RunEntity, documents, []);
+      expect(items.map((item) => item.id)).toEqual([line]);
+    }
+  });
+
   it('lists the question of a code review waiting for the person, and is ready once it is answered', () => {
     const waiting = { currentStep: 'code-review', status: 'waiting' } as RunEntity;
     const asked = doc(

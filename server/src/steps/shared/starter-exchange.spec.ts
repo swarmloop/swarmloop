@@ -150,4 +150,13 @@ describe('StarterExchange', () => {
       expect(exchange.check(run, { decisions: [{ item: 'retry', text: 'five' }] }, contract)).toEqual([]);
     });
   });
+
+  it('hands each text up as a pending escalation of the step, named by the event', async () => {
+    const { run, exchange, entries } = world();
+    await exchange.escalateFor(run, 'implement', 'message-1', ['First?', 'Second?']);
+    expect(entries).toMatchObject([
+      { key: 'handback-implement-message-1-0', from: 'implement', text: 'First?', state: 'pending' },
+      { key: 'handback-implement-message-1-1', from: 'implement', text: 'Second?', state: 'pending' },
+    ]);
+  });
 });

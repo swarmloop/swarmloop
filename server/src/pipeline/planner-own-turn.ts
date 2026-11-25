@@ -9,6 +9,8 @@ import { planReplyFor, type PlanReplyResult } from '../agent-result/definitions/
 import { resultPromptFor } from '../agent-result/result-prompt';
 import { planChatTakes } from '../steps/plan/plan.prompts';
 import { PlanConversation } from '../steps/shared/plan-conversation';
+import { replyEscalation } from '../steps/shared/reply-escalation';
+import { StarterExchange } from '../steps/shared/starter-exchange';
 import { hostRoute, ModelHostUnavailable } from '../steps/shared/model-host-unavailable';
 import { CommandService } from './command.service';
 import { PlannerTurns } from './planner-turns';
@@ -135,12 +137,9 @@ export class PlannerOwnTurn {
       at: this.clock.iso(),
       state: 'taken',
     });
-    const decide = reply.escalate?.trim();
-    if (decide) {
-      const escalation = this.escalation(keys[0], decide);
-      await this.chat.appendEntry(key, escalation);
-      await this.chat.markTaken(key, keys);
-      await this.turns.escalate(run, escalation);
+    const escalation = replyEscalation(reply.escalate, { key: keys[0] }, this.clock.iso());
+    if (escalation) {
+      await this.escalate(run, escalation, keys);
       return null;
     }
     // A resume leaves the messages for the resumed run, with no wait of the outage that came before; any other turn takes them.
@@ -188,16 +187,19 @@ export class PlannerOwnTurn {
     return stopped ? `${reply.trim()}\n\n${STAYS_STOPPED}` : reply.trim();
   }
 
-  /** What the planner could not settle, left to whoever started the run; it goes up the chain like a step's question. */
-  private escalation(first: string, text: string): PlanChatEntry {
-    return {
-      key: `escalate-${first}`,
-      role: 'planner',
-      kind: 'escalation',
-      text,
-      at: this.clock.iso(),
-      state: 'pending',
-    };
+  /**
+   * What the planner could not settle, left to whoever started the run. A run without a parent puts it to the person or
+   * the backlog planner like a step's question. A subtask hands it up as its implement's hand-up, which its parent's planner finds.
+   */
+  private async escalate(run: RunEntity, escalation: PlanChatEntry, keys: string[]): Promise<void> {
+    if (isSubtask(run)) {
+      await new StarterExchange(this.chat, this.clock).escalateFor(run, 'implement', keys[0], [escalation.text]);
+      await this.chat.markTaken(run.key, keys);
+      return;
+    }
+    await this.chat.appendEntry(run.key, escalation);
+    await this.chat.markTaken(run.key, keys);
+    await this.turns.escalate(run, escalation);
   }
 
   /** Sends the reply's command for the person. A refused command is logged and written in the chat; its messages are taken. */

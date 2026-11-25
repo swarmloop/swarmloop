@@ -31,6 +31,8 @@ export class PlannerTurnPass {
     const run = await this.runs.findRun(key);
     const turns = this.turns;
     if (!run || !turns) return null;
+    // An escalation the plan step's own visit wrote waits at the step the drive would run next.
+    if (await turns.raise(run)) return null;
     for (let next = await turns.next(run, declined); next; next = await turns.next(run, declined)) {
       if (next === 'question' || next === 'answer') {
         this.door.takeRefusal(key);
@@ -50,8 +52,11 @@ export class PlannerTurnPass {
       if (outcome === 'changed') {
         const fresh = await this.runs.findRun(key);
         if (fresh) await this.runs.release(fresh, { status: 'waiting', currentStep: 'plan-improve' });
+        // A reply that escalates leaves the run waiting for the answer, not on its way to plan-improve.
+        if (await turns.raise(run)) return null;
         return { step: 'plan-improve' };
       }
+      if (await turns.raise(run)) return null;
     }
     return null;
   }
