@@ -7,9 +7,17 @@ import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
-import type { ConnectionView } from '@contract/api';
+import type { ConnectionView, TokenSignInView } from '@contract/api';
 import type { ConnectionCard as Card } from '@contract/connections';
-import { disconnect, getConnections, getIntegrationCards, installMore, replaceApp } from '../../lib/endpoints';
+import {
+  disconnect,
+  getConnections,
+  getIntegrationCards,
+  getProviders,
+  installMore,
+  replaceApp,
+} from '../../lib/endpoints';
+import { Placeholders } from '../overview';
 import { ConfirmDialog } from '../shell';
 import { ConnectionCard } from './connection-card';
 import { FirstRun, ManifestPost, type ManifestForm } from './first-run';
@@ -30,6 +38,7 @@ function disconnected(people: string[]): string {
 export function ConnectionsPage(): ReactElement {
   const [connections, setConnections] = useState<ConnectionView[] | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
+  const [tokens, setTokens] = useState<TokenSignInView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [asking, setAsking] = useState<{ connection: ConnectionView; label: string } | null>(null);
   const [replacing, setReplacing] = useState<ConnectionView | null>(null);
@@ -37,10 +46,16 @@ export function ConnectionsPage(): ReactElement {
   const [form, setForm] = useState<ManifestForm | null>(null);
 
   const load = useCallback(() => {
-    Promise.all([getConnections(), getIntegrationCards()]).then(
-      ([view, integrations]) => {
+    // The token entries are an extra: a failed read leaves the cards without a token form.
+    const entries = getProviders().then(
+      (view) => view.tokens,
+      () => [],
+    );
+    Promise.all([getConnections(), getIntegrationCards(), entries]).then(
+      ([view, integrations, tokenEntries]) => {
         setConnections(view.connections);
         setCards(integrations.cards);
+        setTokens(tokenEntries);
       },
       (cause: unknown) => setError(cause instanceof Error ? cause.message : 'connections could not be read'),
     );
@@ -84,6 +99,9 @@ export function ConnectionsPage(): ReactElement {
         </Typography>
       </Box>
       {error ? <Alert severity="error">{error}</Alert> : null}
+      {connections === null && !error ? (
+        <Placeholders count={4} height={180} testId="connections-placeholder" grid />
+      ) : null}
       <Grid container spacing={2}>
         {cards.map((card) => {
           const connection = (connections ?? []).find((item) => item.host === card.id);
@@ -95,6 +113,7 @@ export function ConnectionsPage(): ReactElement {
                 <HostCard
                   card={card}
                   connection={connection}
+                  tokenEntry={tokens.find((entry) => entry.provider === card.id)}
                   onChanged={load}
                   onReplace={() => setReplacing(connection)}
                   onInstall={() => void addRepositories(connection.host)}
