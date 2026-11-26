@@ -14,6 +14,7 @@ import type { SettingsView } from '@contract/settings';
 import { ConnectionsPage } from '../connections';
 import { Placeholders } from '../overview';
 import { getSettings, saveSettings } from '../../lib/endpoints';
+import { usePhone } from '../../lib/use-phone';
 import { AgentsSection } from './agents-section';
 import { ApiTokensSection } from './api-tokens-section';
 import { ServerSection } from './server-section';
@@ -25,6 +26,7 @@ const reason = (cause: unknown, fallback: string): string => (cause instanceof E
 
 /** Sections in a left list: the person's agents, Connections, API tokens and the env-only Server settings. */
 export function SettingsPage(): ReactElement {
+  const phone = usePhone();
   const [section, setSection] = useState<Section>('Agents');
   const [view, setView] = useState<SettingsView | null>(null);
   const [draft, setDraft] = useState<SettingsBody>({});
@@ -64,8 +66,16 @@ export function SettingsPage(): ReactElement {
       <Typography variant="h4" component="h1" sx={{ mb: 2 }}>
         Settings
       </Typography>
-      <Box sx={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
-        <List component="nav" aria-label="settings sections" sx={{ width: 200, flexShrink: 0 }}>
+      <Box
+        data-testid="settings-layout"
+        sx={{
+          display: 'flex',
+          flexDirection: phone ? 'column' : 'row',
+          gap: 4,
+          alignItems: phone ? 'stretch' : 'flex-start',
+        }}
+      >
+        <List component="nav" aria-label="settings sections" sx={{ width: phone ? '100%' : 200, flexShrink: 0 }}>
           {SECTIONS.map((name) => (
             <ListItemButton key={name} selected={name === section} onClick={() => setSection(name)}>
               <ListItemText primary={name} />

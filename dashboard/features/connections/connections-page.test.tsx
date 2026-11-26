@@ -14,6 +14,7 @@ import {
   testIntegration,
 } from '../../lib/endpoints';
 import { connectionCard } from '../../test/fixtures';
+import { mediaWidth } from '../../test/viewport';
 import { ConnectionsPage } from './connections-page';
 
 vi.mock('../../lib/endpoints', () => ({
@@ -363,5 +364,49 @@ describe('ConnectionsPage', () => {
 
     expect(screen.getAllByRole('region', { name: 'GitHub' })).toHaveLength(1);
     expect(screen.getAllByRole('region', { name: 'GitLab' })).toHaveLength(1);
+  });
+});
+
+describe('ConnectionsPage at 375 px', () => {
+  mediaWidth(375);
+
+  it('gives each card the full row, with the fold and the token form inside the card', async () => {
+    vi.mocked(getConnections).mockResolvedValue(connected);
+    vi.mocked(getProviders).mockResolvedValue({
+      providers: ['github'],
+      tokens: [{ provider: 'gitlab', base: 'https://gitlab.test', tokenPage: 'https://gitlab.test/tokens' }],
+    });
+    render(<ConnectionsPage />);
+
+    const github = await screen.findByRole('region', { name: 'GitHub' });
+    const gitlab = screen.getByRole('region', { name: 'GitLab' });
+    for (const card of [github, gitlab]) {
+      expect(card.closest('.MuiGrid-root')).not.toHaveClass('MuiGrid-grid-md-6');
+      expect(getComputedStyle(card.closest('.MuiGrid-root')!).width).toBe(
+        'calc(100% * 12 / var(--Grid-parent-columns) - (var(--Grid-parent-columns) - 12) * (var(--Grid-parent-columnSpacing) / var(--Grid-parent-columns)))',
+      );
+    }
+    expect(within(github).getByRole('button', { name: 'Show' })).toBeInTheDocument();
+    expect(await within(gitlab).findByLabelText('Personal access token')).toBeInTheDocument();
+  });
+
+  it('shows the placeholders in one column', () => {
+    vi.mocked(getConnections).mockReturnValue(new Promise(() => undefined));
+    render(<ConnectionsPage />);
+
+    const grid = screen.getAllByTestId('connections-placeholder')[0].parentElement!;
+    expect(getComputedStyle(grid).gridTemplateColumns).toBe('minmax(0, 1fr)');
+  });
+});
+
+describe('ConnectionsPage at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('keeps two cards to a row from 900 px', async () => {
+    vi.mocked(getConnections).mockResolvedValue(connected);
+    render(<ConnectionsPage />);
+
+    const github = await screen.findByRole('region', { name: 'GitHub' });
+    expect(github.closest('.MuiGrid-root')).toHaveClass('MuiGrid-grid-md-6');
   });
 });

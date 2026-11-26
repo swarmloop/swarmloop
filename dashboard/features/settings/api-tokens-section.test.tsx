@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TokenView } from '@contract/people';
 import { createToken, listTokens, revokeToken, useExistingToken } from '../../lib/endpoints';
+import { mediaWidth } from '../../test/viewport';
 import { ApiTokensSection } from './api-tokens-section';
 
 vi.mock('../../lib/endpoints', () => ({
@@ -107,5 +108,35 @@ describe('ApiTokensSection', () => {
     expect(revokeToken).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole('button', { name: 'Revoke' }));
     await waitFor(() => expect(revokeToken).toHaveBeenCalledWith(7));
+  });
+});
+
+describe('ApiTokensSection at 375 px', () => {
+  mediaWidth(375);
+
+  it('stacks both forms in one column and scrolls the table inside its own box', async () => {
+    render(<ApiTokensSection />);
+    const table = await screen.findByRole('table', { name: 'API tokens' });
+
+    expect(getComputedStyle(screen.getByTestId('tokens-scroll')).overflowX).toBe('auto');
+    expect(screen.getByTestId('tokens-scroll')).toContainElement(table);
+    for (const name of ['Create token', 'Use an existing token']) {
+      expect(getComputedStyle(screen.getByRole('form', { name })).flexDirection).toBe('column');
+    }
+    const button = within(screen.getByRole('form', { name: 'Create token' })).getByRole('button');
+    expect(getComputedStyle(button.parentElement!).flexWrap).toBe('wrap');
+  });
+});
+
+describe('ApiTokensSection at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('keeps both forms as one row', async () => {
+    render(<ApiTokensSection />);
+    await screen.findByRole('table', { name: 'API tokens' });
+
+    for (const name of ['Create token', 'Use an existing token']) {
+      expect(getComputedStyle(screen.getByRole('form', { name })).flexDirection).not.toBe('column');
+    }
   });
 });
