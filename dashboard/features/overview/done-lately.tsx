@@ -7,14 +7,19 @@ import Typography from '@mui/material/Typography';
 import { useQueries } from '@tanstack/react-query';
 import { getFlow } from '../../lib/endpoints';
 import { money } from '../../lib/format';
-import { useBacklogs } from '../backlogs';
+import type { Route } from 'next';
+import { DONE_SHOWN, type DoneLatelyItem } from '@contract/overview-done';
+import { backlogPath } from '../../lib/backlog-path';
 import { RunStateIcon, runWord } from '../run';
-import { type DoneItem, DONE_SHOWN, doneItems } from './done-items';
 import { longDuration, returnsWords } from './overview-format';
 import { LoadFailed, Placeholders, sectionState } from './section-state';
-import { useOverviewRuns } from './use-overview-runs';
+import { useDoneLately } from './use-done-lately';
 
-function DoneLine({ item }: { item: DoneItem }): ReactElement {
+function hrefOf(item: DoneLatelyItem): Route {
+  return 'run' in item.link ? (`/runs/${encodeURIComponent(item.link.run)}` as Route) : backlogPath(item.link.backlog);
+}
+
+function DoneLine({ item }: { item: DoneLatelyItem }): ReactElement {
   const flows = useQueries({
     queries: item.runKeys.map((key) => ({ queryKey: ['overview-flow', key], queryFn: () => getFlow(key) })),
   });
@@ -29,7 +34,7 @@ function DoneLine({ item }: { item: DoneItem }): ReactElement {
     <Box component="li" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
       <Box
         component={Link}
-        href={item.href}
+        href={hrefOf(item)}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -65,10 +70,8 @@ function DoneLine({ item }: { item: DoneItem }): ReactElement {
 
 /** The last five finished top-level items, one line each. */
 export function DoneLately(): ReactElement | null {
-  const runs = useOverviewRuns();
-  const { backlogs, loaded, error } = useBacklogs();
-  const state = sectionState(runs, { loaded, failed: error !== null });
-  const lines = doneItems(runs.done, backlogs);
+  const { items: lines, loaded, failed } = useDoneLately();
+  const state = sectionState({ loaded, failed });
   if (state === 'ready' && lines.length === 0) {
     return null;
   }

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { emitted, fakeSocket, receive } from '../../test/fake-socket';
 import { flowView, runSummary } from '../../test/fixtures';
+import { doneItem } from '../../test/overview-fixtures';
 import { runsPage } from '../../test/runs-page';
 import { LiveBridgeProvider, useBacklogStamp, useLiveActions, useLiveBridge } from './use-live-bridge';
 import type { RunSummary } from '@contract/api';
@@ -150,7 +151,7 @@ describe('useLiveBridge', () => {
 
     unmount();
 
-    for (const event of ['connect', 'disconnect', 'runs', 'run', 'flow', 'log', 'backlog']) {
+    for (const event of ['connect', 'disconnect', 'runs', 'run', 'flow', 'log', 'backlog', 'done']) {
       expect(fakeSocket.listenerCount(event)).toBe(0);
     }
   });
@@ -261,5 +262,18 @@ describe('useLiveBridge', () => {
 
     expect(screen.getByText('usd 2.5')).toBeInTheDocument();
     expect(screen.getByText('tokens 9')).toBeInTheDocument();
+  });
+
+  it('holds the items of a done event, null before the first one', () => {
+    function Done() {
+      const done = useLiveBridge((snapshot) => snapshot.done);
+      return <p>{done === null ? 'no event' : done.map((item) => item.key).join(',')}</p>;
+    }
+    render(<Done />, { wrapper: LiveBridgeProvider });
+    expect(screen.getByText('no event')).toBeInTheDocument();
+
+    act(() => receive('done', [doneItem(runSummary()), doneItem({ ...runSummary(), key: 'run-2' })]));
+
+    expect(screen.getByText('run-1,run-2')).toBeInTheDocument();
   });
 });

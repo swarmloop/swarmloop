@@ -1,4 +1,5 @@
 import type { FlowView, RunSummary } from '@contract/api';
+import { DONE_SHOWN, type DoneLatelyItem } from '@contract/overview-done';
 import { WAITS_FOR_YOU } from '@contract/eta';
 import { NEEDS_ANSWERS } from '@contract/run-state';
 import { flowView, runSummary } from './fixtures';
@@ -68,10 +69,26 @@ export function returnsFlow(key: string, counts: number[], url = `https://exampl
   });
 }
 
-/** A merged run that was merged at the given time, whenever it was created. */
-export function mergedAt(key: string, at: string, overrides: Partial<RunSummary> = {}): RunSummary {
-  return mergedRun(key, {
-    merge: { merged: { shop: { sha: null, by: null, at, url: null } } },
+/** The item Done lately shows for a finished run: it links to the run and counts its own returns. */
+export function doneItem(run: RunSummary, overrides: Partial<DoneLatelyItem> = {}): DoneLatelyItem {
+  return {
+    key: run.key,
+    title: run.title,
+    link: { run: run.key },
+    run,
+    runKeys: [run.key],
+    finishedAt: 0,
+    durationMs: run.durationMs,
+    usd: run.usd,
+    milestone: false,
     ...overrides,
-  });
+  };
+}
+
+/** What the server's read answers for these runs: the first five finished top-level runs. */
+export function doneItemsOf(runs: RunSummary[]): DoneLatelyItem[] {
+  return runs
+    .filter((one) => one.status === 'done' && one.parentKey === undefined)
+    .slice(0, DONE_SHOWN)
+    .map((one) => doneItem(one));
 }
