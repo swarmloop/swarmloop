@@ -9,6 +9,7 @@ import {
   getConnections,
   getIntegrationCards,
   getOwner,
+  getProviders,
   replaceApp,
   testIntegration,
 } from '../../lib/endpoints';
@@ -20,6 +21,7 @@ vi.mock('../../lib/endpoints', () => ({
   disconnect: vi.fn(),
   replaceApp: vi.fn(),
   getOwner: vi.fn(),
+  getProviders: vi.fn(),
   getIntegrationCards: vi.fn(),
   disconnectIntegration: vi.fn(),
   saveIntegration: vi.fn(),
@@ -90,6 +92,7 @@ beforeEach(() => {
   vi.mocked(disconnect).mockReset();
   vi.mocked(replaceApp).mockReset();
   vi.mocked(getOwner).mockReset().mockResolvedValue({ owner: 'acme', others: [] });
+  vi.mocked(getProviders).mockReset().mockResolvedValue({ providers: [], tokens: [] });
 });
 
 describe('ConnectionsPage', () => {
@@ -103,6 +106,9 @@ describe('ConnectionsPage', () => {
     expect(github).toHaveTextContent('connected');
     expect(github).toHaveTextContent('Token expires');
     expect(github).toHaveTextContent('refreshed');
+    expect(github).toHaveTextContent('2 repositories');
+    expect(screen.queryByText('acme/api')).not.toBeInTheDocument();
+    await userEvent.setup({ delay: null }).click(within(github).getByRole('button', { name: 'Show' }));
     expect(screen.getByText('acme/api')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Install on more repositories' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Reconnect' })).toHaveAttribute('href', '/auth/github/login');
@@ -216,6 +222,56 @@ describe('ConnectionsPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('shows placeholders until the data arrives', async () => {
+    vi.mocked(getConnections).mockResolvedValue(connected);
+    render(<ConnectionsPage />);
+    expect(screen.getAllByTestId('connections-placeholder').length).toBeGreaterThan(0);
+
+    await screen.findByRole('region', { name: 'GitHub' });
+    expect(screen.queryByTestId('connections-placeholder')).not.toBeInTheDocument();
+  });
+
+  it('folds 71 repositories behind Show and shows no client id', async () => {
+    const many = Array.from({ length: 71 }, (_, index) => `acme/repo-${index}`);
+    vi.mocked(getConnections).mockResolvedValue({
+      connections: connected.connections.map((item) =>
+        item.host === 'github' ? { ...item, repositories: many } : item,
+      ),
+    });
+    render(<ConnectionsPage />);
+
+    const github = await screen.findByRole('region', { name: 'GitHub' });
+    expect(github).toHaveTextContent('71 repositories');
+    expect(github).not.toHaveTextContent('Iv.fake');
+    expect(screen.queryByText('acme/repo-0')).not.toBeInTheDocument();
+    await userEvent.setup({ delay: null }).click(within(github).getByRole('button', { name: 'Show' }));
+    expect(screen.getByText('acme/repo-70')).toBeInTheDocument();
+  });
+
+  it('offers the token form on a host that takes a token to a person with no account there', async () => {
+    vi.mocked(getConnections).mockResolvedValue(connected);
+    vi.mocked(getProviders).mockResolvedValue({
+      providers: ['github'],
+      tokens: [{ provider: 'gitlab', base: 'https://gitlab.test', tokenPage: 'https://gitlab.test/tokens' }],
+    });
+    render(<ConnectionsPage />);
+
+    const gitlab = await screen.findByRole('region', { name: 'GitLab' });
+    await within(gitlab).findByRole('link', { name: 'Create a token' });
+    expect(within(gitlab).getByLabelText('Personal access token')).toBeInTheDocument();
+    expect(within(gitlab).getByRole('button', { name: 'Sign in with token' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'GitHub' })).queryByText('Create a token')).toBeNull();
+  });
+
+  it('keeps the old sentence on a host with no token entry', async () => {
+    vi.mocked(getConnections).mockResolvedValue(connected);
+    render(<ConnectionsPage />);
+
+    expect(await screen.findByRole('region', { name: 'GitLab' })).toHaveTextContent(
+      'No app or application is set up yet.',
+    );
+  });
+
   it('the Claude card draws from the card list and Disconnect clears it after the reload', async () => {
     vi.mocked(getConnections).mockResolvedValue(connected);
     vi.mocked(getIntegrationCards).mockResolvedValue({
@@ -226,7 +282,7 @@ describe('ConnectionsPage', () => {
     vi.mocked(disconnectIntegration).mockResolvedValue({ ok: true });
     render(<ConnectionsPage />);
     const claude = await screen.findByRole('region', { name: 'Claude' });
-    expect(claude).toHaveTextContent('Connected as alice@acme.test');
+    expect(claude).toHaveTextContent('Runs use your alice@acme.test');
 
     vi.mocked(getIntegrationCards).mockResolvedValue({ cards });
     const user = userEvent.setup({ delay: null });

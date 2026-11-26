@@ -526,9 +526,9 @@ Adapters are found by folder. A fake of each kind serves the tests.
 
 The text is plain words for a person: no raw JSON and no internal ids. A cut text says how much is left out and where the whole is.
 
-**Today.** Holds in the main. The board shows no return lines, a muted ×N of agent visits, and plain names. Settings' Server section follows `defaults.env` through `DefaultsLayout`; People and Appearance are not in Settings. Gaps:
+**Today.** Holds in the main. The board shows no return lines, a muted ×N of agent visits, and plain names. Settings' Server section follows `defaults.env` through `DefaultsLayout`; People and Appearance are not in Settings. Short lines come from the server, decisions read in words, long texts and path lists fold, and Connections say what a run uses (the server's key or the person's own) and fold a host's repositories; the report heading on the run page is in 3.7. Gaps:
 - held runs read as failures (held-run-says-so);
-- several screens are still being reworked in M1 (f121, f131, f132, done-lately, b04, f26).
+- several screens are still being reworked in M1 (f131, f132, done-lately, b04, f26).
 
 ## 3.24 Tests, CI and releases
 
