@@ -16,6 +16,11 @@ export class ModelHostUnavailable extends HostUnavailable {
   }
 }
 
+/** This file raises the error, so it tells a model host's outage from a code host's. */
+export function isModelOutage(error: unknown): error is ModelHostUnavailable {
+  return error instanceof ModelHostUnavailable;
+}
+
 /** How a visit whose model host did not answer is stored, with its own cost and tokens. */
 export const HOST_VISIT = { status: 'interrupted', killReason: ERROR_CODES.HOST_UNAVAILABLE } as const;
 

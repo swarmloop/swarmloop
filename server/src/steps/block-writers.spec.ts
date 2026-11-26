@@ -405,6 +405,7 @@ const WRITER_FILES = [
 ];
 
 const NOT_WRITERS: Record<string, string> = {
+  'contract/outside-waits.ts': "names the status a wait's run has in a table, it stores nothing",
   'api/run-rebase.service.ts': "returns { status: 'blocked' } as a response, it stores nothing",
   'core/pipeline-result.ts': 'settle() is the step-end input; the closeStep cases cover it',
   'steps/contract/step-contract.ts': 'declares the block route type',
