@@ -285,7 +285,7 @@ export class AgentLaunch {
         reported: meter.reported(),
         killReason: finalKillReason,
         exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,
-        ...endedBySignal(exitCode, finishedByResult || killReason !== null),
+        ...endedBySignal(exitCode, finishedByResult || killReason !== null, process),
         output,
         resumed,
         decided: meter.decided(input.answered),

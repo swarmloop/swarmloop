@@ -94,6 +94,29 @@ describe('AgentProcessRunner provider limit', () => {
     expect(launches).toHaveLength(1);
   });
 
+  it('relaunches a kill by the memory cap up to MAX_LAUNCHES, because it is an out-of-memory failure and no stop from outside', async () => {
+    const killed = { chunks: [], code: 137, memoryCapBytes: 1 << 30 };
+    const { result, launches } = await start(
+      'memory-cap',
+      [killed, killed, killed],
+      { resumeChatId: null, runtime: 'claude' },
+      { MAX_LAUNCHES: 3 },
+    );
+    expect(result.signal).toBeUndefined();
+    expect(launches).toHaveLength(3);
+  });
+
+  it('returns exit 137 of a container with no memory cap as a kill from outside', async () => {
+    const { result, launches } = await start(
+      'no-cap',
+      [{ chunks: [], code: 137 }],
+      { resumeChatId: null, runtime: 'claude' },
+      { MAX_LAUNCHES: 3 },
+    );
+    expect(result.signal).toBe('SIGKILL');
+    expect(launches).toHaveLength(1);
+  });
+
   it('relaunches a crash by another signal, which is no stop from outside', async () => {
     const { result, launches } = await start(
       'crash',

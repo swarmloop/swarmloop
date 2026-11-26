@@ -60,10 +60,19 @@ export function emptyResult(killReason: KillReason, exitCode: number, calls: num
   };
 }
 
-/** The signal an unexplained end was caused by, read from its shell-style exit code (128 plus the signal's number); none for an answer, a kill of ours or any other code. */
-export function endedBySignal(exitCode: number, explained: boolean): { signal?: string } {
+/** Whether exit 137 of a container with a memory cap is the cap's kill: it is swarmloop's own limit, an out-of-memory failure and no stop from outside. */
+function killedByMemoryCap(exitCode: number, container: { memoryCapBytes?: number }): boolean {
+  return exitCode === 137 && container.memoryCapBytes !== undefined;
+}
+
+/** The signal an unexplained end was caused by, read from its shell-style exit code (128 plus the signal's number); none for an answer, a kill of ours, the memory cap's kill or any other code. */
+export function endedBySignal(
+  exitCode: number,
+  explained: boolean,
+  container: { memoryCapBytes?: number },
+): { signal?: string } {
   const name = Object.entries(constants.signals).find(([, value]) => exitCode > 128 && value === exitCode - 128)?.[0];
-  return name && !explained ? { signal: name } : {};
+  return name && !explained && !killedByMemoryCap(exitCode, container) ? { signal: name } : {};
 }
 
 /** The signals a container gets when docker or the host stops it. Any other signal is a crash of the agent. */

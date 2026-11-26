@@ -57,6 +57,11 @@ export class AgentProcess {
     return this.child.containerName;
   }
 
+  /** The memory the container was started with; undefined when it has no cap. */
+  get memoryCapBytes(): number | undefined {
+    return this.child.memoryCapBytes;
+  }
+
   kill(force = true): void {
     this.child.kill('SIGTERM');
     void this.sandbox.kill(this.child.containerName);
