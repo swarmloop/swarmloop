@@ -85,11 +85,3 @@ export function activeMilestoneBacklog(name = 'shop'): BacklogView {
   );
   return backlogView({ name, milestones: [milestone({ status: 'active', title: 'Checkout' })], tasks });
 }
-
-/** A backlog whose accepted milestone M3 was built by one task run for each of the given keys. */
-export function acceptedMilestoneBacklog(name: string, runKeys: string[]): BacklogView {
-  const tasks = runKeys.map((runKey, index) =>
-    task({ slug: `task-${index + 1}`, title: `Task ${index + 1}`, status: 'merged', runKey }),
-  );
-  return backlogView({ name, milestones: [milestone({ status: 'accepted', title: 'Checkout' })], tasks });
-}

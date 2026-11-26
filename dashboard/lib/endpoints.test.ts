@@ -3,6 +3,7 @@ import { api, runLog } from './api';
 import {
   createRun,
   disconnectIntegration,
+  getDoneLately,
   getFlow,
   getIntegrationCards,
   getSignIn,
@@ -79,6 +80,12 @@ describe('endpoints', () => {
       ['/runs/a%2Fb/plan-chat', { method: 'POST', body: JSON.stringify({ message: 'split it', attachments: ['u1'] }) }],
       ['/runs/run-1/plan-chat', { method: 'POST', body: JSON.stringify({ message: 'hello' }) }],
     ]);
+  });
+
+  it('reads the items of Done lately from its own route', async () => {
+    await getDoneLately();
+
+    expect(vi.mocked(api).mock.calls).toEqual([['/overview/done']]);
   });
 
   it('reads with GET paths and encodes the key once', async () => {

@@ -4,14 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadinessProvider } from '../features/readiness';
 import { Shell } from '../features/shell';
 import { listBacklogs } from '../lib/backlog-endpoints';
-import { getFlow, getReadiness, getStats, listRuns } from '../lib/endpoints';
+import { getDoneLately, getFlow, getReadiness, getStats, listRuns } from '../lib/endpoints';
 import { receive } from '../test/fake-socket';
 import { runSummary, statsView } from '../test/fixtures';
 import { listRunsFrom, runsPage } from '../test/runs-page';
+import { doneItemsOf } from '../test/overview-fixtures';
 import { QueryWrapper } from '../test/query-wrapper';
 import HomePage from './page';
 
-vi.mock('../lib/endpoints', () => ({ getReadiness: vi.fn(), getStats: vi.fn(), listRuns: vi.fn(), getFlow: vi.fn() }));
+vi.mock('../lib/endpoints', () => ({
+  getReadiness: vi.fn(),
+  getStats: vi.fn(),
+  listRuns: vi.fn(),
+  getFlow: vi.fn(),
+  getDoneLately: vi.fn(),
+}));
 vi.mock('../lib/backlog-endpoints', () => ({ listBacklogs: vi.fn() }));
 vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLive());
 vi.mock('next/navigation', () => ({ useRouter: vi.fn() }));
@@ -21,6 +28,7 @@ beforeEach(() => {
   vi.mocked(getStats).mockResolvedValue(statsView());
   vi.mocked(listRuns).mockImplementation(listRunsFrom([]));
   vi.mocked(getFlow).mockReset();
+  vi.mocked(getDoneLately).mockResolvedValue([]);
   vi.mocked(listBacklogs).mockResolvedValue([]);
 });
 
@@ -97,6 +105,7 @@ describe('HomePage run line', () => {
       run('epic-task', { state: 'waiting', status: 'waiting', parentKey: 'epic' }),
     ];
     vi.mocked(listRuns).mockImplementation(listRunsFrom(runs));
+    vi.mocked(getDoneLately).mockResolvedValue(doneItemsOf(runs));
     renderPage();
     act(() => receive('runs', runsPage(runs, { part: 'active' })));
 

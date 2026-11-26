@@ -81,4 +81,14 @@ describe('LiveHub', () => {
     hub.appended({ key: 'run-1', step: 'implement', seq: 5 });
     expect(seen).toEqual([4]);
   });
+
+  it("tells listeners when a person's backlog write is done, until they unsubscribe", () => {
+    const hub = new LiveHub();
+    let heard = 0;
+    const stop = hub.onBacklogWritten(() => (heard += 1));
+    hub.backlogWritten();
+    stop();
+    hub.backlogWritten();
+    expect(heard).toBe(1);
+  });
 });

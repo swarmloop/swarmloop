@@ -11,9 +11,12 @@ import { ClientToServerEvents, LiveEvents, LiveRunUsage, ServerToClientEvents } 
 import { RunQueriesService } from '../api/run-queries.service';
 import { filterRuns } from '../contract/run-list';
 import { LiveFlowRooms, room } from './live-flow-rooms';
+import { DoneLatelyChanges } from './done-lately-changes';
+import { DoneLatelyService } from './done-lately.service';
 import { RunListChanges } from './run-list-changes';
 import { pageOf } from './run-list-page';
 import { RunListRows } from './run-list-rows';
+import type { RunsView } from '../contract/api';
 import { Clock } from '../core/clock';
 import { markEntered } from '../core/entered-marks';
 import { LiveHub } from '../live/live.hub';
@@ -54,10 +57,13 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
   private readonly logger = new Logger(LiveGateway.name);
   private readonly stop: Array<() => void> = [];
   private readonly changes = new RunListChanges();
+  private readonly doneChanges = new DoneLatelyChanges();
   private readonly flows: LiveFlowRooms;
   private readonly batch = new Set<string>();
   /** Keys whose spend, tokens or peaks moved in this batch; they send a `usage` event, not a page. */
   private readonly spent = new Set<string>();
+  /** A backlog change since the last batch: it can accept a milestone, so Done lately is worked out again. */
+  private doneDue = false;
   private batchTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly eventWindows = new Map<string, { timer: ReturnType<typeof setTimeout>; latest: LiveEvents }>();
 
@@ -69,6 +75,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     private readonly rows: RunListRows,
     private readonly clock: Clock,
     private readonly usage: RunUsageReader,
+    private readonly doneLately: DoneLatelyService,
   ) {
     this.flows = new LiveFlowRooms(runs, () => this.server);
   }
@@ -95,7 +102,13 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       }),
     );
     this.stop.push(this.hub.onEvents((entry) => this.throttle(entry)));
-    this.stop.push(this.hub.onBacklog((entry) => this.server.emit('backlog', entry)));
+    this.stop.push(
+      this.hub.onBacklog((entry) => {
+        this.server.emit('backlog', entry);
+        this.markDoneDue();
+      }),
+    );
+    this.stop.push(this.hub.onBacklogWritten(() => this.markDoneDue()));
     this.stop.push(this.gate.onChange((paused) => this.server.emit('server', { paused })));
   }
 
@@ -106,6 +119,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
     clearTimeout(this.batchTimer);
     this.batch.clear();
     this.spent.clear();
+    this.doneDue = false;
     this.flows.clear();
     for (const { timer } of this.eventWindows.values()) {
       clearTimeout(timer);
@@ -119,6 +133,20 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       this.changes.reset(view);
     }
     client.emit('runs', pageOf(view.runs, { part: 'active', q: '' }));
+    await this.sendDone(client, view);
+  }
+
+  /** The Done lately items to a new socket; the first connect sets what later changes are compared with. */
+  private async sendDone(client: Socket<ClientToServerEvents, ServerToClientEvents>, view: RunsView): Promise<void> {
+    try {
+      const items = await this.doneLately.fromView(view);
+      if (!this.doneChanges.hasBaseline()) {
+        this.doneChanges.reset(items);
+      }
+      client.emit('done', items);
+    } catch (error) {
+      this.logger.error(error instanceof Error ? error.message : 'done lately failed');
+    }
   }
 
   @SubscribeMessage('watch')
@@ -154,28 +182,45 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
 
   private queue(key: string, into: Set<string>): void {
     into.add(key);
+    this.startBatch();
+  }
+
+  private markDoneDue(): void {
+    this.doneDue = true;
+    this.startBatch();
+  }
+
+  /** The one batch timer; a backlog change starts it too, since it can accept a milestone and move Done lately. */
+  private startBatch(): void {
     this.batchTimer ??= setTimeout(() => {
       const keys = [...this.batch];
       const spent = [...this.spent];
+      const doneDue = this.doneDue;
       this.batch.clear();
       this.spent.clear();
+      this.doneDue = false;
       this.batchTimer = undefined;
       markEntered(`live update ${[...new Set([...keys, ...spent])].join(', ')}`);
-      void this.publish(keys, spent);
+      void this.publish(keys, spent, doneDue);
     }, BATCH_MS);
   }
 
   /**
    * Sends the changed rows to every socket and the flow of each run, and of its parent, to the room that watches it,
-   * then one `usage` event per spent key. A spent key builds no flow. Nothing without a socket.
+   * then one `usage` event per spent key. A spent key builds no flow and moves no finished item, so a batch of spent
+   * keys alone reads no rows. Once a connect set the Done lately baseline, a batch with changed keys or a backlog change
+   * works the items out once from the rows read and sends them when they changed. Nothing without a socket.
    */
-  private async publish(keys: string[], spent: string[]): Promise<void> {
+  private async publish(keys: string[], spent: string[], doneDue: boolean): Promise<void> {
     if (this.server.sockets.sockets.size === 0) {
       return;
     }
     const started = this.clock.now();
     try {
-      const { recomputed, built } = keys.length > 0 ? await this.publishChanged(keys) : { recomputed: 0, built: 0 };
+      const dueDone = this.doneChanges.hasBaseline() && (keys.length > 0 || doneDue);
+      const read = keys.length > 0 || dueDone ? await this.rows.read() : undefined;
+      const { recomputed, built } =
+        read && keys.length > 0 ? await this.publishChanged(keys, read) : { recomputed: 0, built: 0 };
       const sent = new Map<string, LiveRunUsage>();
       for (const key of spent) {
         for (const entry of await this.usage.entries(key)) {
@@ -184,6 +229,9 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       }
       for (const entry of sent.values()) {
         this.server.emit('usage', entry);
+      }
+      if (read && dueDone) {
+        await this.publishDone(read.view);
       }
       const took = this.clock.now() - started;
       if (took > SLOW_PUBLISH_MS) {
@@ -198,8 +246,10 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
   }
 
   /** The `run` event for the changed keys and the flows of the watched rooms; how many rows were recomputed and flows built. */
-  private async publishChanged(keys: string[]): Promise<{ recomputed: number; built: number }> {
-    const { view, recomputed } = await this.rows.read();
+  private async publishChanged(
+    keys: string[],
+    { view, recomputed }: { view: RunsView; recomputed: number },
+  ): Promise<{ recomputed: number; built: number }> {
     const { rows, removed } = this.changes.since(view, keys);
     if (rows.length > 0 || removed.length > 0) {
       this.server.emit('run', { rows, removed, counts: filterRuns(view.runs, '', 'all').counts });
@@ -222,6 +272,14 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
       }
     }
     return { recomputed, built };
+  }
+
+  /** The `done` event to every socket, only when the items differ from the ones last sent. */
+  private async publishDone(view: RunsView): Promise<void> {
+    const items = this.doneChanges.since(await this.doneLately.fromView(view));
+    if (items) {
+      this.server.emit('done', items);
+    }
   }
 
   private watched(key: string): boolean {

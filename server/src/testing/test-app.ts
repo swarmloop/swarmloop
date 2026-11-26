@@ -17,6 +17,8 @@ import { CommandHandlers } from '../api/command-handlers';
 import { BacklogChatService } from '../api/backlog-chat.service';
 import { PlannerRunCommands } from '../api/planner-run-commands';
 import { PlanChatService } from '../api/plan-chat.service';
+import { DoneLatelyController } from '../api/done-lately.controller';
+import { DoneLatelyService } from '../api/done-lately.service';
 import { HealthController } from '../api/health.controller';
 import { LiveGateway } from '../api/live.gateway';
 import { SubtaskClose } from '../api/subtask-close';
@@ -184,7 +186,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       SandboxModule,
       ReadinessModule,
     ],
-    controllers: [HealthController, ServerController, RunsController, ReadinessController],
+    controllers: [HealthController, ServerController, RunsController, ReadinessController, DoneLatelyController],
     providers: [
       RunQueriesService,
       QuestionHolds,
@@ -200,6 +202,7 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<TestA
       PlannerRunCommands,
       BacklogChatService,
       CommandHandlers,
+      DoneLatelyService,
       LiveGateway,
     ],
   })

@@ -24,6 +24,7 @@ import type {
 import type { UploadView } from '@contract/attachments';
 import type { ConnectionCard, IntegrationCardsView, SignInView } from '@contract/connections';
 import type { CreateTokenBody, CreatedTokenView, TokensView, UseTokenBody } from '@contract/people';
+import type { DoneLatelyItem } from '@contract/overview-done';
 import type { ReadinessView } from '@contract/readiness';
 import type { Part, RunsPage } from '@contract/run-list';
 import type { SettingsView } from '@contract/settings';
@@ -95,6 +96,8 @@ export const listRuns = (query: { part: Part; q: string; cursor?: string }): Pro
 /** The statistics of the runs started in the last `days` local days (0: all of them). `tz` is `getTimezoneOffset()`. */
 export const getStats = (days: number, tz: number): Promise<StatsView> =>
   api<StatsView>(`/stats?days=${days}&tz=${tz}`);
+/** The latest finished items of the Overview's Done lately, newest first. */
+export const getDoneLately = (): Promise<DoneLatelyItem[]> => api<DoneLatelyItem[]>('/overview/done');
 export const getFlow = (key: string): Promise<FlowView> => api<FlowView>(run(key));
 export const getStep = (key: string, name: string): Promise<StepView> => api<StepView>(step(key, name));
 /** The events asked for in one page: the server's MAX_LIMIT. */

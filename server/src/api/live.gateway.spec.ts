@@ -8,7 +8,18 @@ import { allowHandshake, LiveGateway } from './live.gateway';
 import type { AuthService } from '../auth/auth.service';
 import { LiveHub } from '../live/live.hub';
 import { ContainerGate } from '../sandbox/container-gate';
-import { clientOf, noUsage, rowsOf, runsOf, serverOf, summaryOf, usageOf } from './live.gateway.spec-helpers';
+import {
+  clientOf,
+  doneOf,
+  noDone,
+  noUsage,
+  rowsOf,
+  runsOf,
+  serverOf,
+  summaryOf,
+  usageOf,
+} from './live.gateway.spec-helpers';
+import type { DoneLatelyItem } from '../contract/overview-done';
 
 const auth = {} as AuthService;
 
@@ -28,6 +39,7 @@ describe('LiveGateway', () => {
         rows as unknown as RunListRows,
         new FakeClock(),
         noUsage(),
+        noDone(),
       );
       gateway.server = serverOf(1, []);
       gateway.onModuleInit();
@@ -52,6 +64,7 @@ describe('LiveGateway', () => {
         {} as unknown as RunListRows,
         new FakeClock(),
         noUsage(),
+        noDone(),
       );
       const sent: Array<{ room: string; entry: unknown }> = [];
       gateway.server = serverOf(1, watched, sent);
@@ -94,6 +107,7 @@ describe('LiveGateway', () => {
             { key: 'run-1-a', ...figures },
             { key: 'run-1', ...figures },
           ]),
+          noDone(),
         );
         const sent: Array<{ room: string; entry: unknown }> = [];
         gateway.server = serverOf(1, watchedRooms, sent);
@@ -169,6 +183,7 @@ describe('LiveGateway', () => {
           rows as unknown as RunListRows,
           clock,
           usageOf([{ key: 'epic', tokens: 1, usd: 2, cpuPeak: 3, memPeak: 4 }]),
+          noDone(),
         );
         const sent: Array<{ room: string; entry: unknown }> = [];
         const server = serverOf(options.connected, options.watched, sent);
@@ -261,6 +276,7 @@ describe('LiveGateway', () => {
         {} as RunListRows,
         new FakeClock(),
         noUsage(),
+        noDone(),
       );
       const joined: string[] = [];
       const told: Array<[string, unknown]> = [];
@@ -289,6 +305,7 @@ describe('LiveGateway', () => {
       {} as RunListRows,
       new FakeClock(),
       noUsage(),
+      noDone(),
     );
     const sent: unknown[] = [];
     gateway.server = {
@@ -312,6 +329,7 @@ describe('LiveGateway', () => {
         rowsOf([]) as unknown as RunListRows,
         new FakeClock(),
         noUsage(),
+        noDone(),
       );
       const sent: unknown[] = [];
       gateway.server = {
@@ -361,6 +379,7 @@ describe('LiveGateway', () => {
         rows as unknown as RunListRows,
         new FakeClock(),
         noUsage(),
+        noDone(),
       );
       const server = serverOf(connected, []);
       gateway.server = server;
@@ -426,6 +445,7 @@ describe('LiveGateway', () => {
         rows as unknown as RunListRows,
         new FakeClock(),
         noUsage(),
+        noDone(),
       );
       gateway.server = serverOf(1, []);
       gateway.onModuleInit();
@@ -449,6 +469,7 @@ describe('LiveGateway', () => {
         {} as RunListRows,
         new FakeClock(),
         noUsage(),
+        noDone(),
       );
       const sent: Array<{ room: string; entry: unknown }> = [];
       gateway.server = {
@@ -496,6 +517,111 @@ describe('LiveGateway', () => {
     });
   });
 
+  describe('Done lately', () => {
+    const item = (key: string, milestone = false) =>
+      ({ key, title: key, milestone, runKeys: [key], usd: 0 }) as unknown as DoneLatelyItem;
+
+    /** A gateway over one run row, the items the spec sets, and the `done` events sent to every socket. */
+    function gatewayOf(first: DoneLatelyItem[]) {
+      const hub = new LiveHub();
+      const done = doneOf(first);
+      const gateway = new LiveGateway(
+        hub,
+        runsOf().service,
+        auth,
+        new ContainerGate(),
+        rowsOf([{ key: 'run-1' }]) as unknown as RunListRows,
+        new FakeClock(),
+        noUsage(),
+        done.service,
+      );
+      const server = serverOf(1, []);
+      gateway.server = server;
+      gateway.onModuleInit();
+      const emit = (server as unknown as { emit: jest.Mock }).emit;
+      const sent = () => emit.mock.calls.filter(([name]) => name === 'done').map(([, items]) => items);
+      const connect = async () => {
+        const told: Array<[string, unknown]> = [];
+        await gateway.handleConnection(clientOf(told));
+        return told;
+      };
+      return { hub, done, gateway, sent, connect };
+    }
+
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('gives a new socket the items after the runs page', async () => {
+      const { connect, gateway } = gatewayOf([item('run-1')]);
+      const told = await connect();
+      expect(told.map(([name]) => name)).toEqual(['server', 'runs', 'done']);
+      expect(told[2][1]).toEqual([item('run-1')]);
+      gateway.onModuleDestroy();
+    });
+
+    it('sends one done event with a run that finishes first', async () => {
+      const { connect, hub, done, gateway, sent } = gatewayOf([item('run-1')]);
+      await connect();
+      done.held.items = [item('run-2'), item('run-1')];
+      hub.changed('run-2');
+      hub.changed('run-1');
+      await jest.advanceTimersByTimeAsync(100);
+      expect(sent()).toEqual([[item('run-2'), item('run-1')]]);
+      gateway.onModuleDestroy();
+    });
+
+    it('sends no done event when a change leaves the items equal', async () => {
+      const { connect, hub, gateway, sent } = gatewayOf([item('run-1')]);
+      await connect();
+      hub.changed('run-1');
+      await jest.advanceTimersByTimeAsync(100);
+      expect(sent()).toEqual([]);
+      gateway.onModuleDestroy();
+    });
+
+    it('sends one done event with the milestone when a backlog write accepts it', async () => {
+      const { connect, hub, done, gateway, sent } = gatewayOf([item('run-1')]);
+      await connect();
+      done.held.items = [item('web/1', true), item('run-1')];
+      hub.backlogWritten();
+      await jest.advanceTimersByTimeAsync(100);
+      expect(sent()).toEqual([[item('web/1', true), item('run-1')]]);
+      gateway.onModuleDestroy();
+    });
+
+    it('sends a done event after a backlog event that changes the items', async () => {
+      const { connect, hub, done, gateway, sent } = gatewayOf([]);
+      await connect();
+      done.held.items = [item('web/1', true)];
+      hub.backlog({} as never);
+      await jest.advanceTimersByTimeAsync(100);
+      expect(sent()).toEqual([[item('web/1', true)]]);
+      gateway.onModuleDestroy();
+    });
+
+    it('works nothing out and reads no rows for a batch of spent keys alone', async () => {
+      const { connect, hub, done, gateway, sent } = gatewayOf([item('run-1')]);
+      await connect();
+      (done.service.fromView as jest.Mock).mockClear();
+      done.held.items = [item('run-2')];
+      hub.log({ key: 'run-1', step: 'implement', body: '', usage: { tokensIn: 1, tokensOut: 0, usd: 0 } });
+      await jest.advanceTimersByTimeAsync(100);
+      expect(sent()).toEqual([]);
+      expect((done.service.fromView as jest.Mock).mock.calls).toEqual([]);
+      gateway.onModuleDestroy();
+    });
+
+    it('works nothing out before a first connect', async () => {
+      const { hub, done, gateway, sent } = gatewayOf([item('run-1')]);
+      hub.changed('run-1');
+      hub.backlogWritten();
+      await jest.advanceTimersByTimeAsync(100);
+      expect(sent()).toEqual([]);
+      expect((done.service.fromView as jest.Mock).mock.calls).toEqual([]);
+      gateway.onModuleDestroy();
+    });
+  });
+
   describe('handshake host', () => {
     const decide = (host: string | undefined) => {
       let allowed: boolean | undefined;
@@ -532,6 +658,7 @@ describe('LiveGateway', () => {
         {} as RunListRows,
         new FakeClock(),
         noUsage(),
+        noDone(),
       );
       let middleware!: (socket: unknown, next: (error?: Error) => void) => void;
       gateway.afterInit({ use: (fn: typeof middleware) => (middleware = fn) } as never);

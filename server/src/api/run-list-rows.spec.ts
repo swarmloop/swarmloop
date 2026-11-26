@@ -18,6 +18,7 @@ import { CommandService } from '../pipeline/command.service';
 import { ContainerGate } from '../sandbox/container-gate';
 import { visit } from '../testing/runs.spec-helpers';
 import { LiveGateway } from './live.gateway';
+import { noDone } from './live.gateway.spec-helpers';
 import { pageOf } from './run-list-page';
 import { RunListRows } from './run-list-rows';
 import { freshView, runOf, seedRuns, SEEDED } from './run-list-rows.spec-helpers';
@@ -197,6 +198,7 @@ describe('RunListRows', () => {
           app.get(Clock),
           app.get(AgentCallRepository),
         ),
+        noDone(),
       );
       const told: Array<[string, unknown]> = [];
       await gateway.handleConnection({ emit: (name: string, entry: unknown) => told.push([name, entry]) } as never);

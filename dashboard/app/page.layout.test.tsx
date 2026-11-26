@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadinessProvider } from '../features/readiness';
 import { Shell } from '../features/shell';
 import { listBacklogs } from '../lib/backlog-endpoints';
-import { getFlow, getReadiness, getSession, getStats, listProjects, listRuns } from '../lib/endpoints';
+import { getDoneLately, getFlow, getReadiness, getSession, getStats, listProjects, listRuns } from '../lib/endpoints';
 import { activeMilestoneBacklog, proposedMilestoneBacklog } from '../test/backlog-fixtures';
 import { statsView } from '../test/fixtures';
-import { mergedRun, questionRun, returnsFlow, workingRun } from '../test/overview-fixtures';
+import { doneItemsOf, mergedRun, questionRun, returnsFlow, workingRun } from '../test/overview-fixtures';
 import { QueryWrapper } from '../test/query-wrapper';
 import { mediaWidth } from '../test/viewport';
 import { listRunsFrom } from '../test/runs-page';
@@ -20,6 +20,7 @@ vi.mock('../lib/endpoints', () => ({
   getStats: vi.fn(),
   listRuns: vi.fn(),
   getFlow: vi.fn(),
+  getDoneLately: vi.fn(),
   getSession: vi.fn(),
   listProjects: vi.fn(),
   removeRun: vi.fn(),
@@ -41,13 +42,13 @@ const item = (status: 'ok' | 'warn' | 'fail') => ({
 
 /** The fullest Overview: three needs, six working items, five finished lines. */
 function fullest(): void {
-  vi.mocked(listRuns).mockImplementation(
-    listRunsFrom([
-      ...Array.from({ length: 3 }, (_, index) => questionRun(`ask-${index}`)),
-      ...Array.from({ length: 6 }, (_, index) => workingRun(`work-${index}`)),
-      ...Array.from({ length: 5 }, (_, index) => mergedRun(`done-${index}`)),
-    ]),
-  );
+  const runs = [
+    ...Array.from({ length: 3 }, (_, index) => questionRun(`ask-${index}`)),
+    ...Array.from({ length: 6 }, (_, index) => workingRun(`work-${index}`)),
+    ...Array.from({ length: 5 }, (_, index) => mergedRun(`done-${index}`)),
+  ];
+  vi.mocked(listRuns).mockImplementation(listRunsFrom(runs));
+  vi.mocked(getDoneLately).mockResolvedValue(doneItemsOf(runs));
   vi.mocked(listBacklogs).mockResolvedValue([activeMilestoneBacklog('shop'), proposedMilestoneBacklog('lab')]);
 }
 
@@ -197,6 +198,7 @@ describe('Overview layout at 375 px', () => {
   it('stands the placeholders in one column too', async () => {
     vi.mocked(listRuns).mockReturnValue(new Promise(() => undefined));
     vi.mocked(listBacklogs).mockReturnValue(new Promise(() => undefined));
+    vi.mocked(getDoneLately).mockReturnValue(new Promise(() => undefined));
     renderPage();
     const [now] = await screen.findAllByTestId('now-placeholder');
     const [needs] = screen.getAllByTestId('needs-placeholder');
