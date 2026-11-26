@@ -43,36 +43,6 @@ function linkText(link: string): string {
   return LINK_TEXTS.find(([prefix]) => link.startsWith(prefix))?.[1] ?? 'Open';
 }
 
-/** The few words an ok item shows; its whole line is in the tooltip. */
-export function shortLine(item: ReadinessItem): string {
-  const line = item.line;
-  switch (item.id) {
-    case 'docker':
-      return line.includes('CPUs') ? line : 'running';
-    case 'arch':
-      return line.split(' ')[0] ?? line;
-    case 'images':
-      return `${(line.match(/is present/g) ?? []).length} present`;
-    case 'paths':
-      return 'writable';
-    case 'ports':
-      return (line.match(/\b\d{2,5}\b/g) ?? []).join(' · ') || line;
-    case 'model-credential':
-      return line.match(/for (\S+)/)?.[1] ?? 'set';
-    case 'code-host-token':
-      return line.match(/^(\w+?)_TOKEN/)?.[1]?.toLowerCase() ?? 'accepted';
-    case 'stalls':
-      return line;
-    case 'disk':
-      return line.split(/[;,(]/)[0].trim();
-  }
-}
-
-/** The `name size` parts of what swarmloop itself uses, from the Disk line. Empty for any other line. */
-function ownUse(item: ReadinessItem): string {
-  return item.id === 'disk' ? (item.line.match(/swarmloop uses (.*)$/)?.[1] ?? '') : '';
-}
-
 /** The age of a report in words: `30 s`, `4 min` or `2 h`. */
 function ageWords(checkedAt: string, now: number): string {
   const seconds = Math.max(0, Math.round((now - Date.parse(checkedAt)) / 1000));
@@ -196,11 +166,11 @@ export function ReadinessPanel(): ReactElement {
                     sx={{ display: 'block', color: 'text.secondary', lineHeight: 1.3 }}
                     noWrap
                   >
-                    {item.status === 'ok' ? shortLine(item) : word}
+                    {item.status === 'ok' ? item.short : word}
                   </Typography>
-                  {ownUse(item) ? (
+                  {item.ownUse ? (
                     <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', lineHeight: 1.3 }}>
-                      {ownUse(item)}
+                      {item.ownUse}
                     </Typography>
                   ) : null}
                 </Box>

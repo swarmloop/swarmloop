@@ -551,7 +551,7 @@ The text is plain words for a person: no raw JSON and no internal ids. A cut tex
 - **The main loop does no heavy work.** Large file walks, git metadata copies and deletions run off the main thread, and a lint rule keeps them there. A worker thread ticks every second, so a blocked main loop or a sleeping machine is recorded as a stall.
 - **Health and readiness.** `/health` answers whether the server is up and paused. `/readiness` lists what the server needs and whether it has it: docker, volume mounts, a model credential for every role, and stalls in the last hour. Each item links to where it is fixed.
 
-**Today.** Holds (`pipeline/server-stalls/`, `eslint.main-thread-rules.mjs`, `readiness/`, `api/health.controller.ts`).
+**Today.** Holds (`pipeline/server-stalls/`, `eslint.main-thread-rules.mjs`, `readiness/`, `api/health.controller.ts`). Each readiness item carries a short line the server cuts, and the Disk item what swarmloop itself uses; the dashboard shows both as sent.
 
 ---
 

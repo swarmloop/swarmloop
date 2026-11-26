@@ -1,10 +1,9 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ReadinessItem } from '@contract/readiness';
 import { ApiError } from '../../lib/api';
 import { getReadiness } from '../../lib/endpoints';
 import { QueryWrapper } from '../../test/query-wrapper';
-import { ReadinessPanel, shortLine } from './readiness-panel';
+import { ReadinessPanel } from './readiness-panel';
 import { ReadinessProvider } from './use-readiness';
 
 vi.mock('../../lib/endpoints', () => ({ getReadiness: vi.fn() }));
@@ -24,8 +23,8 @@ describe('ReadinessPanel', () => {
   it('shows a tile per check and spells out what to do for one that fails', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
       items: [
-        { id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' },
-        { id: 'disk', status: 'fail', line: '2.0 GB free', action: 'free some disk space' },
+        { id: 'docker', status: 'ok', line: 'docker answers', short: 'running', action: 'nothing to do' },
+        { id: 'disk', status: 'fail', line: '2.0 GB free', short: '2.0 GB free', action: 'free some disk space' },
       ],
       checkedAt: CHECKED_AT,
     });
@@ -44,6 +43,7 @@ describe('ReadinessPanel', () => {
           id: 'model-credential',
           status: 'fail',
           line: 'no key for claude',
+          short: 'missing',
           action: 'connect it',
           link: '/connections#claude',
         },
@@ -60,7 +60,15 @@ describe('ReadinessPanel', () => {
 
   it("shows Docker's CPUs and memory on its tile", async () => {
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status: 'ok', line: '8 CPUs · 15.6 GB', action: 'nothing to do' }],
+      items: [
+        {
+          id: 'docker',
+          status: 'ok',
+          line: '8 CPUs · 15.6 GB, CHECKS_PARALLEL 4 asked',
+          short: '8 CPUs · 15.6 GB',
+          action: 'nothing to do',
+        },
+      ],
       checkedAt: CHECKED_AT,
     });
     renderPanel();
@@ -74,6 +82,7 @@ describe('ReadinessPanel', () => {
           id: 'stalls',
           status: 'warn',
           line: 'The server stalled 2 times in the last hour, 32 s in all (server blocked)',
+          short: '2 times in the last hour',
           action: 'give Docker more CPUs or memory',
           link: '/stats#statistics',
         },
@@ -89,7 +98,7 @@ describe('ReadinessPanel', () => {
 
   it('shows no stall alert without the item', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
+      items: [{ id: 'docker', status: 'ok', line: 'docker answers', short: 'running', action: 'nothing to do' }],
       checkedAt: CHECKED_AT,
     });
     renderPanel();
@@ -103,7 +112,9 @@ describe('ReadinessPanel', () => {
         {
           id: 'disk',
           status: 'ok',
-          line: '19.7 GB free, a step needs 10 GB (MIN_FREE_GB); swarmloop uses worktrees 1.2 GB, logs 3.0 MB, backups 500.0 MB, environment cache 0 B',
+          line: 'Disk text that is not cut by the dashboard',
+          short: '19.7 GB free',
+          ownUse: 'worktrees 1.2 GB, logs 3.0 MB, backups 500.0 MB, environment cache 0 B, measured 3 min ago',
           action: 'nothing to do',
         },
       ],
@@ -112,12 +123,40 @@ describe('ReadinessPanel', () => {
     renderPanel();
     const tile = await screen.findByLabelText(/^Disk: ready/);
     expect(tile).toHaveTextContent('19.7 GB free');
-    expect(tile).toHaveTextContent('worktrees 1.2 GB, logs 3.0 MB, backups 500.0 MB, environment cache 0 B');
+    expect(tile).toHaveTextContent(
+      'worktrees 1.2 GB, logs 3.0 MB, backups 500.0 MB, environment cache 0 B, measured 3 min ago',
+    );
+    expect(tile).not.toHaveTextContent('not cut');
+  });
+
+  it('shows the short of each ok tile as the server sent it, never cut from the line', async () => {
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [
+        {
+          id: 'model-credential',
+          status: 'ok',
+          line: 'A is set for claude; B is set for codex',
+          short: 'claude · codex',
+          action: 'nothing to do',
+        },
+        {
+          id: 'ports',
+          status: 'ok',
+          line: 'API port 3920 is ours; dashboard port 3921 is free',
+          short: '3920 · 3921',
+          action: 'nothing to do',
+        },
+      ],
+      checkedAt: CHECKED_AT,
+    });
+    renderPanel();
+    expect(await screen.findByLabelText(/^Model key: ready/)).toHaveTextContent('claude · codex');
+    expect(screen.getByLabelText(/^Ports: ready/)).toHaveTextContent('3920 · 3921');
   });
 
   it('says it is ready when every check passes', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
+      items: [{ id: 'docker', status: 'ok', line: 'docker answers', short: 'running', action: 'nothing to do' }],
       checkedAt: CHECKED_AT,
     });
     renderPanel();
@@ -128,19 +167,6 @@ describe('ReadinessPanel', () => {
     vi.mocked(getReadiness).mockRejectedValue(new Error('api is down'));
     renderPanel();
     expect(await screen.findByText(/Readiness is not available: api is down/)).toBeInTheDocument();
-  });
-});
-
-describe('shortLine', () => {
-  const item = (id: ReadinessItem['id'], line: string): ReadinessItem => ({ id, status: 'ok', line, action: '' });
-
-  it('keeps the few words that matter', () => {
-    expect(shortLine(item('disk', '19.7 GB free, a step needs 10 GB (MIN_FREE_GB)'))).toBe('19.7 GB free');
-    expect(shortLine(item('images', 'a is present; b is present'))).toBe('2 present');
-    expect(shortLine(item('ports', 'API port 3920 is ours; dashboard port 3921 is free'))).toBe('3920 · 3921');
-    expect(shortLine(item('model-credential', 'CLAUDE_CODE_OAUTH_TOKEN is set for claude'))).toBe('claude');
-    expect(shortLine(item('code-host-token', 'GITHUB_TOKEN is accepted'))).toBe('github');
-    expect(shortLine(item('arch', 'arm64 is supported'))).toBe('arm64');
   });
 });
 
@@ -161,7 +187,7 @@ describe('ReadinessPanel refresh', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:30.000Z'));
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
+      items: [{ id: 'docker', status: 'ok', line: 'docker answers', short: 'running', action: 'nothing to do' }],
       checkedAt: CHECKED_AT,
     });
     renderPanel();
@@ -175,7 +201,7 @@ describe('ReadinessPanel refresh', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:30.000Z'));
     vi.mocked(getReadiness).mockResolvedValueOnce({
-      items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
+      items: [{ id: 'docker', status: 'ok', line: 'docker answers', short: 'running', action: 'nothing to do' }],
       checkedAt: CHECKED_AT,
     });
     renderPanel();

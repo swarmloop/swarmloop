@@ -29,6 +29,7 @@ export class ReadinessStalls {
     return {
       status: 'warn',
       line: `The server stalled ${times} in the last hour, ${seconds} s in all (${kinds.join(', ')})`,
+      short: `${times} in the last hour`,
       action: 'give Docker more CPUs or memory, or lower AGENTS_PARALLEL and CHECKS_PARALLEL',
       link: '/stats#statistics',
     };

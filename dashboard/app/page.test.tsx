@@ -48,7 +48,9 @@ describe('HomePage', () => {
 
   it('spells out the action of a failing check', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
+      items: [
+        { id: 'docker', status: 'fail', line: 'docker is not running', short: 'not running', action: 'start Docker' },
+      ],
       checkedAt: null,
     });
     renderPage();

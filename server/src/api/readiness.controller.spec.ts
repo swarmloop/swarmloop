@@ -8,7 +8,7 @@ import { ReadinessController } from './readiness.controller';
 describe('ReadinessController', () => {
   it('answers with the readiness report', async () => {
     const view: ReadinessView = {
-      items: [{ id: 'docker', status: 'ok', line: 'docker answers', action: 'nothing to do' }],
+      items: [{ id: 'docker', status: 'ok', line: 'docker answers', short: 'running', action: 'nothing to do' }],
       checkedAt: '2026-01-01T00:00:00.000Z',
     };
     const controller = new ReadinessController({ report: async () => view } as ReadinessService);
