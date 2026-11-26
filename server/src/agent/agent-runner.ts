@@ -15,6 +15,7 @@ import { callsExceeded } from './limits';
 import type { ChatUsage } from '../history/chat-usage.repository';
 import { NO_USAGE } from './since-recorded';
 import { RunStop } from './run-stop';
+import { foldRequestUsage } from './request-usage';
 import { AgentLaunch } from './agent-launch';
 import { AgentLaunchEnv } from './agent-launch-env';
 import { AgentLaunchPrep } from './agent-launch-prep';
@@ -50,6 +51,19 @@ function chatSpendOf(input: AgentRunInput): ChatSpend {
 /** A launch that reported no session totals leaves the chat with none: the next session total counts whole. */
 function chatSpendAfter(chat: ChatSpend, attempt: AgentRunResult): ChatSpend {
   return { prior: attempt.reported ?? NO_USAGE, usd: chat.usd + attempt.usd };
+}
+
+/** The launches of one call add up: their usage as `foldAttempt` does, and their requests per model and per helper. */
+function foldCall(merged: AgentRunResult | null, attempt: AgentRunResult): AgentRunResult {
+  const folded = foldAttempt(merged, attempt);
+  if (!merged) {
+    return folded;
+  }
+  const usage = foldRequestUsage(
+    { byModel: merged.byModel ?? [], helpers: merged.helpers ?? [], prices: merged.prices ?? {} },
+    { byModel: attempt.byModel ?? [], helpers: attempt.helpers ?? [], prices: attempt.prices ?? {} },
+  );
+  return { ...folded, ...usage };
 }
 
 @Injectable()
@@ -116,7 +130,7 @@ export class AgentProcessRunner {
           resumed,
           prior,
         );
-        merged = foldAttempt(merged, attempt);
+        merged = foldCall(merged, attempt);
         calls += attempt.calls;
         chat = chatSpendAfter(chat, attempt);
         if (attempt.limit) {
