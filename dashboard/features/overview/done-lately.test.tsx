@@ -1,27 +1,24 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listBacklogs } from '../../lib/backlog-endpoints';
-import { getFlow, listRuns } from '../../lib/endpoints';
-import { acceptedMilestoneBacklog } from '../../test/backlog-fixtures';
-import { mergedAt, mergedRun, returnsFlow } from '../../test/overview-fixtures';
-import { listRunsFrom } from '../../test/runs-page';
+import { getDoneLately, getFlow, listRuns } from '../../lib/endpoints';
+import { fakeSocket, receive, resetFakeSocket } from '../../test/fake-socket';
+import { doneItem, mergedRun, returnsFlow } from '../../test/overview-fixtures';
 import { DoneLately } from './index';
 import { PartsWrapper } from './test-wrapper.spec-helpers';
 
-vi.mock('../../lib/endpoints', () => ({ listRuns: vi.fn(), getFlow: vi.fn() }));
-vi.mock('../../lib/backlog-endpoints', () => ({ listBacklogs: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({ getDoneLately: vi.fn(), getFlow: vi.fn(), listRuns: vi.fn() }));
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(listBacklogs).mockResolvedValue([]);
+  resetFakeSocket();
   vi.mocked(getFlow).mockImplementation((key) => Promise.resolve(returnsFlow(key, key === 'run-1' ? [1, 1] : [])));
 });
 
 describe('DoneLately', () => {
   it('shows five lines of seven done runs, each opening its run with the merge request as one more link', async () => {
-    vi.mocked(listRuns).mockImplementation(
-      listRunsFrom(Array.from({ length: 7 }, (_, index) => mergedRun(`run-${index + 1}`))),
+    vi.mocked(getDoneLately).mockResolvedValue(
+      Array.from({ length: 5 }, (_, index) => doneItem(mergedRun(`run-${index + 1}`))),
     );
     render(<DoneLately />, { wrapper: PartsWrapper });
     expect(await screen.findByText('2 returns, all fixed')).toBeInTheDocument();
@@ -39,84 +36,114 @@ describe('DoneLately', () => {
   });
 
   it('renders nothing when there is no done run', async () => {
-    vi.mocked(listRuns).mockImplementation(listRunsFrom([]));
+    vi.mocked(getDoneLately).mockResolvedValue([]);
     const { container } = render(<DoneLately />, { wrapper: PartsWrapper });
     await vi.waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
-  it('picks by finish time, not creation order, and not by later unrelated activity', async () => {
-    vi.mocked(listRuns).mockImplementation(
-      listRunsFrom([
-        mergedAt('new-created', '2026-01-02T00:00:00.000Z', { createdAt: '2026-01-05T00:00:00.000Z' }),
-        mergedAt('old-created', '2026-01-04T00:00:00.000Z', {
-          createdAt: '2025-12-01T00:00:00.000Z',
-          updatedAt: '2025-12-02T00:00:00.000Z',
-        }),
-      ]),
-    );
-    render(<DoneLately />, { wrapper: PartsWrapper });
-    await screen.findByText('Title of old-created');
-    const titles = screen.getAllByRole('listitem').map((line) => line.textContent);
-    expect(titles[0]).toContain('Title of old-created');
-    expect(titles[1]).toContain('Title of new-created');
-  });
-
-  it('finds a run finished lately beyond the first page of the list', async () => {
-    const rows = [
-      ...Array.from({ length: 25 }, (_, index) => mergedAt(`early-${index}`, '2026-01-01T00:00:00.000Z')),
-      mergedAt('late-1', '2026-02-01T00:00:00.000Z', { createdAt: '2025-01-01T00:00:00.000Z' }),
-    ];
-    vi.mocked(listRuns).mockImplementation(listRunsFrom(rows));
-    render(<DoneLately />, { wrapper: PartsWrapper });
-    await screen.findByText('Title of late-1');
-    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title of late-1');
-  });
-
-  it('finds a run finished last that was created first, past the fifth page', async () => {
-    const rows = [
-      ...Array.from({ length: 110 }, (_, index) => mergedAt(`early-${index}`, '2026-01-01T00:00:00.000Z')),
-      mergedAt('first-made', '2026-03-01T00:00:00.000Z', { createdAt: '2024-01-01T00:00:00.000Z' }),
-    ];
-    vi.mocked(listRuns).mockImplementation(listRunsFrom(rows));
-    render(<DoneLately />, { wrapper: PartsWrapper });
-    await screen.findByText('Title of first-made');
-    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title of first-made');
-  });
-
-  it('shows an accepted milestone once, with its cost, returns and elapsed time, and not its task runs', async () => {
-    vi.mocked(listRuns).mockImplementation(
-      listRunsFrom([
-        mergedAt('task-a', '2026-03-01T10:00:00.000Z', {
-          createdAt: '2026-03-01T08:00:00.000Z',
-          usd: 2,
-          backlog: { name: 'shop', milestone: 3 },
-        }),
-        mergedAt('task-b', '2026-03-01T12:00:00.000Z', {
-          createdAt: '2026-03-01T09:00:00.000Z',
-          usd: 3,
-          backlog: { name: 'shop', milestone: 3 },
-        }),
-      ]),
-    );
-    vi.mocked(listBacklogs).mockResolvedValue([acceptedMilestoneBacklog('shop', ['task-a', 'task-b', 'task-b'])]);
+  it('shows an accepted milestone as one line that opens its backlog, with the returns of its tasks', async () => {
+    const task = mergedRun('task-b', { usd: 5, durationMs: 4 * 3_600_000 });
+    vi.mocked(getDoneLately).mockResolvedValue([
+      doneItem(task, {
+        key: 'shop/3',
+        title: 'Checkout',
+        link: { backlog: 'shop' },
+        runKeys: ['task-a', 'task-b'],
+        milestone: true,
+      }),
+    ]);
     vi.mocked(getFlow).mockImplementation((key) => Promise.resolve(returnsFlow(key, key === 'task-a' ? [1] : [2])));
     render(<DoneLately />, { wrapper: PartsWrapper });
     const line = (await screen.findByText('Checkout')).closest('li') as HTMLElement;
-    expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(within(line).getByText('4h 00m')).toBeInTheDocument();
     expect(within(line).getByText('$5.00')).toBeInTheDocument();
     expect(await within(line).findByText('3 returns, all fixed')).toBeInTheDocument();
     expect(within(line).getByText('Checkout').closest('a')).toHaveAttribute('href', '/backlogs/shop');
-    expect(screen.queryByText('Title of task-a')).not.toBeInTheDocument();
+    expect(within(line).queryByRole('link', { name: 'Merge request' })).not.toBeInTheDocument();
   });
 
   it('shows placeholders before the lists arrive and a line when they fail', async () => {
-    vi.mocked(listRuns).mockReturnValue(new Promise(() => undefined));
+    vi.mocked(getDoneLately).mockReturnValue(new Promise(() => undefined));
     const { unmount } = render(<DoneLately />, { wrapper: PartsWrapper });
     expect(screen.getAllByTestId('done-placeholder')).not.toHaveLength(0);
     unmount();
-    vi.mocked(listRuns).mockRejectedValue(new Error('down'));
+    vi.mocked(getDoneLately).mockRejectedValue(new Error('down'));
     render(<DoneLately />, { wrapper: PartsWrapper });
     expect(await screen.findByText('Could not load what got done.')).toBeInTheDocument();
+  });
+
+  it('reads once when it opens and never asks the run list', async () => {
+    vi.mocked(getDoneLately).mockResolvedValue([doneItem(mergedRun('run-1'))]);
+    render(<DoneLately />, { wrapper: PartsWrapper });
+    await screen.findByText('Title of run-1');
+    expect(getDoneLately).toHaveBeenCalledTimes(1);
+    expect(listRuns).not.toHaveBeenCalled();
+  });
+
+  it('shows the lines of a done event with no read', async () => {
+    vi.mocked(getDoneLately).mockResolvedValue([doneItem(mergedRun('run-1'))]);
+    render(<DoneLately />, { wrapper: PartsWrapper });
+    await screen.findByText('Title of run-1');
+
+    act(() => receive('done', [doneItem(mergedRun('run-2')), doneItem(mergedRun('run-1'))]));
+
+    expect(await screen.findByText('Title of run-2')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Title of run-2');
+    expect(getDoneLately).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a read that was on its way overwrite the lines of a done event', async () => {
+    let answer: (items: Awaited<ReturnType<typeof getDoneLately>>) => void = () => undefined;
+    vi.mocked(getDoneLately).mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    render(<DoneLately />, { wrapper: PartsWrapper });
+
+    act(() => receive('done', [doneItem(mergedRun('run-2'))]));
+    await screen.findByText('Title of run-2');
+    await act(async () => answer([doneItem(mergedRun('run-1'))]));
+
+    expect(screen.getByText('Title of run-2')).toBeInTheDocument();
+    expect(screen.queryByText('Title of run-1')).not.toBeInTheDocument();
+  });
+
+  it('reads again after a reconnect', async () => {
+    vi.mocked(getDoneLately).mockResolvedValue([doneItem(mergedRun('run-1'))]);
+    render(<DoneLately />, { wrapper: PartsWrapper });
+    await screen.findByText('Title of run-1');
+    act(() => receive('connect'));
+    vi.mocked(getDoneLately).mockResolvedValue([doneItem(mergedRun('run-3'))]);
+
+    act(() => receive('disconnect'));
+    act(() => receive('connect'));
+
+    expect(await screen.findByText('Title of run-3')).toBeInTheDocument();
+  });
+
+  it('keeps the lines shown when a read fails, and reads again on the next connect', async () => {
+    vi.mocked(getDoneLately).mockResolvedValue([doneItem(mergedRun('run-1'))]);
+    render(<DoneLately />, { wrapper: PartsWrapper });
+    await screen.findByText('Title of run-1');
+    act(() => receive('connect'));
+    vi.mocked(getDoneLately).mockRejectedValue(new Error('down'));
+    act(() => receive('connect'));
+    await vi.waitFor(() => expect(getDoneLately).toHaveBeenCalledTimes(2));
+    await act(async () => undefined);
+
+    expect(screen.getByText('Title of run-1')).toBeInTheDocument();
+    expect(screen.queryByText('Could not load what got done.')).not.toBeInTheDocument();
+    vi.mocked(getDoneLately).mockResolvedValue([doneItem(mergedRun('run-4'))]);
+    act(() => receive('connect'));
+    expect(await screen.findByText('Title of run-4')).toBeInTheDocument();
+  });
+
+  it('reads again on the first connect after a read that failed', async () => {
+    vi.mocked(getDoneLately).mockRejectedValueOnce(new Error('down'));
+    vi.mocked(getDoneLately).mockResolvedValue([doneItem(mergedRun('run-1'))]);
+    render(<DoneLately />, { wrapper: PartsWrapper });
+    await screen.findByText('Could not load what got done.');
+
+    act(() => receive('connect'));
+
+    expect(await screen.findByText('Title of run-1')).toBeInTheDocument();
+    expect(fakeSocket.listenerCount('done')).toBe(1);
   });
 });

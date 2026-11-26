@@ -12,7 +12,8 @@ import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { LiveHub } from '../live/live.hub';
 import { ContainerGate } from '../sandbox/container-gate';
-import { connect, fakeBatchTimer, newSocket, pass } from './live-clients.spec-helpers';
+import { seedFinished } from '../api/done-lately.spec-helpers';
+import { connect, fakeBatchTimer, HeldList, newSocket, open, pass } from './live-clients.spec-helpers';
 import { remember } from './runs.spec-helpers';
 import { createTestApp, type TestApp } from './test-app';
 
@@ -158,6 +159,22 @@ describe('the shell follows the server', () => {
     await awayDuring(socket, () => start('PROJ-931'));
     expect(shell.counts).toEqual((await read('all')).counts);
     expect(shell.counts).toEqual({ active: 1, done: 1, all: 2 });
+  });
+
+  it('shows a run that finishes in the held done items with no HTTP read, and after a reconnect GET /overview/done answers the same', async () => {
+    const held = new HeldList(app, 'active', '');
+    const socket = await open(app, sockets, held);
+    await pass();
+    expect(held.done).toEqual([]);
+
+    await seedFinished(app.app as never, KEY, { at: '2026-11-21T09:00:00Z', usd: 1.5 });
+    await pass();
+    expect(held.done.map((item) => item.key)).toEqual([KEY]);
+    expect(held.done[0].usd).toBe(1.5);
+
+    await awayDuring(socket, () => seedFinished(app.app as never, 'PROJ-931', { at: '2026-11-21T09:30:00Z' }));
+    expect(held.done.map((item) => item.key)).toEqual(['PROJ-931', KEY]);
+    expect(held.done).toEqual(await held.readDone());
   });
 
   it('moves the status stamp on a status change and on a new run, and not on a change that leaves the status', async () => {

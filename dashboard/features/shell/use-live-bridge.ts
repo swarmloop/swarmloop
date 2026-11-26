@@ -6,6 +6,7 @@ import { liveSocket } from '../../lib/live';
 import type { FlowView, RunSummary } from '@contract/api';
 import type { LiveBacklog } from '@contract/backlog-chat';
 import type { LiveEvents, LiveLog, LiveRunUsage } from '@contract/live';
+import type { DoneLatelyItem } from '@contract/overview-done';
 import type { Part, PartCounts, RunChange, RunsPage } from '@contract/run-list';
 import type { ServerState } from '@contract/server-pause';
 import { applyRunChange } from './apply-run-change';
@@ -45,6 +46,8 @@ interface LiveSnapshot {
   events: LiveEvents | null;
   /** The latest usage entry per run key; a new object on each entry. */
   usage: Record<string, LiveRunUsage>;
+  /** The items of Done lately from the last `done` event; null until the first one. */
+  done: DoneLatelyItem[] | null;
   /** True while the server holds new containers for a restart. */
   paused: boolean;
 }
@@ -86,6 +89,7 @@ function createStore(): LiveStore {
     logs: [],
     events: null,
     usage: {},
+    done: null,
     paused: false,
   };
   let watched: string | null = null;
@@ -209,6 +213,7 @@ function createStore(): LiveStore {
         update({ runs: applyUsage(snapshot.runs, entry), usage: { ...snapshot.usage, [entry.key]: entry } });
       const onBacklog = (entry: LiveBacklog): void =>
         update({ backlogStamps: bumped(snapshot.backlogStamps, [entry.backlog]) });
+      const onDone = (items: DoneLatelyItem[]): void => update({ done: items });
       const onServer = (state: ServerState): void => update({ paused: state.paused });
       socket.on('connect', onConnect);
       socket.on('disconnect', onDisconnect);
@@ -219,6 +224,7 @@ function createStore(): LiveStore {
       socket.on('events', onEvents);
       socket.on('backlog', onBacklog);
       socket.on('usage', onUsage);
+      socket.on('done', onDone);
       socket.on('server', onServer);
       if (socket.connected) {
         update({ connected: true, connects: snapshot.connects + 1 });
@@ -233,6 +239,7 @@ function createStore(): LiveStore {
         socket.off('events', onEvents);
         socket.off('backlog', onBacklog);
         socket.off('usage', onUsage);
+        socket.off('done', onDone);
         socket.off('server', onServer);
       };
     },

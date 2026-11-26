@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { BacklogTaskView, BacklogView } from '../../contract/backlog';
+import type { AcceptedMilestone } from '../../contract/overview-done';
 import { BacklogRepository } from '../../history/backlog.repository';
 import { RunRepository } from '../../history/run.repository';
 import { storedState } from '../../history/run-state';
@@ -23,6 +24,28 @@ export class BacklogQueries {
     const backlog = await this.backlogs.findBacklog(name);
     if (backlog === null) throw new NotFoundException(`no backlog ${name}`);
     return this.build(backlog);
+  }
+
+  /**
+   * The accepted milestones of every backlog and the run keys of their tasks. It reads the backlogs, milestones
+   * and tasks only, never a run, so its statements grow with the backlogs and not with the runs.
+   */
+  async acceptedMilestones(): Promise<AcceptedMilestone[]> {
+    const found = await Promise.all(
+      (await this.backlogs.listBacklogs()).map(async (backlog) => {
+        const id = backlog.id as number;
+        const [milestones, tasks] = await Promise.all([this.backlogs.milestones(id), this.backlogs.tasks(id)]);
+        return milestones
+          .filter((milestone) => milestone.status === 'accepted')
+          .map((milestone) => ({
+            backlog: backlog.name,
+            number: milestone.number,
+            title: milestone.title,
+            runKeys: tasks.filter((task) => task.milestoneId === milestone.id).flatMap((task) => task.runKey ?? []),
+          }));
+      }),
+    );
+    return found.flat();
   }
 
   private async build(

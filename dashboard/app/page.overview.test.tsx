@@ -5,16 +5,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadinessProvider } from '../features/readiness';
 import { Shell } from '../features/shell';
 import { listBacklogs } from '../lib/backlog-endpoints';
-import { getFlow, getReadiness, getStats, listRuns } from '../lib/endpoints';
+import { getDoneLately, getFlow, getReadiness, getStats, listRuns } from '../lib/endpoints';
 import { activeMilestoneBacklog } from '../test/backlog-fixtures';
 import { receive } from '../test/fake-socket';
 import { statsView } from '../test/fixtures';
-import { mergedRun, questionRun, returnsFlow, workingRun } from '../test/overview-fixtures';
+import { doneItemsOf, mergedRun, questionRun, returnsFlow, workingRun } from '../test/overview-fixtures';
 import { QueryWrapper } from '../test/query-wrapper';
 import { listRunsFrom, runsPage } from '../test/runs-page';
 import HomePage from './page';
 
-vi.mock('../lib/endpoints', () => ({ getReadiness: vi.fn(), getStats: vi.fn(), listRuns: vi.fn(), getFlow: vi.fn() }));
+vi.mock('../lib/endpoints', () => ({
+  getReadiness: vi.fn(),
+  getStats: vi.fn(),
+  listRuns: vi.fn(),
+  getFlow: vi.fn(),
+  getDoneLately: vi.fn(),
+}));
 vi.mock('../lib/backlog-endpoints', () => ({ listBacklogs: vi.fn() }));
 vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLive());
 vi.mock('next/navigation', () => ({ useRouter: vi.fn() }));
@@ -26,6 +32,7 @@ const ready = {
 
 function load(runs: Parameters<typeof listRunsFrom>[0]): void {
   vi.mocked(listRuns).mockImplementation(listRunsFrom(runs));
+  vi.mocked(getDoneLately).mockResolvedValue(doneItemsOf(runs));
 }
 
 function range(days: number) {
@@ -73,6 +80,19 @@ const manyRuns = () => [
 ];
 
 describe('Overview page', () => {
+  it('reads Done lately once when it opens and never walks the done pages', async () => {
+    const served: string[] = [];
+    load(manyRuns());
+    vi.mocked(listRuns).mockImplementation((query) => {
+      served.push(query.part);
+      return listRunsFrom(manyRuns())(query);
+    });
+    renderPage();
+    await screen.findByText('Title of done-0');
+    expect(getDoneLately).toHaveBeenCalledTimes(1);
+    expect(served).not.toContain('done');
+  });
+
   it('orders the parts and caps the cards and lines', async () => {
     load(manyRuns());
     renderPage();
@@ -215,25 +235,24 @@ describe('Overview page', () => {
   it('reads the runs once per live change for all three parts', async () => {
     const rows = [questionRun('ask-0'), workingRun('work-0'), mergedRun('done-0')];
     const served: string[] = [];
+    load(rows);
     vi.mocked(listRuns).mockImplementation((query) => {
-      if (query.cursor === undefined) {
-        served.push(query.part);
-      }
+      served.push(query.part);
       return listRunsFrom(rows)(query);
     });
     renderPage();
     await screen.findByText('Title of done-0');
     const count = (part: string): number => served.filter((name) => name === part).length;
-    const before = { active: count('active'), done: count('done') };
+    const before = { active: count('active') };
 
     const changed = rows.map((row) =>
       row.key === 'work-0' ? { ...row, title: 'Changed work', status: 'done' as const } : row,
     );
     act(() => receive('runs', runsPage(changed, { part: 'active' })));
 
-    await vi.waitFor(() => expect(count('done')).toBe(before.done + 1));
-    expect(count('active')).toBe(before.active + 1);
-    expect(served).toHaveLength(before.active + before.done + 2);
+    await vi.waitFor(() => expect(count('active')).toBe(before.active + 1));
+    expect(count('done')).toBe(0);
+    expect(getDoneLately).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the rows the parts showed when the read after a live change fails', async () => {
