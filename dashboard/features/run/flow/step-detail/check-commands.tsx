@@ -29,7 +29,7 @@ export function CheckCommands({
     );
   }
   return (
-    <Box sx={{ mt: 2 }}>
+    <Box sx={{ mt: 2, minWidth: 0, overflowX: 'auto' }}>
       {repos.map((repo) => (
         <Box key={repo} component="ul" aria-label={repos.length > 1 ? repo : 'Check commands'} sx={{ m: 0, p: 0 }}>
           {repos.length > 1 ? (
