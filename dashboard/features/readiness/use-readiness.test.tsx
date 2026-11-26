@@ -12,6 +12,7 @@ const item = (id: ReadinessItem['id'], status: ReadinessItem['status']): Readine
   id,
   status,
   line: `${id} line`,
+  short: `${id} short`,
   action: `${id} action`,
 });
 

@@ -57,6 +57,7 @@ describe('OwnUseMeter', () => {
 
     expect(meter.last()).toEqual({
       line: 'swarmloop uses worktrees 2.0 KB, logs 1.0 KB, backups 3.0 MB, environment cache 0 B',
+      parts: 'worktrees 2.0 KB, logs 1.0 KB, backups 3.0 MB, environment cache 0 B',
       at: clock.now(),
     });
   });
@@ -87,13 +88,21 @@ describe('OwnUseMeter', () => {
     gate.resolve();
     await Promise.all([first, second]);
 
-    expect(meter.last()).toEqual({ line: expect.stringContaining('worktrees 4.0 KB'), at: clock.now() });
+    expect(meter.last()).toEqual({
+      line: expect.stringContaining('worktrees 4.0 KB'),
+      parts: expect.stringContaining('worktrees 4.0 KB'),
+      at: clock.now(),
+    });
 
     writeFileSync(join(home, 'worktrees', 'later'), Buffer.alloc(4096));
     clock.advance(1000);
     await meter.measure();
 
-    expect(meter.last()).toEqual({ line: expect.stringContaining('worktrees 8.0 KB'), at: clock.now() });
+    expect(meter.last()).toEqual({
+      line: expect.stringContaining('worktrees 8.0 KB'),
+      parts: expect.stringContaining('worktrees 8.0 KB'),
+      at: clock.now(),
+    });
   });
 
   it('keeps the last result when a walk fails, and the next measure walks again', async () => {
@@ -108,7 +117,11 @@ describe('OwnUseMeter', () => {
     clock.advance(1000);
     await meter.measure();
 
-    expect(meter.last()).toEqual({ line: expect.stringContaining('worktrees 4.0 KB'), at: clock.now() });
+    expect(meter.last()).toEqual({
+      line: expect.stringContaining('worktrees 4.0 KB'),
+      parts: expect.stringContaining('worktrees 4.0 KB'),
+      at: clock.now(),
+    });
   });
 
   it('measures again after a walk ended', async () => {

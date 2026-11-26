@@ -20,7 +20,7 @@ function renderLine(): void {
 }
 
 function item(status: ReadinessItem['status'], line: string): ReadinessItem {
-  return { id: 'docker', status, line, action: 'start Docker' };
+  return { id: 'docker', status, line, short: 'running', action: 'start Docker' };
 }
 
 describe('ReadinessLine', () => {

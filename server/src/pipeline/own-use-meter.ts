@@ -9,7 +9,7 @@ import { total, treeBytes } from './disk-guard';
 /** Measures what swarmloop itself takes of the disk, one walk at a time, away from any request. */
 @Injectable()
 export class OwnUseMeter {
-  private latest: { line: string; at: number } | null = null;
+  private latest: { line: string; parts: string; at: number } | null = null;
   private walking: Promise<void> | null = null;
 
   constructor(
@@ -20,8 +20,8 @@ export class OwnUseMeter {
   /** Walks the folders and keeps the result. A call during a walk gets that walk's promise; a failed walk keeps the last result. */
   measure(): Promise<void> {
     this.walking ??= this.walk()
-      .then((line) => {
-        this.latest = { line, at: this.clock.now() };
+      .then((parts) => {
+        this.latest = { line: `swarmloop uses ${parts}`, parts, at: this.clock.now() };
       })
       .finally(() => {
         this.walking = null;
@@ -29,11 +29,11 @@ export class OwnUseMeter {
     return this.walking;
   }
 
-  last(): { line: string; at: number } | null {
+  last(): { line: string; parts: string; at: number } | null {
     return this.latest;
   }
 
-  /** What swarmloop itself takes: worktrees, logs (output files, run log folders), backups and the environment cache. */
+  /** What swarmloop itself takes, as `name size` parts: worktrees, logs (output files, run log folders), backups and the environment cache. */
   private async walk(): Promise<string> {
     const base = root(this.config);
     const data = join(base, 'data');
@@ -44,7 +44,7 @@ export class OwnUseMeter {
       ['backups', await treeBytes(join(data, 'backups'))],
       ['environment cache', await treeBytes(join(data, 'env-cache'))],
     ] as const;
-    return `swarmloop uses ${parts.map(([name, bytes]) => `${name} ${size(bytes)}`).join(', ')}`;
+    return parts.map(([name, bytes]) => `${name} ${size(bytes)}`).join(', ');
   }
 }
 

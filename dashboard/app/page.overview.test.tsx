@@ -20,7 +20,7 @@ vi.mock('../lib/live', async () => (await import('../test/fake-socket')).fakeLiv
 vi.mock('next/navigation', () => ({ useRouter: vi.fn() }));
 
 const ready = {
-  items: [{ id: 'docker' as const, status: 'ok' as const, line: 'docker is running', action: '' }],
+  items: [{ id: 'docker' as const, status: 'ok' as const, line: 'docker is running', short: 'running', action: '' }],
   checkedAt: null,
 };
 
@@ -155,7 +155,9 @@ describe('Overview page', () => {
 
   it('shows the readiness panel when a check fails', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
+      items: [
+        { id: 'docker', status: 'fail', line: 'docker is not running', short: 'not running', action: 'start Docker' },
+      ],
       checkedAt: null,
     });
     renderPage();
@@ -201,7 +203,7 @@ describe('Overview page', () => {
   ] as const)('uses at most three text sizes %s', async (_name, status, title) => {
     load(manyRuns());
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status, line: 'docker is not running', action: 'start Docker' }],
+      items: [{ id: 'docker', status, line: 'docker is not running', short: 'not running', action: 'start Docker' }],
       checkedAt: null,
     });
     renderPage();

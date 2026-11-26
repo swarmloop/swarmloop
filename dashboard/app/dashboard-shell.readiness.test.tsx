@@ -49,7 +49,9 @@ beforeEach(() => {
 describe('DashboardShell readiness', () => {
   it('disables the header New run with the action while an item fails, and keeps the page usable', async () => {
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
+      items: [
+        { id: 'docker', status: 'fail', line: 'docker is not running', short: 'not running', action: 'start Docker' },
+      ],
       checkedAt: null,
     });
     renderShell();
@@ -68,7 +70,9 @@ describe('DashboardShell readiness', () => {
   it('shows Needs attention on Connections in the open account menu when a readiness item fails', async () => {
     vi.mocked(getSession).mockResolvedValue({ user: 'octocat', provider: 'github' });
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
+      items: [
+        { id: 'docker', status: 'fail', line: 'docker is not running', short: 'not running', action: 'start Docker' },
+      ],
       checkedAt: null,
     });
     renderShell();
@@ -80,7 +84,9 @@ describe('DashboardShell readiness', () => {
   it.each(['/', '/runs/x'])('shows the readiness status in the header on %s', async (path) => {
     vi.mocked(usePathname).mockReturnValue(path);
     vi.mocked(getReadiness).mockResolvedValue({
-      items: [{ id: 'docker', status: 'fail', line: 'docker is not running', action: 'start Docker' }],
+      items: [
+        { id: 'docker', status: 'fail', line: 'docker is not running', short: 'not running', action: 'start Docker' },
+      ],
       checkedAt: null,
     });
     renderShell();

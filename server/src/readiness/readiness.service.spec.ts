@@ -22,6 +22,8 @@ import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { fakeConnection } from '../testing/fake-connection';
 import { ReadinessModelCredential } from './readiness-model-credential';
+import type { ConnectionsService } from '../auth/connections.service';
+import { ReadinessPaths } from './readiness-paths';
 import { ReadinessStalls } from './readiness-stalls';
 import { ReadinessService } from './readiness.service';
 
@@ -69,6 +71,7 @@ describe('ReadinessService', () => {
     free = 50 * GB,
     person?: (config: AppConfig) => ReadinessModelCredential,
     stallRows: StallRow[] = [],
+    connections?: ConnectionsService,
   ): ReadinessService {
     const home = mkdtempSync(join(tmpdir(), 'readiness-'));
     dirs.push(home);
@@ -97,7 +100,19 @@ describe('ReadinessService', () => {
       { since: async (iso: string) => stallRows.filter((row) => row.startedAt >= iso) } as never,
       clock,
     );
-    return new ReadinessService(config, sandbox, disk, hosts, clock, meter, undefined, person?.(config), stalls);
+    const folders = new ReadinessPaths(config, sandbox);
+    return new ReadinessService(
+      config,
+      sandbox,
+      disk,
+      hosts,
+      clock,
+      meter,
+      folders,
+      connections,
+      person?.(config),
+      stalls,
+    );
   }
 
   /** The calls that left for a code host. The port probes stay on this machine. */
@@ -163,6 +178,43 @@ describe('ReadinessService', () => {
     );
   });
 
+  it('cuts a short of every item, and the model key joins its runtimes', async () => {
+    const service = setup({ AGENTS_SUBTASK_REVIEW: 'claude:m', ANTHROPIC_API_KEY: 'k' });
+    const { items } = await service.report();
+    const shorts = Object.fromEntries(items.map((item) => [item.id, item.short]));
+    expect(shorts).toMatchObject({
+      docker: 'running',
+      arch: process.arch,
+      disk: '50.0 GB free',
+      paths: 'writable',
+      ports: expect.stringMatching(/^\d+ · 3921$/),
+      'model-credential': 'cursor · claude',
+      'code-host-token': 'not set',
+    });
+    expect(shorts.images).toMatch(/^\d+ present$/);
+  });
+
+  it('cuts the docker short without the CHECKS_PARALLEL note, and says not running when docker is down', async () => {
+    const service = setup({ CHECKS_PARALLEL: 3 });
+    docker.mockImplementation(async (args: string[]) => (args.includes('--format') ? '8 25125558681\n' : ''));
+    expect((await itemOf(service, 'docker')).short).toBe('8 CPUs · 23.4 GB · 2 checks × 4 cores');
+    const down = setup();
+    docker.mockRejectedValue(new Error('no docker'));
+    expect((await itemOf(down, 'docker')).short).toBe('not running');
+  });
+
+  it('gives the disk item its own use with the age of the measure, and says when it was not measured', async () => {
+    const service = setup();
+    expect((await service.report()).items.find((item) => item.id === 'disk')?.ownUse).toBe('sizes not measured yet');
+    await meter.measure();
+    clock.advance(4 * 60_000 + 5000);
+    jest.spyOn(meter, 'measure').mockResolvedValue();
+    const disk = await itemOf(service, 'disk');
+    expect(disk.ownUse).toBe('worktrees 0 B, logs 0 B, backups 0 B, environment cache 0 B, measured 4 min ago');
+    expect(disk.line).toContain('; swarmloop uses worktrees 0 B');
+    expect((await itemOf(service, 'docker')).ownUse).toBeUndefined();
+  });
+
   it('says only that docker answers when no reading is kept', async () => {
     expect((await itemOf(setup(), 'docker')).line).toBe('docker answers');
   });
@@ -176,6 +228,7 @@ describe('ReadinessService', () => {
     expect(await itemOf(service, 'stalls')).toMatchObject({
       status: 'warn',
       line: 'The server stalled 2 times in the last hour, 32 s in all (server blocked)',
+      short: '2 times in the last hour',
       link: '/stats#statistics',
     });
   });
@@ -216,6 +269,7 @@ describe('ReadinessService', () => {
     expect(old.line).toContain('25.0.3');
     expect(old.line).toContain('Engine 26');
     expect(old.action).toBe('update Docker to Engine 26 or newer');
+    expect(old.short).toBe('too old');
     docker.mockImplementation(async (args: string[]) => (args[0] === 'version' ? '26.1.4\n' : ''));
     expect((await itemOf(service, 'docker')).status).toBe('ok');
     docker.mockImplementation(async (args: string[]) => (args[0] === 'version' ? 'n/a' : ''));
@@ -252,6 +306,24 @@ describe('ReadinessService', () => {
     expect(item).toMatchObject({ status: 'fail', action: expect.stringContaining('docker compose up -d') });
     expect(item.line).toContain(imageName('agent-cursor'));
     expect(item.line).toContain(imageName('egress'));
+    expect(item.short).toMatch(/^\d+ missing$/);
+  });
+
+  it('says check failed for a check that throws, in the build and in the stalls item', async () => {
+    const service = setup();
+    jest.spyOn(sandbox, 'daemonPlace').mockRejectedValue(new Error('daemon gone'));
+    jest.spyOn(ReadinessStalls.prototype, 'outcome').mockRejectedValue(new Error('no stall table'));
+    const { items } = await service.fresh();
+    expect(items.find((item) => item.id === 'paths')).toMatchObject({
+      status: 'fail',
+      line: 'daemon gone',
+      short: 'check failed',
+    });
+    expect(items.find((item) => item.id === 'stalls')).toMatchObject({
+      status: 'warn',
+      line: 'no stall table',
+      short: 'check failed',
+    });
   });
 
   it('fails below MIN_FREE_GB, warns under one and a half times it, and says the free GB', async () => {
@@ -372,6 +444,7 @@ describe('ReadinessService', () => {
     expect(item.status).toBe('fail');
     expect(item.line).toContain(join(home, 'data'));
     expect(item.action).toContain('chown');
+    expect(item.short).toBe('not writable');
     chmodSync(join(home, 'data'), 0o700);
   });
 
@@ -532,6 +605,7 @@ describe('ReadinessService', () => {
         expect(await credentialOf(service, 'dana')).toMatchObject({
           status: 'ok',
           line: 'CURSOR_API_KEY is set for cursor',
+          short: 'cursor',
         });
       }));
   });
@@ -558,14 +632,21 @@ describe('ReadinessService', () => {
         status: 'warn',
         action: 'Connect GitHub or GitLab in Connections to publish',
         link: '/connections',
+        short: 'not set',
       });
       expect(remote()).toEqual([]);
+    });
+
+    it('says a person is connected when no token is set but someone connected', async () => {
+      const connected = { anyConnected: async () => true } as ConnectionsService;
+      const service = setup({}, 50 * GB, undefined, [], connected);
+      expect(await itemOf(service, 'code-host-token')).toMatchObject({ status: 'ok', short: 'connected' });
     });
 
     it('is ok when the host accepts the token, with one GET and nothing else', async () => {
       const service = setup(github);
       answering(200);
-      expect((await itemOf(service, 'code-host-token')).status).toBe('ok');
+      expect(await itemOf(service, 'code-host-token')).toMatchObject({ status: 'ok', short: 'github' });
       expect(remote()).toEqual([{ method: 'GET', url: 'https://api.github.com/user' }]);
     });
 
@@ -575,6 +656,7 @@ describe('ReadinessService', () => {
       expect(await itemOf(service, 'code-host-token')).toMatchObject({
         status: 'fail',
         line: 'GITHUB_TOKEN was rejected',
+        short: 'github',
       });
     });
 
