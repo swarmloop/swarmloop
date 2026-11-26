@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { FlowView, RunSummary } from '../contract/api';
+import type { DoneLatelyItem } from '../contract/overview-done';
 import type { LiveEvents, LiveLog, LiveRunUsage } from '../contract/live';
 import { filterRuns, type Part, type RunChange, type RunsPage } from '../contract/run-list';
 import type { TestApp } from './test-app';
@@ -10,6 +11,8 @@ export const BATCH_MS = 100;
 /** The list a dashboard holds for one part and filter: a page from the API or the socket, then `run` events applied to it. */
 export class HeldList {
   runs: RunSummary[] = [];
+  /** The Done lately items: what GET /overview/done answered, then the `done` events. */
+  done: DoneLatelyItem[] = [];
 
   constructor(
     private readonly app: TestApp,
@@ -29,6 +32,17 @@ export class HeldList {
     const query = new URLSearchParams({ part: this.part, q: this.q });
     const response = await fetch(`${this.app.url}/runs?${query.toString()}`, { headers: this.app.auth });
     this.runs = ((await response.json()) as RunsPage).runs;
+  }
+
+  /** What the dashboard reads for Done lately: GET /overview/done. */
+  async readDone(): Promise<DoneLatelyItem[]> {
+    const response = await fetch(`${this.app.url}/overview/done`, { headers: this.app.auth });
+    return (await response.json()) as DoneLatelyItem[];
+  }
+
+  /** The `done` event: the items replace the held ones. */
+  onDone(items: DoneLatelyItem[]): void {
+    this.done = items;
   }
 
   /** The `runs` event: a page of the Active part with no filter, ignored by any other view. */
@@ -143,6 +157,7 @@ export async function open(app: TestApp, sockets: Socket[], held: HeldList): Pro
   socket.on('runs', (page: RunsPage) => held.onRuns(page));
   socket.on('run', (change: RunChange) => held.onRun(change));
   socket.on('usage', (entry: LiveRunUsage) => held.onUsage(entry));
+  socket.on('done', (items: DoneLatelyItem[]) => held.onDone(items));
   let connects = 0;
   socket.on('connect', () => {
     connects += 1;

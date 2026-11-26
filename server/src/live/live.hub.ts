@@ -59,6 +59,11 @@ export class LiveHub {
     this.events.emit('backlog', entry);
   }
 
+  /** A person's backlog write is done; only the gateway listens, to work out Done lately again. */
+  backlogWritten(): void {
+    this.events.emit('backlog-written');
+  }
+
   spendOf(key: string): LiveUsage | undefined {
     const steps = this.spend.get(key);
     if (!steps || steps.size === 0) {
@@ -114,6 +119,11 @@ export class LiveHub {
   onBacklog(listener: (entry: LiveBacklog) => void): () => void {
     this.events.on('backlog', listener);
     return () => this.events.off('backlog', listener);
+  }
+
+  onBacklogWritten(listener: () => void): () => void {
+    this.events.on('backlog-written', listener);
+    return () => this.events.off('backlog-written', listener);
   }
 
   onSpend(listener: (key: string) => void): () => void {
