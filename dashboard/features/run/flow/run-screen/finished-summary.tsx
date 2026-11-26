@@ -52,7 +52,9 @@ export function FinishedSummary({ flow, tasks }: { flow: FlowView; tasks?: React
       ) : loading || !view ? (
         <Skeleton variant="rounded" height={160} />
       ) : report ? (
-        <MarkdownBody text={report} />
+        <Box sx={{ minWidth: 0, overflowX: 'auto' }}>
+          <MarkdownBody text={report} />
+        </Box>
       ) : (
         <Typography color="text.secondary">The review report is not available.</Typography>
       )}

@@ -5,25 +5,23 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import HourglassBottom from '@mui/icons-material/HourglassBottom';
 import DataUsage from '@mui/icons-material/DataUsage';
-import OpenInNew from '@mui/icons-material/OpenInNew';
 import Paid from '@mui/icons-material/Paid';
 import Schedule from '@mui/icons-material/Schedule';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Chip from '@mui/material/Chip';
-import MuiLink from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { BacklogLabel } from '../../../../components/ui/backlog-label';
 import { ConfirmDialog } from '../../../shell';
+import { usePhone } from '../../../../lib/use-phone';
 import { etaText } from '../../../../lib/eta-words';
-import { duration, money, tokens, when } from '../../../../lib/format';
+import { duration, money, tokens } from '../../../../lib/format';
 import { runWord } from '../../run-word';
 import { RunStateIcon, toneColor } from '../../run-state-word';
+import { RunIdentity } from './run-identity';
+import { RunLinks } from './run-links';
 import { RelaunchNote } from './relaunch-note';
 import type { FlowView } from '@contract/api';
 import { epicFigures } from '@contract/epic-figures';
-import { personLabel } from '@contract/people';
 
 export function RunHeader({
   flow,
@@ -40,6 +38,7 @@ export function RunHeader({
   onStop: () => void;
   onOpenRequirements: () => void;
 }): ReactElement {
+  const phone = usePhone();
   const [rebaseOpen, setRebaseOpen] = useState(false);
   const metric = flow.metrics;
   const figures = flow.epic
@@ -77,38 +76,17 @@ export function RunHeader({
   ];
   return (
     <>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: phone ? 'column' : 'row',
+          justifyContent: 'space-between',
+          alignItems: phone ? 'stretch' : 'flex-start',
+          gap: 2,
+        }}
+      >
         <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
-          {flow.mergeRequests.length > 0 || commits.length > 0 ? (
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 0.5 }}>
-              {flow.mergeRequests.map((request) => (
-                <MuiLink
-                  key={request.url}
-                  href={request.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  variant="body2"
-                  sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}
-                >
-                  {`${request.repo} · ${request.state}`}
-                  <OpenInNew sx={{ fontSize: 14 }} />
-                </MuiLink>
-              ))}
-              {commits.map((commit) => (
-                <MuiLink
-                  key={commit.repo}
-                  href={commit.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  variant="body2"
-                  title={`Merge commit in ${commit.repo}`}
-                  sx={{ fontFamily: 'var(--font-mono)' }}
-                >
-                  {commit.sha.slice(0, 7)}
-                </MuiLink>
-              ))}
-            </Box>
-          ) : null}
+          <RunLinks mergeRequests={flow.mergeRequests} commits={commits} />
           <Tooltip title={flow.title}>
             <Button
               color="inherit"
@@ -127,36 +105,9 @@ export function RunHeader({
             </Typography>
           </Box>
           <RelaunchNote flow={flow} />
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75 }}>
-            <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: 13 }} color="text.secondary">
-              {flow.key}
-            </Typography>
-            {flow.backlog ? <BacklogLabel label={flow.backlog} /> : null}
-            {flow.startedBy ? (
-              <Typography variant="body2" color="text.secondary">
-                Started by {personLabel(flow.startedBy)}
-              </Typography>
-            ) : null}
-            {flow.startedBy && flow.ownerSince ? (
-              <Typography variant="body2" color="text.secondary">
-                Owned by {flow.startedBy} since {when(flow.ownerSince)}, before personal tokens it ran as machine
-              </Typography>
-            ) : null}
-            {flow.projects.map((project) => (
-              <Chip
-                key={project}
-                size="small"
-                variant="outlined"
-                label={project}
-                sx={{ height: 22, bgcolor: 'transparent', fontFamily: 'var(--font-mono)', fontSize: 12 }}
-              />
-            ))}
-            {flow.workspace === 'removed' ? (
-              <Chip size="small" variant="outlined" label="workspace removed" sx={{ height: 22, fontSize: 12 }} />
-            ) : null}
-          </Box>
+          <RunIdentity flow={flow} phone={phone} />
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, flexWrap: phone ? 'wrap' : 'nowrap' }}>
           {flow.actions.includes('rebase') ? (
             <Button variant="outlined" onClick={() => setRebaseOpen(true)}>
               Rebase
@@ -195,7 +146,10 @@ export function RunHeader({
       >
         {metricItems.map(({ Icon, text, tip }) => (
           <Tooltip key={tip} title={tip}>
-            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+            <Box
+              component="span"
+              sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, whiteSpace: phone ? 'nowrap' : undefined }}
+            >
               <Icon sx={{ fontSize: 16 }} />
               {text}
             </Box>

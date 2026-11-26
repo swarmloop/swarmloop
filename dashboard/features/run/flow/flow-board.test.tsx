@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CheckCommandView, FlowView } from '@contract/api';
 import { restartWaitSentence } from '@contract/restart-wait';
 import { localTime } from '../../../lib/format';
+import { mediaWidth } from '../../../test/viewport';
 import { statusColor } from '../../../theme/theme';
 import { FlowBoard } from './flow-board';
 
@@ -291,5 +292,48 @@ describe('FlowBoard', () => {
 
       expect(within(card).getByText('12/12')).toBeInTheDocument();
     });
+  });
+});
+
+const twoPhases: FlowView['phases'] = [
+  ...phases,
+  { phase: 'code-review', steps: [{ name: 'code-review-quality', status: 'idle', current: false, attempts: 0 }] },
+];
+
+describe('FlowBoard at 375 px', () => {
+  mediaWidth(375);
+
+  it('puts one phase in each row, its cards in a sideways scroll that keeps their width', () => {
+    render(<FlowBoard phases={twoPhases} returns={[]} selected={null} onSelect={vi.fn()} />);
+
+    const label = screen.getByText('implementation');
+    expect(label.parentElement?.parentElement).toHaveStyle({ gridTemplateColumns: 'minmax(0, 1fr)' });
+    const cards = label.nextElementSibling as HTMLElement;
+    expect(cards).toHaveStyle({ overflowX: 'auto', display: 'flex' });
+    expect(screen.getByRole('button', { name: /implement-improve|improve/ })).toHaveStyle({
+      minWidth: '160px',
+      flex: 'none',
+    });
+  });
+
+  it('still selects a card', async () => {
+    const onSelect = vi.fn();
+    render(<FlowBoard phases={twoPhases} returns={[]} selected={null} onSelect={onSelect} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /quality/ }));
+
+    expect(onSelect).toHaveBeenCalledWith('code-review-quality');
+  });
+});
+
+describe('FlowBoard at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('keeps one column for each phase', () => {
+    render(<FlowBoard phases={twoPhases} returns={[]} selected={null} onSelect={vi.fn()} />);
+
+    const label = screen.getByText('implementation');
+    expect(label.parentElement?.parentElement).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' });
+    expect(label.nextElementSibling).not.toHaveStyle({ overflowX: 'auto' });
   });
 });
