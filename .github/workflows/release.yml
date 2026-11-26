@@ -80,9 +80,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ needs.version.outputs.repo }}/${{ matrix.name }}:${{ needs.version.outputs.version }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             VERSION=${{ needs.version.outputs.version }}
-            REVISION=${{ github.sha }}
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
 
   smoke:
