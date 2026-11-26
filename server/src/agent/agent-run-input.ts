@@ -1,3 +1,4 @@
+import type { PricedRequest } from './request-usage';
 import type { ChatUsage } from '../history/chat-usage.repository';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { Effort } from '../contract/effort';
@@ -63,6 +64,8 @@ export interface AgentRunInput {
   onStartWait?: () => Promise<void>;
   /** `onLaunchEnd` runs when a launch ends, whatever the reason. */
   onLaunchEnd?: () => void;
+  /** Called with each model request as it streams, priced at the launch's table. A repeated message id comes again with its latest usage. */
+  onRequest?: (request: PricedRequest) => void;
   /** Run in the project image with the CLI mounted into it, instead of the agent image. */
   project?: ProjectLaunch;
 }

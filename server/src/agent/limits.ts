@@ -147,7 +147,7 @@ export function priceTokens(
   );
 }
 
-function findPrice(model: string, table: Record<string, ModelPrice>): ModelPrice | null {
+export function findPrice(model: string, table: Record<string, ModelPrice>): ModelPrice | null {
   if (table[model]) {
     return table[model];
   }

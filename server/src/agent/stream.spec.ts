@@ -225,4 +225,28 @@ describe("a visit's own usage", () => {
     expect((usage?.input ?? 0) + (usage?.cacheRead ?? 0)).toBe(76);
     expect(usage).toMatchObject({ output: 17, reportedUsd: 3.5 });
   });
+
+  it('reads one request from a Claude assistant message with its id, model and helper link', () => {
+    const piece = readStreamLine(
+      JSON.stringify({
+        type: 'assistant',
+        parent_tool_use_id: 'tool-1',
+        message: {
+          id: 'msg-1',
+          model: 'm',
+          usage: { input_tokens: 3, cache_read_input_tokens: 4, cache_creation_input_tokens: 5, output_tokens: 6 },
+        },
+      }),
+    );
+    expect(piece?.request).toEqual({
+      messageId: 'msg-1',
+      model: 'm',
+      parentToolUseId: 'tool-1',
+      input: 3,
+      cacheRead: 4,
+      cacheWrite: 5,
+      output: 6,
+    });
+    expect(readStreamLine(JSON.stringify({ type: 'result', usage: { input_tokens: 1 } }))?.request).toBeNull();
+  });
 });

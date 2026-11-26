@@ -135,11 +135,16 @@ export class AgentLaunch {
       priorOutput.length === 0 || priorOutput.endsWith('\n')
         ? `${priorOutput}process started\n`
         : `${priorOutput}\nprocess started\n`;
-    const meter = new AttemptMeter({
-      model: input.model,
-      prices,
-      prior: input.prior ?? NO_USAGE,
-    });
+    const meter = new AttemptMeter(
+      {
+        model: input.model,
+        prices,
+        prior: input.prior ?? NO_USAGE,
+        logger: this.logger,
+        idPrefix: `launch-${input.agentCalls}:`,
+      },
+      input.onRequest,
+    );
     const log = new AttemptLog(input.outputFile, input.runKey, step, baseline, () => meter.billed(), this.live);
     const sessionWrites = new SessionWrites(input.sessionFile, runtime.name);
     try {
@@ -249,6 +254,7 @@ export class AgentLaunch {
       );
       await log.close();
       input.onLaunchEnd?.();
+      meter.settle();
       const finished = this.clock.now();
       const priced = meter.billed();
       const finalKillReason = finishedByResult ? null : killReason;
@@ -274,6 +280,7 @@ export class AgentLaunch {
         tokensIn: priced.tokensIn,
         tokensOut: priced.tokensOut,
         usd: priced.usd,
+        ...meter.requestUsage(),
         reported: meter.reported(),
         killReason: finalKillReason,
         exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,

@@ -1,7 +1,10 @@
+import type { Logger } from '@nestjs/common';
 import type { ChatUsage } from '../history/chat-usage.repository';
-import { type DecisionWatch, hasModelDecision, type ModelPrice, noteDecision, priceTokens } from './limits';
+import { type DecisionWatch, findPrice, hasModelDecision, type ModelPrice, noteDecision, priceTokens } from './limits';
 import { sinceRecorded } from './since-recorded';
-import { readStreamLine, type ModelUsage, type OwnUsage, type StreamPiece, takeAnswer } from './stream';
+import { type PricedRequest, RequestLedger, type RequestUsage } from './request-usage';
+import { partOfTotal, readStreamLine, type StreamPiece, takeAnswer } from './stream';
+import type { ModelUsage, OwnUsage } from './stream-usage';
 import { addGuessedLine, emptyUsageGuess } from './stream-guess';
 
 interface AttemptBilling {
@@ -9,7 +12,14 @@ interface AttemptBilling {
   prices: Record<string, ModelPrice>;
   /** The chat's previous reported session totals. A result line that reports the whole session is taken against them. */
   prior: ChatUsage;
+  /** Where a gap between the summed requests and the final line is logged. */
+  logger?: Logger;
+  /** Tells this launch's synthetic request ids from those of the other launches of one call. */
+  idPrefix?: string;
 }
+
+/** A gap between the summed requests and the final line that is worth a log line, in dollars. */
+const CROSS_CHECK_GAP_USD = 0.01;
 
 interface AttemptUsage {
   tokensIn: number;
@@ -37,8 +47,18 @@ export class AttemptMeter {
   private endedAfterResult = false;
   private backgroundEnded = false;
   private contentBeforeResult = false;
+  private readonly ledger: RequestLedger;
+  /** The final line's one request per model, when the stream carried no request of its own (Cursor). */
+  private readonly fallback: RequestLedger;
+  private crossChecked = false;
 
-  constructor(private readonly billing: AttemptBilling) {}
+  constructor(
+    private readonly billing: AttemptBilling,
+    private readonly onRequest?: (request: PricedRequest) => void,
+  ) {
+    this.ledger = new RequestLedger(billing.prices, billing.model, billing.idPrefix);
+    this.fallback = new RequestLedger(billing.prices, billing.model);
+  }
 
   /** Notes the decision in one complete stream line. Returns the parsed piece, or null when the line is not a stream event. */
   ingest(line: string): StreamPiece | null {
@@ -69,6 +89,27 @@ export class AttemptMeter {
       this.responseText = next.text;
       this.answerLocked = next.locked;
     }
+    this.noteRequest(piece);
+    this.crossCheck(piece);
+  }
+
+  /** The call's requests per model and per helper at the launch's prices. Without per-request usage: the final line's. */
+  requestUsage(): RequestUsage {
+    return (this.ledger.size > 0 ? this.ledger : this.fallback).usage();
+  }
+
+  /**
+   * Runs after the process exited. A stream with no per-request usage (Cursor) counts its final line as the call's
+   * requests, one per model it names, so that `onRequest` sees them.
+   */
+  settle(): void {
+    if (this.ledger.size > 0 || this.fallback.size > 0) {
+      return;
+    }
+    for (const request of this.finalLineRequests()) {
+      this.fallback.put(request);
+      this.onRequest?.(request);
+    }
   }
 
   /** Applies the trailing partial line after the process has exited. */
@@ -78,7 +119,18 @@ export class AttemptMeter {
     }
   }
 
+  /** The summed requests whenever the stream carried any; otherwise what the final line or the guess says. */
   billed(): AttemptUsage {
+    if (this.ledger.size === 0) {
+      return this.finalLine();
+    }
+    const totals = this.ledger.totals();
+    // Requests the price table cannot price must not turn a cost the CLI reported into $0.
+    const reported = this.own !== null || this.fromResult;
+    return this.ledger.hasUnpriced() && reported ? { ...totals, usd: this.finalLine().usd } : totals;
+  }
+
+  private finalLine(): AttemptUsage {
     const { model, prices } = this.billing;
     if (!this.billedFromStream) {
       return {
@@ -107,14 +159,56 @@ export class AttemptMeter {
     };
   }
 
-  /** Each model of the result line at its own price; a model with no price row is priced as the launch's model. */
-  private pricedByModel(): number {
+  /** The final line's own part per model, or the session total less the chat's previous totals, as priced requests. */
+  private finalLineRequests(): PricedRequest[] {
+    if (this.own) {
+      return this.ownByModel.map((entry) => this.fallbackRequest(entry.model, entry, this.entryUsd(entry)));
+    }
+    if (!this.fromResult) {
+      return [];
+    }
+    const total = {
+      input: this.tokensIn,
+      output: this.tokensOut,
+      cacheRead: this.cacheRead,
+      cacheWrite: this.cacheWrite,
+      reportedUsd: this.reportedUsd,
+    };
+    const prompt = this.tokensIn + this.cacheRead + this.cacheWrite;
+    const part = partOfTotal(total, prompt, this.billing.prior);
+    return [this.fallbackRequest(this.billing.model, part, this.finalLine().usd)];
+  }
+
+  private fallbackRequest(
+    model: string,
+    tokens: { input: number; output: number; cacheRead: number; cacheWrite: number },
+    usd: number,
+  ): PricedRequest {
+    const { input, output, cacheRead, cacheWrite } = tokens;
+    return {
+      messageId: `${this.billing.idPrefix ?? ''}final:${model}`,
+      model,
+      parentToolUseId: null,
+      input,
+      cacheRead,
+      cacheWrite,
+      output,
+      usd,
+      price: findPrice(model, this.billing.prices),
+    };
+  }
+
+  /** One model's cost in the result line, or the price table's for it; a model with no price row is priced as the launch's model. */
+  private entryUsd(entry: ModelUsage): number {
     const { model, prices } = this.billing;
-    return this.ownByModel.reduce((total, entry) => {
-      const { input, output, cacheRead, cacheWrite } = entry;
-      const own = priceTokens(entry.model, input, output, prices, cacheRead, cacheWrite);
-      return total + (entry.usd ?? own ?? priceTokens(model, input, output, prices, cacheRead, cacheWrite) ?? 0);
-    }, 0);
+    const { input, output, cacheRead, cacheWrite } = entry;
+    const own = priceTokens(entry.model, input, output, prices, cacheRead, cacheWrite);
+    return entry.usd ?? own ?? priceTokens(model, input, output, prices, cacheRead, cacheWrite) ?? 0;
+  }
+
+  /** Each model of the result line at its own price. */
+  private pricedByModel(): number {
+    return this.ownByModel.reduce((total, entry) => total + this.entryUsd(entry), 0);
   }
 
   /** The session totals of the last result line, also from a line that reports the visit's own part. Null when there is none. */
@@ -149,6 +243,29 @@ export class AttemptMeter {
 
   answer(): string {
     return this.responseText;
+  }
+
+  private noteRequest(piece: StreamPiece): void {
+    const request = piece.request ? this.ledger.add(piece.request) : null;
+    if (request) {
+      this.onRequest?.(request);
+    }
+  }
+
+  /** The final line only cross-checks the summed requests: a gap of a cent or more is logged once. */
+  private crossCheck(piece: StreamPiece): void {
+    const reported = this.own !== null || this.fromResult;
+    if (!piece.result || piece.addUsage || this.crossChecked || this.ledger.size === 0 || !reported) {
+      return;
+    }
+    const line = this.finalLine().usd;
+    const summed = this.ledger.totals().usd;
+    if (Math.abs(line - summed) >= CROSS_CHECK_GAP_USD) {
+      this.crossChecked = true;
+      this.billing.logger?.warn(
+        `The final line of the call says $${line.toFixed(4)}; its ${this.ledger.size} requests sum to $${summed.toFixed(4)}`,
+      );
+    }
   }
 
   private noteBeforeResult(piece: StreamPiece): void {
