@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactElement, ReactNode } from 'react';
+import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import type { PlanChatEntry } from '@contract/plan-chat';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
@@ -34,24 +35,36 @@ export function MessageBubble({
         title={title ?? (person ? 'Message' : 'Reply')}
         meta={entry.state === 'pending' ? 'Pending' : undefined}
       >
-        {person ? (
-          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-            {entry.text}
-          </Typography>
-        ) : (
-          <MarkdownBody text={entry.text} />
-        )}
-        {person && entry.state === 'pending' && entry.wait ? (
-          <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>
-            {`The planner's reply waits for the model host since ${localTime(entry.wait.since)}: ${entry.wait.message}. Next try at ${localTime(entry.wait.retryAt)}.`}
-          </Typography>
-        ) : null}
-        {files.length > 0 ? (
-          <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>
-            {`Files: ${files.join(', ')}`}
-          </Typography>
-        ) : null}
-        {children}
+        <Box sx={{ textAlign: 'left' }}>
+          {person ? (
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+              {entry.text}
+            </Typography>
+          ) : (
+            <MarkdownBody text={entry.text} />
+          )}
+          {person && entry.state === 'pending' && entry.wait ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              component="p"
+              sx={{ mt: 0.5, overflowWrap: 'anywhere' }}
+            >
+              {`The planner's reply waits for the model host since ${localTime(entry.wait.since)}: ${entry.wait.message}. Next try at ${localTime(entry.wait.retryAt)}.`}
+            </Typography>
+          ) : null}
+          {files.length > 0 ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              component="p"
+              sx={{ mt: 0.5, overflowWrap: 'anywhere' }}
+            >
+              {`Files: ${files.join(', ')}`}
+            </Typography>
+          ) : null}
+          {children}
+        </Box>
       </Bubble>
     </BubbleProvider>
   );

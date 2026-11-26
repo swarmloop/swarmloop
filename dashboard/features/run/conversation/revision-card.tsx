@@ -6,6 +6,7 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import type { PlanRevision } from '@contract/plan-chat';
 import { plainText } from './conversation-words';
+import { PlanItemText } from './plan-item-text';
 
 function Items({ title, items }: { title: string; items: string[] }): ReactElement | null {
   if (items.length === 0) {
@@ -19,7 +20,7 @@ function Items({ title, items }: { title: string; items: string[] }): ReactEleme
       <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
         {items.map((item) => (
           <Typography key={item} component="li" variant="body2" sx={{ overflowWrap: 'anywhere' }}>
-            {plainText(item)}
+            <PlanItemText item={item} />
           </Typography>
         ))}
       </Box>
