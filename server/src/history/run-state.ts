@@ -82,6 +82,7 @@ function unfinishedState(
       stored.code === ERROR_CODES.DOCKER_UNAVAILABLE ||
       stored.code === REASON.asksPlanner ||
       stored.code === REASON.sameInput ||
+      stored.code === REASON.waitsForMain ||
       SUBTASK_WAIT_CODES.includes(stored.code as ErrorCode))
   )
     return { state: 'waiting', reason: stored };

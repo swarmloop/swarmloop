@@ -8,6 +8,7 @@ import { PlannerTurns } from '../pipeline/planner-turns';
 import { AnswersBody, FlowView } from '../contract/api';
 import { requireRun, RunQueriesService } from './run-queries.service';
 import { renderAnswers } from '../steps/shared/answers';
+import { RedMainWait } from '../pipeline/backlog/red-main-wait';
 import { RunCommandsService } from './run-commands.service';
 
 @Injectable()
@@ -20,9 +21,10 @@ export class RunAnswersService {
     private readonly queries: RunQueriesService,
     private readonly commands: RunCommandsService,
     @Optional() private readonly turns?: PlannerTurns,
+    @Optional() private readonly redMain?: RedMainWait,
   ) {}
 
-  async answers(key: string, body: AnswersBody): Promise<FlowView> {
+  async answers(key: string, body: AnswersBody, waitsForMain?: string): Promise<FlowView> {
     const run = await requireRun(this.runs, key);
     if (this.runs.held(run)) {
       throw new ConflictException(`${key} is already running`);
@@ -43,11 +45,11 @@ export class RunAnswersService {
     for (const answer of incoming.filter((item) => item.kind === 'paste' && item.id && item.body?.trim())) {
       await this.checkouts.savePaste(key, answer.id ?? '', answer.body?.trim() ?? '');
     }
-    return this.start(key);
+    return this.start(key, waitsForMain);
   }
 
   /** One message answers the run: the oldest open paste item, else every open question with the one text. */
-  async fromMessage(key: string, message: string): Promise<FlowView> {
+  async fromMessage(key: string, message: string, waitsForMain?: string): Promise<FlowView> {
     const run = await requireRun(this.runs, key);
     if (this.runs.held(run)) {
       throw new ConflictException(`${key} is already running`);
@@ -66,7 +68,7 @@ export class RunAnswersService {
         items.filter((item) => item.kind === 'question').map((item) => [item.id, text]),
       );
     }
-    return this.start(key);
+    return this.start(key, waitsForMain);
   }
 
   /** The `answers` document: one `question`/`answer` pair per answered question. */
@@ -80,8 +82,13 @@ export class RunAnswersService {
     }
   }
 
-  private async start(key: string): Promise<FlowView> {
+  /** Offers the answers, then starts the run, or holds it for a green main of `waitsForMain` when the backlog planner gave that. */
+  private async start(key: string, waitsForMain?: string): Promise<FlowView> {
     await this.turns?.offerAnswers(key);
+    if (waitsForMain !== undefined && this.redMain) {
+      await this.redMain.hold(await requireRun(this.runs, key), waitsForMain);
+      return this.queries.flow(key);
+    }
     this.commands.demandStart(await this.pipeline.startDetached(key));
     return this.queries.flow(key);
   }

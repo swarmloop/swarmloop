@@ -7,6 +7,12 @@ import { AttachmentStore } from '../history/attachment-store';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
 import { CommandService } from '../pipeline/command.service';
+import { RedMainWait } from '../pipeline/backlog/red-main-wait';
+import { BacklogRepository } from '../history/backlog.repository';
+import { CheckoutRepository } from '../history/checkout.repository';
+import { DocumentRepository } from '../history/document.repository';
+import { PipelineService } from '../pipeline/pipeline.service';
+import type { RepositoryHost } from '../steps/shared/repository-host';
 import { QuestionPassOn } from '../pipeline/question-pass-on';
 import { PlannerRunPort } from '../pipeline/backlog/planner/planner-run-port';
 import { PlannerTurns } from '../pipeline/planner-turns';
@@ -28,6 +34,8 @@ interface AnswerRoutes {
   turns: PlannerTurns;
   started: jest.Mock;
   port: PlannerRunPort;
+  /** What the host reads of every repository's main; red until a spec sets it. */
+  main: { state: 'red' | 'green' };
 }
 
 /** Boots the app with the command handlers and the planner's run commands wired to the real routes. */
@@ -46,11 +54,24 @@ export async function withAnswerRoutes(test: (parts: AnswerRoutes) => Promise<vo
       app.get(AttachmentStore),
       app.get(Clock),
     );
+    const main = { state: 'red' as 'red' | 'green' };
+    const host = { main: async () => ({ state: main.state }) } as unknown as RepositoryHost;
+    const redMain = new RedMainWait(app.get(BacklogRepository), app.get(RunRepository), host);
+    const answering = new RunAnswersService(
+      app.get(RunRepository),
+      app.get(DocumentRepository),
+      app.get(CheckoutRepository),
+      app.get(PipelineService),
+      app.get(RunQueriesService),
+      app.get(RunCommandsService),
+      undefined,
+      redMain,
+    );
     new CommandHandlers(
       app.get(CommandService),
       { reconcileCommands: jest.fn(), resumeSubtaskParents: jest.fn() } as never,
       app.get(RunCommandsService),
-      app.get(RunAnswersService),
+      answering,
       app.get(RunSubtaskCommandsService),
       app.get(RunRebaseService),
       app.get(SubtaskPort),
@@ -58,8 +79,15 @@ export async function withAnswerRoutes(test: (parts: AnswerRoutes) => Promise<vo
       app.get(AttachmentStore),
     ).onModuleInit();
     const port = new PlannerRunPort();
-    new PlannerRunCommands(port, app.get(CommandService), chat, app.get(QuestionPassOn)).onModuleInit();
-    await test({ app, chat, turns, started, port });
+    new PlannerRunCommands(
+      port,
+      app.get(CommandService),
+      chat,
+      app.get(QuestionPassOn),
+      redMain,
+      app.get(RunRepository),
+    ).onModuleInit();
+    await test({ app, chat, turns, started, port, main });
   } finally {
     await app.close();
   }
