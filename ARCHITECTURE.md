@@ -489,7 +489,7 @@ A limit stops the run in a wait that names it (rule 18). Every visit stores only
   - come from an allowed host and origin.
 - **Secrets** are never logged, never put in a URL, and never sent to the browser.
 
-**Today.** Holds (`auth/`, `config/redact.ts`, `api/request-guard.ts`). The photo is stored with the person.
+**Today.** Holds (`auth/`, `config/redact.ts`, `api/request-guard.ts`). The photo is stored with the person. A token the host accepts from Connections (`POST /auth/:provider/token` with a signed-in person) adds a connection for that person and starts no session. The installation warning of a host names only the repositories of this server that neither the installation nor the server token reaches (`LoginProvider.serverTokenMisses`).
 
 ## 3.21 Integrations
 

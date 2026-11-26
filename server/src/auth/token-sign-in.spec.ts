@@ -109,6 +109,21 @@ describe('signing in with a personal access token', () => {
     expect(response.headers.getSetCookie().some((entry) => entry.startsWith('swarmloop_session='))).toBe(false);
   });
 
+  it('connects the token to the signed-in person and starts no new session', async () => {
+    await start('gitlab:ann');
+    fake.personal.set('glpat-ann-work', 'ann-work');
+    const response = await fetch(`${app.url}/auth/gitlab/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-swarmloop': '1', ...(await app.sessionCookie('ann')) },
+      body: JSON.stringify({ token: 'glpat-ann-work', next: '/settings' }),
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ url: '/settings' });
+    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(await connections().tokenFor('gitlab', 'ann')).toBe('glpat-ann-work');
+    expect(await connections().health('gitlab', 'ann-work')).toBeNull();
+  });
+
   it('answers 404 for a host that does not sign in with a token', async () => {
     await start();
     expect((await post('github', { token: 'ghp_x' })).status).toBe(404);

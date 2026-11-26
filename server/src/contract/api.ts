@@ -392,8 +392,8 @@ export interface ConnectionView {
   repositories: string[];
   selection: 'all' | 'selected' | null;
   health: { status: 'ok' | 'broken'; expiresAt: string | null; refreshedAt: string | null } | null;
-  /** Owners of the repositories this server works on that the installation does not cover. */
-  missingOwners?: string[];
+  /** `owner/name` of the repositories this server works on that neither the installation nor the server's token reaches. */
+  unreachable?: string[];
   /** People connected through the app; only for who may replace it. */
   connected?: string[];
   /** True when the viewer may replace the app: its maker, or an admin. */

@@ -100,6 +100,11 @@ export interface LoginProvider {
   tokenOwner(): Promise<string | null>;
   /** True when the token can push to at least one of `repos`. A repository the token cannot see counts as no push. */
   canPush(token: string, repos: RepoRef[]): Promise<boolean>;
+  /**
+   * The repositories among `repos` the configured server token cannot see: all of them when no server token is set,
+   * else each one the host answers 403 or 404 for. A repository whose read fails otherwise is left out: it is not known to be unreachable.
+   */
+  serverTokenMisses(repos: RepoRef[]): Promise<RepoRef[]>;
 }
 
 /** The facts of a host a login provider carries as they are. */

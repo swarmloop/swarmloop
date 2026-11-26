@@ -119,10 +119,10 @@ export function HostCard({
           ? `${connection.appLabel} ${connection.app.name} · ${connection.app.clientId}`
           : 'No app or application is set up yet.'}
       </Typography>
-      {connection.missingOwners?.length ? (
+      {connection.unreachable?.length ? (
         <Alert severity="warning">
-          The installation covers none of this server's repositories. Missing owners:{' '}
-          {connection.missingOwners.join(', ')}. Use Install on more repositories.
+          A run cannot reach these repositories through the installation or the server's token:{' '}
+          {connection.unreachable.join(', ')}. Use Install on more repositories.
         </Alert>
       ) : null}
       {connection.account ? <Typography>Signed in as {connection.account}</Typography> : null}

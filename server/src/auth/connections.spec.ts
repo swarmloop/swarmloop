@@ -168,7 +168,7 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
       connections: {
         host: string;
         repositories: string[];
-        missingOwners: string[];
+        unreachable: string[];
         connected: string[];
         app: { madeBy: string | null };
       }[];
@@ -181,7 +181,7 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     expect((await github(await signIn('bob')))?.repositories).toHaveLength(150);
   });
 
-  it('names the owners of the checkouts when the installation covers none, and says nothing when one is covered', async () => {
+  it('names the checkouts that neither the installation nor the server token reaches, and says nothing when all are reached', async () => {
     await app.close();
     const checkouts = mkdtempSync(join(tmpdir(), 'swarmloop-connections-checkouts-'));
     const checkout = (name: string, project: string) => {
@@ -192,6 +192,7 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     app = await createTestApp({
       env: {
         GITHUB_BASE_URL: fake.url,
+        GITHUB_TOKEN: 'env-token',
         SWARMLOOP_ALLOW: 'github:alice',
         SWARMLOOP_TOKEN: TOKEN,
         CHECKOUTS_ROOT: checkouts,
@@ -200,12 +201,15 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     try {
       checkout('a', 'acme/site');
       checkout('b', 'Zed/api');
+      checkout('c', 'alice/site');
+      fake.hidden.add('env-token:Zed/api');
       await makeApp();
       const alice = await signIn('alice');
-      expect((await github(alice))?.missingOwners).toEqual(['acme', 'Zed']);
-      checkout('c', 'alice/site');
+      // alice/site is in the installation, acme/site is seen by the server token, Zed/api by neither
+      expect((await github(alice))?.unreachable).toEqual(['Zed/api']);
+      fake.hidden.clear();
       app.clock.advance(60_000);
-      expect((await github(alice))?.missingOwners).toEqual([]);
+      expect((await github(alice))?.unreachable).toEqual([]);
     } finally {
       rmSync(checkouts, { recursive: true, force: true });
     }
