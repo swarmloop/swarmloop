@@ -302,6 +302,44 @@ describe('BacklogPlanner', () => {
       expect((await h.chat.findTurn('turn-a'))?.status).toBe('running');
     }));
 
+  it('closes the rows a stop left open before it runs a running turn again, and keeps their cost', () =>
+    withTurns(async (h) => {
+      const id = await backlogOf(h);
+      await h.chat.addPersonMessage(id, 'plan it', 'm1', []);
+      await h.openTurn(id, 'turn-a');
+      const open = await h.leaveOpen('turn-a', 0.3);
+      await h.planner.onModuleDestroy();
+      await h.restart();
+      await h.planner.whenIdle();
+
+      const rows = await h.logOf('turn-a');
+      expect(rows.find((row) => row.id === open)).toMatchObject({
+        endKind: 'failed',
+        errorText: 'process died',
+        ownUsd: 0.3,
+      });
+      expect(rows).toHaveLength(2);
+      expect(rows.at(-1)).toMatchObject({ endKind: 'done' });
+      expect((await h.chat.findTurn('turn-a'))?.usd).toBeCloseTo(0.8);
+    }));
+
+  it('leaves the rows of a turn that waits for its next try as they are', () =>
+    withTurns(async (h) => {
+      const id = await backlogOf(h);
+      await h.chat.addPersonMessage(id, 'plan it', 'm1', []);
+      await h.openTurn(id, 'turn-a');
+      const open = await h.leaveOpen('turn-a', 0.3);
+      const turn = (await h.chat.findTurn('turn-a'))!;
+      await h.chat.saveTurn({
+        ...turn,
+        status: 'waiting',
+        nextTryAt: new Date(h.db.clock.now() + 60_000).toISOString(),
+      });
+      await h.restart();
+      await h.planner.whenIdle();
+      expect((await h.logOf('turn-a')).find((row) => row.id === open)).toMatchObject({ endKind: 'running' });
+    }));
+
   it('shows the next try of a turn that waits for a usage limit and runs it again then, with the visit it spent recorded', () =>
     withTurns(
       async (h) => {
@@ -313,7 +351,7 @@ describe('BacklogPlanner', () => {
 
         expect(h.agent.launches.map((launch) => launch.runtime)).toEqual(['claude', 'codex']);
         const [waiting] = await h.turnsOf(id);
-        expect(waiting).toMatchObject({ status: 'waiting', tokensIn: 20, tokensOut: 10, usd: 0.5 });
+        expect(waiting).toMatchObject({ status: 'waiting', tokensIn: 30, tokensOut: 0, usd: 0.5 });
         expect(waiting.nextTryAt).toBe(new Date(h.db.clock.now() + 60 * 60_000).toISOString());
         expect(waiting.reason).toContain('limit');
         expect(h.shown.at(-1)?.turn).toMatchObject({ status: 'waiting', nextTryAt: waiting.nextTryAt });

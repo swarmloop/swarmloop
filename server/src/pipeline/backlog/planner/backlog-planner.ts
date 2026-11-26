@@ -107,8 +107,14 @@ export class BacklogPlanner implements OnModuleDestroy {
       const backlog = backlogs.find((candidate) => candidate.id === turn.backlogId);
       if (!backlog) continue;
       if (waitsForTry(turn)) this.arm(backlog, turn.turnKey, turn.nextTryAt);
-      else this.begin(turn.backlogId, () => this.execute(backlog, turn.turnKey));
+      else this.begin(turn.backlogId, () => this.runAgain(backlog, turn));
     }
+  }
+
+  /** A running turn's rows a dead process left open are ended, with their cost kept, before the turn launches again. */
+  private async runAgain(backlog: BacklogRecord, turn: BacklogTurnRecord): Promise<void> {
+    if (turn.status === 'running') await this.runner.closeLeftOpen(turn.turnKey);
+    await this.execute(backlog, turn.turnKey);
   }
 
   /** Starts the work of a backlog, then the turns that were asked for meanwhile, one after the other. */
