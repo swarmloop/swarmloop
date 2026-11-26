@@ -4,6 +4,7 @@ import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import { requirementsView } from '@contract/requirements-view';
+import { PlanItemText } from '../conversation/plan-item-text';
 import { PlanRevisionContext, markOf } from '../conversation/revision-marks';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
 
@@ -83,7 +84,7 @@ export function RequirementsDetail({ body }: { body: string }): ReactElement {
                   })}
                 >
                   <span aria-hidden>{'☐'} </span>
-                  {item}
+                  <PlanItemText item={item} />
                   {mark ? (
                     <Typography component="span" variant="caption" color="primary" sx={{ ml: 1 }}>
                       {mark === 'added' ? 'New in this plan' : 'Changed in this plan'}

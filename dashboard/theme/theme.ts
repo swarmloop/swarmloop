@@ -96,7 +96,7 @@ export const theme = createTheme({
         }),
       },
     },
-    MuiButton: { defaultProps: { disableElevation: true } },
+    MuiButton: { defaultProps: { disableElevation: true }, styleOverrides: { root: { whiteSpace: 'nowrap' } } },
     MuiPaper: { defaultProps: { elevation: 0 } },
     MuiAppBar: { defaultProps: { elevation: 0, color: 'inherit' } },
   },

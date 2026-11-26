@@ -225,6 +225,25 @@ describe('StepDocuments', () => {
       documents: [{ kind: 'requirements', attempt: 1, body: requirements, createdAt: '2026-11-15T07:11:43.444Z' }],
     });
 
+    it('folds a long path list of a checklist item and keeps its mark', () => {
+      const files = Array.from({ length: 30 }, (_, index) => `src/file-${index}.ts`).join(', ');
+      const item = `Add request logging - files: ${files} - proof: a.spec.ts`;
+      const body = JSON.stringify({ prompt: 'Do it', plan: { name: 'P', overview: '', items: [item] } });
+      documents({
+        visit: visitView({
+          documents: [{ kind: 'requirements', attempt: 1, body, createdAt: '2026-11-15T07:11:43.444Z' }],
+        }),
+        planRevision: { ...revision, added: [item], changed: [] },
+      });
+
+      const [row] = within(screen.getByRole('list', { name: 'Plan checklist' })).getAllByRole('listitem', {
+        hidden: false,
+      });
+      expect(row).toHaveTextContent('New in this plan');
+      expect(within(row).getByRole('button', { name: 'and 25 more files' })).toBeVisible();
+      expect(within(row).queryByText('src/file-5.ts')).toBeNull();
+    });
+
     it('marks the checklist items the latest revision added and changed', () => {
       documents({ visit: planVisit, planRevision: revision });
 

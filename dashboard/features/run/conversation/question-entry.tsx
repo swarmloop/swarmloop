@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react';
+import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import type { FlowItem } from '@contract/api';
+import { FoldedText } from '../../../components/ui/folded-text';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
 import { answerPresentation } from '../../../lib/answer-field';
 import { QuestionCard } from '../flow/question-card';
@@ -36,28 +38,32 @@ export function QuestionEntry({ item }: { item: FlowItem }): ReactElement {
         anchor={item.parts?.entry ? questionAnchor(item.parts.entry) : undefined}
         title={answered ? 'Answered' : held ? 'Asked the planner' : 'Question for you'}
       >
-        {item.passedOn && !answered ? (
-          <Typography
-            variant="body2"
-            sx={{ overflowWrap: 'anywhere' }}
-          >{`The planner passed this on: ${item.passedOn}`}</Typography>
-        ) : null}
-        {answered ? (
-          <>
-            {presentation.heading ? (
-              <MarkdownBody text={presentation.heading} />
-            ) : (
-              <Typography variant="body2">{`Please paste: ${presentation.label}`}</Typography>
-            )}
-            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-              {item.answer}
-            </Typography>
-          </>
-        ) : presentation.heading ? (
-          <QuestionCard item={item} />
-        ) : (
-          <Typography variant="body2">{`Please paste: ${presentation.label}`}</Typography>
-        )}
+        <Box sx={{ textAlign: 'left' }}>
+          {item.passedOn && !answered ? (
+            <FoldedText text={item.passedOn}>
+              <Typography
+                variant="body2"
+                sx={{ overflowWrap: 'anywhere' }}
+              >{`The planner passed this on: ${item.passedOn}`}</Typography>
+            </FoldedText>
+          ) : null}
+          {answered ? (
+            <>
+              {presentation.heading ? (
+                <MarkdownBody text={presentation.heading} />
+              ) : (
+                <Typography variant="body2">{`Please paste: ${presentation.label}`}</Typography>
+              )}
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                {item.answer}
+              </Typography>
+            </>
+          ) : presentation.heading ? (
+            <QuestionCard item={item} />
+          ) : (
+            <Typography variant="body2">{`Please paste: ${presentation.label}`}</Typography>
+          )}
+        </Box>
       </Bubble>
     </BubbleProvider>
   );

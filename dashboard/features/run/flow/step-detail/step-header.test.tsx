@@ -1,12 +1,13 @@
 import { render, screen } from '@testing-library/react';
-import { createTheme } from '@mui/material/styles';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { theme } from '../../../../theme/theme';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { stepView, visitView } from '../../../../test/fixtures';
 import { StepHeader } from './step-header';
 
-function header(overrides: Partial<ComponentProps<typeof StepHeader>> = {}) {
+function header(overrides: Partial<ComponentProps<typeof StepHeader>> = {}, themed = false) {
   const view = stepView({ visits: [visitView({ id: 1, attempt: 1 }), visitView({ id: 2, attempt: 2 })] });
   const props = {
     step: 'implement',
@@ -23,7 +24,8 @@ function header(overrides: Partial<ComponentProps<typeof StepHeader>> = {}) {
     problemCount: 0,
     ...overrides,
   };
-  render(<StepHeader {...props} />);
+  const body = <StepHeader {...props} />;
+  render(themed ? <ThemeProvider theme={theme}>{body}</ThemeProvider> : body);
   return props;
 }
 
@@ -36,6 +38,17 @@ describe('StepHeader', () => {
     header();
 
     expect(screen.getByText('implement')).toBeInTheDocument();
+  });
+
+  it('keeps Run again on one line and lets the attempts scroll in the room that is left', () => {
+    header({ onReplay: vi.fn() }, true);
+
+    const button = screen.getByRole('button', { name: 'Run again' });
+    expect(button).toHaveStyle({ whiteSpace: 'nowrap' });
+    expect(button.parentElement).toHaveStyle({ flexShrink: '0' });
+    const scroller = screen.getByText('Attempt 2 of 2').parentElement!;
+    expect(scroller).toHaveStyle({ overflowX: 'auto' });
+    expect(scroller.parentElement).toHaveStyle({ flex: '1 1 auto' });
   });
 
   it('shows a server step with status, time, passed and slowest only: no cost, tokens, cpu or model line', () => {
@@ -140,7 +153,7 @@ describe('StepHeader', () => {
   });
 
   it('keeps a lone Run again contained', () => {
-    header({ onReplay: vi.fn() });
+    header({ onReplay: vi.fn() }, true);
 
     expect(screen.getByRole('button', { name: 'Run again' })).toHaveClass('MuiButton-contained');
   });
