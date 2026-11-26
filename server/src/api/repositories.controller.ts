@@ -4,7 +4,7 @@ import { repoAllowed } from '../config/checkout-path';
 import { AppConfig } from '../config/env';
 import type { RepositoryMainView } from '../contract/repository-main';
 import { CHECKOUT_NAME } from '../core/checkout-name';
-import { FetchFailed, HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
+import { FetchFailed, isHostOutage, SwarmloopError } from '../core/swarmloop-error';
 import { RepositoryHost } from '../steps/shared/repository-host';
 
 @Controller('repositories')
@@ -22,7 +22,7 @@ export class RepositoriesController {
     try {
       return await this.host.main(name, actor);
     } catch (error) {
-      if (error instanceof HostUnavailable) throw new ServiceUnavailableException(error.message);
+      if (isHostOutage(error)) throw new ServiceUnavailableException(error.message);
       if (error instanceof SwarmloopError && !(error instanceof FetchFailed)) {
         throw new NotFoundException(error.message);
       }

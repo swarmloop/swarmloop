@@ -19,7 +19,7 @@ import { root } from '../../../history/run-paths';
 import { UserSettingRepository } from '../../../history/user-setting.repository';
 import { outputFileFor } from '../../../core/attempt-output';
 import { ResultInvalid } from '../../../steps/shared/answer-errors';
-import { ModelHostUnavailable } from '../../../steps/shared/model-host-unavailable';
+import { isModelOutage } from '../../../steps/shared/model-host-unavailable';
 import { AgentLauncher } from '../../../steps/shared/agent-launcher';
 import type { LaunchOwner } from '../../../steps/shared/agent-launch-request';
 import { agentFailure } from '../../../steps/shared/agent-result';
@@ -195,7 +195,7 @@ export class BacklogTurnRunner {
       if (result.resultValue === undefined) throw new SwarmloopError('the planner gave no usable answer');
       return result.resultValue as BacklogTurnResult;
     } catch (error) {
-      const tried = error instanceof ResultInvalid || error instanceof ModelHostUnavailable ? error.result : undefined;
+      const tried = error instanceof ResultInvalid || isModelOutage(error) ? error.result : undefined;
       if (tried) {
         await record(tried, { runtime, model, ...effortFields(agents[0]) });
       }

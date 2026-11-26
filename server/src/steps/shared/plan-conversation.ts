@@ -47,7 +47,7 @@ import { correctCoverage } from './coverage-correction';
 import { currentPlan } from './current-plan';
 import { storedGraph } from './stored-graph';
 import { modelVisit } from './model-visit';
-import { HOST_VISIT, ModelHostUnavailable } from './model-host-unavailable';
+import { HOST_VISIT, isModelOutage, ModelHostUnavailable } from './model-host-unavailable';
 import { ResultInvalid } from './answer-errors';
 import { answerErrorsDocument } from './stored-answer-errors';
 import { planErrors } from './plan-errors';
@@ -365,7 +365,7 @@ export class PlanConversation {
 
 /** What a failed launch leaves with the visit: its cost, the model host that did not answer, or the answer's errors. */
 function keptOf(error: unknown, result: LaunchResult | null) {
-  if (error instanceof ModelHostUnavailable) {
+  if (isModelOutage(error)) {
     return { result: error.result, hostWait: error, answerErrors: null };
   }
   if (error instanceof ResultInvalid) {

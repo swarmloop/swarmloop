@@ -4,7 +4,7 @@ import type { StepContext } from '../base-step';
 import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
 import { writeRunState } from '../../history/run-state';
-import { HostUnavailable } from '../../core/swarmloop-error';
+import { isHostOutage } from '../../core/swarmloop-error';
 import { ERROR_CODES } from '../../contract/error-codes';
 
 /** What runs once the visit that asked for an automatic rebase is closed: the rebase itself, and the waits and blocks it can end in. */
@@ -22,7 +22,7 @@ export function automaticRebase(input: {
       const next = await rebase.rebase(run.key);
       return { ...ended, resume: next === 'resume' };
     } catch (error) {
-      if (error instanceof HostUnavailable) {
+      if (isHostOutage(error)) {
         await runs.change(run.key, (fresh) => {
           writeRunState(fresh, {
             status: 'waiting',

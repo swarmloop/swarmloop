@@ -10,7 +10,7 @@ import { fetchBranch } from '../../git/rebase';
 import type { RebaseHosts } from '../../git/rebase/types';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { withWorktree } from '../../git/worktree-lock';
-import { HostUnavailable } from '../../core/swarmloop-error';
+import { isHostOutage } from '../../core/swarmloop-error';
 import { automaticRebase } from './pipeline-rebase';
 import { originProject, type Failure } from './pipeline-report';
 
@@ -155,7 +155,7 @@ async function fetchDefaultSafely(
   try {
     return await fetchDefault(deps, run, cwd, repo);
   } catch (error) {
-    if (error instanceof HostUnavailable) throw error;
+    if (isHostOutage(error)) throw error;
     return null;
   }
 }

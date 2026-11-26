@@ -6,8 +6,8 @@ import type { DocumentDraft } from '../../history/visit';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { OpenedStep } from '../step-run';
-import { HostUnavailable, RuntimeLimit } from '../../core/swarmloop-error';
-import { ModelHostUnavailable, hostRoute } from '../shared/model-host-unavailable';
+import { isHostOutage, isUsageLimit } from '../../core/swarmloop-error';
+import { isModelOutage, hostRoute } from '../shared/model-host-unavailable';
 import { StartRefused, refusedRoute } from '../shared/start-refused';
 import type { Requirement } from '../../contract/requirement-list';
 import { isResultKind } from '../../agent-result/result-definition';
@@ -73,8 +73,8 @@ function plannerQuestions(
 
 /** The route a report launch ends the visit on when a provider limit or the door stopped it; null for any other error, and a Stop. */
 function stoppedRoute(error: unknown): Route | null {
-  if (error instanceof RuntimeLimit) return limitRoute(error);
-  if (error instanceof HostUnavailable) return hostRoute(error);
+  if (isUsageLimit(error)) return limitRoute(error);
+  if (isHostOutage(error)) return hostRoute(error);
   return error instanceof StartRefused ? refusedRoute(error) : null;
 }
 
@@ -129,7 +129,7 @@ export class ReviewSettle {
     } catch (error) {
       const route = stoppedRoute(error);
       if (!route) throw error;
-      const usage = error instanceof ModelHostUnavailable ? usageOf(error.result) : undefined;
+      const usage = isModelOutage(error) ? usageOf(error.result) : undefined;
       const waiting = await closeReview(
         ctx,
         route,

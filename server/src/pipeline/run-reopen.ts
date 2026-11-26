@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ERROR_CODES } from '../contract/error-codes';
-import { HostUnavailable } from '../core/swarmloop-error';
+import { isHostOutage } from '../core/swarmloop-error';
 import type { PipelineResult } from '../core/pipeline-result';
 import { RunRepository } from '../history/run.repository';
 import { storedState } from '../history/run-state';
@@ -28,7 +28,7 @@ export class RunReopen {
     try {
       await this.drafts.backToDraft(reopened);
     } catch (error) {
-      if (!(error instanceof HostUnavailable)) throw error;
+      if (!isHostOutage(error)) throw error;
       // A code host that does not answer is a wait: the reconciler goes on at plan-improve at `retryAt`.
       await this.runs.release(reopened, {
         status: 'waiting',

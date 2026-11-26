@@ -1,7 +1,7 @@
 import type { EventRepository } from '../../history/event.repository';
 import { CI_WAIT_COUNTER } from '../../history/loop-detail';
 import { ERROR_CODES } from '../../contract/error-codes';
-import { HostUnavailable } from '../../core/swarmloop-error';
+import { isHostOutage } from '../../core/swarmloop-error';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import type { StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -52,7 +52,7 @@ async function nudge(
       input.ctx.calls.push(...(await input.host.startPipeline(ref, why)).httpCalls);
       wait.nudge = `asked the host to start the pipeline of ${wait.source}`;
     } catch (error) {
-      if (error instanceof HostUnavailable) throw error;
+      if (isHostOutage(error)) throw error;
       const reason = error instanceof Error ? error.message : 'the request failed';
       wait.nudge = `asking the host to start the pipeline of ${wait.source} failed: ${reason}`;
     }

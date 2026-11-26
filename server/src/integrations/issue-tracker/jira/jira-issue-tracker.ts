@@ -5,13 +5,7 @@ import { AppConfig } from '../../../config/env';
 import { Clock } from '../../../core/clock';
 import { request } from '../../http';
 import { ERROR_CODES } from '../../../contract/error-codes';
-import {
-  FetchFailed,
-  HostUnavailable,
-  HttpCallDraft,
-  IssueNotFound,
-  SwarmloopError,
-} from '../../../core/swarmloop-error';
+import { FetchFailed, isHostOutage, HttpCallDraft, IssueNotFound, SwarmloopError } from '../../../core/swarmloop-error';
 import { atlassianSite } from '../../atlassian-site';
 import { encodedBody, headersFor, LinkedPagesService } from '../../linked-pages/linked-pages';
 import { AbstractIssueTracker } from '../abstract-issue-tracker';
@@ -128,7 +122,7 @@ export class JiraIssueTracker extends AbstractIssueTracker {
     try {
       response = await request(this.clock, url, headers, calls);
     } catch (error) {
-      throw error instanceof HostUnavailable ? error : notFoundOr(key, 'failed', calls);
+      throw isHostOutage(error) ? error : notFoundOr(key, 'failed', calls);
     }
     if (response.status < 200 || response.status >= 300) {
       throw notFoundOr(key, response.status, calls);
