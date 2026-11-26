@@ -17,10 +17,12 @@ import { SessionEntity } from './session.entity';
 import { RunWaitEntity } from './run-wait.entity';
 import { VisitStartEntity } from './visit-start.entity';
 import { StepStatEntity } from './step-stat.entity';
+import { AgentExchangeEntity } from './agent-exchange.entity';
 import { Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
 export { StepStatEntity } from './step-stat.entity';
 export { RunEntity } from './run.entity';
+export { AgentExchangeEntity } from './agent-exchange.entity';
 
 @Entity('documents')
 @Index('IDX_documents_step_stat_id', ['stepStatId'])
@@ -77,54 +79,6 @@ export class ResourceSampleEntity {
   /** `agent`, `setup`, or the index of a check command. Null on a row from before sources: it was an agent. */
   @Column({ type: 'varchar', nullable: true })
   source!: string | null;
-}
-
-@Entity('agent_exchanges')
-@Index('IDX_agent_exchanges_step_stat_id', ['stepStatId'])
-@Index('IDX_agent_exchanges_chat_id', ['chatId'])
-export class AgentExchangeEntity {
-  @PrimaryGeneratedColumn()
-  id!: number;
-
-  @Column({ name: 'step_stat_id', type: 'integer' })
-  stepStatId!: number;
-
-  @Column()
-  model!: string;
-
-  @Column({ name: 'started_at' })
-  startedAt!: string;
-
-  @Column({ name: 'finished_at' })
-  finishedAt!: string;
-
-  @Column({ name: 'duration_ms', type: 'integer' })
-  durationMs!: number;
-
-  @Column({ name: 'request_text', type: 'text' })
-  requestText!: string;
-
-  @Column({ name: 'response_text', type: 'text' })
-  responseText!: string;
-
-  @Column({ name: 'chat_id', type: 'text', nullable: true })
-  chatId!: string | null;
-
-  @Column({ type: 'integer', default: 0 })
-  resumed!: number;
-
-  @Column({ name: 'kill_reason', type: 'text', nullable: true })
-  killReason!: string | null;
-
-  /** The session totals the launch's last result line reported. The next launch of the chat is taken against them. Null when it reported none. */
-  @Column({ name: 'reported_usd', type: 'float', nullable: true })
-  reportedUsd!: number | null;
-
-  @Column({ name: 'reported_tokens_in', type: 'integer', nullable: true })
-  reportedTokensIn!: number | null;
-
-  @Column({ name: 'reported_tokens_out', type: 'integer', nullable: true })
-  reportedTokensOut!: number | null;
 }
 
 @Entity('loop_events')
