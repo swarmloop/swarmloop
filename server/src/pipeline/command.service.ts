@@ -15,7 +15,7 @@ import type { CommandReceipt, CommandType } from '../contract/command';
 import { barrier } from '../core/barrier';
 import { assertKey } from '../core/pipeline-result';
 import type { PipelineResult } from '../core/pipeline-result';
-import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
+import { isHostOutage, SwarmloopError } from '../core/swarmloop-error';
 import { RunStop } from '../agent/run-stop';
 
 interface CommandContext {
@@ -300,7 +300,7 @@ export class CommandService {
           error: {
             message: error instanceof Error ? error.message : String(error),
             // The time of the next automatic try, so a caller that waits for an outage knows when to ask again.
-            ...(error instanceof HostUnavailable ? { retryAt: error.retryAt } : {}),
+            ...(isHostOutage(error) ? { code: error.code, retryAt: error.retryAt } : {}),
           },
         })
         .catch(() => undefined);
