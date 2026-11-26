@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import type { ServerSetting } from '@contract/settings';
+import { usePhone } from '../../lib/use-phone';
 
 /** Consecutive settings of one group, as the server lists them in the order of defaults.env. */
 function groupsOf(settings: ServerSetting[]): { name: string; settings: ServerSetting[] }[] {
@@ -18,6 +19,8 @@ function groupsOf(settings: ServerSetting[]): { name: string; settings: ServerSe
 
 /** The env-only settings of the server, read only, a heading per group of defaults.env. */
 export function ServerSection({ settings }: { settings: ServerSetting[] }): ReactElement {
+  const phone = usePhone();
+  const wrap = phone ? { overflowWrap: 'anywhere' } : {};
   return (
     <Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -33,14 +36,20 @@ export function ServerSection({ settings }: { settings: ServerSetting[] }): Reac
           ) : null}
           <Box
             component="dl"
-            sx={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: 1, columnGap: 3, m: 0 }}
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: phone ? 'minmax(0, 1fr)' : 'max-content 1fr',
+              gap: 1,
+              columnGap: 3,
+              m: 0,
+            }}
           >
             {group.settings.map(({ name, value, source, description }) => (
               <Box key={name} sx={{ display: 'contents' }}>
-                <Typography component="dt" variant="body2" sx={{ fontFamily: 'monospace' }}>
+                <Typography component="dt" variant="body2" sx={{ fontFamily: 'monospace', ...wrap }}>
                   {name}
                 </Typography>
-                <Typography component="dd" variant="body2" color="text.secondary" sx={{ m: 0 }}>
+                <Typography component="dd" variant="body2" color="text.secondary" sx={{ m: 0, ...wrap }}>
                   {value || '—'}
                   <Typography component="span" variant="caption" sx={{ display: 'block' }}>
                     {source}

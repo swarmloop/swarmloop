@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RUN_STATES } from '@contract/run-state';
 import type { StateReason } from '@contract/run-state';
 import { flowView, runSummary } from '../../../../test/fixtures';
+import { mediaWidth } from '../../../../test/viewport';
 import { runWord } from '../../run-word';
 import { RunHeader } from './run-header';
 
@@ -299,5 +300,32 @@ describe('RunHeader', () => {
 
     render(<RunHeader {...headerProps()} flow={flowView()} />);
     expect(screen.queryByRole('link', { name: /Open backlog/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('RunHeader at 375 px', () => {
+  mediaWidth(375);
+
+  it('stacks the title and the meta, and keeps the meta items and chips whole', () => {
+    header('done', { flow: flowView({ status: 'done', workspace: 'removed', projects: ['acme/demo'] }) });
+
+    const title = screen.getByRole('heading', { level: 5 });
+    expect(title.closest('button')?.parentElement?.parentElement).toHaveStyle({ flexDirection: 'column' });
+    const item = screen.getByTestId('ScheduleIcon').parentElement;
+    expect(item).toHaveStyle({ whiteSpace: 'nowrap' });
+    const chip = screen.getByText('workspace removed');
+    expect(chip).toHaveStyle({ overflow: 'visible', textOverflow: 'clip' });
+    expect(chip.parentElement).toHaveStyle({ flexShrink: '0' });
+  });
+});
+
+describe('RunHeader at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('keeps the title and the buttons in a row', () => {
+    header('done');
+
+    const title = screen.getByRole('heading', { level: 5 });
+    expect(title.closest('button')?.parentElement?.parentElement).toHaveStyle({ flexDirection: 'row' });
   });
 });

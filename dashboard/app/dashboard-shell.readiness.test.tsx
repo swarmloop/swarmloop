@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadinessProvider } from '../features/readiness';
 import { getReadiness, getSession, listProjects, listRuns } from '../lib/endpoints';
 import { listRunsFrom } from '../test/runs-page';
+import { mediaWidth } from '../test/viewport';
 import { QueryWrapper } from '../test/query-wrapper';
 import { DashboardShell } from './dashboard-shell';
 
@@ -93,5 +94,25 @@ describe('DashboardShell readiness', () => {
     expect(await screen.findByRole('link', { name: '1 setup problem' })).toHaveAttribute('href', '/#readiness');
     expect(await screen.findAllByTitle('start Docker')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'New run' })).toBeDisabled();
+  });
+});
+
+describe('DashboardShell readiness at 375 px', () => {
+  mediaWidth(375);
+
+  it('disables the New run icon button with the action as its title and shows the status in the drawer', async () => {
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [
+        { id: 'docker', status: 'fail', line: 'docker is not running', short: 'not running', action: 'start Docker' },
+      ],
+      checkedAt: null,
+    });
+    renderShell();
+
+    expect(await screen.findByTitle('start Docker')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New run' })).toBeDisabled();
+    expect(screen.queryByText('1 setup problem')).not.toBeInTheDocument();
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Open the list of runs' }));
+    expect(await screen.findByText('1 setup problem')).toBeInTheDocument();
   });
 });

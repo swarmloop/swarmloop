@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getStats } from '../../lib/endpoints';
 import { statsView } from '../../test/fixtures';
 import { QueryWrapper } from '../../test/query-wrapper';
+import { mediaWidth } from '../../test/viewport';
 import { StatsSection } from './stats-section';
 import { TILE_COLUMNS } from './stat-tiles';
 import { big, hours, ticks, usd } from './stats-format';
@@ -367,5 +368,18 @@ describe('stats format', () => {
     expect(ticks(17)).toEqual([0, 5, 10, 15, 20]);
     expect(ticks(3, { whole: true })).toEqual([0, 1, 2, 3]);
     expect(ticks(0)).toEqual([0, 1]);
+  });
+});
+
+describe.each([
+  [375, 'minmax(0, 1fr)'],
+  [1280, 'repeat(2, minmax(0, 1fr))'],
+])('StatsSection epics and tasks at %i px', (width, columns) => {
+  mediaWidth(width);
+
+  it('stands the figures in the columns of its width', async () => {
+    renderSection();
+    const epics = await screen.findByRole('group', { name: 'Epics' });
+    expect(getComputedStyle(epics.parentElement as HTMLElement).gridTemplateColumns).toBe(columns);
   });
 });

@@ -7,6 +7,7 @@ import FormGroup from '@mui/material/FormGroup';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
 import { phaseLabel } from '../../../lib/phase-label';
+import { usePhone } from '../../../lib/use-phone';
 
 export function PhasePicker({
   picked,
@@ -17,8 +18,16 @@ export function PhasePicker({
   frozen: PhaseName[];
   setPicked: Dispatch<SetStateAction<PhaseName[]>>;
 }): ReactElement {
+  const phone = usePhone();
   return (
-    <FormGroup sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, max-content)', columnGap: 2, rowGap: 0.5 }}>
+    <FormGroup
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: phone ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, max-content)',
+        columnGap: 2,
+        rowGap: 0.5,
+      }}
+    >
       {PHASES.map((phase) => (
         <FormControlLabel
           key={phase}

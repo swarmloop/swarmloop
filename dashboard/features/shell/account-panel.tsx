@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
+import Drawer from '@mui/material/Drawer';
 import Fade from '@mui/material/Fade';
 import MenuItem from '@mui/material/MenuItem';
 import Popover from '@mui/material/Popover';
@@ -18,6 +19,7 @@ import MenuBookOutlined from '@mui/icons-material/MenuBookOutlined';
 import PowerOutlined from '@mui/icons-material/PowerOutlined';
 import SettingsOutlined from '@mui/icons-material/SettingsOutlined';
 import { logout } from '../../lib/endpoints';
+import { usePhone } from '../../lib/use-phone';
 import { readmeUrl } from './account-links';
 import { AccountVersion } from './account-version';
 import { AccountTheme } from './account-theme';
@@ -58,10 +60,16 @@ function Row({ icon, children, hint }: { icon: ReactNode; children: ReactNode; h
   );
 }
 
-const itemSx = { height: 36, minHeight: 36, gap: 1.5, px: 2, typography: 'body2' } as const;
+/** An item of the menu: 36 px tall on a pointer, 40 px on a phone, where it is a touch target. */
+function itemSx(phone: boolean): { height: number; minHeight: number; gap: number; px: number; typography: string } {
+  const height = phone ? 40 : 36;
+  return { height, minHeight: height, gap: 1.5, px: 2, typography: 'body2' };
+}
 
 function AccountMenu(props: AccountPanelProps): ReactElement {
   const { login, avatarUrl, host, version, revision, sourceUrl, needsAttention, onClose } = props;
+  const phone = usePhone();
+  const item = itemSx(phone);
   const list = useRef<HTMLDivElement>(null);
   const { onKeyDown } = useMenuKeys(list);
   return (
@@ -96,10 +104,10 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
       </Box>
       <Divider />
       <Box ref={list} role="menu" aria-label="Account" onKeyDown={onKeyDown} sx={{ py: 0.5 }}>
-        <MenuItem component={Link} href="/settings" tabIndex={-1} onClick={onClose} sx={itemSx}>
+        <MenuItem component={Link} href="/settings" tabIndex={-1} onClick={onClose} sx={item}>
           <Row icon={<SettingsOutlined />}>Settings</Row>
         </MenuItem>
-        <MenuItem component={Link} href="/connections" tabIndex={-1} onClick={onClose} sx={itemSx}>
+        <MenuItem component={Link} href="/connections" tabIndex={-1} onClick={onClose} sx={item}>
           <Row
             icon={<PowerOutlined />}
             hint={
@@ -128,7 +136,8 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
             target="_blank"
             rel="noreferrer"
             tabIndex={-1}
-            sx={itemSx}
+            onClick={phone ? onClose : undefined}
+            sx={item}
           >
             <Row icon={<MenuBookOutlined />}>Documentation</Row>
           </MenuItem>
@@ -136,7 +145,7 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
         <MenuItem
           tabIndex={-1}
           onClick={() => void logout().finally(() => window.location.assign('/login'))}
-          sx={{ ...itemSx, color: 'text.secondary' }}
+          sx={{ ...item, color: 'text.secondary' }}
         >
           <Row icon={<LogoutOutlined />}>Log out</Row>
         </MenuItem>
@@ -149,10 +158,24 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
   );
 }
 
-/** The popover of the account menu: it opens upward from the trigger and never covers it. */
+/** The account menu: a popover that opens upward from the trigger, or a bottom sheet below 900 px. */
 export function AccountPanel(props: AccountPanelProps): ReactElement {
   const { id, anchor, onClose } = props;
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const phone = usePhone();
+  if (phone) {
+    return (
+      <Drawer
+        id={id}
+        anchor="bottom"
+        open={anchor !== null}
+        onClose={onClose}
+        slotProps={{ paper: { sx: { borderRadius: '12px 12px 0 0', backgroundImage: 'none' } } }}
+      >
+        <AccountMenu {...props} />
+      </Drawer>
+    );
+  }
   return (
     <Popover
       id={id}

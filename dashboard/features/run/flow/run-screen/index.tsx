@@ -6,8 +6,8 @@ import Link from 'next/link';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Skeleton from '@mui/material/Skeleton';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import Typography from '@mui/material/Typography';
+import { usePhone } from '../../../../lib/use-phone';
 import { useDocumentTitle } from '../../../../lib/document-title';
 import { useRunFlow } from '../../use-run-flow';
 import { NewRunDialog } from '../../../new-run';
@@ -18,7 +18,7 @@ import { skipTask } from '../../../../lib/endpoints';
 import { GitAuthBanner } from '../git-auth-banner';
 import { LimitBanner } from '../limit-banner';
 import type { PlanRevision } from '@contract/plan-chat';
-import { ConversationColumn, SHEET_BELOW_PX } from '../../conversation/conversation-column';
+import { ConversationColumn } from '../../conversation/conversation-column';
 import { useWideConversation } from '../../conversation/use-wide-conversation';
 import { latestRevision } from '../../conversation/revision-marks';
 import { FinishedSummary } from './finished-summary';
@@ -51,7 +51,7 @@ export function RunScreen({ runKey }: { runKey: string }): ReactElement {
   } = useRunFlow(runKey);
 
   const [wide, setWide] = useWideConversation();
-  const sideBySide = useMediaQuery(`(min-width:${SHEET_BELOW_PX}px)`, { noSsr: true });
+  const sideBySide = !usePhone();
   useDocumentTitle(flow?.title ?? null);
 
   if (!flow) {

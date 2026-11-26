@@ -8,8 +8,7 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Typography from '@mui/material/Typography';
-import useMediaQuery from '@mui/material/useMediaQuery';
-import { useTheme } from '@mui/material/styles';
+import { useFullScreenDialog } from '../../lib/use-phone';
 
 /** The one confirm for every dangerous action: the same size, layout, focus, keys, progress and error handling. */
 export function ConfirmDialog({
@@ -31,8 +30,7 @@ export function ConfirmDialog({
   onConfirm: () => Promise<unknown>;
   onClose: () => void;
 }): ReactElement {
-  const theme = useTheme();
-  const phone = useMediaQuery(theme.breakpoints.down('sm'));
+  const phone = useFullScreenDialog();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +71,7 @@ export function ConfirmDialog({
           </Typography>
         ) : null}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2, justifyContent: 'space-between' }}>
+      <DialogActions sx={{ px: 3, pb: 2, justifyContent: 'space-between', flexWrap: phone ? 'wrap' : undefined }}>
         {/* eslint-disable-next-line jsx-a11y/no-autofocus -- Cancel takes focus first, so Enter never confirms by accident */}
         <Button autoFocus onClick={close} disabled={busy}>
           Cancel

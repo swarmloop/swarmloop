@@ -10,8 +10,8 @@ import ChatIcon from '@mui/icons-material/ChatBubbleOutline';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import type { FlowView } from '@contract/api';
+import { usePhone } from '../../../lib/use-phone';
 import { ConversationFeed } from './conversation-feed';
 import { feedEntries } from './talk-entries';
 import { needsPerson, newestOf, type FeedEntry } from './conversation-words';
@@ -22,8 +22,6 @@ import { useFitWindow } from './use-fit-window';
 /** The width of the column: 360 px by default, between 320 and 400. */
 const WIDTH = { width: 360, minWidth: 320, maxWidth: 400 } as const;
 const RAIL_PX = 44;
-/** Below this window width the column is a bottom sheet. */
-export const SHEET_BELOW_PX = 900;
 
 function Mark(): ReactElement {
   return (
@@ -65,7 +63,7 @@ export function ConversationColumn({
   wide?: boolean;
   onWide?: (wide: boolean) => void;
 }): ReactElement {
-  const narrow = !useMediaQuery(`(min-width:${SHEET_BELOW_PX}px)`, { noSsr: true });
+  const narrow = usePhone();
   const entries: FeedEntry[] = feedEntries(flow.conversation?.entries ?? [], flow.conversation?.parentKey);
   const newest = newestOf(flow, entries);
   const needsNow = needsPerson(flow);

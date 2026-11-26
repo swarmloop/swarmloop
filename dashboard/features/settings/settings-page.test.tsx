@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsView } from '@contract/settings';
 import { ApiError } from '../../lib/api';
 import { getSettings, saveSettings } from '../../lib/endpoints';
+import { mediaWidth } from '../../test/viewport';
 import { SettingsPage } from './settings-page';
 
 vi.mock('../../lib/endpoints', () => ({ getSettings: vi.fn(), saveSettings: vi.fn() }));
@@ -407,5 +408,48 @@ describe('SettingsPage', () => {
     expect(entries.map((entry) => entry.textContent)).toEqual(['Agents', 'Connections', 'API tokens', 'Server']);
     await user.click(screen.getByRole('button', { name: 'API tokens' }));
     expect(screen.getByText('tokens section')).toBeInTheDocument();
+  });
+});
+
+describe('SettingsPage at 375 px', () => {
+  mediaWidth(375);
+
+  it('stands the section list above the content, also over the placeholders', () => {
+    vi.mocked(getSettings).mockReturnValue(new Promise(() => undefined));
+    render(<SettingsPage />);
+
+    const layout = screen.getByTestId('settings-layout');
+    expect(getComputedStyle(layout).flexDirection).toBe('column');
+    expect(getComputedStyle(screen.getByRole('navigation', { name: 'settings sections' })).width).toBe('100%');
+    expect(screen.getAllByTestId('agents-placeholder').length).toBeGreaterThan(0);
+  });
+
+  it('shows each server setting name above its value in one column that wraps long words', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<SettingsPage />);
+    await screen.findByRole('button', { name: 'Save' });
+    await user.click(screen.getByRole('button', { name: 'Server' }));
+
+    const name = screen.getByText('MAX_RUN_USD');
+    expect(getComputedStyle(name.closest('dl')!).gridTemplateColumns).toBe('minmax(0, 1fr)');
+    expect(getComputedStyle(name).overflowWrap).toBe('anywhere');
+    expect(getComputedStyle(name.nextElementSibling!).overflowWrap).toBe('anywhere');
+  });
+});
+
+describe('SettingsPage at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('keeps the 200 px list beside the content and the two-column setting grid', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<SettingsPage />);
+    await screen.findByRole('button', { name: 'Save' });
+
+    expect(getComputedStyle(screen.getByTestId('settings-layout')).flexDirection).toBe('row');
+    expect(getComputedStyle(screen.getByRole('navigation', { name: 'settings sections' })).width).toBe('200px');
+    await user.click(screen.getByRole('button', { name: 'Server' }));
+    expect(getComputedStyle(screen.getByText('MAX_RUN_USD').closest('dl')!).gridTemplateColumns).toBe(
+      'max-content 1fr',
+    );
   });
 });

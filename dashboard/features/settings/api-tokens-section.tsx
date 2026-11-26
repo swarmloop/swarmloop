@@ -1,6 +1,6 @@
 'use client';
 
-import type { FormEvent, ReactElement } from 'react';
+import type { FormEvent, ReactElement, ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -17,9 +17,11 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import type { SxProps, Theme } from '@mui/material/styles';
 import type { CreatedTokenView, TokenLifetime, TokenView } from '@contract/people';
 import { createToken, listTokens, revokeToken, useExistingToken as adoptToken } from '../../lib/endpoints';
 import { localTime } from '../../lib/format';
+import { usePhone } from '../../lib/use-phone';
 import { Placeholders } from '../overview';
 import { ConfirmDialog } from '../shell';
 
@@ -31,6 +33,15 @@ const LIFETIMES: { label: string; value: string }[] = [
 
 const lifetimeOf = (value: string): TokenLifetime => (value === 'never' ? null : value === '30' ? 30 : 90);
 const reason = (cause: unknown, fallback: string): string => (cause instanceof Error ? cause.message : fallback);
+
+/** A form's fields and its button: one column on a phone, one row from 900 px. */
+const formSx = (phone: boolean): SxProps<Theme> =>
+  phone ? { display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 1 } : { display: 'flex', gap: 1 };
+
+/** The submit button in a row that wraps, so a row of buttons that does not fit wraps as a row. */
+function ButtonRow({ children }: { children: ReactNode }): ReactElement {
+  return <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>{children}</Box>;
+}
 
 function LifetimeField({ value, onChange }: { value: string; onChange: (value: string) => void }): ReactElement {
   return (
@@ -52,6 +63,7 @@ function CreateTokenForm({
   onError: (text: string) => void;
 }): ReactElement {
   const [name, setName] = useState('');
+  const phone = usePhone();
   const [lifetime, setLifetime] = useState('30');
 
   async function submit(event: FormEvent): Promise<void> {
@@ -66,17 +78,14 @@ function CreateTokenForm({
   }
 
   return (
-    <Box
-      component="form"
-      aria-label="Create token"
-      onSubmit={(event) => void submit(event)}
-      sx={{ display: 'flex', gap: 1 }}
-    >
+    <Box component="form" aria-label="Create token" onSubmit={(event) => void submit(event)} sx={formSx(phone)}>
       <TextField size="small" label="Name" value={name} onChange={(event) => setName(event.target.value)} required />
       <LifetimeField value={lifetime} onChange={setLifetime} />
-      <Button type="submit" variant="contained">
-        Create token
-      </Button>
+      <ButtonRow>
+        <Button type="submit" variant="contained">
+          Create token
+        </Button>
+      </ButtonRow>
     </Box>
   );
 }
@@ -84,6 +93,7 @@ function CreateTokenForm({
 function UseTokenForm({ onUsed, onError }: { onUsed: () => void; onError: (text: string) => void }): ReactElement {
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
+  const phone = usePhone();
   const [lifetime, setLifetime] = useState('never');
 
   async function submit(event: FormEvent): Promise<void> {
@@ -103,7 +113,7 @@ function UseTokenForm({ onUsed, onError }: { onUsed: () => void; onError: (text:
       component="form"
       aria-label="Use an existing token"
       onSubmit={(event) => void submit(event)}
-      sx={{ display: 'flex', gap: 1 }}
+      sx={formSx(phone)}
     >
       <TextField
         size="small"
@@ -121,9 +131,11 @@ function UseTokenForm({ onUsed, onError }: { onUsed: () => void; onError: (text:
         required
       />
       <LifetimeField value={lifetime} onChange={setLifetime} />
-      <Button type="submit" variant="outlined">
-        Use token
-      </Button>
+      <ButtonRow>
+        <Button type="submit" variant="outlined">
+          Use token
+        </Button>
+      </ButtonRow>
     </Box>
   );
 }
@@ -151,32 +163,34 @@ function ValueDialog({ made, onClose }: { made: CreatedTokenView | null; onClose
 
 function TokenTable({ tokens, onRevoke }: { tokens: TokenView[]; onRevoke: (token: TokenView) => void }): ReactElement {
   return (
-    <Table size="small" aria-label="API tokens">
-      <TableHead>
-        <TableRow>
-          <TableCell>Name</TableCell>
-          <TableCell>Created</TableCell>
-          <TableCell>Last used</TableCell>
-          <TableCell>Expires</TableCell>
-          <TableCell />
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {tokens.map((token) => (
-          <TableRow key={token.id}>
-            <TableCell>{token.name}</TableCell>
-            <TableCell>{localTime(token.createdAt)}</TableCell>
-            <TableCell>{token.lastUsedAt ? localTime(token.lastUsedAt) : 'never'}</TableCell>
-            <TableCell>{token.expiresAt ? localTime(token.expiresAt) : 'never'}</TableCell>
-            <TableCell>
-              <Button size="small" color="error" onClick={() => onRevoke(token)}>
-                Revoke
-              </Button>
-            </TableCell>
+    <Box data-testid="tokens-scroll" sx={{ overflowX: 'auto' }}>
+      <Table size="small" aria-label="API tokens">
+        <TableHead>
+          <TableRow>
+            <TableCell>Name</TableCell>
+            <TableCell>Created</TableCell>
+            <TableCell>Last used</TableCell>
+            <TableCell>Expires</TableCell>
+            <TableCell />
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHead>
+        <TableBody>
+          {tokens.map((token) => (
+            <TableRow key={token.id}>
+              <TableCell>{token.name}</TableCell>
+              <TableCell>{localTime(token.createdAt)}</TableCell>
+              <TableCell>{token.lastUsedAt ? localTime(token.lastUsedAt) : 'never'}</TableCell>
+              <TableCell>{token.expiresAt ? localTime(token.expiresAt) : 'never'}</TableCell>
+              <TableCell>
+                <Button size="small" color="error" onClick={() => onRevoke(token)}>
+                  Revoke
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Box>
   );
 }
 

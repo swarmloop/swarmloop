@@ -222,3 +222,12 @@ describe('CheckCommands', () => {
     expect(screen.queryByText(/no check commands/)).toBeNull();
   });
 });
+
+describe('CheckCommands list box', () => {
+  it('scrolls the lines inside its own box', () => {
+    list([row({ command: 'npm run test:unit -- --coverage --reporter verbose --shard 1/20 --long-flag-name' })]);
+
+    const box = screen.getByRole('list', { name: 'Check commands' }).parentElement;
+    expect(box).toHaveStyle({ overflowX: 'auto', minWidth: '0' });
+  });
+});

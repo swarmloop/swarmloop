@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Box from '@mui/material/Box';
+import { usePhone } from '../../lib/use-phone';
 
 const Items = [
   { label: 'Runs', href: '/' },
@@ -12,6 +13,7 @@ const Items = [
 
 /** Links between the main parts of the dashboard; the one for the current page is marked. */
 export function MainNav(): ReactElement {
+  const phone = usePhone();
   const onBacklogs = /^\/backlogs(\/|$)/.test(usePathname());
   return (
     <Box component="nav" aria-label="Main" sx={{ display: 'flex', gap: 0.5, ml: 3 }}>
@@ -24,6 +26,7 @@ export function MainNav(): ReactElement {
             href={item.href}
             aria-current={active ? 'page' : undefined}
             sx={{
+              ...(phone ? { display: 'inline-flex', alignItems: 'center', minHeight: 40 } : {}),
               px: 1.5,
               py: 0.75,
               borderRadius: 1,

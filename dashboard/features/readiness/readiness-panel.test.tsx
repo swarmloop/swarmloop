@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../lib/api';
 import { getReadiness } from '../../lib/endpoints';
 import { QueryWrapper } from '../../test/query-wrapper';
+import { mediaWidth } from '../../test/viewport';
 import { ReadinessPanel } from './readiness-panel';
 import { ReadinessProvider } from './use-readiness';
 
@@ -218,5 +219,30 @@ describe('ReadinessPanel refresh', () => {
     renderPanel();
     expect(await screen.findByText(/The server is busy, retrying/)).toBeInTheDocument();
     expect(screen.queryByText(/HTTP 500/)).not.toBeInTheDocument();
+  });
+});
+
+describe.each([
+  [375, 'minmax(0, 1fr)'],
+  [1280, 'repeat(auto-fit, minmax(100px, 1fr))'],
+])('ReadinessPanel at %i px', (width, columns) => {
+  mediaWidth(width);
+
+  it('lays the tiles out in the columns of its width, with the short text on one line', async () => {
+    vi.mocked(getReadiness).mockResolvedValue({
+      items: [{ id: 'docker', status: 'ok', line: 'docker answers', short: 'running', action: 'nothing to do' }],
+      checkedAt: CHECKED_AT,
+    });
+    renderPanel();
+    const tile = await screen.findByLabelText('Docker: ready, docker answers');
+    expect(getComputedStyle(tile.parentElement as HTMLElement).gridTemplateColumns).toBe(columns);
+    expect(screen.getByText('running')).toHaveClass('MuiTypography-noWrap');
+  });
+
+  it('lays the loading tiles out the same way', async () => {
+    vi.mocked(getReadiness).mockReturnValue(new Promise(() => undefined));
+    renderPanel();
+    const [placeholder] = await screen.findAllByTestId('readiness-placeholder');
+    expect(getComputedStyle(placeholder.parentElement as HTMLElement).gridTemplateColumns).toBe(columns);
   });
 });

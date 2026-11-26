@@ -9,7 +9,7 @@ import { etaText } from '../../lib/eta-words';
 import { useBacklogs } from '../backlogs';
 import { RunStateIcon, runWord, toneColor } from '../run';
 import { type NowCard, nowCards } from './now-items';
-import { CARD_GRID_SX, LoadFailed, Placeholders, sectionState } from './section-state';
+import { LoadFailed, Placeholders, sectionState, useCardGridSx } from './section-state';
 import { useOverviewRuns } from './use-overview-runs';
 
 const TICK_MS = 30_000;
@@ -81,6 +81,7 @@ function CardView({ card, now }: { card: NowCard; now: number }): ReactElement {
 export function NowSection(): ReactElement {
   const runs = useOverviewRuns();
   const { backlogs, loaded, error } = useBacklogs();
+  const cardGridSx = useCardGridSx();
   const now = useNow();
   const state = sectionState(runs, { loaded, failed: error !== null });
   const cards = nowCards(backlogs, runs.active, now);
@@ -99,7 +100,7 @@ export function NowSection(): ReactElement {
       ) : cards.length === 0 ? (
         <Typography color="text.secondary">Nothing running</Typography>
       ) : (
-        <Box sx={CARD_GRID_SX}>
+        <Box sx={cardGridSx}>
           {cards.map((card) => (
             <CardView key={card.id} card={card} now={now} />
           ))}

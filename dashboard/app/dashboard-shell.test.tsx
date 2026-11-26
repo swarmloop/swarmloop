@@ -8,6 +8,7 @@ import { receive } from '../test/fake-socket';
 import { runSummary } from '../test/fixtures';
 import { listRunsFrom } from '../test/runs-page';
 import { fakeIntersectionObserver } from '../test/intersection-observer';
+import { mediaWidth } from '../test/viewport';
 import { DashboardShell } from './dashboard-shell';
 
 vi.mock('next/navigation', () => ({ usePathname: vi.fn(), useRouter: vi.fn(), useSearchParams: vi.fn() }));
@@ -278,5 +279,61 @@ describe('Shell', () => {
       expect(screen.getByText('Failed 2')).toBeInTheDocument();
       expect(screen.queryByText('Failed 1')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('Shell at 375 px', () => {
+  mediaWidth(375);
+
+  beforeEach(() => {
+    vi.mocked(usePathname).mockReturnValue('/runs/run-1');
+  });
+
+  it('keeps the run list in a closed drawer that the menu button opens and choosing a run closes', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderShell();
+
+    expect(screen.queryByText('Run one')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open the list of runs' }));
+    await user.click(await screen.findByText('Run one'));
+
+    expect(push).toHaveBeenCalledWith('/runs/run-1');
+    await waitFor(() => expect(screen.queryByText('Run one')).not.toBeInTheDocument());
+  });
+
+  it('has the logo, the live dot and a New run icon button in the header, and the nav in the drawer', async () => {
+    const user = userEvent.setup({ delay: null });
+    renderShell();
+
+    expect(screen.getByRole('link', { name: 'swarmloop, overview' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'offline' })).toBeInTheDocument();
+    expect(screen.queryByText('offline')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open the list of runs' }));
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(within(nav).getByRole('link', { name: 'Runs' })).toBeInTheDocument();
+    expect(within(nav).getByRole('link', { name: 'Backlogs' })).toBeInTheDocument();
+  });
+
+  it('opens New run from the icon button', async () => {
+    renderShell();
+
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'New run' }));
+
+    expect(within(await screen.findByRole('dialog')).getByRole('heading', { name: 'New run' })).toBeInTheDocument();
+  });
+});
+
+describe('Shell at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('keeps the list permanent, the New run button contained and the nav in the header', async () => {
+    vi.mocked(usePathname).mockReturnValue('/runs/run-1');
+    renderShell();
+
+    expect(await screen.findByText('Run one')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open the list of runs' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New run' })).toHaveClass('MuiButton-contained');
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument();
   });
 });

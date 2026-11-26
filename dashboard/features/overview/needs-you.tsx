@@ -12,7 +12,7 @@ import { nested } from '@contract/run-list';
 import { backlogPath } from '../../lib/backlog-path';
 import { useBacklogs } from '../backlogs';
 import { runWord } from '../run';
-import { CARD_GRID_SX, LoadFailed, Placeholders, sectionState } from './section-state';
+import { LoadFailed, Placeholders, sectionState, useCardGridSx } from './section-state';
 import { useOverviewRuns } from './use-overview-runs';
 
 const SHOWN = 3;
@@ -38,6 +38,7 @@ function runCard(run: RunSummary, button: string): Card {
 export function NeedsYou(): ReactElement | null {
   const runs = useOverviewRuns();
   const { backlogs, loaded, error } = useBacklogs();
+  const cardGridSx = useCardGridSx();
   const state = sectionState(runs, { loaded, failed: error !== null });
   const { tops } = nested(runs.active);
   const waits = (run: RunSummary): boolean => needsPerson(run.state, run.stateReason);
@@ -71,7 +72,7 @@ export function NeedsYou(): ReactElement | null {
       {state === 'loading' ? <Placeholders count={SHOWN} height={62} testId="needs-placeholder" grid /> : null}
       {state === 'failed' ? <LoadFailed what="what needs you" /> : null}
       {state === 'ready' ? (
-        <Box sx={CARD_GRID_SX}>
+        <Box sx={cardGridSx}>
           {cards.slice(0, SHOWN).map((card) => (
             <Box
               key={card.id}

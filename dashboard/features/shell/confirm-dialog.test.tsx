@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { mediaWidth } from '../../test/viewport';
 import { ConfirmDialog } from './confirm-dialog';
 
 function confirm(onConfirm: () => Promise<unknown> = () => Promise.resolve(), tone: 'danger' | 'primary' = 'danger') {
@@ -94,5 +95,31 @@ describe('ConfirmDialog', () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onConfirm).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ConfirmDialog at 375 px', () => {
+  mediaWidth(375);
+
+  it('is full screen with no fixed width and wrapping actions', () => {
+    confirm();
+
+    const paper = screen.getByRole('dialog').closest('.MuiDialog-paper')!;
+    expect(paper).toHaveClass('MuiDialog-paperFullScreen');
+    expect(getComputedStyle(paper).width).not.toBe('440px');
+    expect(getComputedStyle(screen.getByRole('button', { name: 'Stop' }).parentElement!).flexWrap).toBe('wrap');
+  });
+});
+
+describe('ConfirmDialog at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('is 440 px wide, not full screen, and its actions do not wrap', () => {
+    confirm();
+
+    const paper = screen.getByRole('dialog').closest('.MuiDialog-paper')!;
+    expect(paper).not.toHaveClass('MuiDialog-paperFullScreen');
+    expect(getComputedStyle(paper).width).toBe('440px');
+    expect(getComputedStyle(screen.getByRole('button', { name: 'Stop' }).parentElement!).flexWrap).not.toBe('wrap');
   });
 });

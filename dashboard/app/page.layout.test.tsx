@@ -10,6 +10,7 @@ import { activeMilestoneBacklog, proposedMilestoneBacklog } from '../test/backlo
 import { statsView } from '../test/fixtures';
 import { mergedRun, questionRun, returnsFlow, workingRun } from '../test/overview-fixtures';
 import { QueryWrapper } from '../test/query-wrapper';
+import { mediaWidth } from '../test/viewport';
 import { listRunsFrom } from '../test/runs-page';
 import { DashboardShell } from './dashboard-shell';
 import HomePage from './page';
@@ -146,5 +147,60 @@ describe('Overview layout at 1440x900', () => {
     expect(await within(screen.getByRole('contentinfo')).findByText('A run cannot start yet')).toBeInTheDocument();
     expect(getComputedStyle(root).maxHeight).toBe('calc(100vh - 112px)');
     expectNothingClipped(root);
+  });
+});
+
+describe('Overview layout at 375 px', () => {
+  mediaWidth(375);
+
+  function renderPage(): void {
+    vi.mocked(getReadiness).mockResolvedValue({ items: [item('ok')], checkedAt: null });
+    render(
+      <ReadinessProvider>
+        <Shell onNewRun={vi.fn()}>
+          <HomePage />
+        </Shell>
+      </ReadinessProvider>,
+      { wrapper: QueryWrapper },
+    );
+  }
+
+  const columnsOf = (element: HTMLElement): string => getComputedStyle(element).gridTemplateColumns;
+
+  it('has no height limit, one column of cards and nothing clipped', async () => {
+    renderPage();
+    await screen.findByText('Title of done-0');
+    await screen.findByText('Checkout');
+    const root = screen.getByRole('heading', { name: 'Overview' }).parentElement as HTMLElement;
+    expect(getComputedStyle(root).maxHeight).toBe('');
+    expect(getComputedStyle(root).minHeight).toBe('');
+    const now = screen.getByRole('region', { name: 'Now' });
+    const needs = screen.getByRole('region', { name: 'Needs you' });
+    expect(
+      columnsOf(
+        within(now)
+          .getAllByText(/^Title of work-/)[0]
+          .closest('[class*="MuiBox"]')?.parentElement as HTMLElement,
+      ),
+    ).toBe('minmax(0, 1fr)');
+    expect(
+      columnsOf(
+        within(needs)
+          .getAllByRole('link', { name: /Answer|Open/ })[0]
+          .closest('div')?.parentElement as HTMLElement,
+      ),
+    ).toBe('minmax(0, 1fr)');
+    expect(within(screen.getByRole('region', { name: 'Numbers' })).getAllByRole('link')).toHaveLength(5);
+    expectNothingClipped(root);
+  });
+
+  it('stands the placeholders in one column too', async () => {
+    vi.mocked(listRuns).mockReturnValue(new Promise(() => undefined));
+    vi.mocked(listBacklogs).mockReturnValue(new Promise(() => undefined));
+    renderPage();
+    const [now] = await screen.findAllByTestId('now-placeholder');
+    const [needs] = screen.getAllByTestId('needs-placeholder');
+    expect(columnsOf(now.parentElement as HTMLElement)).toBe('minmax(0, 1fr)');
+    expect(columnsOf(needs.parentElement as HTMLElement)).toBe('minmax(0, 1fr)');
   });
 });

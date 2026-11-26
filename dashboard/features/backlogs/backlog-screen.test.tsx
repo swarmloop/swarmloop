@@ -83,6 +83,21 @@ describe('BacklogScreen on a phone', () => {
   });
 });
 
+describe('BacklogScreen at 800 px', () => {
+  mediaWidth(800);
+
+  it('shows the three tabs with the chat open', async () => {
+    render(<BacklogScreen name="swarmloop" />, { wrapper: Wrapper });
+
+    expect(await screen.findAllByRole('tab')).toHaveLength(3);
+    expect(screen.getByRole('tab', { name: 'Chat' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Milestone' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Backlog' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Chat' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Milestone' })).not.toBeInTheDocument();
+  });
+});
+
 describe('BacklogsHome', () => {
   it('replaces the URL with the first backlog', async () => {
     vi.mocked(listBacklogs).mockResolvedValue([backlogView(), backlogView({ name: 'shop' })]);

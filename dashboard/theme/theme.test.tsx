@@ -54,3 +54,36 @@ describe('dashboard link style', () => {
     expect(getComputedStyle(screen.getByRole('link', { name: 'Open run Add the column' })).color).toBe('inherit');
   });
 });
+
+describe('touch size below md', () => {
+  const below = theme.breakpoints.down('md');
+  const roots = [
+    'MuiButton',
+    'MuiIconButton',
+    'MuiToggleButton',
+    'MuiTab',
+    'MuiListItemButton',
+    'MuiMenuItem',
+  ] as const;
+
+  function resolved(name: (typeof roots)[number]): Record<string, unknown> {
+    const root = theme.components?.[name]?.styleOverrides?.root as (props: {
+      theme: typeof theme;
+    }) => Record<string, unknown>;
+    return root({ theme });
+  }
+
+  it.each(roots)('gives the root of %s a 40 px minimum height below md only', (name) => {
+    const style = resolved(name);
+    expect(style[below]).toMatchObject({ minHeight: 40 });
+    expect(style).not.toHaveProperty('minHeight');
+  });
+
+  it('gives an icon button a 40 px minimum width too', () => {
+    expect(resolved('MuiIconButton')[below]).toMatchObject({ minWidth: 40 });
+  });
+
+  it('keeps a button label on one line', () => {
+    expect(resolved('MuiButton')).toMatchObject({ whiteSpace: 'nowrap' });
+  });
+});

@@ -10,6 +10,7 @@ import Typography from '@mui/material/Typography';
 import { Composer } from '../../../components/composer/composer';
 import { createRun, listProjects, listRemote, setRunProjects, ticketKeys } from '../../../lib/endpoints';
 import { mergeNames } from '../../../lib/names';
+import { useFullScreenDialog } from '../../../lib/use-phone';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
 import type { AttachmentRef } from '@contract/attachments';
@@ -48,6 +49,8 @@ export function NewRunDialog({
   /** Text the prompt starts with, for a follow-up run. */
   initialPrompt?: string;
 }): ReactElement {
+  const fullScreen = useFullScreenDialog();
+  const [sendTarget, setSendTarget] = useState<HTMLElement | null>(null);
   const [prompt, setPrompt] = useState(initialPrompt);
   const [sent, setSent] = useState(0);
   const [picked, setPicked] = useState<PhaseName[]>(selected ?? DEFAULT_PHASES);
@@ -195,7 +198,7 @@ export function NewRunDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
       <DialogTitle>{title}</DialogTitle>
       <DialogContent sx={{ display: 'grid', gap: 2, '&&': { pt: 2.5 } }}>
         <Composer
@@ -207,6 +210,7 @@ export function NewRunDialog({
           sendLabel={action}
           disabled={busy || needProjects}
           minRows={6}
+          sendTarget={fullScreen ? sendTarget : undefined}
         />
         {prompt.trim() ? (
           <Typography variant="body2" color="text.secondary">
@@ -229,8 +233,9 @@ export function NewRunDialog({
           </Typography>
         ) : null}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
+      <DialogActions sx={{ px: 3, pb: 2, flexWrap: fullScreen ? 'wrap' : undefined }}>
         <Button onClick={onClose}>Cancel</Button>
+        {fullScreen ? <span ref={setSendTarget} /> : null}
       </DialogActions>
     </Dialog>
   );

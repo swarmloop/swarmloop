@@ -6,6 +6,7 @@ import Box from '@mui/material/Box';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { ReadinessItem } from '@contract/readiness';
+import { usePhone } from '../../lib/use-phone';
 import { NAMES, STATUS } from './readiness-panel';
 import { useReadiness } from './use-readiness';
 
@@ -29,6 +30,7 @@ function Details({ items }: { items: ReadinessItem[] }): ReactElement {
 /** The compact header item: setup problems first, then setup warnings; else nothing. */
 export function ReadinessStatus(): ReactElement | null {
   const { items } = useReadiness();
+  const phone = usePhone();
   const failing = items.filter((item) => item.status === 'fail').length;
   const warning = items.filter((item) => item.status === 'warn').length;
   let shown: { Icon: typeof STATUS.fail.Icon; color: string; text: string };
@@ -56,6 +58,7 @@ export function ReadinessStatus(): ReactElement | null {
           display: 'inline-flex',
           alignItems: 'center',
           gap: 0.75,
+          minHeight: phone ? 40 : undefined,
           mr: 2,
           color: 'inherit',
           textDecoration: 'none',
