@@ -39,6 +39,8 @@ export class BacklogPlanner implements OnModuleDestroy {
   private readonly woken = new Set<number>();
   /** The timers of the turns that wait for a usage limit or a code host outage to end. */
   private readonly timers = new Map<number, NodeJS.Timeout>();
+  /** The turn of each backlog whose timer fired while other work of the backlog ran; its loop runs it next. */
+  private readonly due = new Map<number, { backlog: BacklogRecord; turnKey: string }>();
   private unsubscribe: (() => void) | null = null;
   private closed = false;
 
@@ -65,6 +67,7 @@ export class BacklogPlanner implements OnModuleDestroy {
     this.unsubscribe?.();
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
+    this.due.clear();
     await this.whenIdle();
   }
 
@@ -92,7 +95,7 @@ export class BacklogPlanner implements OnModuleDestroy {
     this.begin(id, () => this.execute(backlog, failed.turnKey));
   }
 
-  /** On the end of each events pass: the backlogs with a message or an event no turn has taken. Only a last turn that failed or waits holds its backlog. */
+  /** On the end of each events pass: wakes a backlog whose last turn does not hold it, for messages and events no turn has taken and for those its failed turns hold. */
   private async wakeWaiting(): Promise<void> {
     try {
       const failed = (await this.chat.turnsByStatus(['failed'])).map((turn) => turn.turnKey);
@@ -126,14 +129,23 @@ export class BacklogPlanner implements OnModuleDestroy {
     const work = (async () => {
       try {
         await this.guarded(first);
+        await this.runDue(backlogId);
         while (!this.closed && !this.timers.has(backlogId) && this.woken.delete(backlogId)) {
           await this.guarded(() => this.newTurn(backlogId));
+          await this.runDue(backlogId);
         }
       } finally {
         this.running.delete(backlogId);
       }
     })();
     this.running.set(backlogId, work);
+  }
+
+  /** Runs the turn whose next try came during the work just done, once, while it still waits for it. */
+  private async runDue(backlogId: number): Promise<void> {
+    const entry = this.due.get(backlogId);
+    this.due.delete(backlogId);
+    if (entry && !this.closed) await this.guarded(() => this.executeWaiting(entry.backlog, entry.turnKey));
   }
 
   private async guarded(work: () => Promise<void>): Promise<void> {
@@ -261,7 +273,10 @@ export class BacklogPlanner implements OnModuleDestroy {
     const wait = Math.min(MAX_DELAY_MS, Math.max(0, Date.parse(nextTryAt ?? '') - this.clock.now() || 0));
     const timer = setTimeout(() => {
       this.timers.delete(id);
-      if (!this.closed && !this.running.has(id)) this.begin(id, () => this.executeWaiting(backlog, turnKey));
+      if (this.closed) return;
+      // Other work of the backlog runs: its loop runs this turn right after that work.
+      if (this.running.has(id)) this.due.set(id, { backlog, turnKey });
+      else this.begin(id, () => this.executeWaiting(backlog, turnKey));
     }, wait);
     timer.unref();
     this.timers.set(id, timer);

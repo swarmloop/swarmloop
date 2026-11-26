@@ -347,6 +347,7 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 - Gaps:
   - a planner's change can overwrite one it did not see (f130).
 - A backlog planner turn takes what arrives while it runs: `TurnTakes` (`pipeline/backlog/planner/turn-takes.ts`) holds the window of the running turn, each take goes through the one `takeInto` (`history/backlog-chat.repository.ts`), and `turn-runner.ts` closes the window after the first valid answer and sends what the turn took since its brief as one follow-up through `AgentLauncher` on the turn's key (`followUp` in `turn-prompt.ts`, facts from the same `BacklogTurnState` reading as the brief's events); the answer to it is the one applied, and what comes after waits for the next turn.
+- A backlog planner turn whose next try comes while other work of its backlog runs runs once right after that work (`backlog-planner.ts`, `waitsForTry`); the timer records it as due, and the backlog's work loop runs it before woken turns.
 - A backlog planner turn hands heavy reading to the helpers of `AGENTS_BACKLOG_READ` (`pipeline/backlog/planner/turn-runner.ts`, `skills/backlog-plan/SKILL.md`); the turn stays read-only and its row counts the helpers' tokens and dollars. `AgentLauncher` asks for the code-only-by-helper rights with the helper on every launch that gets one, Claude Code's adapter denies the turn's agent its own Read and Glob of the code and Bash, and a settled task shows in the turn's brief as one line. Only Claude Code turns get a helper today (3.21).
 
 ## 3.13 Questions to a person
@@ -546,7 +547,7 @@ The text is plain words for a person: no raw JSON and no internal ids. A cut tex
 - **CI** is one workflow with the same commands as the checks, and it alone runs the server and dashboard tests (3.6).
 - **A release** tags a version, builds the images, runs a smoke test and publishes.
 
-**Today.** The approach is the rule since 24.11. Existing tests that break it time out under load (3.6); since 24.11 they run only in CI. steady-vitest fixed them for the dashboard (3.6). For the server, steady-agent-limit replaces a grown Jest worker between spec files and turns off git's upkeep in specs (3.6); CI's `server-test` and `server-test-seeds` jobs judge the whole suite, and the class is not called closed before they do.
+**Today.** The approach is the rule since 24.11. Existing tests that break it time out under load (3.6); since 24.11 they run only in CI. steady-vitest fixed them for the dashboard (3.6). For the server, steady-agent-limit replaces a grown Jest worker between spec files and turns off git's upkeep in specs (3.6); CI's `server-test` and `server-test-seeds` jobs judge the whole suite, and the class is not called closed before they do. The fault suite in `server/src/testing/faults/` injects the faults real runs met into the real application and checks each run with `assertSettled`.
 
 ## 3.25 The server process, health and readiness
 
