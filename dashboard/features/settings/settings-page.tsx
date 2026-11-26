@@ -12,6 +12,7 @@ import Typography from '@mui/material/Typography';
 import type { SettingsBody } from '@contract/api';
 import type { SettingsView } from '@contract/settings';
 import { ConnectionsPage } from '../connections';
+import { Placeholders } from '../overview';
 import { getSettings, saveSettings } from '../../lib/endpoints';
 import { AgentsSection } from './agents-section';
 import { ApiTokensSection } from './api-tokens-section';
@@ -75,6 +76,12 @@ export function SettingsPage(): ReactElement {
           {section === 'Connections' ? <ConnectionsPage /> : null}
           {section === 'API tokens' ? <ApiTokensSection /> : null}
           {section === 'Server' && view ? <ServerSection settings={view.server} /> : null}
+          {section === 'Server' && !view && !error ? (
+            <Placeholders count={6} height={40} testId="server-placeholder" grid={false} />
+          ) : null}
+          {section === 'Agents' && !view && !error ? (
+            <Placeholders count={3} height={120} testId="agents-placeholder" grid={false} />
+          ) : null}
           {section === 'Agents' && view ? (
             <>
               <AgentsSection view={view} draft={draft} onChange={edit} />

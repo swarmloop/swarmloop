@@ -45,6 +45,24 @@ beforeEach(() => {
     .mockImplementation((body) => Promise.resolve(view(body)));
 });
 
+describe('SettingsPage placeholders', () => {
+  it('shows placeholders for Agents and for Server until the settings arrive', async () => {
+    let arrive: (value: SettingsView) => void = () => undefined;
+    vi.mocked(getSettings).mockReturnValue(new Promise((resolve) => (arrive = resolve)));
+    const user = userEvent.setup({ delay: null });
+    render(<SettingsPage />);
+
+    expect(screen.getAllByTestId('agents-placeholder').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Server' }));
+    expect(screen.getAllByTestId('server-placeholder').length).toBeGreaterThan(0);
+
+    arrive(view());
+    expect(await screen.findByText('MAX_RUN_USD')).toBeInTheDocument();
+    expect(screen.queryByTestId('server-placeholder')).toBeNull();
+  });
+});
+
 const planItems = (): string[] =>
   within(screen.getByRole('list', { name: 'main plan' }))
     .getAllByRole('listitem')

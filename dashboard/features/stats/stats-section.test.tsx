@@ -27,10 +27,10 @@ describe('StatsSection', () => {
   it('shows the totals of the last 30 days', async () => {
     renderSection();
     expect(await screen.findByLabelText('Runs: 4')).toBeInTheDocument();
-    expect(screen.getByLabelText('Success rate: 67%')).toBeInTheDocument();
-    expect(screen.getByLabelText('First-pass rate: 50%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Success rate: 66.7%')).toBeInTheDocument();
+    expect(screen.getByLabelText('First-pass rate: 50.0%')).toBeInTheDocument();
     expect(screen.getByLabelText('Spend: $4.25')).toBeInTheDocument();
-    expect(screen.getByLabelText('Returns: 50% came back')).toBeInTheDocument();
+    expect(screen.getByLabelText('Returns: 50.0% came back')).toBeInTheDocument();
     expect(screen.getByLabelText('Usage limits: 2')).toBeInTheDocument();
     expect(screen.getByText(/runs started Nov 8 – Nov 10/)).toBeInTheDocument();
     expect(vi.mocked(getStats)).toHaveBeenCalledWith(30, expect.any(Number));
@@ -91,10 +91,10 @@ describe('StatsSection', () => {
 
   it('shows the share of finished runs that were merged, the closed count apart, and both charts', async () => {
     renderSection();
-    expect(await screen.findByLabelText('Merged: 33%')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Merged: 33.3%')).toBeInTheDocument();
     expect(screen.getByLabelText('Closed: 1')).toBeInTheDocument();
     const share = screen.getByRole('region', { name: 'Merge share per day' });
-    expect(share).toHaveTextContent('33%');
+    expect(share).toHaveTextContent('33.3%');
     expect(share).toHaveTextContent('1 closed without a merge');
     const time = screen.getByRole('region', { name: 'Time to merge per day' });
     expect(time).toHaveTextContent('2.0 h');
@@ -111,7 +111,7 @@ describe('StatsSection', () => {
       totals: { ...stats.totals, merged: 0, closed: 0, medianToMergeMs: null },
     });
     renderSection();
-    expect(await screen.findByLabelText('Merged: 0%')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Merged: 0.0%')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Time to merge per day' })).toHaveTextContent('no run has been merged');
   });
 
@@ -282,7 +282,7 @@ describe('StatsSection tasks and returns', () => {
     );
     renderSection();
 
-    const tile = await screen.findByLabelText('Returns: 75% came back');
+    const tile = await screen.findByLabelText('Returns: 75.0% came back');
     expect(tile).toHaveTextContent(
       'most come back once · 5 returns in 7 days: 2 from checks, 2 from reviewers, 1 from CI',
     );

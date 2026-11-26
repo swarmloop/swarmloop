@@ -39,13 +39,13 @@ export function TaskLine({
         <Box sx={{ display: 'flex' }}>
           <RunStateIcon view={view} size={14} />
         </Box>
-        <Tooltip title={run.name}>
+        <Tooltip title={run.title}>
           <Typography
             variant="caption"
             noWrap
             sx={{ flex: 1, minWidth: 0, color: loud ? toneColor(view.tone) : 'text.secondary' }}
           >
-            {run.name}
+            {run.title}
           </Typography>
         </Tooltip>
         <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
