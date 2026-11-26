@@ -80,6 +80,9 @@ export async function askPlanner(
     shape,
     hasReply,
     [question.text],
+    undefined,
+    false,
+    'answer-reviewer',
   );
   if (!visit) return { kind: 'none' };
   if ('refused' in visit) return { kind: 'refused' };
@@ -120,6 +123,9 @@ export async function readPersonAnswer(
     shape,
     hasReply,
     [question.text, escalation.text, person],
+    undefined,
+    false,
+    'answer-person',
   );
   if (!visit) return { kind: 'none' };
   if ('refused' in visit) return { kind: 'refused' };

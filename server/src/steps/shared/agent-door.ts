@@ -17,7 +17,7 @@ import { storedState } from '../../history/run-state';
 import { VisitRepository } from '../../history/visit.repository';
 import { VisitStartRepository } from '../../history/visit-start.repository';
 import type { OpenedStep } from '../step-run';
-import type { AgentLaunchRequest, LaunchOwner } from './agent-launch-request';
+import type { AgentLaunchRequest } from './agent-launch-request';
 import { AgentLauncher } from './agent-launcher';
 import type { LaunchResult } from './result-exchange';
 import { answerErrorsByVisit } from './stored-answer-errors';
@@ -142,13 +142,13 @@ export class AgentDoor {
     const { opened, step, options } = visit;
     if (!(await this.starts.has(opened.attemptId))) {
       const by = options.startBy ?? 'person';
-      const run = await this.checked(request.key, step, by, request.run);
+      const run = await this.checked(request, step, by);
       if (run) {
         const reason = storedState(run).reason?.code ?? null;
         const digest = await this.inputOf(run, step, options);
         const decision = await this.hopDecision(run, step, digest, reason);
         if (decision.kind === 'same' && by !== 'person') {
-          await this.refuse(run.id, step, by, options.level, undefined, decision, run.key);
+          await this.refuse(request, run.id, step, by, options.level, undefined, decision);
         }
         await this.noteVisit(run, step, opened.attemptId, options, {
           digest,
@@ -165,13 +165,13 @@ export class AgentDoor {
    * visit, so every other start is refused write tools, before any check and with nothing written or launched.
    */
   async outside(start: OutsideStart, request: AgentLaunchRequest): Promise<LaunchResult> {
-    if (request.tools === 'write') throw StartRefused.write();
-    const run = await this.checked(request.key, start.step, start.by, request.run);
+    if (request.tools === 'write') throw await this.refused(request, StartRefused.write());
+    const run = await this.checked(request, start.step, start.by);
     const digest = run
       ? await startInput({ documents: this.documents, worktrees: this.worktreesOf(run) }, run, start.input)
       : null;
     if (run && start.by !== 'person') {
-      await this.compareOutside(run, start, digest);
+      await this.compareOutside(request, run, start, digest);
     }
     const startId = `start-${randomUUID()}`;
     await this.starts.note({
@@ -208,7 +208,8 @@ export class AgentDoor {
    * Stop refuses a start of the machine or a planner. While a step holds the run, the limits are read on the launch's
    * own run; otherwise the run is blocked as a hop's start over a limit blocks it. Returns the stored run.
    */
-  private async checked(key: string, step: string, by: StartBy, owner: LaunchOwner): Promise<RunEntity | null> {
+  private async checked(request: AgentLaunchRequest, step: string, by: StartBy): Promise<RunEntity | null> {
+    const { key, run: owner } = request;
     if (this.runStop.halted(key)) throw new StepStopped();
     const run = await this.runs.findRun(key);
     if (!run) return null;
@@ -217,11 +218,11 @@ export class AgentDoor {
       if (await this.limit.overLimit(owner)) {
         const message = `${key} is over the spend limit. ${step} was not started`;
         await this.documents.putDocument(run, 'spend', `${message}\n`);
-        throw StartRefused.limit(message);
+        throw await this.refused(request, StartRefused.limit(message));
       }
     } else {
       const limited = await this.limit.spendStop(key, run.currentStep as StepName);
-      if (limited) throw StartRefused.limit(limited);
+      if (limited) throw await this.refused(request, StartRefused.limit(limited));
     }
     return run;
   }
@@ -244,7 +245,12 @@ export class AgentDoor {
   }
 
   /** Refuses an outside start of the machine or a planner that has the input of the last visit of its step. */
-  private async compareOutside(run: RunEntity, start: OutsideStart, digest: string | null): Promise<void> {
+  private async compareOutside(
+    request: AgentLaunchRequest,
+    run: RunEntity,
+    start: OutsideStart,
+    digest: string | null,
+  ): Promise<void> {
     const own = (await this.starts.forRun(run.id)).filter((row) => row.outside && row.step === start.step);
     const stats = (await this.statsWithErrors(run.id)).flatMap((stat) => {
       const linked = own.find((row) => row.statId === stat.id);
@@ -252,23 +258,29 @@ export class AgentDoor {
     });
     const decision = sameInput({ step: start.step, digest, stats, starts: own, reasonCode: null });
     if (decision.kind === 'same') {
-      await this.refuse(run.id, start.step, start.by, start.level, start.plannerLevel, decision, run.key);
+      await this.refuse(request, run.id, start.step, start.by, start.level, start.plannerLevel, decision);
     }
   }
 
   /** Keeps the refusal for the driver and throws it. A refused planner is never asked its own question again. */
   private async refuse(
+    request: AgentLaunchRequest,
     runId: number,
     step: string,
     by: StartBy,
     level: number | null | undefined,
     plannerLevel: number | undefined,
     decision: SameDecision,
-    key: string,
   ): Promise<never> {
     const refusal = await this.sameInputRefusal(runId, step, by, level, plannerLevel, decision);
-    this.refusals.set(key, refusal);
-    throw StartRefused.sameInput(refusal);
+    this.refusals.set(request.key, refusal);
+    throw await this.refused(request, StartRefused.sameInput(refusal));
+  }
+
+  /** Writes the refused row of the start, with the refusal's words as its reason. Returns the refusal to throw. */
+  private async refused(request: AgentLaunchRequest, refusal: StartRefused): Promise<StartRefused> {
+    await this.launcher.refused(request, refusal.message);
+    return refusal;
   }
 
   /** The words of a same-input refusal: the line, the step's last words as a question, and the level that is asked. */

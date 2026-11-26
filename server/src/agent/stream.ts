@@ -1,6 +1,5 @@
-import type { ChatUsage } from '../history/chat-usage.repository';
 import { guessLineTokens } from './stream-guess';
-import { NO_USAGE, sinceRecorded } from './since-recorded';
+import { NO_USAGE, sinceRecorded, type ChatUsage } from './since-recorded';
 import {
   cacheReadOf,
   type ModelUsage,

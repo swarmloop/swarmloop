@@ -59,8 +59,12 @@ export async function exchangeResult(
   }
 }
 
-/** The result and the value its block held; the value is absent when the launch ended on a limit or a kill. */
-export type LaunchResult = AgentRunResult & { resultValue?: unknown };
+/** The result, the rows it wrote and the value its block held; the value is absent when the launch ended on a limit or a kill. */
+export type LaunchResult = AgentRunResult & {
+  resultValue?: unknown;
+  /** Set on every result the launcher returns: the ids of every row of the log the launch wrote: its calls, follow-ups, helpers and the rows of a failover chain. */
+  callIds?: number[];
+};
 
 /** The request of a follow-up: the same chat, the errors, and the full prompt with them when the chat is gone. */
 export function resultFollowUpRequest(request: AgentLaunchRequest, followUp: string): AgentLaunchRequest {

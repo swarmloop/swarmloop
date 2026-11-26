@@ -33,12 +33,14 @@ async function setup(env: Record<string, string> = {}) {
   const run = await save(runs, 'proj-1', 'implement', 'waiting');
   const launched: AgentLaunchRequest[] = [];
   const events: string[] = [];
+  const refusals: string[] = [];
   const door: AgentDoor = doorAround(app, {
     launch: async (request) => {
       launched.push(request);
       events.push('launch');
       return {} as LaunchResult;
     },
+    refused: async (_request, reason) => void refusals.push(reason),
   });
   const request = (tools: AgentLaunchRequest['tools'] = 'read'): AgentLaunchRequest =>
     ({
@@ -93,18 +95,19 @@ async function setup(env: Record<string, string> = {}) {
     await door.linkVisit(startId, stat.id);
   };
   const rows = () => app.get(VisitStartRepository).forRun(run.id);
-  return { app, run, runs, door, launched, events, request, start, store, rows };
+  return { app, run, runs, door, launched, events, refusals, request, start, store, rows };
 }
 
 describe('AgentDoor', () => {
   it('refuses write tools to a start that is no step visit, with its reason, and launches nothing', async () => {
-    const { app, door, launched, request, start, rows } = await setup();
+    const { app, door, launched, refusals, request, start, rows } = await setup();
     try {
       const refused = await door.outside(start('machine'), request('write')).catch((error: unknown) => error);
 
       expect(refused).toBeInstanceOf(StartRefused);
       expect((refused as StartRefused).kind).toBe('write');
       expect((refused as StartRefused).message).toBe(WRITE_REFUSAL);
+      expect(refusals).toEqual([WRITE_REFUSAL]);
       expect(launched).toEqual([]);
       expect(await rows()).toEqual([]);
     } finally {
@@ -127,7 +130,7 @@ describe('AgentDoor', () => {
   });
 
   it('refuses an outside start on the input of a finished linked visit, one level above the planner, and keeps the refusal', async () => {
-    const { app, door, launched, request, start, store, rows } = await setup();
+    const { app, door, launched, refusals, request, start, store, rows } = await setup();
     try {
       let startId = '';
       await door.outside({ ...start('machine'), admitted: (id) => void (startId = id) }, request());
@@ -138,6 +141,7 @@ describe('AgentDoor', () => {
       expect(refused).toBeInstanceOf(StartRefused);
       const error = refused as StartRefused;
       expect(error.kind).toBe('same-input');
+      expect(refusals).toEqual([error.message]);
       expect(error.reasonCode).toBe(REASON.sameInput);
       expect(error.startLevel).toBe(1);
       expect(error.question?.text).toContain('Which retry policy?');
@@ -186,7 +190,7 @@ describe('AgentDoor', () => {
   });
 
   it('refuses an outside start when the limit is reached on the launch run while a step holds the run', async () => {
-    const { app, run, runs, door, launched, request, start } = await setup({ MAX_RUN_USD: '25' });
+    const { app, run, runs, door, launched, refusals, request, start } = await setup({ MAX_RUN_USD: '25' });
     try {
       writeRunState(run, { status: 'running', currentStep: 'implement' });
       await storeRun(runs, run);
@@ -196,6 +200,7 @@ describe('AgentDoor', () => {
 
       expect(refused).toBeInstanceOf(StartRefused);
       expect((refused as StartRefused).kind).toBe('limit');
+      expect(refusals).toEqual([(refused as StartRefused).message]);
       expect((refused as StartRefused).reasonCode).toBe(ERROR_CODES.SPEND_LIMIT);
       expect(refusedRoute(refused as StartRefused)).toMatchObject({ to: 'block', code: ERROR_CODES.SPEND_LIMIT });
       expect(launched).toEqual([]);

@@ -9,14 +9,18 @@ import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../../core/step-event-scope';
 import type { AgentRunResult } from '../../agent/agent-result';
 import type { RunEntity } from '../../history/entities';
-import { ChatUsageRepository } from '../../history/chat-usage.repository';
+import { AgentCallRepository } from '../../history/agent-call.repository';
+import { BacklogChatRepository } from '../../history/backlog-chat.repository';
+import { BacklogRepository } from '../../history/backlog.repository';
+import { VisitStartRepository } from '../../history/visit-start.repository';
 import { repositoryDatabase, repositoryVisit } from '../../history/repository.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import type { SandboxService } from '../../sandbox/sandbox.service';
 import { AgentLauncher } from './agent-launcher';
 import { controlled, type Child, until } from './agent-launcher.spec-helpers';
-import { AttemptChatUsage } from './attempt-chat-usage';
+import { AgentCallRecorder } from './agent-call-recorder';
+import { CallContexts } from './call-context';
 import { agentExchange } from './model-visit';
 
 const CHAT = JSON.stringify({ session_id: 'chat-9' });
@@ -85,8 +89,16 @@ async function visitsOfOneChat(lines: Reported[]): Promise<{ usd: number[]; toke
       undefined,
       config,
       undefined,
-      db.app.get(ChatUsageRepository),
-      new AttemptChatUsage(),
+      new AgentCallRecorder(
+        db.app.get(AgentCallRepository),
+        new CallContexts(
+          db.app.get(RunRepository),
+          db.app.get(BacklogRepository),
+          db.app.get(BacklogChatRepository),
+          db.app.get(VisitStartRepository),
+        ),
+        clock,
+      ),
     );
     const run = await db.app.get(RunRepository).openWaiting('run-1', '/target');
     const usd: number[] = [];

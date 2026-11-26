@@ -1,5 +1,5 @@
 import type { PricedRequest } from './request-usage';
-import type { ChatUsage } from '../history/chat-usage.repository';
+import type { ChatUsage } from './since-recorded';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { Effort } from '../contract/effort';
 import type { AgentHelper } from '../integrations/agent-runtime/agent-runtime';
