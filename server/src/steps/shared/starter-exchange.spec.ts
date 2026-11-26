@@ -66,6 +66,29 @@ describe('StarterExchange', () => {
     expect(wait?.outputs).toEqual([]);
   });
 
+  it('sends a need of a run that is not a subtask to its planner as a question and commits nothing', async () => {
+    const { ctx, exchange, entries } = world(null);
+    const { wait } = await exchange.act(
+      ctx,
+      { needs: [{ id: 'none', what: ' A test outside the task fails. ' }] },
+      visit({ step: 'implement', route: 'chat' }),
+    );
+    expect(wait?.route).toMatchObject({ to: 'wait', code: 'ASKS_PLANNER' });
+    expect(wait?.outputs).toEqual([]);
+    expect(entries).toMatchObject([{ kind: 'question', text: 'A test outside the task fails.', state: 'pending' }]);
+  });
+
+  it('turns the need of a run that is not a subtask into an assumption when the visit was answered', async () => {
+    const { ctx, exchange, entries } = world(null);
+    const outcome = await exchange.act(
+      ctx,
+      { needs: [{ id: 'none', what: 'A test outside the task fails.' }] },
+      visit({ step: 'implement', route: 'chat', answered: true }),
+    );
+    expect(outcome).toEqual({ wait: null, assumed: ['A test outside the task fails.'] });
+    expect(entries).toEqual([]);
+  });
+
   it('turns a second question of the visit into an assumption', async () => {
     const { ctx, exchange, entries } = world();
     const outcome = await exchange.act(

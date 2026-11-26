@@ -73,7 +73,8 @@ export class StarterExchange {
 
   async act(ctx: ModelStepContext, fields: StarterFields, visit: StarterVisit): Promise<StarterOutcome> {
     const { run, startedAt, attemptId } = ctx.opened;
-    const needs = isSubtask(run) ? (fields.needs ?? []) : [];
+    const subtask = isSubtask(run);
+    const needs = subtask ? (fields.needs ?? []) : [];
     if (needs.length > 0) {
       const wait = needsWait(startedAt, needs);
       return { wait: { ...wait, outputs: [...wait.outputs, ...(visit.needsOutputs ?? visit.outputs)] }, assumed: [] };
@@ -81,7 +82,9 @@ export class StarterExchange {
     await this.report(ctx, visit.step, fields);
     const question = fields.question?.trim() ?? '';
     const handBacks = this.handBacks(fields);
-    const asked = [...(question ? [question] : []), ...handBacks];
+    // A need of a run that is not a subtask names no task: it is a question for the planner.
+    const needLines = subtask ? [] : (fields.needs ?? []).flatMap(({ what }) => (what.trim() ? [what.trim()] : []));
+    const asked = [...(question ? [question] : []), ...needLines, ...handBacks];
     if (asked.length === 0) return { wait: null, assumed: [] };
     if (visit.answered || (visit.route === 'chat' && !this.chat)) return { wait: null, assumed: asked };
     if (visit.route === 'document') {
@@ -98,7 +101,8 @@ export class StarterExchange {
     if (handBacks.length === 0) {
       if (!visit.mayAsk || !this.chat) return { wait: null, assumed: asked };
       const ask = { chat: this.chat, clock: this.clock, step: visit.step, attemptId, startedAt };
-      return { wait: await waitForPlanner(run, { ...ask, question }), assumed: [] };
+      const text = [...(question ? [question] : []), ...needLines].join('\n');
+      return { wait: await waitForPlanner(run, { ...ask, question: text }), assumed: [] };
     }
     return { wait: await this.askParent(ctx, visit, asked), assumed: [] };
   }
