@@ -3,9 +3,6 @@ import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import type { StepName } from '../contract/steps';
 import type { RunEntity } from '../history/entities';
 import type { SwarmloopEnv } from '../config/env';
-import type { Charge } from '../agent/spend';
-import type { ModelPrice } from '../agent/limits';
-import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import { currentPlan } from './shared/current-plan';
 import type { StepCapabilities, StepDescriptor } from './contract/step-contract';
 
@@ -18,13 +15,6 @@ export interface Step {
   launchesAgent?(key: string): Promise<boolean>;
   readonly capabilities: StepCapabilities;
   describe(env: SwarmloopEnv): StepDescriptor;
-  /** Prices a run abandoned in this step. Without it, the model stream is priced. */
-  charge?(
-    key: string,
-    env: SwarmloopEnv,
-    prices: (runtime: RuntimeName) => Promise<Record<string, ModelPrice>>,
-    attemptId: string | null,
-  ): Promise<Charge | null>;
   missingInput(key: string, options: StepOptions): Promise<string | null>;
   execute(key: string, options: StepOptions, snapshot?: StepSnapshot): Promise<PipelineResult>;
 }

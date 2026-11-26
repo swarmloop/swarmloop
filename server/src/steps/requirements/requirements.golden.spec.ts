@@ -1,3 +1,4 @@
+import { AgentCallRepository } from '../../history/agent-call.repository';
 import { PasteNeeded, SwarmloopError } from '../../core/swarmloop-error';
 import { StepKernel } from '../step-kernel';
 import type { IssueBundle } from '../../integrations/issue-tracker/issue-bundle';
@@ -51,6 +52,7 @@ async function requirements(fetch: Fetch) {
     tracker,
     golden.app.get<RequirementsSource>(REQUIREMENTS_SOURCE),
     golden.app.get(RemoteRepositories),
+    golden.app.get(AgentCallRepository),
   );
   return { golden, step };
 }

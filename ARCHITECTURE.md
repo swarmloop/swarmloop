@@ -462,7 +462,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 
 A limit stops the run in a wait that names it (rule 18). Every visit stores only its own cost and tokens, by one rule for a resumed chat. The estimate of time left comes from the history of finished runs of the same kind, and an epic's estimate from its tasks. The statistics read the same records.
 
-**Today.** Holds (`steps/shared/spend-limit.ts`, `agent/limits.ts`, `visit-costs`, `eta/`, `api/stats*`). A relaunched run's time left is the visit times of the steps it runs. Stats count two units, epic and task, defined in `api/stats-units.ts`. Limit stops are still blocks, not waits.
+**Today.** Holds (`steps/shared/spend-limit.ts`, `agent/limits.ts`, `visit-costs`, `eta/`, `api/stats*`). A relaunched run's time left is the visit times of the steps it runs. Stats count two units, epic and task, defined in `api/stats-units.ts`. A run's spend and tokens are the sums of its rows in the log (`agent_exchanges`, read through `history/agent-call.repository.ts`): the limit check (`steps/shared/spend-limit.ts`), the run list, the run page, the requirements step's source and the settler's charge of a visit whose process died all read it, and no live figure is added on top because rows are saved request by request. Stats take a visit's cost and tokens from the rows linked to it, and a run's keep-warm pings as rows of their step that add cost but no visit and no agent time. The cost columns of `step_stats` and `backlog_turns` stay written, and `runs.spent_usd` and `VisitRepository.tokenTotal` stay for the launcher's own guard; the readers above do not read them. Limit stops are still blocks, not waits.
 
 ## 3.19 Storage and housekeeping
 

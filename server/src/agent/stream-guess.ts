@@ -17,27 +17,6 @@ export function emptyUsageGuess(): UsageGuess {
   return { context: 0, tokensIn: 0, tokensOut: 0, replay: false };
 }
 
-/** `read` turns one stream line into its piece, so this file does not depend on the stream reader. */
-export function guessFromStream(
-  raw: string,
-  read: (line: string) => GuessedLine | null,
-): { input: number; output: number } | null {
-  const state = emptyUsageGuess();
-  let any = false;
-  for (const line of raw.split('\n')) {
-    const piece = read(line);
-    if (!piece || piece.guessKind === 'none') {
-      continue;
-    }
-    addGuessedLine(state, piece);
-    any = true;
-  }
-  if (!any || (state.tokensIn === 0 && state.tokensOut === 0)) {
-    return null;
-  }
-  return { input: state.tokensIn, output: state.tokensOut };
-}
-
 export function addGuessedLine(state: UsageGuess, piece: GuessedLine): void {
   if (piece.guessKind === 'user') {
     state.context += piece.guessedIn;

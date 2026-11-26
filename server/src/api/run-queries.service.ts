@@ -6,6 +6,7 @@ import { BacklogRepository } from '../history/backlog.repository';
 import { RunRepository } from '../history/run.repository';
 import { RunWaitLog } from '../history/run-wait.log';
 import { DocumentRepository } from '../history/document.repository';
+import { AgentCallRepository } from '../history/agent-call.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { CommandRepository } from '../history/command.repository';
 import { CheckCommandRepository } from '../history/check-command.repository';
@@ -61,7 +62,8 @@ import { EtaSummary } from './eta-summary';
 import { tasksAndEta, type TaskSection, type TaskSources } from './run-queries-tasks';
 import { pageOf } from './run-list-page';
 import { readHistory } from './run-queries-history';
-import { openSpend, spentUsd } from './run-queries-spend';
+import { loggedUsage } from './run-queries-spend';
+import { spendLookup } from '../steps/shared/run-spend';
 import { parseSubtasks, SUBTASKS_KIND } from '../contract/subtask';
 import { conversationView } from './run-view/conversation';
 import { readPlanChat } from '../contract/plan-chat';
@@ -92,6 +94,7 @@ export class RunQueriesService {
     private readonly waitLog: RunWaitLog,
     private readonly etaSummary: EtaSummary,
     private readonly holds: QuestionHolds,
+    private readonly calls: AgentCallRepository,
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly gate: ContainerGate = new ContainerGate(),
     @Optional() private readonly turns?: PlannerTurns,
@@ -101,8 +104,8 @@ export class RunQueriesService {
       runs,
       documents,
       visits,
+      calls,
       config,
-      clock,
       live,
       reviewRunning: (run) => this.reviewRunning(run),
       runningVisit: (run, name, previousAttempt, samples) => this.runningVisit(run, name, previousAttempt, samples),
@@ -115,8 +118,6 @@ export class RunQueriesService {
   async list(query: { part: Part; q: string; cursor?: string } = { part: 'active', q: '' }): Promise<RunsPage> {
     return pageOf((await this.rows.read()).view.runs, query);
   }
-
-  private readonly usdOf = (run: RunEntity): number => spentUsd(run, this.pipeline, this.live);
 
   async flow(key: string): Promise<FlowView> {
     const run = await requireRun(this.runs, key);
@@ -150,7 +151,7 @@ export class RunQueriesService {
       ...(run.startedBy ? { startedBy: run.startedBy } : {}),
       ...(run.ownerSince ? { ownerSince: run.ownerSince } : {}),
       ...(await tasksAndEta(this.taskSources(), run, documents, children, state)),
-      ...epicTotal(shown, children, this.usdOf, this.clock.now()),
+      ...epicTotal(shown, children, await spendLookup([run, ...children], this.calls), this.clock.now()),
       ...state,
       conversation: conversationView({
         run,
@@ -170,7 +171,7 @@ export class RunQueriesService {
       metrics: metrics(
         shown,
         stats,
-        openSpend(shown, this.pipeline, this.live),
+        await loggedUsage(run, this.calls),
         this.live?.peaksOf(run.key) ?? { cpuPeak: 0, memPeak: 0 },
         reportMs,
       ),
@@ -212,7 +213,7 @@ export class RunQueriesService {
     const { shown, state } = await this.ownState(run, documents);
     return {
       ...(await tasksAndEta(this.taskSources(), run, documents, children, state)),
-      ...epicTotal(shown, children, this.usdOf, this.clock.now()),
+      ...epicTotal(shown, children, await spendLookup([run, ...children], this.calls), this.clock.now()),
     };
   }
 
@@ -237,11 +238,11 @@ export class RunQueriesService {
     return {
       runs: this.runs,
       visits: this.visits,
+      calls: this.calls,
       documents: this.documents,
       flows: this.flows,
       commands: this.commands,
       pipeline: this.pipeline,
-      live: this.live,
       config: this.config,
       clock: this.clock,
       waitLog: this.waitLog,

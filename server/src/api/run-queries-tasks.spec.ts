@@ -3,6 +3,8 @@ import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { writeRunState } from '../history/run-state';
 import { RunRepository } from '../history/run.repository';
@@ -17,8 +19,8 @@ describe('RunQueriesService.tasks', () => {
     try {
       const runs = app.get(RunRepository);
       const parent = await runs.begin('proj-t1', 'implement');
-      parent.spentUsd = 2;
       await storeRun(runs, parent);
+      await seedCall(app.get(AgentCallRepository), { runKey: parent.key, usd: 2 });
       await app
         .get(DocumentRepository)
         .putDocument(
@@ -40,8 +42,8 @@ describe('RunQueriesService.tasks', () => {
       for (const id of ['a', 'b']) {
         const child = await runs.openSubtask(`proj-t1-${id}`, parent.id, id);
         writeRunState(child, { status: 'running', currentStep: 'implement' });
-        child.spentUsd = 1;
         await storeRun(runs, child);
+        await seedCall(app.get(AgentCallRepository), { runKey: child.key, usd: 1 });
       }
 
       const queries = app.get(RunQueriesService);

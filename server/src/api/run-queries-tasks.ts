@@ -2,13 +2,13 @@ import type { AppConfig } from '../config/env';
 import type { Clock } from '../core/clock';
 import type { FlowView } from '../contract/api';
 import type { DocumentEntity, RunEntity } from '../history/entities';
+import type { AgentCallRepository } from '../history/agent-call.repository';
 import type { CommandRepository } from '../history/command.repository';
 import type { FlowRepository } from '../history/flow.repository';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
 import type { RunWaitLog } from '../history/run-wait.log';
 import type { VisitRepository } from '../history/visit.repository';
-import type { LiveHub } from '../live/live.hub';
 import type { PipelineService } from '../pipeline/pipeline.service';
 import { parseSubtasks, SUBTASKS_KIND } from '../contract/subtask';
 import type { EtaSummary } from './eta-summary';
@@ -21,11 +21,11 @@ import { taskRuns } from './run-view/task-runs';
 export interface TaskSources {
   runs: RunRepository;
   visits: VisitRepository;
+  calls: AgentCallRepository;
   documents: DocumentRepository;
   flows: FlowRepository;
   commands: CommandRepository;
   pipeline: PipelineService;
-  live?: LiveHub;
   config: AppConfig;
   clock: Clock;
   waitLog: RunWaitLog;
@@ -55,13 +55,13 @@ export async function tasksAndEta(
   const { runs, lives } = await taskRuns(
     sources.runs,
     sources.visits,
+    sources.calls,
     children,
     documents,
     sources.pipeline,
     { documents: sources.documents, commands: sources.commands },
     waits,
     relaunches,
-    sources.live,
   );
   const plan = parseSubtasks(latest(documents, SUBTASKS_KIND));
   const now = sources.clock.now();

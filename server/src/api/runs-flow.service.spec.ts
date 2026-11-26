@@ -8,6 +8,8 @@ import { tmpdir } from 'os';
 
 import { join } from 'path';
 
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { CheckCommandRepository } from '../history/check-command.repository';
 import { RunRepository } from '../history/run.repository';
 
@@ -341,6 +343,79 @@ describe('runs api', () => {
       expect(quality.visits.at(-1)?.documents.some((item) => item.body.includes('"look"'))).toBe(true);
       const security = await runs.step('proj-20', 'code-review-security');
       expect(security.visits.at(-1)?.status).toBe('running');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows the log sums as the run spend and gives an open reviewer the rows of its own step in the attempt', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-spend-'));
+    const app = await seededBoot(root);
+    try {
+      await mkdir(join(root, 'data'), { recursive: true });
+      const run = await save(app.get(RunRepository), 'proj-21', 'code-review', 'running');
+      await writeFile(
+        join(root, 'data', 'proj-21-code-review-security-output.txt'),
+        `${JSON.stringify({ type: 'thinking', text: 'still' })}\n`,
+      );
+      const calls = app.get(AgentCallRepository);
+      const attemptId = run.activeAttempt!;
+      await seedCall(calls, {
+        runKey: run.key,
+        step: 'code-review-security',
+        attemptId,
+        usd: 0.5,
+        input: 10,
+        cacheRead: 90,
+        output: 5,
+      });
+      await seedCall(calls, { runKey: run.key, step: 'code-review-security', attemptId, usd: 0.25, output: 5 });
+      await seedCall(calls, { runKey: run.key, step: 'code-review-quality', attemptId, usd: 3, output: 700 });
+      await seedCall(calls, { runKey: run.key, step: 'implement', usd: 1, output: 40, statId: 77 });
+      const queries = app.get(RunQueriesService);
+
+      const { metrics } = await queries.flow('proj-21');
+      const security = (await queries.step('proj-21', 'code-review-security')).visits.at(-1);
+
+      expect(metrics).toMatchObject({ usd: 4.75, tokens: 850 });
+      expect(security).toMatchObject({ status: 'running', usd: 0.75, tokensIn: 100, tokensOut: 10 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("shows a finished reviewer the cost of the log rows linked to its visit, and not another reviewer's", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-review-done-spend-'));
+    const app = await seededBoot(root);
+    try {
+      const run = await save(app.get(RunRepository), 'proj-22', 'commit', 'waiting');
+      await app.get(VisitRepository).finishVisit(run, {
+        ...visit('code-review', 'done'),
+        documents: [{ kind: 'review_quality', fileName: '', body: 'cleared\ndecision: ok\n' }],
+      });
+      const [stat] = await app.get(VisitRepository).listStats(run.id);
+      const calls = app.get(AgentCallRepository);
+      await seedCall(calls, {
+        runKey: run.key,
+        step: 'code-review-quality',
+        statId: stat.id,
+        usd: 0.5,
+        input: 10,
+        output: 5,
+      });
+      await seedCall(calls, {
+        runKey: run.key,
+        step: 'code-review-quality',
+        statId: stat.id,
+        usd: 0.25,
+        cacheRead: 90,
+        output: 5,
+      });
+      await seedCall(calls, { runKey: run.key, step: 'code-review-security', statId: stat.id, usd: 4, output: 700 });
+
+      const quality = (await app.get(RunQueriesService).step('proj-22', 'code-review-quality')).visits.at(-1);
+
+      expect(quality).toMatchObject({ status: 'done', usd: 0.75, tokensIn: 100, tokensOut: 10 });
     } finally {
       await app.close();
     }

@@ -1,5 +1,7 @@
 import { storeRun } from '../testing/store-run.spec-helpers';
 import { AppConfig } from '../config/env';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
@@ -13,8 +15,8 @@ async function block(app: TestApp, step: string, code: string, message: string, 
   const runs = app.app.get(RunRepository);
   const run = await runs.begin(KEY, step);
   writeRunState(run, { status: 'blocked', currentStep: step, reason: { code, message } });
-  run.spentUsd = spentUsd;
   await storeRun(runs, run);
+  if (spentUsd > 0) await seedCall(app.app.get(AgentCallRepository), { runKey: KEY, step, usd: spentUsd });
 }
 
 async function loopMark(app: TestApp): Promise<number> {

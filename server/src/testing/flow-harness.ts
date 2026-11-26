@@ -11,6 +11,8 @@ import { Reconciler } from '../pipeline/reconciler';
 import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import type { CodeHost } from '../integrations/code-host/code-host';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { UserSettingRepository } from '../history/user-setting.repository';
@@ -170,11 +172,11 @@ export async function createFlowHarness(
     begin: async (step, begun = {}) => {
       useGitlabOrigin(first.root, tree);
       const { app } = harness;
-      const seeded = await remember(app.app.get(RunRepository), app.app.get(DocumentRepository), key, step, 'waiting');
+      await remember(app.app.get(RunRepository), app.app.get(DocumentRepository), key, step, 'waiting');
       const run = await app.app.get(RunRepository).change(key, (row) => {
         row.codeHost = 'gitlab';
-        row.spentUsd = begun.spentUsd ?? seeded.spentUsd;
       });
+      if (begun.spentUsd) await seedCall(app.app.get(AgentCallRepository), { runKey: key, usd: begun.spentUsd });
       if (step === 'plan') return run;
       if (step === 'merge-request') {
         mkdirSync(join(tree, 'src'), { recursive: true });

@@ -5,6 +5,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { seededBoot } from '../api/runs-boot.spec-helpers';
 import { REASON } from '../contract/run-state';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { CommandRepository } from '../history/command.repository';
 import { DataSource } from 'typeorm';
 import { AgentExchangeEntity, StepStatEntity } from '../history/entities';
@@ -315,8 +317,7 @@ describe('StartGate admit', () => {
   it('lets only a run still recorded running on the step skip the limits', async () => {
     const { app, run, runs, admit } = await admitting({ MAX_RUN_USD: '25' });
     try {
-      run.spentUsd = 30;
-      await storeRun(runs, run);
+      await seedCall(app.get(AgentCallRepository), { runKey: run.key, step: 'implement', usd: 30 });
       expect((await admit({})).kind).toBe('blocked');
 
       for (const status of ['failed', 'waiting']) {

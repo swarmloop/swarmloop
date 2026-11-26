@@ -1,5 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { Clock } from '../core/clock';
+import { AgentCallRepository } from '../history/agent-call.repository';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -9,7 +10,8 @@ import { epicTotal } from '../steps/shared/epic-total';
 import type { LiveRunUsage } from '../contract/live';
 import { usageFigures } from './run-view/flow';
 import { shownRun } from './run-view/own-state';
-import { openSpend, spentUsd } from './run-queries-spend';
+import { loggedUsage } from './run-queries-spend';
+import { spendLookup } from '../steps/shared/run-spend';
 
 /** The spend, tokens and peaks of a run as the usage event carries them, read without building the run page. */
 @Injectable()
@@ -19,6 +21,7 @@ export class RunUsageReader {
     private readonly visits: VisitRepository,
     private readonly pipeline: PipelineService,
     private readonly clock: Clock,
+    private readonly calls: AgentCallRepository,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -40,13 +43,12 @@ export class RunUsageReader {
     const shown = shownRun(run, (held) => this.pipeline.claimed(held));
     const stats = await this.visits.listStats(run.id);
     const figures = usageFigures(
-      shown,
       stats,
-      openSpend(shown, this.pipeline, this.live),
+      await loggedUsage(run, this.calls),
       this.live?.peaksOf(run.key) ?? { cpuPeak: 0, memPeak: 0 },
     );
     const children = await this.runs.children(run);
-    const usdOf = (item: RunEntity): number => spentUsd(item, this.pipeline, this.live);
+    const usdOf = await spendLookup([run, ...children], this.calls);
     return { key: run.key, ...figures, ...epicTotal(shown, children, usdOf, this.clock.now()) };
   }
 }

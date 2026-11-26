@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { StepCapabilities } from '../contract/step-contract';
 import { StepKernel } from '../step-kernel';
+import { AgentCallRepository } from '../../history/agent-call.repository';
 import { runDir } from '../../history/run-paths';
 import { RunEntity } from '../../history/entities';
 import { SampleDraft, sampleSelf } from '../../history/visit';
@@ -56,6 +57,7 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
     @Inject(ISSUE_TRACKER) private readonly tracker: IssueTracker,
     @Inject(REQUIREMENTS_SOURCE) private readonly source: RequirementsSource,
     private readonly remote: RemoteRepositories,
+    private readonly calls: AgentCallRepository,
   ) {
     super(kernel);
   }
@@ -158,8 +160,8 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
         prompt: effectivePrompt,
         issueKeys: loadedKeys,
         agentCalls: opened.run.agentCalls,
-        spentUsd: opened.run.spentUsd,
-        tokensInRun: await this.visits.tokenTotal(opened.run.id),
+        spentUsd: await this.calls.spendOfRun(opened.run.key),
+        tokensInRun: await this.calls.tokensOfRun(opened.run.key),
       });
       samples.push(...written.samples, sampleSelf(this.clock.iso()));
       const stopped = stopReason(key, written);
