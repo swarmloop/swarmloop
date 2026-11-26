@@ -53,6 +53,8 @@ export interface AgentLaunchRequest extends EffortFields {
   /** The login whose credential the launch uses. Without it the run's starter is looked up. */
   login?: string | null;
   key: string;
+  /** The key of the chat this launch continues when it is not its own key. Only the chat's files use it. */
+  chatKey?: string;
   step: string;
   mode: string;
   tools: AgentTools;

@@ -17,6 +17,7 @@ import type { VisitRepository } from '../../history/visit.repository';
 import type { SandboxService } from '../../sandbox/sandbox.service';
 import { AgentLauncher } from './agent-launcher';
 import { controlled, type Child, until } from './agent-launcher.spec-helpers';
+import { pingInput } from './launch-ping';
 import { LimitFailover } from './limit-failover';
 
 const CHAT = JSON.stringify({ session_id: 'chat-9' });
@@ -576,5 +577,118 @@ describe('AgentLauncher log folder', () => {
     );
     const plain = await promptSent([block, stay, '', 'Nothing was cut.'].join('\n'));
     expect(plain).not.toContain('Also read');
+  });
+});
+
+describe('AgentLauncher chat key', () => {
+  function setup() {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-launcher-chatkey-'));
+    const begun: { key: string }[] = [];
+    const run = jest.fn(
+      async (input: {
+        sessionFile: string;
+        runtime: string;
+        resumeChatId: string | null;
+        runKey: string;
+        chatKey?: string;
+      }) => {
+        mkdirSync(join(root, 'data', 'agent-state', 'chat-a', 'implement'), { recursive: true });
+        writeFileSync(
+          input.sessionFile,
+          JSON.stringify({
+            runtime: input.runtime,
+            chatId: 'chat-9',
+            resumed: true,
+            completed: true,
+            killReason: null,
+          }),
+        );
+        return {
+          responseText: 'ok',
+          chatId: 'chat-9',
+          tokensIn: 0,
+          tokensOut: 0,
+          usd: 0,
+          killReason: null,
+          exitCode: 0,
+          resumed: false,
+          calls: 1,
+          samples: [],
+          durationMs: 0,
+          startedAt: '',
+          finishedAt: '',
+        };
+      },
+    );
+    const launcher = new AgentLauncher(
+      { run } as never,
+      { tokenTotal: async () => 0 } as never,
+      new RunStop(),
+      undefined,
+      undefined,
+      undefined,
+      {
+        begin: async (request: { key: string }) => {
+          begun.push({ key: request.key });
+          return undefined;
+        },
+      } as never,
+    );
+    const launch = (key: string, patch: object = {}) =>
+      launcher.launch({
+        root,
+        run: { agentCalls: 0, spentUsd: 0 } as never,
+        key,
+        step: 'implement',
+        mode: 'agent',
+        tools: 'write',
+        runtime: 'claude',
+        model: 'm',
+        timeLimitMs: 1,
+        prompt: 'prompt',
+        workspace: root,
+        mounts: [],
+        ...patch,
+      });
+    return { run, launch, begun };
+  }
+
+  it('resumes the chat a second launch names, while the call rows keep their own keys', async () => {
+    const { run, launch, begun } = setup();
+    await launch('turn-1', { chatKey: 'chat-a' });
+    await launch('turn-2', { chatKey: 'chat-a' });
+    expect(run.mock.calls.map((call) => call[0].resumeChatId)).toEqual([null, 'chat-9']);
+    expect(run.mock.calls.map((call) => [call[0].runKey, call[0].chatKey])).toEqual([
+      ['turn-1', 'chat-a'],
+      ['turn-2', 'chat-a'],
+    ]);
+    expect(begun.map((call) => call.key)).toEqual(['turn-1', 'turn-2']);
+  });
+
+  it('starts a new chat for launches without a chat key', async () => {
+    const { run, launch } = setup();
+    await launch('turn-1');
+    await launch('turn-2');
+    expect(run.mock.calls.map((call) => call[0].resumeChatId)).toEqual([null, null]);
+  });
+
+  it('hands the chat key to the runner input of a ping', () => {
+    const call = { before: { spentUsd: 0, tokensInRun: 0, prior: {}, chatSpentUsd: 0 }, onRequest: jest.fn() };
+    const request = {
+      root: '/r',
+      run: { agentCalls: 0 },
+      key: 'turn-1',
+      chatKey: 'chat-a',
+      step: 'implement',
+      mode: 'agent',
+      runtime: 'claude',
+      model: 'm',
+      timeLimitMs: 1,
+      prompt: 'ping',
+      workspace: '/w',
+      mounts: [],
+    };
+    const input = pingInput(request as never, { chatId: 'chat-9' } as never, call as never, '/o');
+    expect([input.runKey, input.chatKey]).toEqual(['turn-1', 'chat-a']);
   });
 });

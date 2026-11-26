@@ -42,6 +42,7 @@ export function pingInput(
     chatSpentUsd: call.before.chatSpentUsd,
     onRequest: call.onRequest,
     runKey: request.key,
+    chatKey: request.chatKey,
     login: request.login,
     step: request.step,
     attemptId: '',

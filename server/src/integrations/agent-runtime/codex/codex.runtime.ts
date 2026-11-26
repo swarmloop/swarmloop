@@ -24,6 +24,9 @@ export class CodexRuntime extends AbstractAgentRuntime {
   promptCache(_model: string): PromptCache | null {
     return null;
   }
+  contextTokens(_model: string): number | null {
+    return null;
+  }
 
   protected readonly limits = CODEX_LIMITS;
   protected readonly outages = CODEX_OUTAGES;

@@ -27,6 +27,8 @@ export interface AgentRunInput {
    */
   fork?: boolean;
   runKey: string;
+  /** The key of the chat this launch continues when it is not its own key. Only the chat's files use it. */
+  chatKey?: string;
   /** The login whose credential the launch uses. Without it the run's starter is looked up. */
   login?: string | null;
   step: string;
