@@ -107,7 +107,7 @@ describe('AttemptSelector in the step header', () => {
     const user = userEvent.setup({ delay: null });
     const onSelect = vi.fn();
     const view = stepView({ visits: visits(3) });
-    const { container } = render(
+    render(
       <StepHeader
         step="implement"
         view={view}
@@ -127,7 +127,9 @@ describe('AttemptSelector in the step header', () => {
     const caption = screen.getByText('Attempt 3 of 3');
     expect(caption.textContent).toBe('Attempt 3 of 3');
     expect(caption.parentElement).toHaveStyle({ display: 'flex', gap: '4px' });
-    expect(container.textContent).not.toContain('✓');
+    for (const name of ['1', '2', '3']) {
+      expect(screen.getByRole('button', { name }).querySelector('svg')).toBeNull();
+    }
     await user.click(screen.getByRole('button', { name: '2' }));
     expect(onSelect).toHaveBeenCalledWith(1);
   });

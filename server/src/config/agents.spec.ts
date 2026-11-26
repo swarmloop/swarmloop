@@ -86,11 +86,11 @@ describe('agentFor', () => {
     const built = ['implement', 'implement-improve', 'rebase'];
     for (const step of [...planned, ...CODE_REVIEWERS.map((name) => `code-review-${name}`)]) {
       expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'plan-m', effort: 'high' });
-      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'plan-m', effort: 'high' });
+      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'plan-m', effort: 'medium' });
     }
     for (const step of built) {
       expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'impl-m', effort: 'high' });
-      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'impl-m', effort: 'high' });
+      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'impl-m', effort: 'medium' });
     }
   });
 
@@ -100,7 +100,7 @@ describe('agentFor', () => {
     expect(agentFor(env, { parentRunId: 1 }, 'implement')).toEqual({
       runtime: 'codex',
       model: 'gpt-6.1-sol',
-      effort: 'high',
+      effort: 'medium',
     });
   });
 
@@ -126,7 +126,7 @@ describe('agentFor', () => {
     });
     const child = { parentRunId: 1 };
     expect(agentFor(env, child, 'implement')).toEqual({ runtime: 'claude', model: 'sub-impl', effort: 'medium' });
-    expect(agentFor(env, child, 'plan')).toEqual({ runtime: 'claude', model: 'main-plan', effort: 'high' });
+    expect(agentFor(env, child, 'plan')).toEqual({ runtime: 'claude', model: 'main-plan', effort: 'medium' });
     expect(agentFor(env, child, 'code-review')).toEqual({ runtime: 'cursor', model: 'grok-4.7-high' });
     expect(agentFor(env, {}, 'implement')).toEqual({ runtime: 'codex', model: 'main-impl', effort: 'high' });
     expect(roleOf(child, 'implement')).toEqual({ role: 'implement', tier: 'subtask' });

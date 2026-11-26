@@ -1,5 +1,5 @@
 import type { CheckCommandView } from '../../contract/api';
-import { readLoopDetail } from '../../history/loop-detail';
+import { readLoopDetail, reviewersOf } from '../../history/loop-detail';
 import type { LoopEventEntity } from '../../history/entities';
 
 const SENDERS: Record<string, string> = {
@@ -7,14 +7,6 @@ const SENDERS: Record<string, string> = {
   checks: 'Checks',
   pipeline: 'CI',
 };
-
-/** The reviewers a review return names: `review_quality,review_security` reads `quality, security`. */
-function reviewerNames(loop: LoopEventEntity): string[] {
-  return loop.reason
-    .split(',')
-    .map((id) => id.trim().replace(/^review_/, ''))
-    .filter((name) => name !== '');
-}
 
 /** The failed commands of a checks return by their short names from the run's check rows, or `checks` for a row with none. */
 function commandNames(loop: LoopEventEntity, rows: CheckCommandView[]): string[] {
@@ -24,7 +16,7 @@ function commandNames(loop: LoopEventEntity, rows: CheckCommandView[]): string[]
 }
 
 function namesOf(counter: string, loop: LoopEventEntity, rows: CheckCommandView[]): string[] {
-  if (counter === 'review') return reviewerNames(loop);
+  if (counter === 'review') return reviewersOf(loop.reason);
   if (counter === 'checks') return commandNames(loop, rows);
   return readLoopDetail(loop.detail).jobs ?? [];
 }

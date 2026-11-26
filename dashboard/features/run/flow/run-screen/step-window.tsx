@@ -5,9 +5,17 @@ import { pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
 import { resumeLabel, resumeTip } from '../../../../lib/ci-infra';
 import { StepDetail } from '../step-detail';
 
-/** The status of the step's chip on the board. */
+/**
+ * The status of the step's chip on the board. `idle` is kept only for a step the open relaunch runs again: a chip
+ * that is idle for any other reason (a review that failed before any reviewer decided) says nothing of its visits.
+ */
 function boardStatusOf(flow: FlowView, step: string): string | undefined {
-  return flow.phases.flatMap((phase) => phase.steps).find((item) => item.name === step)?.status;
+  const status = flow.phases.flatMap((phase) => phase.steps).find((item) => item.name === step)?.status;
+  if (status !== 'idle') {
+    return status;
+  }
+  const relaunched = (flow.relaunches ?? []).some((item) => item.open && item.steps.includes(pipelineStepOf(step)));
+  return relaunched ? status : undefined;
 }
 
 /** Why the step sent work back, only while its chip reads `returned`: a step that went on is not shown as returned. */

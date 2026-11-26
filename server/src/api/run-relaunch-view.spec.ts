@@ -20,8 +20,7 @@ async function relaunchedSubtask(app: Awaited<ReturnType<typeof seededBoot>>, ke
   const runs = app.get(RunRepository);
   const parent = await runs.begin(`${key}-epic`, 'implement');
   const run = await runs.openSubtask(key, parent.id, 'a');
-  writeRunState(run, { status: 'running', currentStep: 'checks' });
-  await runs.saveRun(run);
+  await runs.change(key, (next) => writeRunState(next, { status: 'running', currentStep: 'checks' }));
   await app.get(DocumentRepository).putDocument(run, 'handoff', mergeHandoff(null, 'rebase', NOTE));
   const flows = app.get(FlowRepository);
   await flows.noteFlow(key, ['planning'], null);
@@ -59,8 +58,7 @@ describe('the run view of a rebased run', () => {
       await relaunchedSubtask(app, 'proj-r2');
       const runs = app.get(RunRepository);
       const plain = await runs.openWaiting('proj-r3', '/target');
-      writeRunState(plain, { status: 'running', currentStep: 'checks' });
-      await runs.saveRun(plain);
+      await runs.change(plain.key, (next) => writeRunState(next, { status: 'running', currentStep: 'checks' }));
       const rows = new Map((await freshView(app)).runs.map((row) => [row.key, row]));
       expect(rows.get('proj-r2')?.eta?.leftMs).toBe((4 * SEED_RUN_MS) / STEPS.length);
       expect(rows.get('proj-r3')?.eta?.leftMs).toBe(seedFor('checks'));

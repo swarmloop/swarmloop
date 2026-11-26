@@ -285,7 +285,7 @@ describe('StepHeader', () => {
     expect(screen.queryByRole('button', { name: /Retry|Run again/ })).toBeNull();
   });
 
-  it('shows a returned attempt number in the error color with the undo icon', () => {
+  it('shows a returned attempt number in the error color, with no state icon', () => {
     const view = stepView({
       visits: [visitView({ id: 1, attempt: 1, status: 'waiting' }), visitView({ id: 2, attempt: 2, status: 'done' })],
     });
@@ -293,7 +293,7 @@ describe('StepHeader', () => {
 
     const first = screen.getByRole('button', { name: '1' });
     expect(first).toHaveStyle({ color: createTheme().palette.error.main });
-    expect(first.querySelector('[data-testid="UndoIcon"]')).not.toBeNull();
+    expect(first.querySelector('svg')).toBeNull();
   });
 
   it('keeps the model id in mono and the rest of the line in the UI font', () => {

@@ -7,16 +7,12 @@ import Button from '@mui/material/Button';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Typography from '@mui/material/Typography';
-import type { StepState } from '@contract/step-state';
-import { StepStateIcon } from './step-state-icon';
 
 interface AttemptItem {
   /** Unique in the list. */
   key: string;
   label: string;
   color: string;
-  /** The state of the attempt, when it has one: its icon is drawn beside the number. */
-  state?: StepState;
   /** The line of the item in the `Earlier` menu. */
   menuText: string;
 }
@@ -87,12 +83,10 @@ export function AttemptSelector({
             onClick={() => onSelect(item.key)}
             sx={{
               flexShrink: 0,
-              gap: 0.5,
               color: item.color,
               ...(active ? { fontWeight: 700, borderColor: item.color, '&:hover': { borderColor: item.color } } : {}),
             }}
           >
-            {item.state ? <StepStateIcon state={item.state} size={12} /> : null}
             {item.label}
           </Button>
         );

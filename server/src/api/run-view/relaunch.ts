@@ -11,6 +11,9 @@ import { handoffSection } from '../../steps/shared/handoff';
 /** The flow rows a relaunch is read from. */
 type RebaseRow = Pick<FlowEntity, 'phases' | 'fromStep' | 'createdAt'>;
 
+/** What a visit says of when its step ran. */
+type StepRan = Pick<StepStatEntity, 'step' | 'finishedAt'>;
+
 /** One version of the run's handoff document. */
 type HandoffVersion = Pick<DocumentEntity, 'body' | 'createdAt'>;
 
@@ -38,7 +41,7 @@ function stepsOf(row: RebaseRow, phases: readonly PhaseName[]): string[] {
 const finishedAfter = (stat: Pick<StepStatEntity, 'finishedAt'>, at: string): boolean => stat.finishedAt > at;
 
 /** True once the step has a visit that finished after `at`. */
-const ranSince = (step: string, at: string, stats: readonly StepStatEntity[]): boolean =>
+const ranSince = (step: string, at: string, stats: readonly StepRan[]): boolean =>
   stats.some((stat) => stat.step === step && finishedAfter(stat, at));
 
 /** True for a step of the open relaunch that has not run since, given its latest visit. */
@@ -66,7 +69,7 @@ function noteBefore(handoffs: readonly HandoffVersion[], before: string | null):
 function viewsOf(
   run: Pick<RunEntity, 'parentRunId' | 'status'>,
   rows: readonly RebaseRow[],
-  stats: readonly StepStatEntity[],
+  stats: readonly StepRan[],
   handoffs: readonly HandoffVersion[],
 ): RelaunchView[] {
   return rows.map((row, index) => {
@@ -89,7 +92,7 @@ function viewsOf(
 export function relaunchViews(
   run: Pick<RunEntity, 'parentRunId' | 'status'>,
   flows: readonly (RebaseRow & Pick<FlowEntity, 'cause'>)[],
-  stats: readonly StepStatEntity[],
+  stats: readonly StepRan[],
   documents: readonly (HandoffVersion & Pick<DocumentEntity, 'kind'>)[],
 ): RelaunchView[] {
   const handoffs = documents.filter((document) => document.kind === ARTIFACTS.handoff.kind);
@@ -107,23 +110,25 @@ export function openRelaunch(relaunches: readonly RelaunchView[] | undefined): R
 }
 
 /** The steps the run's open relaunch still has to run on the new head; undefined when no relaunch is open. */
-function stepsToRun(rows: readonly RebaseRow[], stats: readonly StepStatEntity[]): string[] | undefined {
+function stepsToRun(rows: readonly RebaseRow[], stats: readonly StepRan[]): string[] | undefined {
   const open = openRelaunch(viewsOf({ parentRunId: null, status: 'waiting' }, rows, stats, []));
   return open?.steps.filter((step) => !ranSince(step, open.at, stats));
 }
 
 /**
  * The steps each run's open relaunch still has to run, by run id, for the runs that have one: the relaunch rows of all
- * the runs in one read, and the stats only of the runs that have such a row.
+ * the runs in one read, and the finish times only of the runs that have such a row, in one read.
  */
 export async function relaunchSteps(
   flows: Pick<FlowRepository, 'listRebases'>,
-  visits: Pick<VisitRepository, 'listStats'>,
+  visits: Pick<VisitRepository, 'finishesOf'>,
   runIds: number[],
 ): Promise<Map<number, string[]>> {
   const steps = new Map<number, string[]>();
-  for (const [runId, rows] of await flows.listRebases(runIds)) {
-    const left = stepsToRun(rows, await visits.listStats(runId));
+  const rebases = await flows.listRebases(runIds);
+  const finishes = await visits.finishesOf([...rebases.keys()]);
+  for (const [runId, rows] of rebases) {
+    const left = stepsToRun(rows, finishes.get(runId) ?? []);
     if (left) steps.set(runId, left);
   }
   return steps;

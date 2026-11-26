@@ -92,7 +92,7 @@ describe('relaunchSteps', () => {
       [7, [ran('checks', 12)]],
       [8, [ran('checks', 12)]],
     ]);
-    const steps = await relaunchSteps(flows, { listStats: async (id) => stats.get(id) ?? [] }, [7, 8, 9]);
+    const steps = await relaunchSteps(flows, { finishesOf: async () => stats }, [7, 8, 9]);
     expect(steps).toEqual(new Map([[7, ['commit', 'merge-request', 'pipeline']]]));
   });
 });

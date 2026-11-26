@@ -1,6 +1,6 @@
 import type { StatsCiReturns, StatsDay, StatsReason } from '../contract/api';
 import type { StatsRows } from '../history/stats.repository';
-import { NON_RETURN_COUNTERS, readLoopDetail } from '../history/loop-detail';
+import { NON_RETURN_COUNTERS, readLoopDetail, reviewersOf } from '../history/loop-detail';
 import { localDay } from './local-day';
 
 /** What sent the work back: the loop counter. Returns of the checks step before it had its own counter were recorded under implement. */
@@ -44,10 +44,7 @@ export function returnsOf(loops: StatsRows['loops'], days: Map<string, StatsDay>
     const detail = readLoopDetail(loop.detail);
     count(kinds, kind);
     if (kind === 'review') {
-      const reviewers = loop.reason
-        .split(',')
-        .map((name) => name.trim().replace(/^review_/, ''))
-        .filter((name) => name !== '');
+      const reviewers = reviewersOf(loop.reason);
       (reviewers.length > 0 ? reviewers : ['review']).forEach((name) => count(reasons, name));
       continue;
     }

@@ -133,16 +133,15 @@ export class SettingsService {
   }
 
   private defaultLevels(): SettingsView['defaults']['levels'] {
-    const env = this.config.env;
     const levelsOf = (tier: 'main' | 'subtask') =>
-      Object.fromEntries(ROLES.map((role) => [role, baseLevelOf(env, role, tier)])) as Record<
+      Object.fromEntries(ROLES.map((role) => [role, baseLevelOf(role, tier)])) as Record<
         keyof typeof ROLE_STEPS,
         Effort
       >;
     return {
       main: levelsOf('main'),
       subtask: levelsOf('subtask'),
-      backlog: { plan: baseLevelOf(env, 'plan', 'backlog') },
+      backlog: { plan: baseLevelOf('plan', 'backlog') },
     };
   }
 

@@ -149,7 +149,7 @@ export function AgentList({
               {levels.length > 0 ? (
                 <Select
                   size="small"
-                  value={level ?? ''}
+                  value={from === 'own' ? (level ?? '') : ''}
                   displayEmpty
                   renderValue={() => originText(level ?? wanted, from, role)}
                   onChange={(event) => change(index, { effort: event.target.value })}

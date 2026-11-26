@@ -229,6 +229,18 @@ describe('SettingsPage', () => {
     });
   });
 
+  it('stores the level an entry already shows from above or the defaults when it is picked', async () => {
+    const user = await openOwnPlan();
+
+    await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus' }));
+    await user.click(await screen.findByRole('option', { name: 'high' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'high' }] } },
+    });
+  });
+
   it('saves the level picked in place of an own one', async () => {
     const user = await openOwnPlan(ownHigh);
 

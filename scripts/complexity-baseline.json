@@ -1,7 +1,4 @@
 {
-  "dashboard/features/run/flow/flow-board.tsx": {
-    "Function 'FlowBoard' > Arrow function > Arrow function": 22
-  },
   "dashboard/features/run/flow/run-screen/index.tsx": {
     "Function 'RunScreen'": 44
   },

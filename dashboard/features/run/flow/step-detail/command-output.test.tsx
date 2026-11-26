@@ -96,32 +96,15 @@ describe('CommandOutput', () => {
     expect(output.scrollTop).toBe(40);
   });
 
-  it('draws a window of a very long output, keeps the first error in it and says what is left out', async () => {
-    const lines = Array.from({ length: 5000 }, (_, index) => (index === 10 ? 'error TS1: early' : `line ${index + 1}`));
+  it('draws a row for every line of a very long output, the first and the last included', async () => {
+    const lines = Array.from({ length: 5000 }, (_, index) => `line ${index + 1}`);
     vi.mocked(getRunLog).mockResolvedValue(`${lines.join('\n')}\n`);
-    show(command({ status: 'failed', exitCode: 2 }));
-
-    const output = await screen.findByLabelText('Output of tsc --noEmit');
-    await within(output).findByText('error TS1: early');
-    expect(
-      within(output).getByText('2990 later lines not shown; the whole output is in the stored log of this command'),
-    ).toBeInTheDocument();
-    expect(
-      within(output).getByText('10 earlier lines not shown; the whole output is in the stored log of this command'),
-    ).toBeInTheDocument();
-    expect(within(output).queryByText('line 5000')).toBeNull();
-  });
-
-  it('shows the last lines of a long output that has no error, with the earlier ones left out', async () => {
-    vi.mocked(getRunLog).mockResolvedValue(
-      `${Array.from({ length: 2500 }, (_, index) => `line ${index + 1}`).join('\n')}\n`,
-    );
     show(command());
 
     const output = await screen.findByLabelText('Output of tsc --noEmit');
-    expect(await within(output).findByText('line 2500')).toBeInTheDocument();
-    expect(within(output).getByText(/^500 earlier lines not shown/)).toBeInTheDocument();
-    expect(within(output).queryByText('line 500')).toBeNull();
+    expect(await within(output).findByText('line 5000')).toBeInTheDocument();
+    expect(within(output).getByText('line 1')).toBeInTheDocument();
+    expect(within(output).queryByText(/lines not shown/)).toBeNull();
   });
 
   it('has no first error link for a command that passed', async () => {

@@ -17,15 +17,6 @@ function linesOf(text: string): string[] {
   return lines.at(-1) === '' ? lines.slice(0, -1) : lines;
 }
 
-/** The most rows one output draws: a longer output shows a window of this many lines, with what is left out said. */
-const MAX_ROWS = 2000;
-
-/** The lines to draw: the last MAX_ROWS, or the MAX_ROWS from the first error line when that one is earlier. */
-function windowOf(count: number, firstError: number): { start: number; end: number } {
-  const start = firstError >= 0 ? Math.min(firstError, Math.max(0, count - MAX_ROWS)) : Math.max(0, count - MAX_ROWS);
-  return { start, end: Math.min(count, start + MAX_ROWS) };
-}
-
 /** One line with its number in the gutter. It draws again only when its own line changes. */
 const OutputRow = memo(function OutputRow({
   number,
@@ -55,15 +46,6 @@ const OutputRow = memo(function OutputRow({
   );
 });
 
-/** What the window leaves out, in words. */
-function leftOut(count: number, where: 'earlier' | 'later'): ReactElement | null {
-  return count > 0 ? (
-    <Box sx={{ color: 'text.secondary' }}>
-      {count} {where} lines not shown; the whole output is in the stored log of this command
-    </Box>
-  ) : null;
-}
-
 /** The output of one check command, a row per line with its number. A failed command opens at its first error line. */
 export function CommandOutput({ runKey, command }: { runKey: string; command: CheckCommandView }): ReactElement {
   const live = useLiveBridge((snapshot) =>
@@ -75,7 +57,6 @@ export function CommandOutput({ runKey, command }: { runKey: string; command: Ch
   const lines = useMemo(() => (text ? linesOf(text) : []), [text]);
   const failed = command.status === 'failed';
   const firstError = useMemo(() => (failed ? lines.findIndex((line) => ERROR_LINE.test(line)) : -1), [failed, lines]);
-  const { start, end } = windowOf(lines.length, firstError);
   const box = useRef<HTMLDivElement | null>(null);
   const firstErrorRow = useRef<HTMLDivElement | null>(null);
   const opened = useRef(false);
@@ -123,17 +104,15 @@ export function CommandOutput({ runKey, command }: { runKey: string; command: Ch
         <Box>{text ?? (text === null || neverRan ? 'no output: it did not run' : 'loading')}</Box>
       ) : (
         <>
-          {leftOut(start, 'earlier')}
-          {lines.slice(start, end).map((line, offset) => (
+          {lines.map((line, index) => (
             // The lines of an output are only appended, so the number is their identity.
             <OutputRow
-              key={start + offset}
-              number={start + offset + 1}
+              key={index}
+              number={index + 1}
               line={line}
-              rowRef={start + offset === firstError ? firstErrorRow : undefined}
+              rowRef={index === firstError ? firstErrorRow : undefined}
             />
           ))}
-          {leftOut(lines.length - end, 'later')}
         </>
       )}
     </Box>

@@ -112,14 +112,14 @@ describe('the backlog tier of the settings', () => {
     }
   });
 
-  it('gives the level of each list from defaults.env, and of the main list where a list falls back', async () => {
+  it('gives the level of each list from defaults.env, also where a list falls back to the main one', async () => {
     const own = await world('claude:opus:xhigh');
     const empty = await world('');
     try {
       const { levels } = (await own.service.view('alice')).defaults;
       expect(levels.main).toEqual({ plan: 'high', implement: 'high', review: 'high' });
       expect(levels.backlog).toEqual({ plan: 'xhigh' });
-      expect((await empty.service.view('alice')).defaults.levels.backlog).toEqual({ plan: 'high' });
+      expect((await empty.service.view('alice')).defaults.levels.backlog).toEqual({ plan: 'xhigh' });
     } finally {
       await own.app.close();
       await empty.app.close();

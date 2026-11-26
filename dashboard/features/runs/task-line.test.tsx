@@ -62,6 +62,6 @@ describe('TaskLine', () => {
 
     const icon = screen.getByRole('img', { name: 'Working' });
     expect(icon.querySelector('path')).not.toBeNull();
-    expect(icon.querySelector('[data-testid="AutorenewIcon"]')).toBeNull();
+    expect(icon).not.toHaveAttribute('data-testid', 'AutorenewIcon');
   });
 });

@@ -166,7 +166,6 @@ export function StepHeader({
                 key: item.key,
                 label: String(item.attempt),
                 color: toneColor(state.tone),
-                state,
                 menuText: `${item.attempt} · ${status} · ${duration(item.durationMs)}`,
               };
             })}

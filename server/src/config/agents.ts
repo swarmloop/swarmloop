@@ -223,9 +223,9 @@ function listName(env: AgentEnv, role: Role, tier: ListTier): keyof AgentEnv {
   return env[own] === '' ? LISTS.main[role] : own;
 }
 
-/** The level a first entry without an effort runs at in one role and tier: that of the list actually read. */
-export function baseLevelOf(env: AgentEnv, role: Role, tier: ListTier): Effort {
-  return defaultLevelOf(listName(env, role, tier));
+/** The level a first entry without an effort runs at in one role and tier: that of the tier's own list in defaults.env. */
+export function baseLevelOf(role: Role, tier: ListTier): Effort {
+  return defaultLevelOf(tier === 'backlog' ? 'AGENTS_BACKLOG_PLAN' : LISTS[tier][role]);
 }
 
 /**
@@ -236,7 +236,7 @@ function agentsOf(env: AgentEnv, role: Role, tier: ListTier = 'main', run?: Agen
   const name = listName(env, role, tier);
   const stored = storedAgents(run, role, tier);
   const agents = stored.length > 0 ? stored : parseAgentList(name, env[name]);
-  return resolveEfforts(agents, baseLevelOf(env, role, tier), run, env, role);
+  return resolveEfforts(agents, baseLevelOf(role, tier), run, env, role);
 }
 
 /**

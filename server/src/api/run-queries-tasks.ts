@@ -48,7 +48,10 @@ export async function tasksAndEta(
   await sources.waitLog.settled();
   const table = await sources.etaSummary.table();
   const waits = await sources.waitLog.waitsOf([run.id, ...children.map((child) => child.id)]);
-  const relaunches = await relaunchSteps(sources.flows, sources.visits, [run.id, ...children.map((child) => child.id)]);
+  const relaunches = await relaunchSteps(sources.flows, sources.visits, [
+    run.id,
+    ...children.filter((child) => child.status !== 'done').map((child) => child.id),
+  ]);
   const { runs, lives } = await taskRuns(
     sources.runs,
     sources.visits,
