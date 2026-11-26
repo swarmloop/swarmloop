@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import { actionsFor, REASON } from '../contract/run-state';
+import { waitingWord } from '../contract/reason-words';
 import type { RunAction, RunState } from '../contract/run-state';
 import {
   clearEpic,
@@ -91,6 +92,19 @@ describe('deriveState', () => {
       state: 'waiting',
       reason,
     });
+  });
+
+  it('keeps the task of a stored WAITS_FOR_TASK reason, and reads a reason without one as before', () => {
+    const reason = { code: REASON.waitsForTask, message: 'waits for Fix main to land on main', task: 'task-7' };
+
+    expect(storedState({ status: 'waiting', state: 'waiting', stateReason: JSON.stringify(reason) }).reason).toEqual(
+      reason,
+    );
+    expect(waitingWord(reason, String)).toMatchObject({ word: 'Waiting for a task', tone: 'working' });
+    const plain = { code: REASON.sameInput, message: 'again' };
+    expect(storedState({ status: 'waiting', state: 'waiting', stateReason: JSON.stringify(plain) }).reason).toEqual(
+      plain,
+    );
   });
 
   it('calls a return to implement idle with the reason RETURNED', () => {

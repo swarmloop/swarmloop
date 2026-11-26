@@ -3,10 +3,9 @@ import { basename, join } from 'path';
 import { sessionHome } from '../../history/session-group';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
-import { SwarmloopError } from '../../core/swarmloop-error';
 import { isDenied } from '../../git/commit-paths';
-import { baseBranch, originRef } from '../../git/base-ref';
-import { gitMissing, gitRaw } from '../../git/git';
+import { baseBranch } from '../../git/base-ref';
+import { baseRef, changeFiles, inside, optional, splitLines } from '../../git/change-files';
 import type { OutsideRead } from '../shared/outside-reads';
 
 export const REVIEW_DIFF_PATH = '/work/brief/diff.md';
@@ -86,8 +85,15 @@ async function one(
   const dirty = allowedDirty.length > 0 || allowedUntracked.length > 0;
   const base = await baseRef(mount.hostPath, baseBranch(prompt));
   const mergeBase = base ? ((await optional(mount.hostPath, ['merge-base', base, 'HEAD']))?.trim() ?? '') : '';
-  if (base && mergeBase) {
-    return wholeChange(mount.hostPath, name, { base, mergeBase, dirty }, allowedUntracked, denied);
+  const files = base && mergeBase ? await changeFiles(mount, prompt, denied) : null;
+  if (base && mergeBase && files) {
+    return wholeChange(
+      mount.hostPath,
+      name,
+      { base, mergeBase, dirty },
+      { files, untracked: allowedUntracked },
+      denied,
+    );
   }
   if (dirty) {
     return uncommittedOnly(mount.hostPath, name, allowedDirty, allowedUntracked, denied);
@@ -101,13 +107,11 @@ async function wholeChange(
   cwd: string,
   name: string,
   from: { base: string; mergeBase: string; dirty: boolean },
-  allowedUntracked: string[],
+  paths: { files: string[]; untracked: string[] },
   denied: string[],
 ): Promise<{ list: string; patch: string }> {
+  const { files, untracked: allowedUntracked } = paths;
   const log = (await optional(cwd, ['log', '--oneline', `${from.base}...HEAD`])) ?? '';
-  const tracked = splitLines(await optional(cwd, ['diff', '--name-only', from.mergeBase])).filter(
-    (path) => !isDenied(path, denied),
-  );
   const patch = withoutDenied(await optional(cwd, ['diff', from.mergeBase]), denied);
   const status = from.dirty
     ? `Uncommitted changes against HEAD. Commits on HEAD that are not in ${from.base}.`
@@ -115,11 +119,11 @@ async function wholeChange(
   const text = [log.trim(), patch.trimEnd(), await untrackedBodies(cwd, allowedUntracked)]
     .filter((part) => part.length > 0)
     .join('\n\n');
-  if (tracked.length === 0 && allowedUntracked.length === 0 && patch.trim().length === 0) {
+  if (files.length === 0 && patch.trim().length === 0) {
     return { list: block(name, status, EMPTY_DIFF), patch: block(name, status, EMPTY_DIFF) };
   }
   return {
-    list: block(name, status, fileList([...tracked, ...allowedUntracked])),
+    list: block(name, status, fileList(files)),
     patch: block(name, status, text),
   };
 }
@@ -226,55 +230,11 @@ function fileList(names: string[]): string {
   return `Changed files:\n${unique.join('\n')}`;
 }
 
-function splitLines(text: string | null): string[] {
-  return (text ?? '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.includes('..'));
-}
-
 function repoName(mount: SandboxMount): string {
   if (mount.containerPath.startsWith('/work/')) {
     return mount.containerPath.slice('/work/'.length);
   }
   return basename(mount.hostPath);
-}
-
-async function inside(cwd: string): Promise<boolean> {
-  try {
-    return (
-      (
-        await gitRaw(['-C', cwd, 'rev-parse', '--is-inside-work-tree'], undefined, undefined, { answers: [128] })
-      ).trim() === 'true'
-    );
-  } catch {
-    return false;
-  }
-}
-
-async function baseRef(cwd: string, named: string | null): Promise<string | null> {
-  if (named) {
-    return (await hasRef(cwd, originRef(named))) ? originRef(named) : null;
-  }
-  if (await hasRef(cwd, 'origin/main')) {
-    return 'origin/main';
-  }
-  if (await hasRef(cwd, 'origin/master')) {
-    return 'origin/master';
-  }
-  return null;
-}
-
-async function hasRef(cwd: string, ref: string): Promise<boolean> {
-  try {
-    return (
-      (
-        await gitRaw(['-C', cwd, 'rev-parse', '--verify', '--quiet', ref], undefined, undefined, { answers: [1] })
-      ).trim().length > 0
-    );
-  } catch {
-    return false;
-  }
 }
 
 async function untrackedBodies(cwd: string, paths: string[]): Promise<string> {
@@ -286,35 +246,4 @@ async function untrackedBodies(cwd: string, paths: string[]): Promise<string> {
     }
   }
   return blocks.join('\n\n');
-}
-
-async function optional(cwd: string, args: string[], answers?: number[]): Promise<string | null> {
-  try {
-    return await gitRaw(['-C', cwd, ...args], undefined, undefined, { answers });
-  } catch (error) {
-    if (isOutputCap(error)) {
-      throw new SwarmloopError('git diff is too large to read');
-    }
-    const stdout = stdoutOf(error);
-    if (gitMissing(error) && stdout.length > 0) {
-      return stdout;
-    }
-    return null;
-  }
-}
-
-function isOutputCap(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
-  );
-}
-
-function stdoutOf(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'stdout' in error && typeof error.stdout === 'string') {
-    return error.stdout;
-  }
-  return '';
 }

@@ -11,6 +11,7 @@ import type { RebaseHosts } from '../../git/rebase/types';
 import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { withWorktree } from '../../git/worktree-lock';
 import { HostUnavailable } from '../../core/swarmloop-error';
+import { testPaths } from '../shared/test-paths';
 import { automaticRebase } from './pipeline-rebase';
 import { originProject, type Failure } from './pipeline-report';
 
@@ -20,21 +21,6 @@ export interface DefaultBranchDeps {
   halted: (key: string) => boolean;
   hosts: (run: RunEntity) => Promise<RebaseHosts>;
   root: string;
-}
-
-/** Every test file has one of these name shapes, whatever the language or the tool. */
-const TEST_NAMES = [/\.(test|spec)\.\w+$/, /^test_.+\.\w+$/, /_test\.\w+$/];
-const MAX_PATHS = 50;
-
-/** The test file paths a log names, as it wrote them. */
-export function testPaths(trace: string): string[] {
-  const found = new Set<string>();
-  for (const match of trace.matchAll(/[\w@.+/-]+/g)) {
-    const path = match[0].replace(/\.+$/, '');
-    const name = path.slice(path.lastIndexOf('/') + 1);
-    if (!path.includes('..') && TEST_NAMES.some((pattern) => pattern.test(name))) found.add(path);
-  }
-  return [...found].slice(0, MAX_PATHS);
 }
 
 async function has(cwd: string, rev: string, path: string): Promise<boolean> {

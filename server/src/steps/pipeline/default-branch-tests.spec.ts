@@ -5,7 +5,8 @@ import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import type { RunEntity } from '../../history/entities';
 import type { StepContext } from '../base-step';
 import { git } from '../../testing/runs.spec-helpers';
-import { defaultBranchTests, testPaths, type DefaultBranchDeps } from './default-branch-tests';
+import { defaultBranchTests, type DefaultBranchDeps } from './default-branch-tests';
+import { testPaths } from '../shared/test-paths';
 import { originProject, type Failure } from './pipeline-report';
 
 const KEY = 'PROJ-1';

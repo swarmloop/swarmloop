@@ -36,6 +36,7 @@ function readReason(stored: string | null | undefined): StateReason | null {
           message: String(parsed.message ?? ''),
           ...(parsed.limit ? { limit: parsed.limit } : {}),
           ...(typeof parsed.retryAt === 'string' ? { retryAt: parsed.retryAt } : {}),
+          ...(typeof parsed.task === 'string' ? { task: parsed.task } : {}),
         }
       : null;
   } catch {

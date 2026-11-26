@@ -15,6 +15,8 @@ export interface StateReason {
   limit?: LimitState;
   /** Set with `HOST_UNAVAILABLE`, `CI_NOT_STARTED` and `DOCKER_UNAVAILABLE`: when the next automatic try happens, UTC, ISO 8601. */
   retryAt?: string;
+  /** Set with `WAITS_FOR_TASK`: the id of the backlog task whose merge the run waits for. */
+  task?: string;
 }
 
 /** The codes of a state reason. */
@@ -37,6 +39,7 @@ export const REASON = {
   serverPause: 'SERVER_PAUSE',
   asksPlanner: 'ASKS_PLANNER',
   sameInput: 'SAME_INPUT',
+  waitsForTask: 'WAITS_FOR_TASK',
 } as const;
 
 /** The reason code of a run that waits for answers. */
@@ -72,7 +75,7 @@ export interface WordShape {
 export const WAITING_FOR_YOU: WordShape = { word: 'Waiting for you', tone: 'person', icon: 'person' };
 
 /** What a reason does to the word of a waiting run: `state` leaves the state's own word. */
-type ReasonKind = 'paused' | 'retrying' | 'subtasks' | 'place' | 'planner' | 'state';
+type ReasonKind = 'paused' | 'retrying' | 'subtasks' | 'place' | 'planner' | 'task' | 'state';
 
 type ReasonCode =
   (typeof ERROR_CODES)[keyof typeof ERROR_CODES] | (typeof REASON)[keyof typeof REASON] | typeof NEEDS_ANSWERS;
@@ -124,6 +127,7 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
   [REASON.serverPause]: 'place',
   [REASON.asksPlanner]: 'planner',
   [REASON.sameInput]: 'planner',
+  [REASON.waitsForTask]: 'task',
   [NEEDS_ANSWERS]: 'state',
 };
 
@@ -150,6 +154,8 @@ export function waitingWord(reason: StateReason | null, time: (iso: string) => s
       return placeWord(reason);
     case 'planner':
       return { word: 'Waiting for the planner', tone: 'working', icon: 'working' };
+    case 'task':
+      return { word: 'Waiting for a task', tone: 'working', icon: 'working' };
     case 'state':
       return WAITING_FOR_YOU;
   }
