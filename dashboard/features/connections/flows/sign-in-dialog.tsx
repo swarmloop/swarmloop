@@ -11,6 +11,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import LinearProgress from '@mui/material/LinearProgress';
 import Link from '@mui/material/Link';
 import type { SignInView } from '@contract/connections';
+import { useFullScreenDialog } from '../../../lib/use-phone';
 import type { FlowDialogProps } from './flow-types';
 
 /** The frame the two sign-in dialogs share: progress while waiting, the link, the provider's message, and the end. */
@@ -23,6 +24,7 @@ export function SignInDialog({
   onSaved,
   children,
 }: FlowDialogProps & { view: SignInView | null; error: string | null; children?: ReactNode }): ReactElement {
+  const fullScreen = useFullScreenDialog();
   const done = view?.state === 'done';
   useEffect(() => {
     if (done) {
@@ -32,7 +34,14 @@ export function SignInDialog({
   }, [done, onSaved, onClose]);
   const failure = error ?? (view?.state === 'failed' ? (view.message ?? 'the sign-in failed') : null);
   return (
-    <Dialog open onClose={onClose} aria-labelledby={`${card.id}-flow-title`} fullWidth maxWidth="xs">
+    <Dialog
+      open
+      onClose={onClose}
+      aria-labelledby={`${card.id}-flow-title`}
+      fullWidth
+      maxWidth="xs"
+      fullScreen={fullScreen}
+    >
       <DialogTitle id={`${card.id}-flow-title`}>{flow.label}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {view?.link ? (
@@ -44,7 +53,7 @@ export function SignInDialog({
         {view?.state === 'waiting' || view === null ? <LinearProgress aria-label="Waiting for the sign-in" /> : null}
         {failure ? <Alert severity="error">{failure}</Alert> : null}
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ flexWrap: fullScreen ? 'wrap' : undefined }}>
         <Button onClick={onClose}>Cancel</Button>
       </DialogActions>
     </Dialog>

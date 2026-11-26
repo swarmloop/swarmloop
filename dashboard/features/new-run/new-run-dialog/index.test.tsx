@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRepository, createRun, listProjects, listRemote, ticketKeys, uploadFile } from '../../../lib/endpoints';
+import { mediaWidth } from '../../../test/viewport';
 import { NewRunDialog, PREVIEW_DELAY_MS } from './index';
 
 vi.mock('../../../lib/endpoints', () => ({
@@ -215,5 +216,39 @@ describe('NewRunDialog', () => {
     await waitFor(() =>
       expect(createRun).toHaveBeenCalledWith(expect.objectContaining({ projects: ['first', 'second'] })),
     );
+  });
+});
+
+describe('NewRunDialog at 375 px', () => {
+  mediaWidth(375);
+
+  it('is full screen with Start in the actions, outside the scrolling content, and starts the run', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<NewRunDialog open onClose={vi.fn()} />);
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.closest('.MuiDialog-paper')).toHaveClass('MuiDialog-paperFullScreen');
+    const start = screen.getByRole('button', { name: 'Start' });
+    expect(start.closest('.MuiDialogActions-root')).not.toBeNull();
+    expect(start.closest('.MuiDialogContent-root')).toBeNull();
+
+    await pastePrompt(user, 'Ship it');
+    await pickProject(user, 'swarmloop');
+    await user.click(start);
+
+    await waitFor(() => expect(createRun).toHaveBeenCalledWith(expect.objectContaining({ prompt: 'Ship it' })));
+  });
+});
+
+describe('NewRunDialog at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('is not full screen and keeps Start inside the content', () => {
+    render(<NewRunDialog open onClose={vi.fn()} />);
+
+    expect(screen.getByRole('dialog').closest('.MuiDialog-paper')).not.toHaveClass('MuiDialog-paperFullScreen');
+    const start = screen.getByRole('button', { name: 'Start' });
+    expect(start.closest('.MuiDialogContent-root')).not.toBeNull();
+    expect(start.closest('.MuiDialogActions-root')).toBeNull();
   });
 });

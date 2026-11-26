@@ -12,10 +12,12 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Link from '@mui/material/Link';
 import TextField from '@mui/material/TextField';
 import { saveIntegration } from '../../../lib/endpoints';
+import { useFullScreenDialog } from '../../../lib/use-phone';
 import { messageOf, type FlowDialogProps } from './flow-types';
 
 /** One input per field of the flow; the server tests the values before it stores them. */
 export function FieldsDialog({ card, flow, hint, onClose, onSaved }: FlowDialogProps & { hint: string }): ReactElement {
+  const fullScreen = useFullScreenDialog();
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +37,18 @@ export function FieldsDialog({ card, flow, hint, onClose, onSaved }: FlowDialogP
   }
 
   return (
-    <Dialog open onClose={onClose} aria-labelledby={`${card.id}-flow-title`} fullWidth maxWidth="xs">
-      <form onSubmit={(event) => void save(event)}>
+    <Dialog
+      open
+      onClose={onClose}
+      aria-labelledby={`${card.id}-flow-title`}
+      fullWidth
+      maxWidth="xs"
+      fullScreen={fullScreen}
+    >
+      <form
+        onSubmit={(event) => void save(event)}
+        style={fullScreen ? { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 } : undefined}
+      >
         <DialogTitle id={`${card.id}-flow-title`}>{flow.label}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <DialogContentText>{hint}</DialogContentText>
@@ -59,7 +71,7 @@ export function FieldsDialog({ card, flow, hint, onClose, onSaved }: FlowDialogP
           ))}
           {error ? <Alert severity="error">{error}</Alert> : null}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ flexWrap: fullScreen ? 'wrap' : undefined }}>
           <Button onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="contained" disabled={saving}>
             Save
