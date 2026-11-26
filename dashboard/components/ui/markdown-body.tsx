@@ -30,6 +30,8 @@ export function MarkdownBody({ text }: { text: string }): React.ReactElement {
         },
         '& code': { fontFamily: 'var(--font-mono)', fontSize: 12 },
         '& p': { my: 1 },
+        '& table': { borderCollapse: 'collapse' },
+        '& th, & td': { textAlign: 'left', px: 1, py: 0.5, borderBottom: 1, borderColor: 'divider' },
       }}
     >
       {splitMarkdownDetails(text).map((part, index) =>

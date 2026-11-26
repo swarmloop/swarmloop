@@ -118,7 +118,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     expect((await parentRun(app))?.currentStep).toBe('checks');
     const flow = await app.app.get(RunQueriesService).flow(KEY);
     expect(flow.taskLine).toBe('Split: 3 tasks · 3 merged');
-    expect(flow.decisions).toBe('- subtask a: store UTC');
+    expect(flow.decisions).toEqual([expect.objectContaining({ taskId: 'a', text: 'store UTC' })]);
     const improve = flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'implement-improve');
     expect(improve).toMatchObject({ status: 'skipped', note: 'each task checked its own work' });
 

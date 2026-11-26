@@ -9,7 +9,7 @@ import { FlowRepository } from '../../history/flow.repository';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { ARTIFACTS } from '../contract/artifacts';
-import { readReportFacts, type ReportFactsDeps, type RoundReview } from './report-facts';
+import { pageVerdict, readReportFacts, type ReportFactsDeps, type RoundReview } from './report-facts';
 import { renderRunReport } from './report-text';
 import { readStored } from './report-stored';
 
@@ -41,10 +41,24 @@ export class RunReport {
     return renderRunReport(await readReportFacts(this.deps(), run, round), parts);
   }
 
-  /** The report text from the run's latest stored parts. Null when it has none, or they are of the old shape. */
-  async render(run: RunEntity): Promise<string | null> {
+  /** The latest stored parts of the run. Null when it has none, or they are of the old shape. */
+  private async storedParts(run: RunEntity): Promise<ReviewReportResult | null> {
     const body = await this.documents.latestBody(run.key, ARTIFACTS.reviewReportResult.kind);
     const parts = body ? readStored(() => ARTIFACTS.reviewReportResult.parse(body)) : null;
-    return parts && !isLegacyReport(parts) ? this.renderParts(run, parts) : null;
+    return parts && !isLegacyReport(parts) ? parts : null;
+  }
+
+  /** The report text from the run's latest stored parts. Null when it has none, or they are of the old shape. */
+  async render(run: RunEntity): Promise<string | null> {
+    const parts = await this.storedParts(run);
+    return parts ? this.renderParts(run, parts) : null;
+  }
+
+  /** The same report for the run page: headed `Merged` or `Closed without a merge` once the run's outcome says so. */
+  async renderForPage(run: RunEntity): Promise<string | null> {
+    const parts = await this.storedParts(run);
+    if (!parts) return null;
+    const facts = await readReportFacts(this.deps(), run, []);
+    return renderRunReport({ ...facts, verdict: pageVerdict(run, facts.verdict) }, parts);
   }
 }

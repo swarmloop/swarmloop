@@ -5,6 +5,8 @@ import { reviewerLabel } from './reviewer-labels';
 
 const HEADINGS: Record<Verdict, string> = {
   ready: '✅ Ready to merge',
+  merged: '✅ Merged',
+  closed: 'Closed without a merge',
   waiting: '⏳ Waiting for CI',
   'sent-back': '↩ Sent back',
   'ci-failed': '❌ CI failed',

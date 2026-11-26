@@ -19,7 +19,7 @@ import { requirementsFact } from './requirements-fact';
 
 export type { PathStep } from './report-path';
 
-export type Verdict = 'ready' | 'waiting' | 'sent-back' | 'ci-failed';
+export type Verdict = 'ready' | 'waiting' | 'sent-back' | 'ci-failed' | 'merged' | 'closed';
 
 /** What one reviewer decided, and the finding implement did not fix when the run has one. */
 export interface ReviewerFact {
@@ -96,6 +96,13 @@ function ciFact(
     return 'failed';
   }
   return phases.includes('ci') ? 'waiting' : null;
+}
+
+/** The verdict the run page shows: `merged` or `closed` once the run's outcome says so, else the verdict of the facts. */
+export function pageVerdict(run: RunEntity, verdict: Verdict): Verdict {
+  const outcome = readOutcome(run.mergeOutcome);
+  if (outcome && 'merged' in outcome) return 'merged';
+  return outcome && 'closed' in outcome ? 'closed' : verdict;
 }
 
 const mergedRun = (run: RunEntity): boolean => 'merged' in (readOutcome(run.mergeOutcome) ?? {});

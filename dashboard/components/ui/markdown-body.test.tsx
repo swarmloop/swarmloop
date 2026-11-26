@@ -43,6 +43,14 @@ describe('MarkdownBody', () => {
     expect(screen.getByRole('link', { name: 'https://example.com/a' })).toBeInTheDocument();
   });
 
+  it('left-aligns table cells under their headers', () => {
+    render(<MarkdownBody text={report} />);
+
+    expect(screen.getByRole('table')).toHaveStyle({ borderCollapse: 'collapse' });
+    expect(screen.getAllByRole('columnheader')[0]).toHaveStyle({ textAlign: 'left' });
+    expect(screen.getAllByRole('cell')[0]).toHaveStyle({ textAlign: 'left' });
+  });
+
   it('folds reviewer notes into a closed details block with markdown inside', () => {
     const { container } = render(<MarkdownBody text={report} />);
 
