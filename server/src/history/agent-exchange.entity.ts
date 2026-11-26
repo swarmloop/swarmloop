@@ -125,6 +125,10 @@ export class AgentExchangeEntity {
   @Column({ name: 'output_tokens', type: 'integer', default: 0 })
   outputTokens!: number;
 
+  /** What the row's first model request read from the cache; null when no request was counted. */
+  @Column({ name: 'first_cache_read_tokens', type: 'integer', nullable: true })
+  firstCacheReadTokens!: number | null;
+
   @Column({ name: 'own_usd', type: 'float', default: 0 })
   ownUsd!: number;
 

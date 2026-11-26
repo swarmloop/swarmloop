@@ -29,6 +29,7 @@ import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup'
 import { RunRebase } from '../steps/run-rebase';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { dockerWait } from '../steps/step-error-end';
+import { AttemptStream } from './attempt-stream';
 import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 
 /** Waits between the read-only probes of a docker that does not answer. */
@@ -62,6 +63,7 @@ export class RunSettler {
     private readonly checkCommands: CheckCommandRepository,
     private readonly calls: AgentCallRepository,
     private readonly launcher: AgentLauncher,
+    private readonly stream: AttemptStream,
   ) {}
 
   /**
@@ -271,8 +273,9 @@ export class RunSettler {
 
   /**
    * The visit of an attempt whose process died, charged with what the log holds for the attempt: the streamed cost
-   * of its rows that no stored visit holds yet. The run is saved with it: `waiting` with the relaunch command when
-   * the decision says so, else `failed`. The decision is taken after the charge, the last thing that takes time here.
+   * of its rows that no stored visit holds yet, and the requests its output files hold that no server read. The run
+   * is saved with it: `waiting` with the relaunch command when the decision says so, else `failed`. The decision is
+   * taken after the charge, the last thing that takes time here.
    */
   private async interrupted(run: RunEntity, decide: () => Promise<RelaunchDecision>): Promise<RelaunchDecision> {
     const now = this.clock.iso();
@@ -280,6 +283,11 @@ export class RunSettler {
     const model = agent?.model ?? null;
     if (run.activeAttempt !== null) {
       await this.launcher.closeLeftOpen({ attemptId: run.activeAttempt });
+      for (const streamed of await this.stream.read(run, (step) =>
+        stepOutput(this.root, run.key, step, run.activeAttempt),
+      )) {
+        await this.launcher.countStream(streamed.subject, streamed.agent, streamed.requests);
+      }
     }
     const rows = run.activeAttempt === null ? [] : await this.calls.rowsOfAttempt(run.activeAttempt);
     const charge = figuresOf(rows);

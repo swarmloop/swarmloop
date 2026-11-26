@@ -100,6 +100,15 @@ describe('AgentCallRepository', () => {
       expect(Object.keys(JSON.parse(row?.prices ?? '{}'))).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5']);
     }));
 
+  it('keeps what the first request read from the cache, once', () =>
+    withLog(async (log) => {
+      const id = await log.open(start());
+      expect((await log.lastRowOfChat('chat-1'))?.firstCacheReadTokens).toBeNull();
+      await log.addRequest(id, request({ cacheRead: 100 }));
+      await log.addRequest(id, request({ cacheRead: 300 }));
+      expect(await log.lastRowOfChat('chat-1')).toMatchObject({ firstCacheReadTokens: 100, cacheReadTokens: 400 });
+    }));
+
   it('loses nothing when requests are added at the same time', () =>
     withLog(async (log) => {
       const id = await log.open(start());
@@ -225,6 +234,15 @@ describe('AgentCallRepository', () => {
       expect(await log.addStop('chat-none', 'run-closed', LATER)).toBeNull();
     }));
 
+  it('takes the last call of a chat without the mark where its pings stopped', () =>
+    withLog(async (log) => {
+      const call = await log.open(start());
+      const stop = await log.addStop('chat-1', 'cap-reached', LATER);
+      expect((await log.lastRowOfChat('chat-1'))?.id).toBe(stop);
+      expect((await log.lastCallOfChat('chat-1'))?.id).toBe(call);
+      expect(await log.lastCallOfChat('chat-none')).toBeNull();
+    }));
+
   it('sums the spend and tokens of a run over calls, helpers and pings, cache tokens included', () =>
     withLog(async (log) => {
       const call = await log.open(start());
@@ -255,14 +273,13 @@ describe('AgentCallRepository', () => {
       expect(await log.lastRowOfChat('chat-1')).toMatchObject({ id: again });
     }));
 
-  it('reads an attempt over its unlinked rows only', () =>
+  it('reads the rows of an attempt that no visit holds yet', () =>
     withLog(async (log) => {
       const linked = await log.open(start({ attemptId: 'a1', chatId: 'c-linked' }));
       await log.addRequest(linked, request({ usd: 1 }));
       const open = await log.open(start({ attemptId: 'a1', chatId: 'c-open' }));
       await log.addRequest(open, request({ usd: 0.5 }));
       await log.linkVisit([linked], 4);
-      expect(await log.spendOfAttempt('a1')).toBe(0.5);
       expect((await log.rowsOfAttempt('a1')).map((row) => row.id)).toEqual([open]);
       expect(await log.spendOfRun('run-1')).toBe(1.5);
     }));

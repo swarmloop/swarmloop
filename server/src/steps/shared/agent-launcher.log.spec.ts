@@ -301,6 +301,19 @@ describe('the log the launcher writes', () => {
     });
   });
 
+  it("links the call after a stop of the chat's pings to the chat's last call, not to the stop", async () => {
+    await withHarness([streams([modelRequest('m1')]), streams([modelRequest('m2')])], async (h) => {
+      await h.launcher.launch(h.request());
+      const [first] = await h.rows();
+      h.db.clock.advance(30 * 60_000);
+      await h.calls.addStop('chat-1', 'cap-reached', h.db.clock.iso());
+      await h.launcher.launch(h.request());
+      const second = (await h.rows()).find((row) => row.kind === 'call' && row.id !== first.id);
+      expect(second).toMatchObject({ previousId: first.id, resumed: 1 });
+      expect(second?.chatIdleMin).toBeCloseTo(30);
+    });
+  });
+
   it('keeps what the result charges beyond the requests that carry a price', async () => {
     const unpriced = streams([modelRequest('m1', { usd: 0, price: null })], ended({ usd: 0.5 }));
     await withHarness([unpriced], async ({ launcher, request, rows }) => {

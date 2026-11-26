@@ -8,6 +8,7 @@ import { Clock } from '../core/clock';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { RunUsageReader } from './run-usage';
 import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { BacklogRepository } from '../history/backlog.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -89,6 +90,26 @@ describe('RunListRows', () => {
       await storeRun(app.get(RunRepository), child);
       app.get(RunRepository).notify(child.key);
       expect((await rows.read()).recomputed).toBe(2);
+    }));
+
+  it('reads the cost of an open run on each read, and of an ended run with the change that ended it', () =>
+    withApp(async (app) => {
+      await seedRuns(app, 10);
+      const rows = app.get(RunListRows);
+      const costOf = async (key: string) => (await rows.read()).view.runs.find((run) => run.key === key)?.usd;
+      const calls = app.get(AgentCallRepository);
+      await seedCall(calls, { runKey: SEEDED.plain, usd: 1 });
+      await seedCall(calls, { runKey: SEEDED.done, usd: 2 });
+      expect(await costOf(SEEDED.plain)).toBe(1);
+      expect(await costOf(SEEDED.done)).toBe(2);
+
+      await seedCall(calls, { runKey: SEEDED.plain, usd: 0.5 });
+      await seedCall(calls, { runKey: SEEDED.done, usd: 4 });
+      expect(await costOf(SEEDED.plain)).toBe(1.5);
+      expect(await costOf(SEEDED.done)).toBe(2);
+
+      app.get(RunRepository).notify(SEEDED.done);
+      expect(await costOf(SEEDED.done)).toBe(6);
     }));
 
   it('keeps a list equal to a fresh build after changes, a new run, a removed run and a merged subtask', () =>

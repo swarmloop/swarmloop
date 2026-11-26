@@ -31,6 +31,8 @@ describe('AgentCallsController', () => {
       expect(totals.lines).toEqual([expect.objectContaining({ key: 'implement', usd: 2 })]);
       const timeline = await controller.timeline('a');
       expect(timeline.entries.map((entry) => entry.kind)).toEqual(['new-chat', 'ping']);
+      const implement = await controller.totals('step', 'implement');
+      expect(implement.lines).toEqual([expect.objectContaining({ key: 'implement', usd: 2 })]);
       const warm = await controller.keepWarm('50', 'a');
       expect(warm).toEqual(expect.objectContaining({ ttlMinutes: 50, pings: 1 }));
     });
@@ -42,6 +44,16 @@ describe('AgentCallsController', () => {
       await expect(controller.timeline()).rejects.toBeInstanceOf(BadRequestException);
       await expect(controller.timeline('a', 'plan')).rejects.toBeInstanceOf(BadRequestException);
       expect(() => controller.keepWarm('0')).toThrow(BadRequestException);
+    });
+  });
+
+  it('refuses a value given twice, which arrives as an array', async () => {
+    await withController(async (controller) => {
+      const twice = ['a', 'b'] as unknown as string;
+      await expect(controller.timeline(twice)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(controller.totals('task', twice)).rejects.toBeInstanceOf(BadRequestException);
+      expect(() => controller.keepWarm('60', twice)).toThrow(BadRequestException);
+      expect(() => controller.keepWarm(twice)).toThrow(BadRequestException);
     });
   });
 });

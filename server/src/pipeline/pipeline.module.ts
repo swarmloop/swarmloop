@@ -99,6 +99,7 @@ import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { StartWaits } from '../steps/shared/start-waits';
 import { QuestionHolds } from '../steps/shared/question-holds';
 import { QuestionPassOn } from './question-pass-on';
+import { AttemptStream } from './attempt-stream';
 import { RunSettler } from './run-settler';
 import { MessageTurnEntry } from './message-turn-entry';
 import { PipelineService } from './pipeline.service';
@@ -207,6 +208,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     TurnTies,
     BacklogPlanner,
     RunSettler,
+    AttemptStream,
     RunRebase,
     MergeRequestDrafts,
     RunReopen,

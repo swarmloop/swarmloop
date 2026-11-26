@@ -13,6 +13,11 @@ const TURN_STEP = 'backlog-plan';
 /** The steps whose name is the purpose of the call, when the caller names none. */
 const PLANNER_STEPS: readonly string[] = ['research', 'plan', 'plan-improve'];
 
+/** What names a call to the log: the run's key and step, its purpose, and the attempt that runs it. */
+export type CallSubject = Pick<AgentLaunchRequest, 'key' | 'step' | 'liveStep' | 'call'> & {
+  run: Pick<AgentLaunchRequest['run'], 'activeAttempt'>;
+};
+
 /** The facts of a call the log records, resolved from the run key. A turn's key is its own, never a run's. */
 export interface CallContext {
   /** Whether the owner is a run or a backlog planner's turn. */
@@ -52,14 +57,14 @@ export class CallContexts {
     private readonly starts: VisitStartRepository,
   ) {}
 
-  async resolve(request: AgentLaunchRequest): Promise<CallContext> {
+  async resolve(request: CallSubject): Promise<CallContext> {
     const step = request.liveStep ?? request.step;
     const attemptId = request.run.activeAttempt ?? undefined;
     return request.step === TURN_STEP ? this.turn(request, step, attemptId) : this.run(request, step, attemptId);
   }
 
   /** A backlog planner's turn: its key is its own, and its planner is the backlog planner. */
-  private async turn(request: AgentLaunchRequest, step: string, attemptId: string | undefined): Promise<CallContext> {
+  private async turn(request: CallSubject, step: string, attemptId: string | undefined): Promise<CallContext> {
     const turn = await this.turns.findTurn(request.key);
     const backlog = (await this.backlogs.listBacklogs()).find((row) => row.id === turn?.backlogId)?.name;
     const purpose = request.call?.purpose ?? 'backlog-turn';
@@ -76,7 +81,7 @@ export class CallContexts {
   }
 
   /** A run's call: the task, backlog and epic it belongs to, and why its step started. */
-  private async run(request: AgentLaunchRequest, step: string, attemptId: string | undefined): Promise<CallContext> {
+  private async run(request: CallSubject, step: string, attemptId: string | undefined): Promise<CallContext> {
     const run = await this.runs.findRun(request.key);
     const purpose = request.call?.purpose ?? (PLANNER_STEPS.includes(step) ? step : undefined);
     const starts = run && attemptId ? await this.starts.forRun(run.id) : [];

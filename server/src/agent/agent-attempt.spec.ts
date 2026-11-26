@@ -272,7 +272,6 @@ describe('AttemptMeter', () => {
         { model: 'b', usd: 0.25 },
       ]);
       expect(attempt.billed()).toEqual({ tokensIn: 6, tokensOut: 3, usd: 0.75 });
-      expect(attempt.requestUsage().byModel.map((entry) => entry.model)).toEqual(['a', 'b']);
     });
 
     it('settles a session total less what the chat already cost as one request', () => {

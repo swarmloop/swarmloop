@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, Not } from 'typeorm';
 import { AgentExchangeEntity } from './agent-exchange.entity';
 import type {
   AgentCallRow,
@@ -63,7 +63,7 @@ export class AgentCallRepository {
     });
   }
 
-  /** Adds one model request to the row's own sums and to its per-model usage, in the same write. */
+  /** Adds one model request to the row's own sums and to its per-model usage, in the same write. The first request also sets what the row's first request read from the cache, once. */
   addRequest(id: number, request: RequestUsage): Promise<void> {
     return this.queued(id, async () => {
       const [row] = await this.dataSource.query<{ usage: string | null; prices: string | null }[]>(
@@ -88,12 +88,14 @@ export class AgentCallRepository {
         `UPDATE agent_exchanges SET
            input_tokens = input_tokens + ?, cache_read_tokens = cache_read_tokens + ?,
            cache_write_tokens = cache_write_tokens + ?, output_tokens = output_tokens + ?,
+           first_cache_read_tokens = COALESCE(first_cache_read_tokens, ?),
            own_usd = own_usd + ?, usage = ?, prices = ? WHERE id = ?`,
         [
           own.input,
           own.cacheRead,
           own.cacheWrite,
           own.output,
+          own.cacheRead,
           own.usd,
           JSON.stringify(usage),
           JSON.stringify(prices),
@@ -262,17 +264,19 @@ export class AgentCallRepository {
     return (await this.totals('chat_id', chatId)).usd;
   }
 
-  /** What an attempt's rows cost that no stored visit holds yet. */
-  async spendOfAttempt(attemptId: string): Promise<number> {
-    return (await this.totals('attempt_id', attemptId, true)).usd;
-  }
-
   /** The rows of an attempt that no stored visit holds yet, in order. */
   rowsOfAttempt(attemptId: string): Promise<AgentCallRow[]> {
     return this.dataSource.getRepository(AgentExchangeEntity).find({
       where: { attemptId, stepStatId: 0 },
       order: { id: 'ASC' },
     });
+  }
+
+  /** Every row an attempt wrote for a step, helpers included, whether or not a visit holds it, in order. */
+  rowsOfAttemptStep(attemptId: string, step: string): Promise<AgentCallRow[]> {
+    return this.dataSource
+      .getRepository(AgentExchangeEntity)
+      .find({ where: { attemptId, step }, order: { id: 'ASC' } });
   }
 
   /** The cost of each of these runs, in one query. A run with no row is absent. */
@@ -293,18 +297,22 @@ export class AgentCallRepository {
       .find({ where: { stepStatId: statId }, order: { id: 'ASC' } });
   }
 
+  /** The last row of a chat, a ping-stop mark included: where the chat's pings stand. */
   async lastRowOfChat(chatId: string): Promise<AgentCallRow | null> {
     return this.dataSource.getRepository(AgentExchangeEntity).findOne({ where: { chatId }, order: { id: 'DESC' } });
   }
 
-  private async totals(
-    column: 'run_key' | 'turn_key' | 'chat_id' | 'attempt_id',
-    value: string,
-    unlinked = false,
-  ): Promise<CallTotals> {
+  /** The last call of a chat, a ping included and a ping-stop mark left out: the call the next one follows. */
+  async lastCallOfChat(chatId: string): Promise<AgentCallRow | null> {
+    return this.dataSource
+      .getRepository(AgentExchangeEntity)
+      .findOne({ where: { chatId, kind: Not('ping-stop') }, order: { id: 'DESC' } });
+  }
+
+  private async totals(column: 'run_key' | 'turn_key' | 'chat_id', value: string): Promise<CallTotals> {
     const [row] = await this.dataSource.query<{ usd: number | null; tokens: number | null }[]>(
       `SELECT SUM(own_usd) AS usd, SUM(input_tokens + cache_read_tokens + cache_write_tokens + output_tokens) AS tokens
-       FROM agent_exchanges WHERE ${column} = ?${unlinked ? ' AND step_stat_id = 0' : ''}`,
+       FROM agent_exchanges WHERE ${column} = ?`,
       [value],
     );
     return { usd: Number(row?.usd) || 0, tokens: Number(row?.tokens) || 0 };

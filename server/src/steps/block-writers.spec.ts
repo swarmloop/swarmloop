@@ -204,6 +204,7 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
         nothing,
         nothing,
         nothing,
+        nothing,
       );
       await settler.settleRebase(run);
       expect(run.status).toBe('blocked');

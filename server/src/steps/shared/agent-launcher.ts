@@ -140,6 +140,11 @@ export class AgentLauncher {
     await this.calls?.closeLeftOpen(scope);
   }
 
+  /** Counts the requests an attempt's stream holds that no server read while they streamed, on the attempt's rows. */
+  async countStream(...args: Parameters<AgentCallRecorder['countStream']>): Promise<void> {
+    await this.calls?.countStream(...args);
+  }
+
   /** A launch on another runtime mounts the CLI of that runtime into the project image. */
   private async moved(from: AgentLaunchRequest, to: AgentLaunchRequest): Promise<AgentLaunchRequest> {
     return from.runtime === to.runtime || !to.projectFor ? to : { ...to, project: await to.projectFor(to.runtime) };

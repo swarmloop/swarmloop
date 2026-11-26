@@ -1,6 +1,7 @@
 import { CommandActor1796800000000 } from './1796800000000-command-actor';
 import { VisitStarts1797000000000 } from './1797000000000-visit-starts';
 import { AgentCallLog1797300000000 } from './1797300000000-agent-call-log';
+import { AgentCallFirstRead1797300000001 } from './1797300000001-agent-call-first-read';
 import { AgentExchangeChatIndex1797000000002 } from './1797000000002-agent-exchange-chat-index';
 import { BlockedCodes1797100000000 } from './1797100000000-blocked-codes';
 import { ExchangeReportedTotals1797200000000 } from './1797200000000-exchange-reported-totals';
@@ -111,4 +112,5 @@ export const migrations = [
   PersonAvatar1797500000000,
   FlowCause1797500000001,
   AgentCallLog1797300000000,
+  AgentCallFirstRead1797300000001,
 ];

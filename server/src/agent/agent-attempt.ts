@@ -1,7 +1,7 @@
 import type { Logger } from '@nestjs/common';
 import { type DecisionWatch, findPrice, hasModelDecision, type ModelPrice, noteDecision, priceTokens } from './limits';
 import { sinceRecorded, type ChatUsage } from './since-recorded';
-import { type PricedRequest, RequestLedger, type RequestUsage } from './request-usage';
+import { type PricedRequest, RequestLedger } from './request-usage';
 import { partOfTotal, readStreamLine, type StreamPiece, takeAnswer } from './stream';
 import type { ModelUsage, OwnUsage } from './stream-usage';
 import { addGuessedLine, emptyUsageGuess } from './stream-guess';
@@ -90,11 +90,6 @@ export class AttemptMeter {
     }
     this.noteRequest(piece);
     this.crossCheck(piece);
-  }
-
-  /** The call's requests per model and per helper at the launch's prices. Without per-request usage: the final line's. */
-  requestUsage(): RequestUsage {
-    return (this.ledger.size > 0 ? this.ledger : this.fallback).usage();
   }
 
   /**

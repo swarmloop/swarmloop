@@ -67,6 +67,23 @@ describe('AgentCallQueries totals', () => {
     });
   });
 
+  it('keeps one step of a task and of an epic with its parts, backlog turns included', async () => {
+    await withLog(async (log, queries) => {
+      await seed(log);
+      expect(await queries.totals('task', 'implement')).toEqual([
+        expect.objectContaining({ key: 'a', backlogTurns: false, usd: 1, calls: 1 }),
+      ]);
+      expect(await queries.totals('epic', 'implement')).toEqual([
+        expect.objectContaining({ key: 'epic-1', part: null, usd: 24, calls: 2 }),
+        expect.objectContaining({ key: 'epic-1', part: 'part-1', usd: 8 }),
+        expect.objectContaining({ key: 'epic-1', part: 'part-2', usd: 16 }),
+      ]);
+      expect(await queries.totals('epic', 'backlog-plan')).toEqual([
+        expect.objectContaining({ key: 'epic-1', part: null, backlogTurns: true, usd: 0.5 }),
+      ]);
+    });
+  });
+
   it('does not count the mark where the pings of a chat stopped as a call', async () => {
     await withLog(async (log, queries) => {
       await seedCall(log, { usd: 1, start: { taskSlug: 'a', step: 'implement', chatId: 'c1' } });
@@ -200,6 +217,19 @@ describe('AgentCallQueries keep-warm', () => {
       expect(view.cost).toBeCloseTo(0.02);
       expect(view.saving).toBeCloseTo((50_000 * 7.8) / 1e6 - 0.02);
       expect(view.chats).toEqual([expect.objectContaining({ chatId: 'c1', pings: 3 })]);
+    });
+  });
+
+  it('prices what the first request of a long resumed call read, not the sum of its requests', async () => {
+    await withLog(async (log, queries) => {
+      const first = await seedCall(log, { start: { chatId: 'c1', startedAt: at(10) }, end: { finishedAt: at(10, 5) } });
+      await seedPing(log, { chatId: 'c1', previousId: first, startedAt: at(10, 55), usd: 0 });
+      await seedCall(log, {
+        cacheRead: 50_000,
+        laterCacheRead: 70_000,
+        start: { chatId: 'c1', startedAt: at(12), resumed: true, previousId: first },
+      });
+      expect((await queries.keepWarm(60)).saving).toBeCloseTo((50_000 * 7.8) / 1e6);
     });
   });
 

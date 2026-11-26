@@ -13,6 +13,8 @@ interface Seeded {
   usd?: number;
   cacheRead?: number;
   cacheWrite?: number;
+  /** What a second request of the call read from the cache; the first request's read is `cacheRead`. */
+  laterCacheRead?: number;
   end?: Partial<CallEnd>;
   ties?: { task?: string; epic?: string; general: boolean }[];
 }
@@ -38,6 +40,17 @@ export async function seedCall(log: AgentCallRepository, seeded: Seeded): Promis
     usd: seeded.usd ?? 0,
     price: PRICE,
   });
+  if (seeded.laterCacheRead !== undefined) {
+    await log.addRequest(id, {
+      model: seeded.start.model ?? 'claude-opus-5-5',
+      input: 0,
+      cacheRead: seeded.laterCacheRead,
+      cacheWrite: 0,
+      output: 0,
+      usd: 0,
+      price: PRICE,
+    });
+  }
   if (seeded.ties) {
     await log.setTies(id, seeded.ties);
   }

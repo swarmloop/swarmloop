@@ -18,8 +18,8 @@ import { VisitRepository } from '../history/visit.repository';
 import type { RunWaitEntity } from '../history/run-wait.entity';
 import { RunWaitLog } from '../history/run-wait.log';
 import { LiveHub } from '../live/live.hub';
+import { overOf } from '../pipeline/keep-warm/ping-candidates';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { spendLookup } from '../steps/shared/run-spend';
 import { epicTotal } from '../steps/shared/epic-total';
 import { runName } from './run-view/flow';
 import { listPlans, listStates } from './run-view/list-state';
@@ -44,6 +44,8 @@ interface KeptRun {
   /** The steps the run's open relaunch still has to run; read only while the run has not ended. */
   relaunch: string[] | undefined;
   label: RunBacklog | undefined;
+  /** What the run's rows in the log cost; read again on each list read only while the run can still gain rows. */
+  usd: number;
   claimed: boolean;
 }
 
@@ -92,11 +94,8 @@ export class RunListRows implements OnModuleDestroy {
       await this.waitLog.settled();
       const table = await this.etaSummary.table();
       const recomputed = await this.refresh();
-      const usdOf = await spendLookup(
-        [...this.kept.values()].map((entry) => entry.run),
-        this.calls,
-      );
-      return { view: this.assemble(table, usdOf), recomputed };
+      await this.refreshSpend();
+      return { view: this.assemble(table), recomputed };
     });
     this.tail = next.catch(() => undefined);
     return next;
@@ -123,6 +122,16 @@ export class RunListRows implements OnModuleDestroy {
       for (const key of taken) this.dirty.add(key);
       throw error;
     }
+  }
+
+  /**
+   * A run whose chats can still be pinged or that can still run gains rows without a change of the run, so its cost is
+   * read again here. The cost of an ended run was read with the run, by the change that ended it.
+   */
+  private async refreshSpend(): Promise<void> {
+    const open = [...this.kept.values()].filter((entry) => overOf(entry.run) === null);
+    const sums = await this.calls.spendOfRuns(open.map((entry) => entry.run.key));
+    for (const entry of open) entry.usd = sums.get(entry.run.key) ?? 0;
   }
 
   /** A run the pipeline now holds is not the run its state was read for. */
@@ -165,6 +174,7 @@ export class RunListRows implements OnModuleDestroy {
     const unended = runs.filter((run) => run.status !== 'done').map((run) => run.id);
     const waits = await this.waitLog.waitsOf(unended);
     const relaunches = await relaunchSteps(this.flows, this.visits, unended);
+    const costs = await this.calls.spendOfRuns(runs.map((run) => run.key));
     for (const run of runs) {
       this.kept.set(run.key, {
         run,
@@ -175,13 +185,14 @@ export class RunListRows implements OnModuleDestroy {
         waits: waits.get(run.id) ?? [],
         relaunch: relaunches.get(run.id),
         label: labels.get(run.key),
+        usd: costs.get(run.key) ?? 0,
         claimed: claimed.get(run.key) ?? false,
       });
     }
   }
 
   /** Puts the rows together from the kept facts, in memory. */
-  private assemble(table: EtaTable, usdOf: (run: RunEntity) => number): RunsView {
+  private assemble(table: EtaTable): RunsView {
     const entries = [...this.kept.values()].sort((a, b) => newestFirst(a.run, b.run));
     const runs = entries.map((entry) => entry.run);
     const keys = new Map(runs.map((run) => [run.id, run.key]));
@@ -191,6 +202,7 @@ export class RunListRows implements OnModuleDestroy {
       if (entry.plan) plans.set(entry.run.key, entry.plan);
     }
     const waits = mergeWaits(plans, runs, keys);
+    const usdOf = (run: RunEntity): number => this.kept.get(run.key)?.usd ?? 0;
     const states = listStates(runs, { keys, childrenOf, plans }, new Map(entries.map((e) => [e.run.key, e.own])));
     return {
       runs: entries.map((entry) => {

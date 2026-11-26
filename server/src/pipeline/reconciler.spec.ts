@@ -7,6 +7,7 @@ import { REASON } from '../contract/run-state';
 import { PlanChatStore } from '../history/plan-chat.store';
 import type { StepEvent } from '../contract/step-events';
 import { AppConfig } from '../config/env';
+import { agentFor } from '../config/agents';
 import { attemptOutputPath } from '../core/attempt-output';
 import { AgentCallRepository } from '../history/agent-call.repository';
 import { seedCall } from '../history/agent-call.spec-helpers';
@@ -39,6 +40,29 @@ type AcceptedCall = [command: string, key: string, args: unknown, options: unkno
 interface SandboxOverrides {
   attemptRunning?: () => Promise<boolean | null>;
   dockerAnswers?: () => Promise<boolean>;
+}
+
+/** One streamed request of the model the seeded rows name, as the CLI writes it. */
+function assistantLine(id: string, usage: { input: number; output: number }): string {
+  return JSON.stringify({
+    type: 'assistant',
+    message: {
+      id,
+      model: 'claude-opus-5-5',
+      usage: { input_tokens: usage.input, output_tokens: usage.output },
+    },
+  });
+}
+
+/** A fresh price table for the runtime that runs the implement step, as `loadPriceTable` writes it. */
+async function cachePrices(world: TestApp): Promise<void> {
+  const agent = agentFor(world.app.get(AppConfig).env, null, 'implement');
+  const row = { inputPerMillion: 10, outputPerMillion: 20, cacheReadPerMillion: 1, cacheWritePerMillion: 5 };
+  await mkdir(join(world.root, 'data'), { recursive: true });
+  await writeFile(
+    join(world.root, 'data', `price-cache-${agent.runtime}.json`),
+    JSON.stringify({ fetchedAt: world.clock.iso(), prices: { 'claude-opus-5-5': row } }),
+  );
 }
 
 describe('reconciler waits and automatic tries', () => {
@@ -458,6 +482,47 @@ describe('reconciler waits and automatic tries', () => {
         tokensIn: 0,
         tokensOut: 0,
       });
+    });
+
+    it('charges the requests its output file holds beyond the rows, and gives an attempt with no row a row of its own', async () => {
+      const world = await boot();
+      const messages = [
+        assistantLine('m1', { input: 1000, output: 100 }),
+        assistantLine('m2', { input: 2000, output: 50 }),
+      ];
+      const begun = await world.app.get(RunRepository).begin(KEY, 'implement');
+      const attemptId = begun.activeAttempt!;
+      await cachePrices(world);
+      await writeFile(attemptOutputPath(world.root, KEY, 'implement', attemptId), messages.join('\n'));
+      // The first request was read as it streamed; the second came after the restart.
+      await seedCall(world.app.get(AgentCallRepository), {
+        runKey: KEY,
+        attemptId,
+        usd: 0.012,
+        input: 1000,
+        output: 100,
+      });
+
+      await world.app.get(Reconciler).reconcile(begun);
+
+      const run = (await world.app.get(RunRepository).findRun(KEY))!;
+      const [visit] = await world.app.get(VisitRepository).listStats(run.id);
+      expect(visit).toMatchObject({ killReason: 'process died', tokensIn: 3000, tokensOut: 150 });
+      expect(visit.usd).toBeCloseTo(0.033);
+      expect(run.spentUsd).toBeCloseTo(0.033);
+      expect(await world.app.get(VisitRepository).listExchanges([visit.id])).toHaveLength(1);
+
+      const bare = await world.app.get(RunRepository).begin('PROJ-798', 'implement');
+      await cachePrices(world);
+      await writeFile(attemptOutputPath(world.root, 'PROJ-798', 'implement', bare.activeAttempt!), messages[0]);
+      await world.app.get(Reconciler).reconcile(bare);
+      const stored = (await world.app.get(RunRepository).findRun('PROJ-798'))!;
+      const [only] = await world.app.get(VisitRepository).listStats(stored.id);
+      expect(only).toMatchObject({ tokensIn: 1000, tokensOut: 100 });
+      expect(only.usd).toBeCloseTo(0.012);
+      expect(await world.app.get(VisitRepository).listExchanges([only.id])).toEqual([
+        expect.objectContaining({ endKind: 'failed', errorText: 'process died', ownUsd: expect.closeTo(0.012) }),
+      ]);
     });
 
     it('closes the rows a dead attempt left open and links them, with the rows of other attempts left alone', async () => {

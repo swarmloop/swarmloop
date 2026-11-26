@@ -16,33 +16,39 @@ const SUMS = `SUM(own_usd) AS usd, COUNT(*) AS calls, SUM(input_tokens) AS input
   SUM(cache_read_tokens) AS cacheReadTokens, SUM(cache_write_tokens) AS cacheWriteTokens,
   SUM(output_tokens) AS outputTokens`;
 
+/** The condition that keeps one step's rows, or nothing when no step is asked for. It binds one value. */
+function stepIs(asked: boolean, prefix = ''): string {
+  return asked ? ` AND ${prefix}step = ?` : '';
+}
+
 /** The rows of backlog turns, once for each key their ties name. */
-function tiedTo(field: 'task' | 'epic'): string {
+function tiedTo(field: 'task' | 'epic', asked: boolean): string {
   return `WITH tied AS (
     SELECT DISTINCT e.id AS id, json_extract(j.value, '$.${field}') AS k
     FROM agent_exchanges e, json_each(CASE WHEN json_valid(e.ties) THEN e.ties ELSE '[]' END) j
-    WHERE e.turn_key IS NOT NULL)
+    WHERE e.turn_key IS NOT NULL${stepIs(asked, 'e.')})
   SELECT k AS key, NULL AS part, 1 AS backlogTurns, ${SUMS}
   FROM tied JOIN agent_exchanges ON agent_exchanges.id = tied.id WHERE k IS NOT NULL GROUP BY k`;
 }
 
-function groupedBy(column: string, extra = ''): string {
+function groupedBy(column: string, asked: boolean, extra = ''): string {
   return `SELECT ${column} AS key, NULL AS part, 0 AS backlogTurns, ${SUMS}
-    FROM agent_exchanges WHERE ${column} IS NOT NULL AND kind != 'ping-stop'${extra} GROUP BY ${column}`;
+    FROM agent_exchanges WHERE ${column} IS NOT NULL AND kind != 'ping-stop'${extra}${stepIs(asked)} GROUP BY ${column}`;
 }
 
-const TOTALS: Record<CallTotalsBy, string[]> = {
-  task: [groupedBy('task_slug', ' AND turn_key IS NULL'), tiedTo('task')],
-  epic: [
-    groupedBy('epic_key', ' AND turn_key IS NULL'),
+/** The queries of each grouping. Each holds the step condition once, so a step narrows every line of the grouping. */
+const TOTALS: Record<CallTotalsBy, (asked: boolean) => string[]> = {
+  task: (asked) => [groupedBy('task_slug', asked, ' AND turn_key IS NULL'), tiedTo('task', asked)],
+  epic: (asked) => [
+    groupedBy('epic_key', asked, ' AND turn_key IS NULL'),
     `SELECT epic_key AS key, run_key AS part, 0 AS backlogTurns, ${SUMS} FROM agent_exchanges
-     WHERE epic_key IS NOT NULL AND run_key IS NOT NULL AND run_key != epic_key AND turn_key IS NULL AND kind != 'ping-stop'
+     WHERE epic_key IS NOT NULL AND run_key IS NOT NULL AND run_key != epic_key AND turn_key IS NULL AND kind != 'ping-stop'${stepIs(asked)}
      GROUP BY epic_key, run_key`,
-    tiedTo('epic'),
+    tiedTo('epic', asked),
   ],
-  step: [groupedBy('step')],
-  level: [groupedBy('planner_level')],
-  backlog: [groupedBy('backlog')],
+  step: (asked) => [groupedBy('step', asked)],
+  level: (asked) => [groupedBy('planner_level', asked)],
+  backlog: (asked) => [groupedBy('backlog', asked)],
 };
 
 const TIMELINE_COLUMN: Record<CallTimelineScope, string> = { task: 'task_slug', step: 'step', epic: 'epic_key' };
@@ -80,10 +86,11 @@ function number(value: unknown): number {
 export class AgentCallQueries {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async totals(by: CallTotalsBy): Promise<CallTotalsLine[]> {
+  /** The sums of each key of a grouping; with `step`, only the rows of that step, e.g. what implement cost on each epic. */
+  async totals(by: CallTotalsBy, step?: string): Promise<CallTotalsLine[]> {
     const lines: CallTotalsLine[] = [];
-    for (const sql of TOTALS[by]) {
-      const rows = await this.dataSource.query<Record<string, unknown>[]>(sql);
+    for (const sql of TOTALS[by](step !== undefined)) {
+      const rows = await this.dataSource.query<Record<string, unknown>[]>(sql, step === undefined ? [] : [step]);
       for (const row of rows) {
         lines.push({
           key: row.key as string,
@@ -135,8 +142,8 @@ export class AgentCallQueries {
   /**
    * Pings, hits (a ping that wrote at most a tenth of what it read), misses, their cost and the saving.
    * The saving of a call that resumed a chat after a pause above `ttlMinutes` with pings in between is what its
-   * first request read from the cache, priced at write minus read, less what those pings cost. A row holds the sum of
-   * its requests, so its cache read stands for the first request's. Pings of a chat with no later call are cost only.
+   * first request read from the cache, priced at write minus read, less what those pings cost. A row keeps its first
+   * request's cache read apart from the sum of its requests. Pings of a chat with no later call are cost only.
    */
   async keepWarm(ttlMinutes: number, scope: KeepWarmScope = {}): Promise<KeepWarmView> {
     const [where, params] = scopeWhere(scope, 'e');
@@ -149,7 +156,7 @@ export class AgentCallQueries {
       params,
     );
     const calls = await this.dataSource.query<Record<string, unknown>[]>(
-      `SELECT e.chat_id AS chatId, e.model AS model, e.cache_read_tokens AS cacheRead, e.prices AS prices,
+      `SELECT e.chat_id AS chatId, e.model AS model, COALESCE(e.first_cache_read_tokens, 0) AS cacheRead, e.prices AS prices,
          (SELECT COUNT(*) FROM agent_exchanges g WHERE g.kind = 'ping' AND g.chat_id = e.chat_id
             AND g.started_at > p.started_at AND g.started_at < e.started_at) AS pings,
          (SELECT COALESCE(SUM(g.own_usd), 0) FROM agent_exchanges g WHERE g.kind = 'ping' AND g.chat_id = e.chat_id

@@ -1,4 +1,4 @@
-import { foldRequestUsage, RequestLedger } from './request-usage';
+import { type PricedRequest, RequestLedger } from './request-usage';
 import { readStreamLine } from './stream';
 
 const prices = {
@@ -28,15 +28,22 @@ function assistant(
   });
 }
 
-function ledgerOf(...lines: string[]): RequestLedger {
+/** The ledger after the lines, and each request it priced on the way. */
+function takenFrom(...lines: string[]): { ledger: RequestLedger; priced: PricedRequest[] } {
   const ledger = new RequestLedger(prices, 'opus');
+  const priced: PricedRequest[] = [];
   for (const line of lines) {
     const request = readStreamLine(line)?.request;
-    if (request) {
-      ledger.add(request);
+    const taken = request ? ledger.add(request) : null;
+    if (taken) {
+      priced.push(taken);
     }
   }
-  return ledger;
+  return { ledger, priced };
+}
+
+function ledgerOf(...lines: string[]): RequestLedger {
+  return takenFrom(...lines).ledger;
 }
 
 describe('RequestLedger', () => {
@@ -61,29 +68,31 @@ describe('RequestLedger', () => {
   });
 
   it('prices each request at its own model, and an unknown model as the launch model', () => {
-    const ledger = ledgerOf(
+    const { ledger, priced } = takenFrom(
       assistant('m1', 'opus', { input: 1000, read: 2000, write: 3000, output: 100 }),
       assistant('m2', 'sonnet', { input: 1000, output: 100 }),
       assistant('m3', 'mystery', { input: 1000 }),
     );
-    const byModel = Object.fromEntries(ledger.byModel().map((entry) => [entry.model, entry.usd]));
-    expect(byModel.opus).toBeCloseTo((1000 * 10 + 2000 * 1 + 3000 * 5 + 100 * 20) / 1e6);
-    expect(byModel.sonnet).toBeCloseTo((1000 * 2 + 100 * 4) / 1e6);
-    expect(byModel.mystery).toBeCloseTo((1000 * 10) / 1e6);
-    expect(Object.keys(ledger.priceRows())).toEqual(['opus', 'sonnet', 'mystery']);
+    const usd = Object.fromEntries(priced.map((request) => [request.model, request.usd]));
+    expect(usd.opus).toBeCloseTo((1000 * 10 + 2000 * 1 + 3000 * 5 + 100 * 20) / 1e6);
+    expect(usd.sonnet).toBeCloseTo((1000 * 2 + 100 * 4) / 1e6);
+    expect(usd.mystery).toBeCloseTo((1000 * 10) / 1e6);
+    expect(priced.map((request) => request.price)).toEqual([prices.opus, prices.sonnet, prices.opus]);
+    expect(ledger.hasUnpriced()).toBe(false);
   });
 
-  it('keeps a helper apart by parent_tool_use_id and out of the main agent', () => {
-    const ledger = ledgerOf(
+  it('keeps a helper apart by parent_tool_use_id', () => {
+    const { ledger, priced } = takenFrom(
       assistant('m1', 'opus', { input: 100 }),
       assistant('h1', 'sonnet', { input: 1000 }, 'tool-a'),
       assistant('h2', 'sonnet', { input: 500 }, 'tool-a'),
       assistant('h3', 'sonnet', { input: 200 }, 'tool-b'),
     );
-    expect(ledger.byModel().map((entry) => entry.model)).toEqual(['opus']);
-    expect(ledger.helpers().map((helper) => [helper.parentToolUseId, helper.usage.input])).toEqual([
-      ['tool-a', 1500],
-      ['tool-b', 200],
+    expect(priced.map((request) => [request.messageId, request.parentToolUseId])).toEqual([
+      ['m1', null],
+      ['h1', 'tool-a'],
+      ['h2', 'tool-a'],
+      ['h3', 'tool-b'],
     ]);
     expect(ledger.totals().usd).toBeCloseTo((100 * 10 + 1700 * 2) / 1e6);
   });
@@ -93,10 +102,11 @@ describe('RequestLedger', () => {
       type: 'turn.completed',
       usage: { input_tokens: 1000, cached_input_tokens: 800, output_tokens: 10 },
     });
-    const ledger = ledgerOf(turn, turn);
+    const { ledger, priced } = takenFrom(turn, turn);
     expect(ledger.size).toBe(2);
-    expect(ledger.byModel()).toEqual([
-      { model: 'opus', input: 400, cacheRead: 1600, cacheWrite: 0, output: 20, usd: expect.any(Number) },
+    expect(priced).toEqual([
+      expect.objectContaining({ model: 'opus', input: 200, cacheRead: 800, cacheWrite: 0, output: 10 }),
+      expect.objectContaining({ model: 'opus', input: 200, cacheRead: 800, cacheWrite: 0, output: 10 }),
     ]);
   });
 
@@ -109,21 +119,5 @@ describe('RequestLedger', () => {
     expect(
       ledgerOf('{"type":"result","usage":{"input_tokens":5}}', '{"type":"assistant","message":{"id":"m"}}').size,
     ).toBe(0);
-  });
-});
-
-describe('foldRequestUsage', () => {
-  it('adds the same model and the same helper over two launches', () => {
-    const first = ledgerOf(assistant('a', 'opus', { input: 10 }), assistant('h', 'sonnet', { input: 5 }, 't')).usage();
-    const second = ledgerOf(
-      assistant('b', 'opus', { input: 20 }),
-      assistant('h2', 'sonnet', { input: 7 }, 't'),
-    ).usage();
-    const folded = foldRequestUsage(first, second);
-    expect(folded.byModel.map((entry) => [entry.model, entry.input])).toEqual([['opus', 30]]);
-    expect(folded.helpers.map((helper) => [helper.parentToolUseId, helper.usage.input, helper.usd])).toEqual([
-      ['t', 12, (12 * 2) / 1e6],
-    ]);
-    expect(Object.keys(folded.prices).sort()).toEqual(['opus', 'sonnet']);
   });
 });

@@ -282,7 +282,6 @@ export class AgentLaunch {
         tokensIn: priced.tokensIn,
         tokensOut: priced.tokensOut,
         usd: priced.usd,
-        ...meter.requestUsage(),
         reported: meter.reported(),
         killReason: finalKillReason,
         exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,

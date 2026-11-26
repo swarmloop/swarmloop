@@ -12,18 +12,28 @@ const TOTALS_BY: readonly CallTotalsBy[] = ['task', 'epic', 'step', 'level', 'ba
 const DEFAULT_TTL_MINUTES = 60;
 const MAX_TTL_MINUTES = 7 * 24 * 60;
 
+/** A query value is a string given once: a repeated key arrives as an array. */
+function givenOnce(values: Record<string, unknown>): void {
+  for (const [name, value] of Object.entries(values)) {
+    if (value !== undefined && typeof value !== 'string') {
+      throw new BadRequestException(`${name} is given once`);
+    }
+  }
+}
+
 @Controller('agent-calls')
 export class AgentCallsController {
   constructor(private readonly queries: AgentCallQueries) {}
 
-  /** `by`: task, epic, step, level or backlog. */
+  /** `by`: task, epic, step, level or backlog. `step` keeps only that step's rows. */
   @Get('totals')
-  async totals(@Query('by') by?: string): Promise<CallTotalsView> {
+  async totals(@Query('by') by?: string, @Query('step') step?: string): Promise<CallTotalsView> {
+    givenOnce({ by, step });
     const grouping = TOTALS_BY.find((name) => name === by);
     if (!grouping) {
       throw new BadRequestException(`by must be one of ${TOTALS_BY.join(', ')}`);
     }
-    return { by: grouping, lines: await this.queries.totals(grouping) };
+    return { by: grouping, lines: await this.queries.totals(grouping, step || undefined) };
   }
 
   /** Exactly one of `task`, `step` or `epic`. */
@@ -33,6 +43,7 @@ export class AgentCallsController {
     @Query('step') step?: string,
     @Query('epic') epic?: string,
   ): Promise<CallTimelineView> {
+    givenOnce({ task, step, epic });
     const named = (
       [
         ['task', task],
@@ -55,6 +66,7 @@ export class AgentCallsController {
     @Query('epic') epic?: string,
     @Query('step') step?: string,
   ): Promise<KeepWarmView> {
+    givenOnce({ ttl, task, epic, step });
     const minutes = ttl === undefined || ttl === '' ? DEFAULT_TTL_MINUTES : Number(ttl);
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_TTL_MINUTES) {
       throw new BadRequestException(`ttl must be a whole number from 1 to ${MAX_TTL_MINUTES}`);

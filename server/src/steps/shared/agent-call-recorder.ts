@@ -4,13 +4,14 @@ import type { PricedRequest } from '../../agent/request-usage';
 import type { ChatUsage } from '../../agent/since-recorded';
 import { NO_USAGE } from '../../agent/since-recorded';
 import { Clock } from '../../core/clock';
-import type { AgentCallRow, CallStart, OpenScope, RequestUsage, Tie } from '../../history/agent-call';
+import type { AgentCallRow, CallStart, ModelUsage, OpenScope, RequestUsage, Tie } from '../../history/agent-call';
 import { AgentCallRepository } from '../../history/agent-call.repository';
 import type { AgentLaunchRequest, PingCall } from './agent-launch-request';
 import { CallContexts } from './call-context';
-import type { CallContext } from './call-context';
+import type { CallContext, CallSubject } from './call-context';
 import { endOf } from './call-end';
 import type { CallOutcome } from './call-end';
+import { loggedPrice, uncountedUsage } from './uncounted-usage';
 
 /** What the launcher says of a launch that the request does not carry. */
 export interface CallOpening {
@@ -44,9 +45,7 @@ function difference(next: PricedRequest, last: PricedRequest | undefined): Reque
     cacheWrite: next.cacheWrite - (last?.cacheWrite ?? 0),
     output: next.output - (last?.output ?? 0),
     usd: next.usd - (last?.usd ?? 0),
-    price: Object.fromEntries<number>(
-      Object.entries(next.price ?? {}).filter((entry): entry is [string, number] => entry[1] !== null),
-    ),
+    price: loggedPrice(next.price),
   };
 }
 
@@ -168,7 +167,7 @@ export class AgentCallRecorder {
   /** Opens the row of a launch, with the spend of its owner and the chat it resumes. */
   async begin(request: AgentLaunchRequest, opening: CallOpening): Promise<OpenCall> {
     const context = await this.contexts.resolve(request);
-    const last = opening.chatId === null ? null : await this.calls.lastRowOfChat(opening.chatId);
+    const last = opening.chatId === null ? null : await this.calls.lastCallOfChat(opening.chatId);
     const draft = this.draft(request, context, {
       chatId: opening.chatId ?? undefined,
       resumed: opening.chatId !== null,
@@ -194,7 +193,7 @@ export class AgentCallRecorder {
    */
   async beginPing(request: AgentLaunchRequest, ping: PingCall): Promise<OpenCall | null> {
     const context = await this.contexts.resolve(request);
-    const last = await this.calls.lastRowOfChat(ping.chatId);
+    const last = await this.calls.lastCallOfChat(ping.chatId);
     const draft = this.draft(request, context, {
       chatId: ping.chatId,
       resumed: true,
@@ -243,13 +242,57 @@ export class AgentCallRecorder {
     return this.calls.closeLeftOpen(scope, this.clock.iso());
   }
 
+  /**
+   * Counts the requests of an attempt's stream that no server read while they streamed: a container that outlived a
+   * restart kept making them. What the attempt's rows for the step do not count yet goes on the attempt's last row
+   * no visit holds; an attempt with no such row (the old process died before opening one) gets a row of its own.
+   */
+  async countStream(
+    subject: CallSubject,
+    agent: Pick<AgentLaunchRequest, 'runtime' | 'model' | 'effort'>,
+    requests: PricedRequest[],
+  ): Promise<void> {
+    const attemptId = subject.run.activeAttempt;
+    if (attemptId === null) return;
+    const rows = await this.calls.rowsOfAttemptStep(attemptId, subject.step);
+    const owed = uncountedUsage(
+      requests,
+      rows.flatMap((row) => (row.usage ? (JSON.parse(row.usage) as ModelUsage[]) : [])),
+    );
+    if (owed.length === 0) return;
+    const open = [...rows].reverse().find((row) => row.kind === 'call' && row.stepStatId === 0);
+    const id = open?.id ?? (await this.openOrphan(subject, agent));
+    for (const usage of owed) {
+      await this.calls.addRequest(id, usage);
+    }
+  }
+
+  /** The row of a call whose process died before it wrote its own. It ends as failed, like every row a dead process left. */
+  private async openOrphan(
+    subject: CallSubject,
+    agent: Pick<AgentLaunchRequest, 'runtime' | 'model' | 'effort'>,
+  ): Promise<number> {
+    const draft = this.draft({ ...subject, ...agent, prompt: '' }, await this.contexts.resolve(subject), {
+      resumed: false,
+    });
+    const id = await this.calls.open(draft);
+    await this.calls.finish(id, {
+      endKind: 'failed',
+      errorText: 'process died',
+      finishedAt: draft.startedAt,
+      durationMs: 0,
+      responseText: '',
+    });
+    return id;
+  }
+
   /** Sets the ties of the launch's rows from the value its result block held. */
   setTies(id: number, ties: Tie[]): Promise<void> {
     return this.calls.setTies(id, ties);
   }
 
   private draft(
-    request: AgentLaunchRequest,
+    request: CallSubject & Pick<AgentLaunchRequest, 'runtime' | 'model' | 'effort' | 'prompt'>,
     context: CallContext,
     own: Partial<CallStart> & { resumed: boolean },
   ): CallStart {

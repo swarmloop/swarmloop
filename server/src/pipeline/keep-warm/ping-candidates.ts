@@ -112,8 +112,8 @@ export class PingCandidates {
   }
 }
 
-/** Why a run's chats are not pinged, or null while a visit may still come back to them. */
-function overOf(run: RunEntity): PingStopReason | null {
+/** Why a run's chats are not pinged, or null while a visit may still come back to them. A run that is over gains no more rows. */
+export function overOf(run: RunEntity): PingStopReason | null {
   const { state } = storedState(run);
   if (state === 'stopped') return 'person-stopped';
   const epic = run.parentRunId === null && run.epicAt !== null;
