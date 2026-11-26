@@ -1,4 +1,5 @@
-import { storeRun } from '../testing/store-run.spec-helpers';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { StepStatEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
@@ -13,8 +14,12 @@ import { PipelineService } from './pipeline.service';
 async function waitingRun(app: Awaited<ReturnType<typeof createTestApp>>, spentUsd: number, tokens: number) {
   const runs = app.app.get(RunRepository);
   const run = await save(runs, KEY, 'research', 'waiting');
-  run.spentUsd = spentUsd;
-  await storeRun(runs, run);
+  await seedCall(app.app.get(AgentCallRepository), {
+    runKey: run.key,
+    step: 'research',
+    usd: spentUsd,
+    output: tokens,
+  });
   await app.app
     .get(DocumentRepository)
     .putDocument(run, 'requirements', `${JSON.stringify({ prompt: 'p', tickets: [] })}\n`);
@@ -28,8 +33,6 @@ async function waitingRun(app: Awaited<ReturnType<typeof createTestApp>>, spentU
       finishedAt: now,
       durationMs: 0,
       status: 'waiting',
-      tokensIn: tokens,
-      tokensOut: 0,
     }),
   );
 }

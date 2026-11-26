@@ -7,6 +7,7 @@ import type { EtaTable, LiveRun } from '../eta/eta.types';
 import type { RunBacklog } from '../contract/backlog';
 import type { RunsView } from '../contract/api';
 import type { Subtask } from '../contract/subtask';
+import { AgentCallRepository } from '../history/agent-call.repository';
 import { BacklogRepository } from '../history/backlog.repository';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
@@ -18,6 +19,7 @@ import type { RunWaitEntity } from '../history/run-wait.entity';
 import { RunWaitLog } from '../history/run-wait.log';
 import { LiveHub } from '../live/live.hub';
 import { PipelineService } from '../pipeline/pipeline.service';
+import { spendLookup } from '../steps/shared/run-spend';
 import { epicTotal } from '../steps/shared/epic-total';
 import { runName } from './run-view/flow';
 import { listPlans, listStates } from './run-view/list-state';
@@ -25,7 +27,6 @@ import { mergeWaits } from './run-view/merge-wait';
 import { ownStates, type OwnState } from './run-view/own-state';
 import { requirementBodies, viewTitle } from './run-view/run-title';
 import { childrenByParent, listExtras } from './run-view/status';
-import { spentUsd } from './run-queries-spend';
 import { EtaSummary } from './eta-summary';
 import { relaunchSteps } from './run-view/relaunch';
 import { liveRunOf, runViewEta } from './run-view/run-eta';
@@ -77,6 +78,7 @@ export class RunListRows implements OnModuleDestroy {
     private readonly flows: FlowRepository,
     private readonly visits: VisitRepository,
     private readonly config: AppConfig,
+    private readonly calls: AgentCallRepository,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -90,7 +92,11 @@ export class RunListRows implements OnModuleDestroy {
       await this.waitLog.settled();
       const table = await this.etaSummary.table();
       const recomputed = await this.refresh();
-      return { view: this.assemble(table), recomputed };
+      const usdOf = await spendLookup(
+        [...this.kept.values()].map((entry) => entry.run),
+        this.calls,
+      );
+      return { view: this.assemble(table, usdOf), recomputed };
     });
     this.tail = next.catch(() => undefined);
     return next;
@@ -175,7 +181,7 @@ export class RunListRows implements OnModuleDestroy {
   }
 
   /** Puts the rows together from the kept facts, in memory. */
-  private assemble(table: EtaTable): RunsView {
+  private assemble(table: EtaTable, usdOf: (run: RunEntity) => number): RunsView {
     const entries = [...this.kept.values()].sort((a, b) => newestFirst(a.run, b.run));
     const runs = entries.map((entry) => entry.run);
     const keys = new Map(runs.map((run) => [run.id, run.key]));
@@ -186,7 +192,6 @@ export class RunListRows implements OnModuleDestroy {
     }
     const waits = mergeWaits(plans, runs, keys);
     const states = listStates(runs, { keys, childrenOf, plans }, new Map(entries.map((e) => [e.run.key, e.own])));
-    const usdOf = (run: RunEntity): number => spentUsd(run, this.pipeline, this.live);
     return {
       runs: entries.map((entry) => {
         const { run, durationMs, requirements, label } = entry;

@@ -266,4 +266,26 @@ describe('AgentCallRepository', () => {
       expect((await log.rowsOfAttempt('a1')).map((row) => row.id)).toEqual([open]);
       expect(await log.spendOfRun('run-1')).toBe(1.5);
     }));
+  it('sums the cost of several runs in one read and leaves out a run with no row', () =>
+    withLog(async (log) => {
+      await log.addRequest(await log.open(start({ runKey: 'run-a' })), request({ usd: 1 }));
+      await log.addRequest(await log.open(start({ runKey: 'run-a', chatId: 'chat-2' })), request({ usd: 2 }));
+      await log.addRequest(await log.open(start({ runKey: 'run-b', chatId: 'chat-3' })), request({ usd: 4 }));
+      expect(await log.spendOfRuns(['run-a', 'run-b', 'run-c'])).toEqual(
+        new Map([
+          ['run-a', 3],
+          ['run-b', 4],
+        ]),
+      );
+      expect(await log.spendOfRuns([])).toEqual(new Map());
+    }));
+
+  it('reads the rows linked to a stored visit, in order', () =>
+    withLog(async (log) => {
+      const first = await log.open(start());
+      const second = await log.open(start({ chatId: 'chat-2' }));
+      await log.open(start({ chatId: 'chat-3' }));
+      await log.linkVisit([second, first], 7);
+      expect((await log.rowsOfVisit(7)).map((row) => row.id)).toEqual([first, second]);
+    }));
 });

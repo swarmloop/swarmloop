@@ -7,6 +7,7 @@ import { SUBTASKS_KIND } from '../contract/subtask';
 import { BacklogRepository } from '../history/backlog.repository';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
+import { AgentCallRepository } from '../history/agent-call.repository';
 import type { RunEntity } from '../history/entities';
 import { FlowRepository } from '../history/flow.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -32,6 +33,7 @@ export async function freshView(app: TestingModule) {
     app.get(FlowRepository),
     app.get(VisitRepository),
     app.get(AppConfig),
+    app.get(AgentCallRepository),
     app.get(LiveHub),
   );
   try {

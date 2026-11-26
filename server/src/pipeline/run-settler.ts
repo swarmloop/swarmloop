@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { agentFor } from '../config/agents';
-import { chargeStream } from '../agent/spend';
-import { loadPriceTable } from '../agent/prices';
 import { resolveRepoRoot } from '../config/repo-root';
 import { ERROR_CODES } from '../contract/error-codes';
 import type { InterruptionNote } from '../contract/interruption';
@@ -16,6 +14,8 @@ import { HostUnavailable } from '../core/swarmloop-error';
 import { isStep } from '../core/pipeline-result';
 import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
 import type { CommandEntity, RunEntity, StepStatEntity } from '../history/entities';
+import { figuresOf } from '../history/agent-call';
+import { AgentCallRepository } from '../history/agent-call.repository';
 import { CheckCommandRepository } from '../history/check-command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -28,7 +28,6 @@ import { fingerprintOf, parseJournal, unfinished, REBASE_JOURNAL } from '../git/
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { RunRebase } from '../steps/run-rebase';
 import { dockerWait } from '../steps/step-error-end';
-import { StepRegistry } from '../steps/step.registry';
 import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 
 /** Waits between the read-only probes of a docker that does not answer. */
@@ -53,7 +52,6 @@ export class RunSettler {
     private readonly documents: DocumentRepository,
     private readonly visits: VisitRepository,
     private readonly sandbox: SandboxService,
-    private readonly registry: StepRegistry,
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly events: StepEventLog,
@@ -61,6 +59,7 @@ export class RunSettler {
     private readonly rebases: RunRebase,
     private readonly workspace: WorkspaceGuard,
     private readonly checkCommands: CheckCommandRepository,
+    private readonly calls: AgentCallRepository,
   ) {}
 
   /**
@@ -151,7 +150,7 @@ export class RunSettler {
     const output = stepOutput(this.root, run.key, run.currentStep, run.activeAttempt, known);
     if (hasFinalResult(output)) {
       await this.recordInterrupted(run);
-      return this.interrupted(run, output, decide);
+      return this.interrupted(run, decide);
     }
     const attemptId = run.activeAttempt;
     const container = attemptId === null ? false : await this.probe(attemptId);
@@ -191,7 +190,7 @@ export class RunSettler {
     }
     if (run.currentStep === 'merge-request') await this.confirmMergeRequest(run);
     await this.recordInterrupted(run);
-    return this.interrupted(run, output, decide);
+    return this.interrupted(run, decide);
   }
 
   /**
@@ -269,20 +268,16 @@ export class RunSettler {
   }
 
   /**
-   * The visit of an attempt whose process died, priced from what its output file holds. The run is saved with it:
-   * `waiting` with the relaunch command when the decision says so, else `failed`. The decision is taken after the
-   * charge, the last thing that takes time here.
+   * The visit of an attempt whose process died, charged with what the log holds for the attempt: the streamed cost
+   * of its rows that no stored visit holds yet. The run is saved with it: `waiting` with the relaunch command when
+   * the decision says so, else `failed`. The decision is taken after the charge, the last thing that takes time here.
    */
-  private async interrupted(
-    run: RunEntity,
-    saved: string,
-    decide: () => Promise<RelaunchDecision>,
-  ): Promise<RelaunchDecision> {
+  private async interrupted(run: RunEntity, decide: () => Promise<RelaunchDecision>): Promise<RelaunchDecision> {
     const now = this.clock.iso();
     const agent = agentFor(this.config.env, run, run.currentStep);
     const model = agent?.model ?? null;
-    const charge = await this.chargeOf(run, saved, agent);
-    run.spentUsd += charge?.usd ?? 0;
+    const charge = await this.chargeOf(run);
+    run.spentUsd += charge.usd;
     const decision = await decide();
     writeRunState(
       run,
@@ -300,9 +295,9 @@ export class RunSettler {
       status: 'failed',
       exitCode: 1,
       killReason: 'process died',
-      tokensIn: charge?.tokensIn ?? 0,
-      tokensOut: charge?.tokensOut ?? 0,
-      usd: charge?.usd ?? 0,
+      tokensIn: charge.tokensIn,
+      tokensOut: charge.tokensOut,
+      usd: charge.usd,
       samples: [],
       exchange: null,
       httpCalls: [],
@@ -332,16 +327,9 @@ export class RunSettler {
     return decision.cause === 'stop' ? { at, relaunched: false, cause: 'stop' } : null;
   }
 
-  /** What the attempt cost, from its step or from what its output file holds. */
-  private async chargeOf(run: RunEntity, saved: string, agent: ReturnType<typeof agentFor> | undefined) {
-    const env = this.config.env;
-    const model = agent?.model ?? null;
-    const pricesOf = (runtime: Parameters<typeof loadPriceTable>[1]) =>
-      loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime, this.clock.now());
-    const step = isStep(run.currentStep) ? this.registry.get(run.currentStep) : null;
-    if (step?.charge) return step.charge(run.key, env, pricesOf, run.activeAttempt);
-    if (!model) return null;
-    return chargeStream(model, saved, await pricesOf(agent?.runtime ?? agentFor(env, run, 'implement').runtime));
+  /** What the attempt cost, from the rows of its calls that no stored visit holds yet. */
+  private async chargeOf(run: RunEntity): Promise<ReturnType<typeof figuresOf>> {
+    return figuresOf(run.activeAttempt === null ? [] : await this.calls.rowsOfAttempt(run.activeAttempt));
   }
 
   private get root(): string {

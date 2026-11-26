@@ -3,6 +3,8 @@ import { StepKernel } from '../steps/step-kernel';
 import type { StepName } from '../contract/steps';
 import { STEPS } from '../contract/steps';
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { StepEventLog } from '../history/step-event.log';
 import { FlowRepository } from '../history/flow.repository';
@@ -39,12 +41,14 @@ class DriverStep extends BaseStep<typeof INPUTS> {
     base: {
       runs: RunRepository;
       visits: VisitRepository;
+      calls: AgentCallRepository;
       flows: FlowRepository;
       clock: Clock;
       config: AppConfig;
       stepEvents: StepEventLog;
     },
     private readonly script: Script,
+    private readonly calls: AgentCallRepository = base.calls,
   ) {
     super(new StepKernel(base.runs, recorder, base.visits, base.flows, base.clock, base.config, base.stepEvents));
   }
@@ -56,6 +60,8 @@ class DriverStep extends BaseStep<typeof INPUTS> {
         await this.reader.read(key, this.inputs);
         this.count += 1;
         const end = await this.script(this.count, ctx);
+        // The launcher writes the cost of a visit's calls to the log; a scripted visit that costs something writes it here.
+        if (end.visit?.usd) await seedCall(this.calls, { runKey: key, step: this.name, usd: end.visit.usd });
         return ctx.end({ ...end, line: `${ctx.opened.startedAt} ${this.name} ${end.outcome}` });
       },
       snapshot,
@@ -75,6 +81,7 @@ export function installScripts(app: TestApp, scripts: Partial<Record<StepName, S
   const base = {
     runs: app.app.get(RunRepository),
     visits: app.app.get(VisitRepository),
+    calls: app.app.get(AgentCallRepository),
     flows: app.app.get(FlowRepository),
     clock: app.app.get(Clock),
     config: app.app.get(AppConfig),

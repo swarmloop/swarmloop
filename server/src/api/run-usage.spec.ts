@@ -1,9 +1,11 @@
 import 'reflect-metadata';
-import { storeRun } from '../testing/store-run.spec-helpers';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { storeRun } from '../testing/store-run.spec-helpers';
 import { Clock } from '../core/clock';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -19,7 +21,14 @@ async function setup(prefix: string) {
   const app = await seededBoot(await mkdtemp(join(tmpdir(), prefix)));
   const runs = app.get(RunRepository);
   const hub = app.get(LiveHub);
-  const reader = new RunUsageReader(runs, app.get(VisitRepository), app.get(PipelineService), app.get(Clock), hub);
+  const reader = new RunUsageReader(
+    runs,
+    app.get(VisitRepository),
+    app.get(PipelineService),
+    app.get(Clock),
+    app.get(AgentCallRepository),
+    hub,
+  );
   return { app, runs, hub, reader, queries: app.get(RunQueriesService) };
 }
 
@@ -28,13 +37,13 @@ describe('RunUsageReader', () => {
     const { app, runs, hub, reader, queries } = await setup('swarmloop-usage-');
     try {
       const run = await save(runs, 'proj-u1', 'implement', 'running');
-      run.spentUsd = 1.5;
-      await storeRun(runs, run);
+      const calls = app.get(AgentCallRepository);
+      await seedCall(calls, { runKey: run.key, usd: 1.5, input: 60 });
+      await seedCall(calls, { runKey: run.key, usd: 0.25, cacheRead: 40, output: 20, ping: true });
       hub.log({
         key: 'proj-u1',
         step: 'implement',
         body: '',
-        usage: { tokensIn: 100, tokensOut: 20, usd: 0.25 },
         samples: [{ at: '2026-01-01T00:00:00Z', cpu: 40, memory: 300, source: 'agent' }],
       });
       const { metrics } = await queries.flow('proj-u1');
@@ -59,14 +68,14 @@ describe('RunUsageReader', () => {
     try {
       const parent = await save(runs, 'proj-u2', 'implement', 'waiting');
       parent.split = true;
-      parent.spentUsd = 2;
       await storeRun(runs, parent);
+      await seedCall(app.get(AgentCallRepository), { runKey: parent.key, usd: 2 });
       await app.get(DocumentRepository).putDocument(parent, 'subtasks', `${JSON.stringify([{ id: 'a' }])}\n`);
       const child = await save(runs, 'proj-u2-a', 'implement', 'waiting');
       child.parentRunId = parent.id;
       child.taskId = 'a';
-      child.spentUsd = 3;
       await storeRun(runs, child);
+      await seedCall(app.get(AgentCallRepository), { runKey: child.key, usd: 3 });
 
       const flow = await queries.flow('proj-u2');
       const [own] = await reader.entries('proj-u2');

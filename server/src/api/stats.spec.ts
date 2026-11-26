@@ -191,6 +191,21 @@ describe('buildStats', () => {
     ]);
   });
 
+  it('adds the cost of a ping to its run, step, model, agent and day, and counts it as no visit and no agent time', () => {
+    const base = buildStats(rows(), durations, NOW, { days: 7, tzOffset: WARSAW });
+    const data = rows();
+    data.steps.push(step(1, 'implement', 0.5, '2026-11-08T13:00:00.000Z', { ping: true, runtime: 'claude' }));
+
+    const stats = buildStats(data, durations, NOW, { days: 7, tzOffset: WARSAW });
+
+    expect(stats.totals).toMatchObject({ usd: 4.75, tokensIn: 5500, tokensOut: 500, agentMs: base.totals.agentMs });
+    expect(stats.steps.find((entry) => entry.name === 'implement')).toMatchObject({ usd: 3.25, count: 3 });
+    expect(stats.models.find((entry) => entry.name === 'model-a')).toMatchObject({ usd: 4.25, count: 3 });
+    expect(stats.agents.find((entry) => entry.name === 'claude')).toMatchObject({ count: 2, usd: 4.5 });
+    expect(stats.runs.find((entry) => entry.key === 'run-a')?.usd).toBe(3.5);
+    expect(stats.days.find((entry) => entry.day === '2026-11-08')?.usd).toBe(3.5);
+  });
+
   it('charges a step to the runtime it recorded, and to the runtime of its run when it recorded none', () => {
     const data = rows();
     data.steps = [

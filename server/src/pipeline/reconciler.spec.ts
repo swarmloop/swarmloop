@@ -8,7 +8,8 @@ import { PlanChatStore } from '../history/plan-chat.store';
 import type { StepEvent } from '../contract/step-events';
 import { AppConfig } from '../config/env';
 import { attemptOutputPath } from '../core/attempt-output';
-import { StepRegistry } from '../steps/step.registry';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { storedState, writeRunState } from '../history/run-state';
 import { RunStop } from '../agent/run-stop';
 import { CommandRepository } from '../history/command.repository';
@@ -426,6 +427,39 @@ describe('reconciler waits and automatic tries', () => {
       expect(documents.some((document) => document.kind === 'interruption')).toBe(false);
     });
 
+    it('charges a visit that died with the streamed cost and tokens of its attempt, and 0 with no rows', async () => {
+      const world = await boot();
+      const begun = await world.app.get(RunRepository).begin(KEY, 'implement');
+      const calls = world.app.get(AgentCallRepository);
+      const attemptId = begun.activeAttempt!;
+      await seedCall(calls, { runKey: KEY, attemptId, usd: 0.5, input: 10, cacheRead: 100, cacheWrite: 20, output: 5 });
+      await seedCall(calls, { runKey: KEY, attemptId, usd: 0.25, output: 4, ping: true });
+      await seedCall(calls, { runKey: KEY, attemptId: 'other-attempt', usd: 9, output: 999 });
+      await seedCall(calls, { runKey: KEY, attemptId, usd: 8, output: 888, statId: 4242 });
+
+      await world.app.get(Reconciler).reconcile(begun);
+
+      const run = (await world.app.get(RunRepository).findRun(KEY))!;
+      const [visit] = await world.app.get(VisitRepository).listStats(run.id);
+      expect(visit).toMatchObject({
+        status: 'failed',
+        killReason: 'process died',
+        usd: 0.5,
+        tokensIn: 130,
+        tokensOut: 5,
+      });
+      expect(run.spentUsd).toBe(0.5);
+
+      const empty = await world.app.get(RunRepository).begin('PROJ-799', 'implement');
+      await world.app.get(Reconciler).reconcile(empty);
+      const stored = (await world.app.get(RunRepository).findRun('PROJ-799'))!;
+      expect((await world.app.get(VisitRepository).listStats(stored.id))[0]).toMatchObject({
+        usd: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+      });
+    });
+
     it('stays failed at MAX_LAUNCHES', async () => {
       const world = await boot();
       world.app.get(AppConfig).env.MAX_LAUNCHES = 1;
@@ -476,12 +510,12 @@ describe('reconciler waits and automatic tries', () => {
       const began = new Promise<void>((resolve) => {
         charging = resolve;
       });
-      const step = world.app.get(StepRegistry).get('implement')!;
-      step.charge = async () => {
+      const calls = world.app.get(AgentCallRepository);
+      const spy = jest.spyOn(calls, 'rowsOfAttempt').mockImplementation(async () => {
         charging();
         await gate;
-        return null;
-      };
+        return [];
+      });
 
       try {
         const settled = world.app.get(Reconciler).reconcile(run);
@@ -490,7 +524,7 @@ describe('reconciler waits and automatic tries', () => {
         release();
         await settled;
       } finally {
-        delete step.charge;
+        spy.mockRestore();
       }
 
       const stored = (await world.app.get(RunRepository).findRun(KEY))!;

@@ -1,15 +1,12 @@
 import type { AppConfig } from '../../config/env';
 import { agentFor } from '../../config/agents';
-import { resolveRepoRoot } from '../../config/repo-root';
-import { chargeStream } from '../../agent/spend';
-import type { Charge } from '../../agent/spend';
-import { loadPriceTable } from '../../agent/prices';
 import { logStillOpen } from '../../agent/live-output';
-import type { Clock } from '../../core/clock';
 import type { StepView, VisitView } from '../../contract/api';
 import type { LiveSample } from '../../contract/live';
 import { visitKey } from '../../contract/visit-key';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
+import { figuresOf } from '../../history/agent-call';
+import type { AgentCallRepository } from '../../history/agent-call.repository';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { RunRepository } from '../../history/run.repository';
 import type { VisitRepository } from '../../history/visit.repository';
@@ -29,8 +26,8 @@ interface ReviewerStepDeps {
   runs: RunRepository;
   documents: DocumentRepository;
   visits: VisitRepository;
+  calls: Pick<AgentCallRepository, 'rowsOfAttempt' | 'rowsOfVisit'>;
   config: AppConfig;
-  clock: Clock;
   live?: Pick<LiveHub, 'samplesOf'>;
   /** True while the code-review step runs, so its reviewers write the run's active attempt. */
   reviewRunning: (run: RunEntity) => boolean;
@@ -45,7 +42,7 @@ export class ReviewerSteps {
   constructor(private readonly deps: ReviewerStepDeps) {}
 
   async step(key: string, name: string): Promise<StepView> {
-    const { runs, documents: documentRepository, visits: visitRepository, config, clock, live } = this.deps;
+    const { runs, documents: documentRepository, visits: visitRepository, config, live } = this.deps;
     const run = await requireRun(runs, key);
     const documents = await documentRepository.listDocuments(run.id);
     const runStats = await visitRepository.listStats(run.id);
@@ -66,14 +63,10 @@ export class ReviewerSteps {
     const env = config.env;
     const agent = agentFor(env, run, name);
     const model = agent?.model ?? null;
-    let charge: Charge | null = null;
-    if (agent && hasOutput(raw)) {
-      charge = chargeStream(
-        agent.model,
-        raw,
-        await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), agent.runtime, clock.now()),
-      );
-    }
+    const showsOpen = parentRunning && hasOutput(raw);
+    const open = showsOpen ? await this.loggedBy(run.activeAttempt, name) : null;
+    const latest = ownedStats.at(-1);
+    const done = latest && !parentRunning ? await this.loggedBy(null, name, latest.id) : null;
     const visits: VisitView[] = ownedStats.map((stat, index) => {
       const latestDone = index === ownedStats.length - 1 && !parentRunning;
       const owned = documents.filter((document) => document.stepStatId === stat.id && document.kind === kind);
@@ -94,9 +87,9 @@ export class ReviewerSteps {
         ...effortOf(stat),
         mode: 'agent' as const,
         durationMs: stat.durationMs,
-        tokensIn: latestDone ? (charge?.tokensIn ?? 0) : 0,
-        tokensOut: latestDone ? (charge?.tokensOut ?? 0) : 0,
-        usd: latestDone ? (charge?.usd ?? 0) : 0,
+        tokensIn: (latestDone && done?.tokensIn) || 0,
+        tokensOut: (latestDone && done?.tokensOut) || 0,
+        usd: (latestDone && done?.usd) || 0,
         cpuAvg: stat.cpuAvg,
         cpuPeak: stat.cpuPeak,
         memAvg: stat.memAvg,
@@ -109,16 +102,28 @@ export class ReviewerSteps {
         samples: samplesOf(samples, stat.id),
       };
     });
-    if (parentRunning && hasOutput(raw)) {
+    if (showsOpen) {
       visits.push({
         ...this.deps.runningVisit(run, name, visits.length, live?.samplesOf(run.key, name)),
         model,
         mode: 'agent',
         status: logStillOpen(raw) ? 'running' : reviewerOutcome(raw, 'failed'),
-        ...(charge ? { tokensIn: charge.tokensIn, tokensOut: charge.tokensOut, usd: charge.usd } : {}),
+        ...(open ?? {}),
       });
     }
     return { step: name, ...(await this.deps.meta(run, name)), visits, checks: [] };
+  }
+
+  /**
+   * What the log holds for this reviewer: the rows of a stored visit when `statId` is given, else the rows of the
+   * attempt that no stored visit holds yet. Null when it holds none.
+   */
+  private async loggedBy(attemptId: string | null, name: string, statId?: number) {
+    const { calls } = this.deps;
+    const held =
+      statId === undefined ? (attemptId ? await calls.rowsOfAttempt(attemptId) : []) : await calls.rowsOfVisit(statId);
+    const rows = held.filter((row) => row.step === name);
+    return rows.length === 0 ? null : figuresOf(rows);
   }
 
   /** A reviewer visit is the same record as any other step: its own log, exchange, and chart. */

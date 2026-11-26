@@ -8,7 +8,10 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
 import { writeEnvOverrides } from '../testing/env.spec-helpers';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { RunRepository } from '../history/run.repository';
+import { VisitRepository } from '../history/visit.repository';
 import { writeRunState } from '../history/run-state';
 import { DocumentRepository } from '../history/document.repository';
 import { AGENT_RUNNER } from '../agent/agent-runner';
@@ -190,11 +193,20 @@ describe('pipeline service', () => {
       seeded.status = 'running';
       seeded.currentStep = 'code-review';
       await storeRun(runs, seeded);
-      const charge = jest.spyOn(app.get(CodeReviewStep), 'charge').mockResolvedValue(null);
+      await seedCall(app.get(AgentCallRepository), {
+        runKey: 'PROJ-63',
+        step: 'code-review-quality',
+        attemptId: seeded.activeAttempt!,
+        usd: 0.75,
+        output: 12,
+      });
       app.get(CommandService).register('resume', () => Promise.resolve(undefined));
       await app.get(PipelineService).onApplicationBootstrap();
-      expect(charge).toHaveBeenCalledWith('PROJ-63', expect.anything(), expect.anything(), expect.anything());
-      expect((await runs.findRun('PROJ-63'))?.status).toBe('waiting');
+      const stored = (await runs.findRun('PROJ-63'))!;
+      expect(stored.status).toBe('waiting');
+      expect(await app.get(VisitRepository).listStats(stored.id)).toMatchObject([
+        { step: 'code-review', usd: 0.75, tokensOut: 12 },
+      ]);
     } finally {
       await app.close();
     }

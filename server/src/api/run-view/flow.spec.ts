@@ -9,8 +9,24 @@ import { actionsFor } from '../../contract/run-state';
 import { storedState } from '../../history/run-state';
 import { parkedConflictIn } from '../../pipeline/parked-conflict';
 import type { RelaunchView } from '../../contract/relaunch';
-import { phases, returns } from './flow';
+import { phases, returns, usageFigures } from './flow';
 import { reason, resumeState, sentence } from './flow-waiting';
+
+describe('usage figures', () => {
+  it('shows the cost and tokens of the log, and the highest peak of the stored visits and the open ones', () => {
+    const stats = [
+      { cpuPeak: 40, memPeak: 900, usd: 7, tokensIn: 5, tokensOut: 5 },
+      { cpuPeak: 10, memPeak: 100, usd: 7, tokensIn: 5, tokensOut: 5 },
+    ] as StepStatEntity[];
+
+    expect(usageFigures(stats, { usd: 1.25, tokens: 300 }, { cpuPeak: 55, memPeak: 200 })).toEqual({
+      usd: 1.25,
+      tokens: 300,
+      cpuPeak: 55,
+      memPeak: 900,
+    });
+  });
+});
 
 describe('failure reason', () => {
   it('shows the current pipeline error instead of an older failing test', () => {

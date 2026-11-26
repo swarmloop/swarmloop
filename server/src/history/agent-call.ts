@@ -101,6 +101,15 @@ export interface CallEnd {
 /** The rows a dead process left open: an attempt's, a backlog turn's, or every ping. */
 export type OpenScope = { attemptId: string } | { turnKey: string } | { pings: true };
 
+/** What rows of the log add up to, in the figures a visit shows: tokens in are input, cache read and cache write. */
+export function figuresOf(rows: readonly AgentCallRow[]): { tokensIn: number; tokensOut: number; usd: number } {
+  return {
+    tokensIn: rows.reduce((sum, row) => sum + row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens, 0),
+    tokensOut: rows.reduce((sum, row) => sum + row.outputTokens, 0),
+    usd: rows.reduce((sum, row) => sum + row.ownUsd, 0),
+  };
+}
+
 export interface CallTotals {
   usd: number;
   tokens: number;

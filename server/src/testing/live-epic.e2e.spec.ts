@@ -3,6 +3,8 @@ import { storeRun } from './store-run.spec-helpers';
 import type { Socket } from 'socket.io-client';
 import type { FlowView } from '../contract/api';
 import type { RunEntity } from '../history/entities';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -161,19 +163,22 @@ describe('the epic page follows its subtasks', () => {
 
   it("updates the epic's cost and the task's cost after a subtask's usage log", async () => {
     const { page, socket } = await seedEpic();
-    const usage = (usd: number) =>
+    /** One more model request of the task's visit: its row is saved first, then the stream tells the page. */
+    const usage = async (usd: number) => {
+      await seedCall(app.app.get(AgentCallRepository), { runKey: A, step: 'implement', usd, input: 10, output: 5 });
       app.app
         .get(LiveHub)
         .log({ key: A, step: 'implement', body: 'working\n', usage: { tokensIn: 10, tokensOut: 5, usd } });
+    };
     const before = page.flow!.epic!.usd;
 
-    usage(0.75);
+    await usage(0.75);
     await pass();
     expect(taskA(page)?.run?.usd).toBe(0.75);
     expect(page.flow!.epic!.usd).toBeCloseTo(before + 0.75);
     await expectFresh(page);
 
-    await awayDuring(socket, async () => usage(2));
+    await awayDuring(socket, () => usage(1.25));
     expect(taskA(page)?.run?.usd).toBe(2);
     await expectFresh(page);
   });

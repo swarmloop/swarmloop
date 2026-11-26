@@ -1,9 +1,9 @@
+import type { AgentCallRepository } from '../../history/agent-call.repository';
 import type { DocumentEntity, RunEntity } from '../../history/entities';
 import type { RunRepository } from '../../history/run.repository';
 import type { VisitRepository } from '../../history/visit.repository';
-import type { LiveHub } from '../../live/live.hub';
 import type { PipelineService } from '../../pipeline/pipeline.service';
-import { openSpend } from '../run-queries-spend';
+import { spendLookup } from '../../steps/shared/run-spend';
 import type { TaskEntry } from '../../contract/api';
 import type { RunState } from '../../contract/run-state';
 import { parsePaths } from '../../git/commit-paths';
@@ -47,13 +47,13 @@ interface TaskRunViews {
 export async function taskRuns(
   runs: RunRepository,
   visits: Pick<VisitRepository, 'latestVisits'>,
+  calls: Pick<AgentCallRepository, 'spendOfRuns'>,
   rows: RunEntity[],
   documents: DocumentEntity[],
   pipeline: PipelineService,
   sources: StateSources & { documents: Pick<DocumentRepository, 'latestDocuments'> },
   waits: ReadonlyMap<number, RunWaitEntity[]>,
   relaunches: ReadonlyMap<number, string[]>,
-  live?: LiveHub,
 ): Promise<TaskRunViews> {
   const children: TaskRuns = new Map();
   const lives = new Map<string, LiveRun>();
@@ -68,6 +68,7 @@ export async function taskRuns(
     planned.map((child) => child.id),
     ['interruption', ARTIFACTS.mergeRequest.kind, ARTIFACTS.mergedFiles.kind, ARTIFACTS.commit.kind],
   );
+  const usdOf = await spendLookup(planned, calls);
   const latestVisits = await visits.latestVisits(planned.map((child) => child.id));
   for (const child of planned) {
     const own = states.get(child.key);
@@ -82,7 +83,7 @@ export async function taskRuns(
         state: own.state,
         stateReason: own.stateReason,
         currentStep: child.currentStep,
-        usd: child.spentUsd + openSpend(child, pipeline, live).usd,
+        usd: usdOf(child),
         durationMs: durations.get(child.id) ?? 0,
         ...(note ? { interruption: note } : {}),
         ...(result ? { result } : {}),

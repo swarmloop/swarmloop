@@ -9,6 +9,8 @@ import { StepStopped } from '../../agent/step-stopped';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { REASON } from '../../contract/run-state';
 import { ARTIFACTS } from '../contract/artifacts';
+import { AgentCallRepository } from '../../history/agent-call.repository';
+import { seedCall } from '../../history/agent-call.spec-helpers';
 import { AgentExchangeEntity, DocumentEntity, StepStatEntity } from '../../history/entities';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -38,8 +40,13 @@ async function setup(env: Record<string, string> = {}) {
       return {} as LaunchResult;
     },
   });
-  const request = (tools: AgentLaunchRequest['tools'] = 'read', spentUsd = 0): AgentLaunchRequest =>
-    ({ key: run.key, step: 'plan', tools, run: { id: run.id, spentUsd, agentCalls: 0, activeAttempt: null } }) as never;
+  const request = (tools: AgentLaunchRequest['tools'] = 'read'): AgentLaunchRequest =>
+    ({
+      key: run.key,
+      step: 'plan',
+      tools,
+      run: { id: run.id, spentUsd: 0, agentCalls: 0, activeAttempt: null },
+    }) as never;
   const start = (by: OutsideStart['by'], texts: string[] = ['same']): OutsideStart => ({
     step: 'plan',
     by,
@@ -183,8 +190,9 @@ describe('AgentDoor', () => {
     try {
       writeRunState(run, { status: 'running', currentStep: 'implement' });
       await storeRun(runs, run);
+      await seedCall(app.get(AgentCallRepository), { runKey: run.key, step: 'implement', usd: 30 });
 
-      const refused = await door.outside(start('machine'), request('read', 30)).catch((error: unknown) => error);
+      const refused = await door.outside(start('machine'), request('read')).catch((error: unknown) => error);
 
       expect(refused).toBeInstanceOf(StartRefused);
       expect((refused as StartRefused).kind).toBe('limit');

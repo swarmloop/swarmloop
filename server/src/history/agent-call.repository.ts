@@ -252,6 +252,24 @@ export class AgentCallRepository {
     });
   }
 
+  /** The cost of each of these runs, in one query. A run with no row is absent. */
+  async spendOfRuns(runKeys: string[]): Promise<Map<string, number>> {
+    if (runKeys.length === 0) return new Map();
+    const rows: { runKey: string; usd: number | null }[] = await this.dataSource.query(
+      `SELECT run_key AS runKey, SUM(own_usd) AS usd FROM agent_exchanges
+       WHERE run_key IN (${runKeys.map(() => '?').join(', ')}) GROUP BY run_key`,
+      runKeys,
+    );
+    return new Map(rows.map((row) => [row.runKey, Number(row.usd) || 0]));
+  }
+
+  /** The rows linked to a stored visit, in order. */
+  rowsOfVisit(statId: number): Promise<AgentCallRow[]> {
+    return this.dataSource
+      .getRepository(AgentExchangeEntity)
+      .find({ where: { stepStatId: statId }, order: { id: 'ASC' } });
+  }
+
   async lastRowOfChat(chatId: string): Promise<AgentCallRow | null> {
     return this.dataSource.getRepository(AgentExchangeEntity).findOne({ where: { chatId }, order: { id: 'DESC' } });
   }
