@@ -9,6 +9,7 @@ import { useColorScheme } from '@mui/material/styles';
 import ContrastIcon from '@mui/icons-material/Contrast';
 import DarkModeOutlined from '@mui/icons-material/DarkModeOutlined';
 import LightModeOutlined from '@mui/icons-material/LightModeOutlined';
+import { usePhone } from '../../lib/use-phone';
 
 type Mode = 'light' | 'system' | 'dark';
 
@@ -21,11 +22,14 @@ const PARTS: { value: Mode; word: string; Icon: typeof ContrastIcon }[] = [
 /** The Theme row of the account menu: a label and a three-part control. */
 export function AccountTheme(): ReactElement | null {
   const { mode, setMode } = useColorScheme();
+  const phone = usePhone();
   if (!mode) {
     return null;
   }
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 36, px: 2 }}>
+    <Box
+      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: phone ? 48 : 36, px: 2 }}
+    >
       <Typography variant="body2">Theme</Typography>
       <Box
         role="group"
@@ -43,8 +47,8 @@ export function AccountTheme(): ReactElement | null {
                 tabIndex={-1}
                 onClick={() => setMode(value)}
                 sx={{
-                  width: 28,
-                  height: 24,
+                  width: phone ? 40 : 28,
+                  height: phone ? 40 : 24,
                   borderRadius: 1,
                   bgcolor: chosen ? 'primary.main' : 'transparent',
                   color: chosen ? 'primary.contrastText' : 'text.secondary',

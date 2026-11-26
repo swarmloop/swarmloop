@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ReadinessItem } from '@contract/readiness';
 import { getReadiness } from '../../lib/endpoints';
 import { QueryWrapper } from '../../test/query-wrapper';
+import { mediaWidth } from '../../test/viewport';
 import { ReadinessStatus } from './readiness-status';
 import { ReadinessProvider } from './use-readiness';
 
@@ -75,5 +76,23 @@ describe('ReadinessStatus', () => {
     expect(screen.getByText('Images: images line')).toBeInTheDocument();
     expect(screen.queryByText(/Memory booked|Waiting work/)).not.toBeInTheDocument();
     expect(screen.queryByText(/checks of run/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ReadinessStatus at 375 px', () => {
+  mediaWidth(375);
+
+  it('is a 40 px touch target', async () => {
+    renderStatus([item('disk', 'fail')]);
+    expect(await screen.findByRole('link', { name: '1 setup problem' })).toHaveStyle({ minHeight: '40px' });
+  });
+});
+
+describe('ReadinessStatus at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('sets no minimum height', async () => {
+    renderStatus([item('disk', 'fail')]);
+    expect(await screen.findByRole('link', { name: '1 setup problem' })).not.toHaveStyle({ minHeight: '40px' });
   });
 });

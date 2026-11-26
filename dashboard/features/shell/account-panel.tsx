@@ -60,10 +60,16 @@ function Row({ icon, children, hint }: { icon: ReactNode; children: ReactNode; h
   );
 }
 
-const itemSx = { height: 36, minHeight: 36, gap: 1.5, px: 2, typography: 'body2' } as const;
+/** An item of the menu: 36 px tall on a pointer, 40 px on a phone, where it is a touch target. */
+function itemSx(phone: boolean): { height: number; minHeight: number; gap: number; px: number; typography: string } {
+  const height = phone ? 40 : 36;
+  return { height, minHeight: height, gap: 1.5, px: 2, typography: 'body2' };
+}
 
 function AccountMenu(props: AccountPanelProps): ReactElement {
   const { login, avatarUrl, host, version, revision, sourceUrl, needsAttention, onClose } = props;
+  const phone = usePhone();
+  const item = itemSx(phone);
   const list = useRef<HTMLDivElement>(null);
   const { onKeyDown } = useMenuKeys(list);
   return (
@@ -98,10 +104,10 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
       </Box>
       <Divider />
       <Box ref={list} role="menu" aria-label="Account" onKeyDown={onKeyDown} sx={{ py: 0.5 }}>
-        <MenuItem component={Link} href="/settings" tabIndex={-1} onClick={onClose} sx={itemSx}>
+        <MenuItem component={Link} href="/settings" tabIndex={-1} onClick={onClose} sx={item}>
           <Row icon={<SettingsOutlined />}>Settings</Row>
         </MenuItem>
-        <MenuItem component={Link} href="/connections" tabIndex={-1} onClick={onClose} sx={itemSx}>
+        <MenuItem component={Link} href="/connections" tabIndex={-1} onClick={onClose} sx={item}>
           <Row
             icon={<PowerOutlined />}
             hint={
@@ -130,8 +136,8 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
             target="_blank"
             rel="noreferrer"
             tabIndex={-1}
-            onClick={onClose}
-            sx={itemSx}
+            onClick={phone ? onClose : undefined}
+            sx={item}
           >
             <Row icon={<MenuBookOutlined />}>Documentation</Row>
           </MenuItem>
@@ -139,7 +145,7 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
         <MenuItem
           tabIndex={-1}
           onClick={() => void logout().finally(() => window.location.assign('/login'))}
-          sx={{ ...itemSx, color: 'text.secondary' }}
+          sx={{ ...item, color: 'text.secondary' }}
         >
           <Row icon={<LogoutOutlined />}>Log out</Row>
         </MenuItem>

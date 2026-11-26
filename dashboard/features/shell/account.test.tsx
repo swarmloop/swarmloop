@@ -381,6 +381,23 @@ describe('Account at 375 px', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Settings' }));
     await vi.waitFor(() => expect(screen.queryByRole('menu', { name: 'Account' })).not.toBeInTheDocument());
   });
+
+  it('gives the items and the theme parts a 40 px touch target and closes the sheet on Documentation', async () => {
+    vi.mocked(getSession).mockResolvedValue(signedIn);
+
+    renderAccount();
+    const user = await openMenu();
+
+    const menu = screen.getByRole('menu', { name: 'Account' });
+    for (const name of ['Settings', 'Connections', 'Documentation', 'Log out']) {
+      expect(within(menu).getByRole('menuitem', { name })).toHaveStyle({ height: '40px' });
+    }
+    for (const name of ['Light', 'System', 'Dark']) {
+      expect(within(menu).getByRole('menuitemradio', { name })).toHaveStyle({ width: '40px', height: '40px' });
+    }
+    await user.click(within(menu).getByRole('menuitem', { name: 'Documentation' }));
+    await vi.waitFor(() => expect(screen.queryByRole('menu', { name: 'Account' })).not.toBeInTheDocument());
+  });
 });
 
 describe('Account at 1280 px', () => {
@@ -395,5 +412,18 @@ describe('Account at 1280 px', () => {
     expect(document.querySelector('.MuiPopover-paper')).not.toBeNull();
     expect(document.querySelector('.MuiDrawer-paperAnchorBottom')).toBeNull();
     expect(screen.getByRole('link', { name: /1\.2\.3/ })).toBeInTheDocument();
+  });
+
+  it('keeps the compact items and leaves the popover open on Documentation', async () => {
+    vi.mocked(getSession).mockResolvedValue(signedIn);
+
+    renderAccount();
+    const user = await openMenu();
+
+    const menu = screen.getByRole('menu', { name: 'Account' });
+    expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveStyle({ height: '36px' });
+    expect(within(menu).getByRole('menuitemradio', { name: 'Dark' })).toHaveStyle({ width: '28px', height: '24px' });
+    await user.click(within(menu).getByRole('menuitem', { name: 'Documentation' }));
+    expect(screen.getByRole('menu', { name: 'Account' })).toBeInTheDocument();
   });
 });

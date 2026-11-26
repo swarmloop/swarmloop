@@ -128,51 +128,6 @@ describe('RunScreen', () => {
     expect(within(region).getAllByRole('button', { name: 'Plan' })).toHaveLength(2);
   });
 
-  it('shows a rebased run: why in the header, relaunched steps not started, the line in the timeline, no counts moved', async () => {
-    const sentence = 'Rebased onto the epic after input merged';
-    vi.mocked(getFlow).mockResolvedValue(
-      flowView({
-        status: 'running',
-        currentStep: 'checks',
-        phases: [
-          { phase: 'implementation', steps: [{ name: 'implement', status: 'done', current: false, attempts: 1 }] },
-          {
-            phase: 'checks',
-            steps: [
-              { name: 'checks', status: 'idle', current: true, attempts: 0 },
-              { name: 'commit', status: 'idle', current: false, attempts: 0 },
-              { name: 'merge-request', status: 'idle', current: false, attempts: 0 },
-            ],
-          },
-          { phase: 'ci', steps: [{ name: 'pipeline', status: 'idle', current: false, attempts: 0 }] },
-        ],
-        conversation: { composer: 'plan', replying: false, entries: [], revisions: [], questions: [] },
-        relaunches: [
-          {
-            at: '2026-01-01T00:00:00.000Z',
-            reason: sentence,
-            phases: ['checks', 'ci'],
-            steps: ['checks', 'commit', 'merge-request', 'pipeline'],
-            open: true,
-          },
-        ],
-      }),
-    );
-    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
-    const user = userEvent.setup({ delay: null });
-    await user.click(await screen.findByRole('button', { name: /^checks/ }));
-    await user.click(await screen.findByRole('button', { name: /^Open the conversation/ }));
-
-    expect(await screen.findByText(`${sentence} · checks and CI run again`)).toBeInTheDocument();
-    expect(await screen.findByText(`${sentence}: checks and CI run again`)).toBeInTheDocument();
-    const board = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) });
-    expect(within(board('implement')).getByTestId('CheckCircleIcon')).toBeInTheDocument();
-    for (const name of ['checks', 'commit', 'merge-request', 'pipeline']) {
-      expect(within(board(name)).getByTestId('RadioButtonUncheckedIcon')).toBeInTheDocument();
-      expect(within(board(name)).queryByText(/×/)).toBeNull();
-    }
-  });
-
   it('keeps the Tasks section drawn once while the plan step is open, also while its window loads', async () => {
     const tasks = [
       { id: 'a', index: 0, title: 'Add the column', files: [], proof: 'a', depends: [], status: 'blocked' as const },
@@ -472,5 +427,54 @@ describe('RunScreen conversation column', () => {
     expect(await screen.findByText('Question for you')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  });
+});
+
+describe('RunScreen on a phone', () => {
+  mediaWidth(375);
+
+  it('shows a rebased run: why in the header, relaunched steps not started, the line in the timeline, no counts moved', async () => {
+    const sentence = 'Rebased onto the epic after input merged';
+    vi.mocked(getFlow).mockResolvedValue(
+      flowView({
+        status: 'running',
+        currentStep: 'checks',
+        phases: [
+          { phase: 'implementation', steps: [{ name: 'implement', status: 'done', current: false, attempts: 1 }] },
+          {
+            phase: 'checks',
+            steps: [
+              { name: 'checks', status: 'idle', current: true, attempts: 0 },
+              { name: 'commit', status: 'idle', current: false, attempts: 0 },
+              { name: 'merge-request', status: 'idle', current: false, attempts: 0 },
+            ],
+          },
+          { phase: 'ci', steps: [{ name: 'pipeline', status: 'idle', current: false, attempts: 0 }] },
+        ],
+        conversation: { composer: 'plan', replying: false, entries: [], revisions: [], questions: [] },
+        relaunches: [
+          {
+            at: '2026-01-01T00:00:00.000Z',
+            reason: sentence,
+            phases: ['checks', 'ci'],
+            steps: ['checks', 'commit', 'merge-request', 'pipeline'],
+            open: true,
+          },
+        ],
+      }),
+    );
+    render(<RunScreen runKey="run-1" />, { wrapper: Wrapper });
+    const user = userEvent.setup({ delay: null });
+    await user.click(await screen.findByRole('button', { name: /^checks/ }));
+    await user.click(await screen.findByRole('button', { name: /^Open the conversation/ }));
+
+    expect(await screen.findByText(`${sentence} · checks and CI run again`)).toBeInTheDocument();
+    expect(await screen.findByText(`${sentence}: checks and CI run again`)).toBeInTheDocument();
+    const board = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) });
+    expect(within(board('implement')).getByTestId('CheckCircleIcon')).toBeInTheDocument();
+    for (const name of ['checks', 'commit', 'merge-request', 'pipeline']) {
+      expect(within(board(name)).getByTestId('RadioButtonUncheckedIcon')).toBeInTheDocument();
+      expect(within(board(name)).queryByText(/×/)).toBeNull();
+    }
   });
 });
