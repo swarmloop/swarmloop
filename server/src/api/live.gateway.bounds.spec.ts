@@ -5,7 +5,7 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { LiveHub } from '../live/live.hub';
 import { ContainerGate } from '../sandbox/container-gate';
 import { LiveGateway } from './live.gateway';
-import { clientOf, rowsOf, runsOf, serverOf, usageOf } from './live.gateway.spec-helpers';
+import { clientOf, noDone, rowsOf, runsOf, serverOf, usageOf } from './live.gateway.spec-helpers';
 import type { RunListRows } from './run-list-rows';
 import type { RunQueriesService } from './run-queries.service';
 
@@ -29,6 +29,7 @@ async function scenario(act: (hub: LiveHub) => void, options: { entries?: LiveRu
       rowsOf([{ key: 'run-1' }]) as unknown as RunListRows,
       new FakeClock(),
       usageOf(options.entries ?? []),
+      noDone(),
     );
     const toRooms: Array<{ room: string; entry: unknown }> = [];
     const server = serverOf(1, options.watched ?? ['run:run-1'], toRooms);
@@ -109,6 +110,7 @@ describe('what the gateway sends to the room of an epic', () => {
         rows as unknown as RunListRows,
         new FakeClock(),
         usageOf([{ key: 'epic', ...figures, epic: { usd: 2, durationMs: 5 } }]),
+        noDone(),
       );
       const toRooms: Array<{ room: string; entry: unknown }> = [];
       const server = serverOf(1, ['run:epic'], toRooms);

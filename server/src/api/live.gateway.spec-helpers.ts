@@ -1,4 +1,6 @@
 import type { LiveRunUsage } from '../contract/live';
+import type { DoneLatelyItem } from '../contract/overview-done';
+import type { DoneLatelyService } from './done-lately.service';
 import type { LiveGateway } from './live.gateway';
 import type { RunQueriesService } from './run-queries.service';
 import type { RunUsageReader } from './run-usage';
@@ -11,6 +13,21 @@ export function noUsage(): RunUsageReader {
 /** A reader that gives the same entries for every key. */
 export function usageOf(entries: LiveRunUsage[]): RunUsageReader {
   return { entries: jest.fn().mockResolvedValue(entries) } as unknown as RunUsageReader;
+}
+
+/** A Done lately service that gives no items, for specs that are not about Done lately. */
+export function noDone(): DoneLatelyService {
+  return doneOf([]).service;
+}
+
+/** A Done lately service whose items are set by the spec; `fromView` and `latest` answer the current ones. */
+export function doneOf(first: DoneLatelyItem[]) {
+  const held = { items: first };
+  const service = {
+    fromView: jest.fn(async () => held.items),
+    latest: jest.fn(async () => held.items),
+  } as unknown as DoneLatelyService;
+  return { service, held };
 }
 
 /**

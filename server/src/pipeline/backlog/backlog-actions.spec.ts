@@ -32,6 +32,32 @@ describe('BacklogActions', () => {
       await expect(harness.queries.view('none')).rejects.toThrow(NotFoundException);
     }));
 
+  it('tells the live hub after a person accepts a milestone, once its write is done', () =>
+    withActions(async (harness) => {
+      await withMilestones(harness, 1);
+      await harness.actions.runBacklog('ada', 'shop');
+      const seen: Array<Promise<string[]>> = [];
+      harness.hub.onBacklogWritten(() => seen.push(statuses(harness)));
+      await harness.actions.acceptMilestone('ada', 'shop', 1);
+      expect(await Promise.all(seen)).toEqual([['accepted']]);
+    }));
+
+  it('tells the live hub nothing after a planner-context write, whose turn ends with its own backlog event', () =>
+    withActions(async (harness) => {
+      await harness.actions.createBacklog('ada', NEW);
+      let heard = 0;
+      harness.hub.onBacklogWritten(() => (heard += 1));
+      await harness.actions.proposeMilestone(
+        'ada',
+        'shop',
+        { title: 'Part 1', goal: 'Goal' },
+        { turn: 'turn-1', writers: harness.backlogs },
+      );
+      expect(heard).toBe(0);
+      await harness.actions.proposeMilestone('ada', 'shop', { title: 'Part 2', goal: 'Goal' });
+      expect(heard).toBe(1);
+    }));
+
   it('queues the proposed milestones behind the one it runs and starts each when the one before is accepted', () =>
     withActions(async (harness) => {
       await withMilestones(harness, 3);

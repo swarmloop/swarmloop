@@ -17,6 +17,7 @@ import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { writeRunState, type RunStateChange } from '../../history/run-state';
 import type { MergeOutcome } from '../../contract/run-state';
+import { LiveHub } from '../../live/live.hub';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import type { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import type { RunNames } from '../../steps/shared/run-names';
@@ -63,7 +64,8 @@ export type MainStyle = 'green' | 'red' | 'pending' | 'no-pipeline';
 function actionParts(db: Awaited<ReturnType<typeof repositoryDatabase>>, config: AppConfig) {
   const backlogs = db.app.get(BacklogRepository);
   const queries = new BacklogQueries(backlogs, db.app.get(RunRepository));
-  const support = new BacklogActionSupport(backlogs, db.clock);
+  const hub = new LiveHub();
+  const support = new BacklogActionSupport(backlogs, db.clock, hub);
   const stops: string[] = [];
   const commands = {
     submit: async (type: string, key: string) => {
@@ -80,6 +82,7 @@ function actionParts(db: Awaited<ReturnType<typeof repositoryDatabase>>, config:
   );
   const taskActions = new BacklogTaskActions(backlogs, queries, taskRun, db.clock, support);
   return {
+    hub,
     queries,
     stops,
     taskRun,
@@ -342,9 +345,11 @@ export async function actionsHarness(projects: string[] = ['web', 'server']) {
   for (const project of projects) mkdirSync(join(checkouts, project, '.git'), { recursive: true });
   const config = new AppConfig(testEnv({ SWARMLOOP_ROOT: db.root, CHECKOUTS_ROOT: checkouts }));
   const backlogs = db.app.get(BacklogRepository);
-  const { queries, actions, stops } = actionParts(db, config);
+  const { queries, actions, stops, hub } = actionParts(db, config);
   return {
     backlogs,
+    /** The live hub the actions tell after a person's write. */
+    hub,
     queries,
     actions,
     /** The stop commands the actions asked for, as `stop <run key>`. */

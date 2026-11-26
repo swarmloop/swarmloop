@@ -1,8 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Clock } from '../../core/clock';
 import type { BacklogView } from '../../contract/backlog';
 import { BacklogRepository } from '../../history/backlog.repository';
+import { LiveHub } from '../../live/live.hub';
 import type { BacklogWriters } from '../../history/backlog-writers';
 import type { BacklogQueries } from './backlog-queries';
 
@@ -33,6 +34,7 @@ export class BacklogActionSupport {
   constructor(
     private readonly backlogs: BacklogRepository,
     private readonly clock: Clock,
+    @Optional() private readonly hub?: LiveHub,
   ) {}
 
   person(actor: string | null): string {
@@ -45,9 +47,17 @@ export class BacklogActionSupport {
     return context?.writers ?? this.backlogs;
   }
 
-  /** Runs the writes of an action in the planner's transaction, or in one of their own. */
-  write<T>(context: PlannerContext | undefined, work: (writers: BacklogWriters) => Promise<T>): Promise<T> {
-    return context ? work(context.writers) : this.backlogs.transaction(work);
+  /**
+   * Runs the writes of an action in the planner's transaction, or in one of their own. A person's write tells the hub
+   * once it is done; the planner's turn ends with its own `backlog` event.
+   */
+  async write<T>(context: PlannerContext | undefined, work: (writers: BacklogWriters) => Promise<T>): Promise<T> {
+    if (context) {
+      return work(context.writers);
+    }
+    const result = await this.backlogs.transaction(work);
+    this.hub?.backlogWritten();
+    return result;
   }
 
   async load(name: string, context?: PlannerContext): Promise<Backlog> {
