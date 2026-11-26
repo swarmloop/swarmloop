@@ -102,6 +102,12 @@ const CLAUDE_PROMPT_CACHES: ReadonlyMap<string, PromptCache> = new Map([
   ['claude-sonnet-5-5', { ttlMinutes: 60, cacheReadPerMillion: 0.2, cacheWritePerMillion: 4 }],
 ]);
 
+/** The context window in tokens of the models Claude is known for; https://platform.claude.com/docs/en/about-claude/models */
+const CLAUDE_CONTEXT_TOKENS: ReadonlyMap<string, number> = new Map([
+  ['claude-opus-5-5', 1_000_000],
+  ['claude-sonnet-5-5', 1_000_000],
+]);
+
 const HOOK_DIR = '.claude';
 
 /**
@@ -168,6 +174,10 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
 
   promptCache(model: string): PromptCache | null {
     return CLAUDE_PROMPT_CACHES.get(model) ?? null;
+  }
+
+  contextTokens(model: string): number | null {
+    return CLAUDE_CONTEXT_TOKENS.get(model) ?? null;
   }
 
   // Claude Code 2.1.319 loads CLAUDE.md only: https://code.claude.com/docs/en/memory

@@ -3,6 +3,9 @@ import { mkdtemp, readFile, readdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type * as FsPromises from 'fs/promises';
+import { runLogMount } from '../core/run-logs';
+import { sessionHome } from '../history/session-group';
+import type { SandboxLaunch } from '../sandbox/sandbox-launch';
 import { SystemClock } from '../core/clock';
 import { AgentProcessRunner } from './agent-runner';
 import { RunStop } from './run-stop';
@@ -44,5 +47,23 @@ describe('AgentProcessRunner writes', () => {
     expect((await readdir(join(root, 'data'))).filter((name) => name.endsWith('.tmp'))).toEqual([]);
     const session = JSON.parse(await readFile(request.sessionFile, 'utf8')) as { completed: boolean; chatId: string };
     expect(session).toMatchObject({ completed: true, chatId: 'chat-7' });
+  });
+
+  it('keeps the CLI state under the chat key and the run log under the run key', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-agent-chat-'));
+    mkdirSync(join(root, 'data'), { recursive: true });
+    writePriceCache(root);
+    const launches: SandboxLaunch[] = [];
+    const spawn = jest.fn((launch: SandboxLaunch) => {
+      launches.push(launch);
+      return Promise.resolve(fakeChild([`${JSON.stringify({ type: 'result', result: 'done' })}\n`], 0));
+    });
+    const runner = new AgentProcessRunner(config(root), new SystemClock(), sandbox(spawn), new RunStop());
+    await runner.run(
+      input(root, join(root, 'data', 'turn-output.txt'), { resumeChatId: null, runKey: 'turn-1', chatKey: 'chat-a' }),
+    );
+    expect(launches[0].runKey).toBe('turn-1');
+    expect(launches[0].statePath).toBe(join(root, 'data', 'agent-state', 'chat-a', sessionHome('implement')));
+    expect(launches[0].mounts).toContainEqual(runLogMount(root, 'turn-1'));
   });
 });
