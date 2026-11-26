@@ -20,6 +20,7 @@ import Typography from '@mui/material/Typography';
 import type { CreatedTokenView, TokenLifetime, TokenView } from '@contract/people';
 import { createToken, listTokens, revokeToken, useExistingToken as adoptToken } from '../../lib/endpoints';
 import { localTime } from '../../lib/format';
+import { Placeholders } from '../overview';
 import { ConfirmDialog } from '../shell';
 
 const LIFETIMES: { label: string; value: string }[] = [
@@ -181,7 +182,7 @@ function TokenTable({ tokens, onRevoke }: { tokens: TokenView[]; onRevoke: (toke
 
 /** The person's personal API tokens: list, create, paste an existing one, revoke. */
 export function ApiTokensSection(): ReactElement {
-  const [tokens, setTokens] = useState<TokenView[]>([]);
+  const [tokens, setTokens] = useState<TokenView[] | null>(null);
   const [made, setMade] = useState<CreatedTokenView | null>(null);
   const [revoking, setRevoking] = useState<TokenView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -205,7 +206,11 @@ export function ApiTokensSection(): ReactElement {
         CLI.
       </Typography>
       {error ? <Alert severity="error">{error}</Alert> : null}
-      <TokenTable tokens={tokens} onRevoke={setRevoking} />
+      {tokens ? (
+        <TokenTable tokens={tokens} onRevoke={setRevoking} />
+      ) : error ? null : (
+        <Placeholders count={3} height={36} testId="tokens-placeholder" grid={false} />
+      )}
       <CreateTokenForm
         onCreated={(token) => {
           setError(null);

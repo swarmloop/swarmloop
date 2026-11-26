@@ -38,9 +38,12 @@ export function hours(ms: number): string {
   return `${value >= 10 ? Math.round(value) : value.toFixed(1)} h`;
 }
 
-/** A share in whole percent, or a dash when there is nothing to share. */
+/** A share with one decimal, `100%` only when the part is the whole, or a dash when there is nothing to share. */
 export function percent(part: number, whole: number): string {
-  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : '—';
+  if (whole === 0) {
+    return '—';
+  }
+  return part === whole ? '100%' : `${((part / whole) * 100).toFixed(1)}%`;
 }
 
 const DAY = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' });

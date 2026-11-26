@@ -10,9 +10,9 @@ export function wholeDollars(usd: number): string {
   return `$${new Intl.NumberFormat('en', { maximumFractionDigits: 0 }).format(usd)}`;
 }
 
-/** A share between 0 and 1 as a whole percent: `86%`. */
+/** A share between 0 and 1 with one decimal: `86.2%`; `100%` only when the share is 1. */
 export function percent(share: number): string {
-  return `${Math.round(share * 100)}%`;
+  return share === 1 ? '100%' : `${(share * 100).toFixed(1)}%`;
 }
 
 /** A length of time; with hours the minutes have two digits: `12h 04m`. */

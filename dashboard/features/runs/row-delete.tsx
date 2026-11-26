@@ -50,7 +50,7 @@ export function RowDelete({
       <>
         <IconButton
           size="small"
-          aria-label={`More actions for ${run.name}`}
+          aria-label={`More actions for ${run.title}`}
           sx={{ color: 'text.secondary', p: 0, width: 22, height: 22, flexShrink: 0 }}
           onClick={(event) => {
             event.stopPropagation();
@@ -80,7 +80,7 @@ export function RowDelete({
   return (
     <IconButton
       size="small"
-      aria-label={`Remove ${run.name}`}
+      aria-label={`Remove ${run.title}`}
       aria-hidden={shown ? undefined : true}
       tabIndex={shown ? undefined : -1}
       sx={{

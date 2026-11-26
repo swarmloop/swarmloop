@@ -70,7 +70,7 @@ export function RunColumn({
       next={next}
       onLoadMore={onLoadMore}
       onPart={onPart}
-      control={<ShowControl part={part} counts={counts} onPart={onPart} />}
+      control={<ShowControl part={part} counts={loaded ? counts : null} onPart={onPart} />}
       selected={selected}
       now={now}
       loaded={loaded && !listing}

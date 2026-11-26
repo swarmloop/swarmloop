@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactElement } from 'react';
+import Skeleton from '@mui/material/Skeleton';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import type { Part, PartCounts } from '@contract/run-list';
@@ -17,7 +18,7 @@ export function ShowControl({
   onPart,
 }: {
   part: Part;
-  counts: PartCounts;
+  counts: PartCounts | null;
   onPart: (part: Part) => void;
 }): ReactElement {
   return (
@@ -35,7 +36,14 @@ export function ShowControl({
     >
       {LABELS.map(({ part: value, label }) => (
         <ToggleButton key={value} value={value} sx={{ textTransform: 'none', fontVariantNumeric: 'tabular-nums' }}>
-          {`${label} ${counts[value]}`}
+          {counts ? (
+            `${label} ${counts[value]}`
+          ) : (
+            <>
+              {`${label} `}
+              <Skeleton variant="text" width="1.5ch" sx={{ display: 'inline-block' }} data-testid="count-placeholder" />
+            </>
+          )}
         </ToggleButton>
       ))}
     </ToggleButtonGroup>
