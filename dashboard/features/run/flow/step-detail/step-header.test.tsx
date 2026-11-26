@@ -153,7 +153,7 @@ describe('StepHeader', () => {
   });
 
   it('keeps a lone Run again contained', () => {
-    header({ onReplay: vi.fn() }, true);
+    header({ onReplay: vi.fn() });
 
     expect(screen.getByRole('button', { name: 'Run again' })).toHaveClass('MuiButton-contained');
   });

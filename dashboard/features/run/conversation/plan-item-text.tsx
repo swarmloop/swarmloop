@@ -11,12 +11,11 @@ const SHOWN_FILES = 5;
 
 /** A plan item for a person: its title, then its files one per line in the code font (the rest folded), then its proof. */
 export function PlanItemText({ item }: { item: string }): ReactElement {
-  const { text, files, proof } = planItemParts(item);
+  const { title, files, proof } = planItemParts(item);
   const [open, setOpen] = useState(false);
   if (files.length === 0) {
-    return <>{plainText(text)}</>;
+    return <>{plainText(title)}</>;
   }
-  const title = text.slice(0, text.indexOf(' - files: '));
   const shown = open ? files : files.slice(0, SHOWN_FILES);
   const hidden = files.length - shown.length;
   return (

@@ -98,14 +98,14 @@ function ciFact(
   return phases.includes('ci') ? 'waiting' : null;
 }
 
+const mergedRun = (run: RunEntity): boolean => 'merged' in (readOutcome(run.mergeOutcome) ?? {});
+
 /** The verdict the run page shows: `merged` or `closed` once the run's outcome says so, else the verdict of the facts. */
 export function pageVerdict(run: RunEntity, verdict: Verdict): Verdict {
+  if (mergedRun(run)) return 'merged';
   const outcome = readOutcome(run.mergeOutcome);
-  if (outcome && 'merged' in outcome) return 'merged';
   return outcome && 'closed' in outcome ? 'closed' : verdict;
 }
-
-const mergedRun = (run: RunEntity): boolean => 'merged' in (readOutcome(run.mergeOutcome) ?? {});
 
 /** One line of a task of a split parent: its title, its state and its returns. */
 async function taskLine(deps: ReportFactsDeps, child: RunEntity, title: string | undefined): Promise<string> {

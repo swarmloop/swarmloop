@@ -15,6 +15,8 @@ describe('overview formats', () => {
 
   it('writes a share as a whole percent', () => {
     expect(percent(0.862)).toBe('86.2%');
+    expect(percent(0.9999)).toBe('99.9%');
+    expect(percent(1)).toBe('100%');
   });
 
   it('pads the minutes after hours', () => {

@@ -260,7 +260,9 @@ describe('ConversationFeed', () => {
       expect(screen.getByText('Implement asks').parentElement!.parentElement).toHaveStyle({ textAlign: 'left' });
       expect(screen.getByRole('button', { name: /Implement asked the planner/ })).toHaveStyle({ textAlign: 'left' });
       expect(within(card).getByText('Implement asks')).toBeVisible();
-      expect(screen.getByText(/line 20/)).toBeInTheDocument();
+      const folded = screen.getByText(/line 20/).parentElement!;
+      expect(getComputedStyle(folded.parentElement!).display).toBe('-webkit-box');
+      expect(getComputedStyle(folded).display).toBe('block');
       await user.click(within(card).getByRole('button', { name: 'Show all' }));
       expect(within(card).getByRole('button', { name: 'Show less' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Go to the question' })).toBeVisible();

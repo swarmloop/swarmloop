@@ -7,7 +7,7 @@ import { MarkdownBody } from '../../../components/ui/markdown-body';
 import { when } from '../../../lib/format';
 import { askerName } from '../conversation/talk-entries';
 
-/** A question for the person: what is decided first, each side on the point in dispute, the whole text folded. */
+/** A question for the person: what is decided first, each side on the point in dispute, the whole text folded. The folded part is block flow, which a line clamp counts. */
 export function QuestionCard({ item }: { item: Pick<FlowItem, 'label' | 'parts'> }): ReactElement {
   const { parts } = item;
   if (!parts) {
@@ -21,10 +21,10 @@ export function QuestionCard({ item }: { item: Pick<FlowItem, 'label' | 'parts'>
         </Typography>
       ) : null}
       <FoldedText text={[parts.decide, ...parts.sides.map((side) => side.text)].join('\n')}>
-        <Box sx={{ display: 'grid', gap: 1 }}>
+        <Box>
           <Typography sx={{ fontWeight: 600 }}>{parts.decide}</Typography>
           {parts.sides.map((side) => (
-            <Box key={side.who}>
+            <Box key={side.who} sx={{ mt: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 {side.who}
               </Typography>

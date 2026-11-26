@@ -6,17 +6,17 @@ export function planItemText({ title, files, proof }: { title: string; files: st
   return `${title}${FILES}${files.join(', ')}${PROOF}${proof}`;
 }
 
-/** What `planItemText` wrote, read back: the whole item as text, its files and its proof. */
-export function planItemParts(item: string): { text: string; files: string[]; proof: string | null } {
+/** What `planItemText` wrote, read back: its title (the whole item when it has no files part), its files and its proof. */
+export function planItemParts(item: string): { title: string; files: string[]; proof: string | null } {
   const filesAt = item.indexOf(FILES);
   if (filesAt < 0) {
-    return { text: item, files: [], proof: null };
+    return { title: item, files: [], proof: null };
   }
   const rest = item.slice(filesAt + FILES.length);
   const proofAt = rest.lastIndexOf(PROOF);
   const list = proofAt < 0 ? rest : rest.slice(0, proofAt);
   return {
-    text: item,
+    title: item.slice(0, filesAt),
     files: list
       .split(', ')
       .map((file) => file.trim())

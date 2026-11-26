@@ -179,7 +179,14 @@ describe('ReadinessService', () => {
   });
 
   it('cuts a short of every item, and the model key joins its runtimes', async () => {
-    const service = setup({ AGENTS_SUBTASK_REVIEW: 'claude:m', ANTHROPIC_API_KEY: 'k' });
+    const service = setup({
+      AGENTS_PLAN: 'claude:m',
+      AGENTS_IMPLEMENT: 'codex:m',
+      AGENTS_REVIEW: 'claude:m',
+      CURSOR_API_KEY: '',
+      ANTHROPIC_API_KEY: 'k',
+      CODEX_AUTH: 'a',
+    });
     const { items } = await service.report();
     const shorts = Object.fromEntries(items.map((item) => [item.id, item.short]));
     expect(shorts).toMatchObject({
@@ -188,7 +195,7 @@ describe('ReadinessService', () => {
       disk: '50.0 GB free',
       paths: 'writable',
       ports: expect.stringMatching(/^\d+ · 3921$/),
-      'model-credential': 'cursor · claude',
+      'model-credential': 'claude · codex',
       'code-host-token': 'not set',
     });
     expect(shorts.images).toMatch(/^\d+ present$/);

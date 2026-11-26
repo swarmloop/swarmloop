@@ -63,8 +63,12 @@ describe('taskErrors', () => {
 
   it('reads back the items it writes, with and without files', () => {
     const [item] = planItemsFromTasks([column]);
-    expect(planItemParts(item)).toEqual({ text: item, files: ['a.ts', 'b.ts'], proof: 'a.spec.ts "reads it"' });
-    expect(planItemParts('Just a line')).toEqual({ text: 'Just a line', files: [], proof: null });
+    expect(planItemParts(item)).toEqual({
+      title: 'Add the column',
+      files: ['a.ts', 'b.ts'],
+      proof: 'a.spec.ts "reads it"',
+    });
+    expect(planItemParts('Just a line')).toEqual({ title: 'Just a line', files: [], proof: null });
   });
 
   it('names a task id that is not a part id', () => {
