@@ -27,6 +27,8 @@ import { ServerController } from './server.controller';
 import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 import { StatsController } from './stats.controller';
+import { AgentCallsController } from './agent-calls.controller';
+import { AgentCallQueries } from '../history/agent-call-queries';
 import { SubtaskClose } from './subtask-close';
 import { BacklogStart } from './backlog-start';
 import { PlannerRunCommands } from './planner-run-commands';
@@ -63,9 +65,11 @@ import { RequestTiming } from './request-timing';
     CheckoutsController,
     RepositoriesController,
     StatsController,
+    AgentCallsController,
     SettingsController,
   ],
   providers: [
+    AgentCallQueries,
     RunQueriesService,
     RunListRows,
     EtaSummary,
