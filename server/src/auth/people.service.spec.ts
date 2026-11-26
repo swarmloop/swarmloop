@@ -49,6 +49,19 @@ describe('PeopleService', () => {
       expect(await people.isAdmin('ann')).toBe(true);
     }));
 
+  it('stores the photo of a new and an existing person, and a sign-in without one keeps it', () =>
+    withPeople({}, async (people) => {
+      await people.seen('ann', 'https://avatars.test/ann.png');
+      expect(await people.avatarOf('ann')).toBe('https://avatars.test/ann.png');
+      await people.seen('ann');
+      expect(await people.avatarOf('ann')).toBe('https://avatars.test/ann.png');
+      await people.seen('ann', 'https://avatars.test/ann-2.png');
+      expect(await people.avatarOf('ann')).toBe('https://avatars.test/ann-2.png');
+      await people.seen('bob');
+      expect(await people.avatarOf('bob')).toBeNull();
+      expect(await people.avatarOf('nobody')).toBeNull();
+    }));
+
   it('lets an admin change roles and refuses a member, an unknown login and the last admin', () =>
     withPeople({}, async (people) => {
       await people.seen('ann');

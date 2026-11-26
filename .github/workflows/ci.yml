@@ -270,7 +270,7 @@ jobs:
           const selectors = ['COMPOSE_FILE', 'COMPOSE_PATH_SEPARATOR', 'COMPOSE_PROJECT_NAME', 'COMPOSE_PROFILES', 'COMPOSE_ENV_FILES', 'CHECKOUTS_ROOT', 'SWARMLOOP_HOME', 'SWARMLOOP_REPOS'];
           const fixed = ['SWARMLOOP_ROOT', 'CHECKOUTS_ROOT', 'SWARMLOOP_API_HOST', 'SWARMLOOP_API_PORT', 'SWARMLOOP_UID', 'SWARMLOOP_REGISTRY', 'SWARMLOOP_VERSION', 'SWARMLOOP_PUBLIC_URL', 'SWARMLOOP_ENV_FILE'];
           // Settings the server image sets itself; compose must not pass them.
-          const imageSet = ['SWARMLOOP_BUILD_VERSION', 'SWARMLOOP_SOURCE_URL'];
+          const imageSet = ['SWARMLOOP_BUILD_VERSION', 'SWARMLOOP_BUILD_REVISION', 'SWARMLOOP_SOURCE_URL'];
           const keys = fs.readFileSync('defaults.env', 'utf8').split('\n').map((line) => /^([A-Z][A-Z0-9_]*)=/.exec(line)?.[1]).filter(Boolean);
           const configurable = keys.filter((key) => !fixed.includes(key) && !imageSet.includes(key) && key !== 'SWARMLOOP_ENV_FILE');
           const problems = [];

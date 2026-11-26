@@ -63,7 +63,7 @@ export class SignInService {
     if (!verdict.allowed) {
       return problemUrl('/login', 'refused', { host: provider.name, account: identity.user, reason: verdict.reason });
     }
-    await this.people.seen(identity.user);
+    await this.people.seen(identity.user, identity.avatarUrl);
     if (identity.grant) {
       // The first person to sign in through an app made on this machine is the one who made it.
       const app = this.apps.find(provider.name);
@@ -74,7 +74,7 @@ export class SignInService {
         throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} connect failed`);
       });
     }
-    const session = await this.sessions.create(identity.user, provider.name, identity.avatarUrl);
+    const session = await this.sessions.create(identity.user, provider.name);
     response.cookie(SESSION_COOKIE, session.id, {
       ...cookieOptions(this.config),
       path: '/',

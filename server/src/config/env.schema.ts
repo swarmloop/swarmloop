@@ -98,6 +98,7 @@ export const envSchema = Joi.object({
   SWARMLOOP_REGISTRY: Joi.string().allow(''),
   SWARMLOOP_VERSION: Joi.string().allow(''),
   SWARMLOOP_BUILD_VERSION: Joi.string().allow(''),
+  SWARMLOOP_BUILD_REVISION: Joi.string().allow(''),
   SWARMLOOP_SOURCE_URL: Joi.string().allow(''),
   SWARMLOOP_UID: Joi.string().allow(''),
   GIT_AUTHOR_NAME: Joi.string().allow(''),
