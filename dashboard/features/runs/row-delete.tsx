@@ -9,6 +9,7 @@ import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import type { RunSummary } from '@contract/api';
+import { usePhone } from '../../lib/use-phone';
 
 /** Whether the pointer or the keyboard focus is inside a row, and the handlers that track it. */
 export function useRowReveal(): {
@@ -43,7 +44,9 @@ export function RowDelete({
   shown: boolean;
   onRemove: (run: RunSummary) => void;
 }): ReactElement {
-  const touch = useMediaQuery('(hover: none)');
+  const noHover = useMediaQuery('(hover: none)');
+  const phone = usePhone();
+  const touch = noHover || phone;
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   if (touch) {
     return (
@@ -51,7 +54,7 @@ export function RowDelete({
         <IconButton
           size="small"
           aria-label={`More actions for ${run.title}`}
-          sx={{ color: 'text.secondary', p: 0, width: 22, height: 22, flexShrink: 0 }}
+          sx={{ color: 'text.secondary', p: 0, minWidth: 40, minHeight: 40, flexShrink: 0 }}
           onClick={(event) => {
             event.stopPropagation();
             setAnchor(event.currentTarget);

@@ -8,6 +8,7 @@ import { ERROR_CODES } from '@contract/error-codes';
 import { duration, localTime, money } from '../../lib/format';
 import { runSummary } from '../../test/fixtures';
 import { fakeIntersectionObserver } from '../../test/intersection-observer';
+import { mediaWidth } from '../../test/viewport';
 import { RunList } from './run-list';
 import { epicOfThree, listRun, NOW, renderList, STATE_RUNS, TODAY, YESTERDAY } from './run-list.spec-helpers';
 
@@ -655,5 +656,21 @@ describe('RunList', () => {
 
       expect(screen.getByText('~2h 15m left')).toBeInTheDocument();
     });
+  });
+});
+
+describe('RunList at 375 px', () => {
+  mediaWidth(375);
+
+  it('offers the ⋯ menu without a hover query, as a touch-sized button, and Remove asks to remove', async () => {
+    const user = userEvent.setup({ delay: null });
+    const props = renderList([STATE_RUNS[0].run]);
+
+    const button = screen.getByRole('button', { name: 'More actions for Working run' });
+    expect(button).toHaveStyle({ minWidth: '40px', minHeight: '40px' });
+    await user.click(button);
+    await user.click(screen.getByRole('menuitem', { name: 'Remove' }));
+
+    expect(props.onRemove).toHaveBeenCalledWith(STATE_RUNS[0].run);
   });
 });

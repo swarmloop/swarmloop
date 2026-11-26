@@ -4,6 +4,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSession, logout } from '../../lib/endpoints';
 import { receive, resetFakeSocket } from '../../test/fake-socket';
+import { mediaWidth } from '../../test/viewport';
 import { Account } from './account';
 import { LiveBridgeProvider } from './use-live-bridge';
 
@@ -362,5 +363,37 @@ describe('Account', () => {
 
     await vi.waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: /octocat/ })).toHaveFocus();
+  });
+});
+
+describe('Account at 375 px', () => {
+  mediaWidth(375);
+
+  it('opens the menu as a bottom sheet with the version line and closes it on picking an item', async () => {
+    vi.mocked(getSession).mockResolvedValue(signedIn);
+
+    renderAccount();
+    const user = await openMenu();
+
+    expect(document.querySelector('.MuiDrawer-paperAnchorBottom')).not.toBeNull();
+    expect(document.querySelector('.MuiPopover-paper')).toBeNull();
+    expect(screen.getByRole('link', { name: /1\.2\.3/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Settings' }));
+    await vi.waitFor(() => expect(screen.queryByRole('menu', { name: 'Account' })).not.toBeInTheDocument());
+  });
+});
+
+describe('Account at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('stays a popover with the version line', async () => {
+    vi.mocked(getSession).mockResolvedValue(signedIn);
+
+    renderAccount();
+    await openMenu();
+
+    expect(document.querySelector('.MuiPopover-paper')).not.toBeNull();
+    expect(document.querySelector('.MuiDrawer-paperAnchorBottom')).toBeNull();
+    expect(screen.getByRole('link', { name: /1\.2\.3/ })).toBeInTheDocument();
   });
 });

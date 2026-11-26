@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -81,5 +81,14 @@ describe('Shell on the Backlogs tab at 375 px', () => {
     expect(screen.queryByRole('link', { name: /swarmloop.*M3/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Open the list of backlogs' }));
     expect(await screen.findByRole('link', { name: /swarmloop.*M3 · 4\/7/ })).toBeInTheDocument();
+  });
+
+  it('closes the drawer on picking a backlog', async () => {
+    renderShell();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open the list of backlogs' }));
+    await userEvent.click(await screen.findByRole('link', { name: /swarmloop.*M3 · 4\/7/ }));
+
+    await waitFor(() => expect(screen.queryByRole('link', { name: /swarmloop.*M3/ })).not.toBeInTheDocument());
   });
 });
