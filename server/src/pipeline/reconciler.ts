@@ -161,13 +161,7 @@ export class Reconciler implements OnModuleDestroy {
       await this.reconcileRunsNow();
       await this.cleanup.run();
       await this.settleEndedRelaunches();
-      await this.resumeLimited();
-      await this.resumeHostUnavailable();
-      await this.resumeMessageHostWait();
-      await this.resumeCiNotStarted();
-      await this.resumeDocker();
-      await this.resumeDiskLow();
-      await this.resumeGitAuth();
+      await this.resumeOutsideWaits();
       await this.resumeSubtaskParents();
       await this.resumeStalled();
       await this.resumeAskingPlanner();
@@ -194,36 +188,12 @@ export class Reconciler implements OnModuleDestroy {
   }
 
   /** See `ReconcilerResumes`. */
-  resumeLimited(): Promise<void> {
-    return this.resumes.resumeLimited();
-  }
-
-  resumeHostUnavailable(): Promise<void> {
-    return this.resumes.resumeHostUnavailable();
-  }
-
-  resumeMessageHostWait(): Promise<void> {
-    return this.resumes.resumeMessageHostWait();
-  }
-
-  resumeCiNotStarted(): Promise<void> {
-    return this.resumes.resumeCiNotStarted();
-  }
-
-  resumeDocker(): Promise<void> {
-    return this.resumes.resumeDocker();
-  }
-
-  resumeDiskLow(): Promise<void> {
-    return this.resumes.resumeDiskLow();
+  resumeOutsideWaits(): Promise<void> {
+    return this.resumes.resumeOutsideWaits();
   }
 
   resumeStalled(): Promise<void> {
     return this.resumes.resumeStalled();
-  }
-
-  resumeGitAuth(): Promise<void> {
-    return this.resumes.resumeGitAuth();
   }
 
   resumeAskingPlanner(): Promise<void> {
