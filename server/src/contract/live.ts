@@ -1,5 +1,6 @@
 import type { FlowView } from './api';
 import type { LiveBacklog } from './backlog-chat';
+import type { DoneLatelyItem } from './overview-done';
 import type { RunChange, RunsPage } from './run-list';
 import type { ServerState } from './server-pause';
 
@@ -54,6 +55,7 @@ export type ServerToClientEvents = {
   server: (state: ServerState) => void;
   backlog: (entry: LiveBacklog) => void;
   usage: (entry: LiveRunUsage) => void;
+  done: (items: DoneLatelyItem[]) => void;
 };
 
 export type ClientToServerEvents = {
