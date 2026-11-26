@@ -6,4 +6,9 @@ describe('agent runtime registry', () => {
     expect(runtimeFor('codex').component).toBe('agent-codex');
     expect(runtimeForCommand('codex').command).toBe('codex');
   });
+
+  it('declares no prompt cache for codex and cursor', () => {
+    expect(runtimeFor('codex').promptCache('gpt-5')).toBeNull();
+    expect(runtimeFor('cursor').promptCache('grok-4.7')).toBeNull();
+  });
 });
