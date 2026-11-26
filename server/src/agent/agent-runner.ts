@@ -132,6 +132,10 @@ export class AgentProcessRunner {
         merged = foldCall(merged, attempt);
         calls += attempt.calls;
         chat = chatSpendAfter(chat, attempt);
+        if (input.fork) {
+          // A fork changes nothing: no second launch, no dropped chat, no resent prompt.
+          return merged;
+        }
         if (attempt.limit) {
           // A limit is no attempt: relaunching into it only burns launches. The caller picks another agent or waits.
           return merged;
@@ -188,7 +192,12 @@ export class AgentProcessRunner {
         prompt = relaunch.prompt ?? prompt;
       }
     } finally {
-      this.live?.dropSpend(input.runKey, input.liveStep ?? input.step);
+      this.dropLiveSpend(input);
     }
+  }
+
+  /** A launch that is a visit shows its spend live until it ends; a fork shows none. */
+  private dropLiveSpend(input: AgentRunInput): void {
+    if (!input.fork) this.live?.dropSpend(input.runKey, input.liveStep ?? input.step);
   }
 }

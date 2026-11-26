@@ -219,6 +219,29 @@ export class AgentCallRepository {
     return rows[0]?.id ?? null;
   }
 
+  /** How many pings a chat has had since its last call. */
+  async pingsSinceCall(chatId: string): Promise<number> {
+    const [row] = await this.dataSource.query<{ n: number }[]>(
+      `SELECT COUNT(*) AS n FROM agent_exchanges
+       WHERE chat_id = ? AND kind = 'ping'
+         AND id > COALESCE((SELECT MAX(id) FROM agent_exchanges WHERE chat_id = ? AND kind = 'call'), 0)`,
+      [chatId, chatId],
+    );
+    return Number(row?.n) || 0;
+  }
+
+  /** The last row of every chat whose last row is a ping: the chats that are being kept warm. */
+  chatsEndingInPing(): Promise<AgentCallRow[]> {
+    return this.dataSource
+      .getRepository(AgentExchangeEntity)
+      .createQueryBuilder('ping')
+      .where(
+        `ping.kind = 'ping' AND ping.chat_id IS NOT NULL
+         AND ping.id = (SELECT MAX(later.id) FROM agent_exchanges later WHERE later.chat_id = ping.chat_id)`,
+      )
+      .getMany();
+  }
+
   async spendOfRun(runKey: string): Promise<number> {
     return (await this.totals('run_key', runKey)).usd;
   }

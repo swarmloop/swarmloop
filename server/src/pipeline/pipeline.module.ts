@@ -61,6 +61,8 @@ import { RunRetention } from './run-retention';
 import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
+import { KeepWarm } from './keep-warm/keep-warm.service';
+import { PingCandidates } from './keep-warm/ping-candidates';
 import { Reconciler } from './reconciler';
 import { StartGate } from './start-gate';
 import { RunGuards } from './run-guards';
@@ -169,6 +171,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     RunGuards,
     MergeWatch,
     Reconciler,
+    PingCandidates,
+    KeepWarm,
     StallWatch,
     RunStateRefresh,
     StartWaits,
@@ -216,6 +220,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommandService,
     StartGate,
     Reconciler,
+    KeepWarm,
     PlannerTurns,
     QuestionHolds,
     QuestionPassOn,

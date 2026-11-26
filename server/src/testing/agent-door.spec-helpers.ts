@@ -18,7 +18,7 @@ interface Providers {
 /** The door of a run's agent starts around a given launcher and the app's repositories, for specs with a fake launcher. */
 export function doorAround(
   app: Providers,
-  launcher: Pick<AgentLauncher, 'launch'> & Partial<Pick<AgentLauncher, 'refused'>>,
+  launcher: Pick<AgentLauncher, 'launch'> & Partial<Pick<AgentLauncher, 'refused' | 'ping' | 'closeLeftOpen'>>,
 ): AgentDoor {
   return new AgentDoor(
     { refused: async () => undefined, ...launcher } as AgentLauncher,

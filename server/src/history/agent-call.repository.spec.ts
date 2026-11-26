@@ -288,4 +288,34 @@ describe('AgentCallRepository', () => {
       await log.linkVisit([second, first], 7);
       expect((await log.rowsOfVisit(7)).map((row) => row.id)).toEqual([first, second]);
     }));
+
+  it('counts the pings of a chat since its last call, and starts again after a call', () =>
+    withLog(async (log) => {
+      const call = await log.open(start());
+      await log.insertPing(ping({ previousId: call }));
+      await log.insertPing(ping({ previousId: call, dueAt: '2026-11-26T10:40:00.000Z' }));
+      await log.insertPing(ping({ previousId: call, chatId: 'chat-2' }));
+      expect(await log.pingsSinceCall('chat-1')).toBe(2);
+      expect(await log.pingsSinceCall('chat-none')).toBe(0);
+      await log.open(start());
+      expect(await log.pingsSinceCall('chat-1')).toBe(0);
+      await log.insertPing(ping({ dueAt: '2026-11-26T11:40:00.000Z' }));
+      expect(await log.pingsSinceCall('chat-1')).toBe(1);
+    }));
+
+  it('lists the chats whose last row is a ping, until a call or a stop follows', () =>
+    withLog(async (log) => {
+      const call = await log.open(start());
+      await log.open(start({ chatId: 'chat-2' }));
+      const pinged = await log.insertPing(ping({ previousId: call }));
+      expect((await log.chatsEndingInPing()).map((row) => [row.id, row.chatId, row.runKey])).toEqual([
+        [pinged, 'chat-1', 'run-1'],
+      ]);
+      await log.addStop('chat-1', 'cap-reached', LATER);
+      expect(await log.chatsEndingInPing()).toEqual([]);
+      await log.insertPing(ping({ previousId: call, chatId: 'chat-2', dueAt: LATER }));
+      expect((await log.chatsEndingInPing()).map((row) => row.chatId)).toEqual(['chat-2']);
+      await log.open(start({ chatId: 'chat-2' }));
+      expect(await log.chatsEndingInPing()).toEqual([]);
+    }));
 });
