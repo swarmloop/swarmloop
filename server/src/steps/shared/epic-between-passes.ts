@@ -20,7 +20,8 @@ export function betweenPasses(parent: RunEntity): boolean {
 }
 
 /**
- * The epic the main move takes: between passes, or waiting at implement on questions that its parts or its gaps raised.
+ * The epic the main move takes: between passes, or waiting at implement on questions that its parts or its gaps raised,
+ * or for a green main.
  * A wait of the epic's own agent (a parked conflict of its own branch, a resolution round, a defect return it fixes)
  * is not one of those: its rebase is parked and a move would resume it on the old base. The routing of
  * `implementRunner` tells them apart. `betweenPasses` alone says when the epic's pass is due, so a question never
@@ -35,7 +36,8 @@ export async function takesMain(
   if (betweenPasses(parent)) return true;
   const { state, reason } = storedState(parent);
   const code = reason?.code ?? '';
-  const asking = state === 'waiting' && (code === NEEDS_ANSWERS || code === REASON.asksPlanner);
+  const asking =
+    state === 'waiting' && (code === NEEDS_ANSWERS || code === REASON.asksPlanner || code === REASON.waitsForMain);
   if (parent.currentStep !== 'implement' || !asking) return false;
   const subtasks = { settledAt: (run: RunEntity, id: string) => settledAt(runs, documents, run, id) };
   return (await implementRunner(new InputReader(documents), documents, subtasks, parent)) === 'split';

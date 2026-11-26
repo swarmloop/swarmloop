@@ -12,7 +12,8 @@ import { DocumentRepository } from '../history/document.repository';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { RunRepository } from '../history/run.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
-import { REASON } from '../contract/run-state';
+import { actionsFor, REASON, type RunAction } from '../contract/run-state';
+import { etaPhase } from '../contract/eta';
 import { ARTIFACTS, reviewResultOf } from '../steps/contract/artifacts';
 import { InputReader } from '../steps/contract/input-reader';
 import { JUMPS, RETURNS } from '../steps/contract/returns';
@@ -41,6 +42,10 @@ export const TASK = 'task';
 /** A subtask's own code-review round, which settles by its reviewers' decisions as given. */
 export const SUBTASK_ROUND = 'subtask code-review round';
 export const SETTLE = 'code-review settles on the planner answers';
+/** A run the backlog planner answered under a red main waits here until main is green, and leaves through Rebase. */
+export const WAIT_MAIN = 'wait for a green main';
+/** The Rebase that brings main into the run's tree and resumes it. */
+export const REBASE = 'rebase onto main';
 
 export interface RouteEdge {
   from: string;
@@ -69,6 +74,14 @@ export interface Observed {
   door: 'same' | 'new';
   /** The planners' chain and the subtask's review, as the real chain, hop gate and review rules gave them. */
   chain: ObservedChain;
+  /** What a run that waits for a green main offers, and whether it is read as a wait for a person. */
+  wait: { actions: RunAction[]; phase: string };
+}
+
+/** What the real contract says of a run that waits for a green main. */
+export function observeWait(): Observed['wait'] {
+  const reason = { code: REASON.waitsForMain, message: 'waits for a green main of web' };
+  return { actions: actionsFor('waiting', REASON.waitsForMain), phase: etaPhase('waiting', reason) };
 }
 
 const order = (from: StepName): StepName | undefined => STEPS[STEPS.indexOf(from) + 1];
@@ -131,6 +144,11 @@ export function routeGraph(observed: Observed, kind: 'single' | 'split'): RouteG
   // A reviewer's question waits for the planners; the answer settles the round.
   add(ROUND, PLANNERS[0], 'a reviewer returns with a question');
   PLANNERS.forEach((level) => add(level, SETTLE, 'the planner answers the reviewer'));
+  // The backlog planner answers a run whose red is main's: it waits for a green main, which a person need not read.
+  add(PLANNERS[2], WAIT_MAIN, "the backlog planner answers a run whose red is main's");
+  if (observed.wait.actions.includes('rebase')) add(WAIT_MAIN, REBASE, 'main is green: the wake sends Rebase');
+  if (observed.wait.phase === 'person') add(WAIT_MAIN, PERSON, 'the wait reads as waiting for you');
+  add(REBASE, AGENT, 'the rebase resumes the run');
   // A subtask's reviewers count as given: its round returns to its own implement, and asks only when the rules let it.
   add(SUBTASK_ROUND, AGENT, 'a subtask review returns to its implement');
   if (chain.subtaskAsks) add(SUBTASK_ROUND, PLANNERS[0], 'a subtask reviewer returns with a question');
@@ -141,7 +159,7 @@ export function routeGraph(observed: Observed, kind: 'single' | 'split'): RouteG
     else if (seen.waiting) add(SETTLE, PERSON, `${outcome}: the question waits for the person`);
     else add(SETTLE, seen.step, `${outcome}: the round goes on without a reviewer`);
   }
-  return { edges, changes: new Set([AGENT, TASK]), stops: new Set([PERSON]) };
+  return { edges, changes: new Set([AGENT, TASK, REBASE]), stops: new Set([PERSON]) };
 }
 
 /** The paths from a return of code-review or pipeline (or a question of a reviewer) to a round, passing no node that changes the tree and no person. */

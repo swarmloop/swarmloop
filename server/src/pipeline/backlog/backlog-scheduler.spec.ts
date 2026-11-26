@@ -372,4 +372,24 @@ describe('BacklogScheduler run keys and requirement cycles', () => {
       await h.tick();
       expect(h.started()).toEqual(['a']);
     }));
+
+  it('a tick sends the run that waits for a green main its rebase once that main reads green', () =>
+    withHarness(async (h) => {
+      const { id, milestoneId } = await activeBacklog(h);
+      await storeRun(h.runs, h.runs.newWaitingRun('a-run', null, 'ada'));
+      await h.seedTask(id, 'a', { milestoneId, runKey: 'a-run' });
+      await h.moveRun('a-run', {
+        status: 'waiting',
+        currentStep: 'implement',
+        reason: { code: 'WAITS_FOR_MAIN', message: 'waits for a green main of web' },
+      });
+      h.setMain('web', 'red');
+      await h.tick();
+      expect(h.accepts.filter((sent) => sent.type === 'rebase')).toEqual([]);
+      h.setMain('web');
+      await h.tick();
+      expect(h.accepts.filter((sent) => sent.type === 'rebase')).toEqual([
+        { type: 'rebase', key: 'a-run', idempotencyKey: `main-wait-a-run-web@${h.fake.headOf('acme/web')}` },
+      ]);
+    }));
 });
