@@ -18,11 +18,14 @@ export function MessageBubble({
   entry,
   title,
   files = [],
+  meta,
   children,
 }: {
   entry: PlanChatEntry;
   title?: string;
   files?: string[];
+  /** What the bubble says of the message beside its title; a pending plan chat entry says `Pending` when none is given. */
+  meta?: string;
   children?: ReactNode;
 }): ReactElement {
   const person = entry.role === 'person';
@@ -33,7 +36,7 @@ export function MessageBubble({
         side={person ? 'right' : 'left'}
         type={person ? 'input' : 'agent'}
         title={title ?? (person ? 'Message' : 'Reply')}
-        meta={entry.state === 'pending' ? 'Pending' : undefined}
+        meta={meta ?? (entry.state === 'pending' ? 'Pending' : undefined)}
       >
         <Box sx={{ textAlign: 'left' }}>
           {person ? (

@@ -4,16 +4,15 @@ import type { BacklogTurnResult } from '../../../agent-result/definitions/backlo
 import type { AgentRunResult } from '../../../agent/agent-runner';
 import { RunStop } from '../../../agent/run-stop';
 import { StepStopped } from '../../../agent/step-stopped';
-import { backlogPlanAgents, backlogReadAgents } from '../../../config/agents';
+import { backlogPlanAgents, backlogReadAgents, type Agent } from '../../../config/agents';
 import { AppConfig } from '../../../config/env';
-import { effortFields } from '../../../contract/effort';
 import { LiveHub } from '../../../live/live.hub';
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AttachmentStore } from '../../../history/attachment-store';
 import { backlogMessageKey } from '../../../history/backlog-message-key';
 import { AgentCallRepository } from '../../../history/agent-call.repository';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
-import type { BacklogRecord, BacklogTurnRecord } from '../../../history/backlog-writers';
+import type { BacklogMessageRecord, BacklogRecord, BacklogTurnRecord } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
 import { root } from '../../../history/run-paths';
 import { UserSettingRepository } from '../../../history/user-setting.repository';
@@ -27,6 +26,7 @@ import { PlannerTurnActions } from './planner-actions';
 import { BacklogTurnPrompt } from './turn-prompt';
 import { TurnTies } from './turn-ties';
 import { turnView } from './planner-views';
+import { TurnTakes } from './turn-takes';
 import { waitOf } from './turn-wait';
 import type { TurnOutcome } from './turn-wait';
 import { BacklogTurnWorkspace } from './turn-workspace';
@@ -55,6 +55,28 @@ function nameRefusalsOnce(
   };
 }
 
+/** The messages and events a turn holds. */
+type Items = Awaited<ReturnType<BacklogChatRepository['itemsOfTurn']>>;
+
+/** The items of `now` that `before` did not hold. */
+function itemsAfter(now: Items, before: Items): Items {
+  const known = {
+    messages: new Set(before.messages.map((message) => message.id)),
+    events: new Set(before.events.map((event) => event.id)),
+  };
+  return {
+    messages: now.messages.filter((message) => !known.messages.has(message.id)),
+    events: now.events.filter((event) => !known.events.has(event.id)),
+  };
+}
+
+/** What one launch of a turn sends: the prompt of its chat, the whole brief for a chat that is gone, and the agent it runs on. */
+interface TurnSend {
+  prompt: string;
+  brief?: string;
+  agent?: Agent;
+}
+
 /** Runs one planner turn: opens its read only worktrees, launches the planner, applies its result, and closes the worktrees. */
 @Injectable()
 export class BacklogTurnRunner {
@@ -73,6 +95,7 @@ export class BacklogTurnRunner {
     private readonly attachments: AttachmentStore,
     private readonly calls: AgentCallRepository,
     private readonly ties: TurnTies,
+    private readonly takes: TurnTakes,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -84,10 +107,17 @@ export class BacklogTurnRunner {
     this.runStop.clear(turnKey);
     try {
       const space = await this.workspace.open(backlog, turnKey);
-      await this.copyFiles(backlog.id as number, turnKey);
-      const prompt = await this.prompt.build(backlogName, turnKey, space.mounts, space.names);
-      const value = await this.launch(backlog, turnKey, prompt, space);
-      await this.actions.apply(backlogName, turnKey, value);
+      const held = await this.chat.itemsOfTurn(turnKey);
+      await this.copyFiles(backlog.id as number, turnKey, held.messages);
+      const brief = await this.prompt.build(backlogName, turnKey, space.mounts, space.names);
+      const send = await this.sender(backlog, turnKey, space);
+      let answer = await send({ prompt: brief });
+      const added = await this.cameWhileWorking(backlog, turnKey, held);
+      if (added) {
+        const followUp = await this.prompt.followUp(backlogName, turnKey, added);
+        answer = await send({ prompt: followUp, brief: `${brief}\n\n${followUp}`, agent: answer.agent });
+      }
+      await this.actions.apply(backlogName, turnKey, answer.value);
       return { status: 'done' };
     } catch (error) {
       const wait = waitOf(error);
@@ -108,9 +138,17 @@ export class BacklogTurnRunner {
     return this.launcher.closeLeftOpen({ turnKey });
   }
 
-  /** The files of the person's messages this turn took, copied into the turn's own folder so the planner finds them read only. */
-  private async copyFiles(backlogId: number, turnKey: string): Promise<void> {
-    const { messages } = await this.chat.itemsOfTurn(turnKey);
+  /** What the turn took after its brief was written, once its take window is closed; null when nothing came. */
+  private async cameWhileWorking(backlog: BacklogRecord, turnKey: string, held: Items): Promise<Items | null> {
+    await this.takes.close(turnKey);
+    const added = itemsAfter(await this.chat.itemsOfTurn(turnKey), held);
+    if (added.messages.length + added.events.length === 0) return null;
+    await this.copyFiles(backlog.id as number, turnKey, added.messages);
+    return added;
+  }
+
+  /** The files of the given messages, copied into the turn's own folder so the planner finds them read only. */
+  private async copyFiles(backlogId: number, turnKey: string, messages: BacklogMessageRecord[]): Promise<void> {
     const names = new Set(messages.flatMap((message) => message.attachments.map((file) => file.name)));
     if (names.size > 0) await this.attachments.copy(backlogMessageKey(backlogId), turnKey, [...names]);
   }
@@ -125,17 +163,16 @@ export class BacklogTurnRunner {
     });
   }
 
-  private async launch(
+  /** The turn's launches: each one is a call of the same chat, on the agent given or the first of the role. */
+  private async sender(
     backlog: BacklogRecord,
     turnKey: string,
-    prompt: string,
     space: Awaited<ReturnType<BacklogTurnWorkspace['open']>>,
-  ): Promise<BacklogTurnResult> {
+  ): Promise<(send: TurnSend) => Promise<{ value: BacklogTurnResult; agent: Agent }>> {
     const env = this.config.env;
     const dir = root(this.config);
     const stored = (await this.settings.read(backlog.owner))?.agents ?? null;
     const agents = backlogPlanAgents(env, stored);
-    const { runtime, model, ...effort } = agents[0];
     let row = (await this.chat.findTurn(turnKey)) as BacklogTurnRecord;
     const owner: LaunchOwner = {
       id: row.id as number,
@@ -157,7 +194,7 @@ export class BacklogTurnRunner {
         this.live?.backlog({ backlog: backlog.name, turn: turnView(row) });
       },
     };
-    const record = async (used: AgentRunResult, ran: { runtime: string; model: string; effort?: string }) => {
+    const record = async (used: AgentRunResult, ran: Agent) => {
       row = await this.withLogCost({
         ...withDuration(row, used),
         runtime: ran.runtime,
@@ -166,40 +203,44 @@ export class BacklogTurnRunner {
         transcript: outputFileFor(dir, turnKey, TURN_STEP, null),
       });
     };
-    try {
-      const result = await this.launcher.launch({
-        root: dir,
-        run: owner,
-        login: backlog.owner,
-        key: turnKey,
-        step: TURN_STEP,
-        mode: 'plan',
-        tools: 'plan',
-        runtime,
-        model,
-        ...effort,
-        timeLimitMs: env.PLAN_TIMEOUT_MS,
-        prompt,
-        workspace: space.workspace,
-        mounts: space.mounts,
-        helpers: backlogReadAgents(env),
-        failover: true,
-        result: backlogTurn,
-        check: nameRefusalsOnce((value) => this.actions.check(backlog.name, value)),
-        call: { ties: await this.ties.of(backlog.id as number, turnKey) },
-      });
-      const ran = result.agent ?? { runtime, model, ...effortFields(agents[0]) };
-      await record(result, ran);
-      const failure = agentFailure(result, TURN_STEP, 'plan');
-      if (failure) throw new SwarmloopError(`The planner's agent did not finish: ${failure}.`);
-      if (result.resultValue === undefined) throw new SwarmloopError('the planner gave no usable answer');
-      return result.resultValue as BacklogTurnResult;
-    } catch (error) {
-      const tried = error instanceof ResultInvalid || error instanceof ModelHostUnavailable ? error.result : undefined;
-      if (tried) {
-        await record(tried, { runtime, model, ...effortFields(agents[0]) });
+    return async ({ prompt, brief, agent = agents[0] }) => {
+      const { runtime, model, ...effort } = agent;
+      try {
+        const result = await this.launcher.launch({
+          root: dir,
+          run: owner,
+          login: backlog.owner,
+          key: turnKey,
+          step: TURN_STEP,
+          mode: 'plan',
+          tools: 'plan',
+          runtime,
+          model,
+          ...effort,
+          timeLimitMs: env.PLAN_TIMEOUT_MS,
+          prompt,
+          // A chat that is gone, or another agent, starts from the whole brief; the first launch's prompt is that brief.
+          ...(brief === undefined ? {} : { freshPrompt: brief, brief }),
+          workspace: space.workspace,
+          mounts: space.mounts,
+          helpers: backlogReadAgents(env),
+          failover: true,
+          result: backlogTurn,
+          check: nameRefusalsOnce((value) => this.actions.check(backlog.name, value)),
+          call: { ties: await this.ties.of(backlog.id as number, turnKey) },
+        });
+        const ran: Agent = result.agent ?? agent;
+        await record(result, ran);
+        const failure = agentFailure(result, TURN_STEP, 'plan');
+        if (failure) throw new SwarmloopError(`The planner's agent did not finish: ${failure}.`);
+        if (result.resultValue === undefined) throw new SwarmloopError('the planner gave no usable answer');
+        return { value: result.resultValue as BacklogTurnResult, agent: ran };
+      } catch (error) {
+        const tried =
+          error instanceof ResultInvalid || error instanceof ModelHostUnavailable ? error.result : undefined;
+        if (tried) await record(tried, agent);
+        throw error;
       }
-      throw error;
-    }
+    };
   }
 }

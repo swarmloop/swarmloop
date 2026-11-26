@@ -11,6 +11,7 @@ import { BacklogScheduler } from '../backlog-scheduler';
 import { PlannerTurnActions } from './planner-actions';
 import { messageView, turnView } from './planner-views';
 import { BacklogTurnRunner } from './turn-runner';
+import { TurnTakes } from './turn-takes';
 import { failedKeys, holdsBacklog, resumeTarget, waitsForTry } from './turn-hold';
 import { waitOf } from './turn-wait';
 import type { TurnOutcome } from './turn-wait';
@@ -26,8 +27,8 @@ const MAX_DELAY_MS = 2 ** 31 - 1;
 
 /**
  * The planner of every backlog. It wakes on a person's message and on the end of the scheduler's events pass, runs one
- * turn per backlog at a time (a wake during a turn starts one next turn that takes everything that came meanwhile),
- * and owns its running turns and timers: it waits for them when the module closes.
+ * turn per backlog at a time (what comes while a turn runs goes into that turn, and a wake starts one next turn only
+ * for what the running turn did not take), and owns its running turns and timers: it waits for them when the module closes.
  */
 @Injectable()
 export class BacklogPlanner implements OnModuleDestroy {
@@ -48,6 +49,7 @@ export class BacklogPlanner implements OnModuleDestroy {
     private readonly actions: PlannerTurnActions,
     private readonly scheduler: BacklogScheduler,
     private readonly clock: Clock,
+    private readonly takes: TurnTakes,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -69,12 +71,14 @@ export class BacklogPlanner implements OnModuleDestroy {
   /** Resolves when no turn of any backlog runs. A turn that waits for a usage limit or a code host is not running. */
   async whenIdle(): Promise<void> {
     while (this.running.size > 0) await Promise.allSettled([...this.running.values()]);
+    await this.takes.idle();
   }
 
-  /** A person's message: a turn takes what waits. During a turn, or while one waits for a limit or a code host, one next turn follows it. */
+  /** A person's message: a turn takes what waits. A running turn takes it into itself; while one waits for a limit or a code host, one next turn follows it. */
   wake(backlogId: number): void {
     if (this.closed) return;
-    this.woken.add(backlogId);
+    // A running turn takes what came into itself; only what it does not take starts one next turn.
+    if (!this.takes.take(backlogId)) this.woken.add(backlogId);
     if (!this.running.has(backlogId) && !this.timers.has(backlogId)) this.begin(backlogId, () => Promise.resolve());
   }
 
@@ -176,14 +180,25 @@ export class BacklogPlanner implements OnModuleDestroy {
         if (items.messages.length + items.events.length === 0) {
           await this.mark(turn, { status: 'done' });
         } else {
-          const outcome = await this.runner.run(backlog.name, turnKey);
-          if (outcome.status === 'waiting') await this.waitFor(backlog, turnKey, outcome);
+          await this.runTaking(backlog, turnKey);
         }
       }
     } catch (error) {
       await this.fail(backlog, turnKey, error);
     }
     await this.publish(backlog, turnKey);
+  }
+
+  /** Runs the turn with its take window open: what comes meanwhile is taken into it. The window closes before the turn waits, fails or ends. */
+  private async runTaking(backlog: BacklogRecord, turnKey: string): Promise<void> {
+    this.takes.open(backlog.id as number, turnKey, () => this.publishTurn(backlog, turnKey));
+    try {
+      const outcome = await this.runner.run(backlog.name, turnKey);
+      await this.takes.close(turnKey);
+      if (outcome.status === 'waiting') await this.waitFor(backlog, turnKey, outcome);
+    } finally {
+      await this.takes.close(turnKey);
+    }
   }
 
   /** The timer's work: the turn runs only when it still waits for its next try, never after it was sent or done meanwhile. */

@@ -51,7 +51,7 @@ export class BacklogChatService {
     const recent = await this.chats.lastMessages(id, SHOWN_MESSAGES);
     const turns = await this.chats.turnsOf(id);
     return {
-      messages: recent.messages.map(messageView),
+      messages: recent.messages.map((message) => messageView(message, turns)),
       older: recent.older,
       turns: turns.map(turnView),
     };

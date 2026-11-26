@@ -5,7 +5,7 @@ import { SwarmloopError } from '../../../core/swarmloop-error';
 import { type Subtask, SUBTASKS_KIND, parseSubtasks } from '../../../contract/subtask';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import { BacklogRepository, type BacklogTaskRecord } from '../../../history/backlog.repository';
-import type { MilestoneRecord, RequirementRecord } from '../../../history/backlog-writers';
+import type { BacklogEventRecord, MilestoneRecord, RequirementRecord } from '../../../history/backlog-writers';
 import { DocumentRepository } from '../../../history/document.repository';
 import { RunRepository } from '../../../history/run.repository';
 import { storedState } from '../../../history/run-state';
@@ -123,13 +123,20 @@ export class BacklogTurnState {
       decisions: decisions.map(({ text, who, createdAt }) => ({ text, who, at: createdAt })),
       messages: recent.messages.map(({ author, text, createdAt }) => ({ author, text, at: createdAt })),
       olderMessages: recent.older,
-      events: await this.eventsOf(backlog.owner, turnKey),
+      events: await this.factsOf(backlog.owner, (await this.chat.itemsOfTurn(turnKey)).events, turnKey),
     };
   }
 
-  private async eventsOf(owner: string, turnKey: string): Promise<TurnEvent[]> {
+  /** The given events of the turn with their facts, read the way the brief reads its events: a run's whole texts land in the turn's folder. */
+  async eventsOf(backlogName: string, turnKey: string, events: BacklogEventRecord[]): Promise<TurnEvent[]> {
+    const backlog = await this.backlogs.findBacklog(backlogName);
+    if (backlog === null) throw new SwarmloopError(`no backlog ${backlogName}`);
+    return this.factsOf(backlog.owner, events, turnKey);
+  }
+
+  private async factsOf(owner: string, records: BacklogEventRecord[], turnKey: string): Promise<TurnEvent[]> {
     const events: TurnEvent[] = [];
-    for (const event of (await this.chat.itemsOfTurn(turnKey)).events) {
+    for (const event of records) {
       events.push({ kind: event.kind, at: event.createdAt, facts: await this.facts.of(owner, event, turnKey) });
     }
     return events;

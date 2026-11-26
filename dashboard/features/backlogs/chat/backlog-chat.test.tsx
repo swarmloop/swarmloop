@@ -5,6 +5,7 @@ import type { BacklogView } from '@contract/backlog';
 import type { BacklogChatView } from '@contract/backlog-chat';
 import { resumeBacklogTurn, runBacklog, runMilestone, sendBacklogMessage } from '../../../lib/backlog-endpoints';
 import { uploadFile } from '../../../lib/endpoints';
+import { localTime } from '../../../lib/format';
 import {
   backlogChatView,
   backlogView,
@@ -167,28 +168,48 @@ describe('BacklogChat turns and lines', () => {
     expect(log).not.toHaveTextContent(/[{}]|"facts"|pay-by-card/);
   });
 
-  it('shows one quiet line while the planner works, in a slot that is there when it does not', () => {
-    const slot = (): HTMLElement =>
-      screen.getByRole('region', { name: 'Chat' }).querySelector('[data-slot="quiet"]') as HTMLElement;
+  it('ends the feed with a thinking row and its start time while the planner works, and has no caption', () => {
+    const startedAt = '2026-01-01T10:00:00.000Z';
     const { rerender } = render(
       <BacklogChat view={backlogView()} chat={backlogChatView()} login="ada" onView={onView} onChat={onChat} />,
     );
-    const idle = slot();
-    expect(idle).toBeEmptyDOMElement();
+    expect(screen.queryByText('The planner is thinking…')).not.toBeInTheDocument();
 
     rerender(
       <BacklogChat
         view={backlogView()}
-        chat={backlogChatView({ turns: [{ status: 'running', reason: '', nextTryAt: null }] })}
+        chat={backlogChatView({ turns: [{ status: 'running', reason: '', nextTryAt: null, startedAt }] })}
         login="ada"
         onView={onView}
         onChat={onChat}
       />,
     );
 
-    expect(screen.getAllByText('The planner is working on your messages…')).toHaveLength(1);
-    expect(slot()).toBe(idle);
-    expect(slot()).toHaveStyle({ height: '24px' });
+    const feed = screen.getByRole('log');
+    expect(feed.lastElementChild).toHaveTextContent('The planner is thinking…');
+    expect(feed.lastElementChild).toHaveTextContent(`Started at ${localTime(startedAt)}`);
+    expect(screen.queryByText('The planner is working on your messages…')).not.toBeInTheDocument();
+  });
+
+  it('says on each of the person’s messages whether it waits, is read or is answered, and nothing on the planner’s', () => {
+    show(
+      backlogChatView({
+        messages: [
+          chatMessage({ id: 1, text: 'one', state: 'answered', createdAt: '2026-01-01T10:00:00.000Z' }),
+          chatMessage({ id: 2, author: 'planner', text: 'reply', createdAt: '2026-01-01T10:01:00.000Z' }),
+          chatMessage({ id: 3, text: 'two', state: 'read', createdAt: '2026-01-01T10:02:00.000Z' }),
+          chatMessage({ id: 4, text: 'three', state: 'waiting', createdAt: '2026-01-01T10:03:00.000Z' }),
+        ],
+      }),
+    );
+
+    const log = screen.getByRole('log');
+    expect(
+      within(log)
+        .getAllByText(/^(Waiting|Read|Answered)$/)
+        .map((node) => node.textContent),
+    ).toEqual(['Answered', 'Read', 'Waiting']);
+    expect(log).not.toHaveTextContent('Pending');
   });
 });
 

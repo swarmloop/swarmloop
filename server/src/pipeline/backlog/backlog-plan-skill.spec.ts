@@ -59,6 +59,14 @@ describe('the backlog-plan skill', () => {
     }
   });
 
+  it('says that what arrives while a turn runs comes once, in the same chat, and asks for the whole answer again', () => {
+    const start = skill.split('\n\n').find((paragraph) => paragraph.startsWith('Each turn starts from'));
+    expect(start).toContain(
+      'Messages and events that arrive while you work come to you once, in the same chat, before your answer is applied; give your whole answer again, taking them in.',
+    );
+    expect(core).not.toContain('arrive while you work');
+  });
+
   it('reads the marks of every merge, whether or not the task covers a requirement, and adds a fix task for a real miss', () => {
     const section = skill.slice(skill.indexOf('## After a merge'), skill.indexOf('## Before anything starts'));
     expect(section).toContain(

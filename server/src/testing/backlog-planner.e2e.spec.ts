@@ -342,3 +342,56 @@ describe('the planner acts on a run of its backlog that waits for a person', () 
     expect(JSON.parse(resumed?.result ?? 'null')).toEqual({ value: { key: part.key, status: 'started' } });
   });
 });
+
+describe('a message that comes while the planner works is answered in that turn', () => {
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+  /** The prompts of the planner launches, in order. */
+  let prompts: string[];
+
+  beforeEach(async () => {
+    prompts = [];
+    const blocks = new BlockAgentRunner();
+    const base = blocks.run.bind(blocks);
+    blocks.run = async (input) => {
+      if (input.step !== 'backlog-plan') return base(input);
+      prompts.push(input.prompt ?? '');
+      if (prompts.length === 1) {
+        await flow.app.app.get(BacklogChatService).post(OWNER, BACKLOG, 'And add a search box.', 'second');
+      }
+      const say = prompts.length === 1 ? 'First answer.' : 'Both answered.';
+      return new BlockAgentRunner({ 'backlog-plan': [{ block: { say, actions: [] } }] }).run(input);
+    };
+    flow = await createFlowHarness(KEY, {
+      env: { CHECKOUTS_ROOT: '.', ...FAKE_MODEL_KEY },
+      realImplement: false,
+      realReview: false,
+      blocks,
+    });
+    const url = `file://${join(flow.app.root, 'demo.git')}`;
+    git(join(flow.app.root, 'demo'), ['remote', 'set-url', 'origin', url]);
+    remoteProject(url);
+    flow.host.defaultBranchPasses();
+  });
+
+  afterEach(async () => {
+    await flow.close();
+  });
+
+  it('gives the message to the running turn in one follow-up and applies the answer to it', async () => {
+    await flow.backlog().actions.createBacklog(OWNER, { name: BACKLOG, repositories: ['demo'], mergeMode: 'green' });
+    const chat = flow.app.app.get(BacklogChatService);
+
+    await chat.post(OWNER, BACKLOG, 'Plan the shop.', 'first');
+    await flow.app.app.get(BacklogPlanner).whenIdle();
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain('And add a search box.');
+    const shown = await chat.chat(BACKLOG);
+    expect(shown.turns.map((turn) => turn.status)).toEqual(['done']);
+    expect(shown.messages.map((message) => [message.author, message.text, message.state])).toEqual([
+      ['person', 'Plan the shop.', 'answered'],
+      ['person', 'And add a search box.', 'answered'],
+      ['planner', 'Both answered.', undefined],
+    ]);
+  });
+});

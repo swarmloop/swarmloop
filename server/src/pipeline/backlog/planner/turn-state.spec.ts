@@ -99,6 +99,18 @@ describe('BacklogTurnState', () => {
       expect(read.events).toMatchObject([{ kind: 'run-chat', facts: { message: 'hi', reply: 'ok' } }]);
     }));
 
+  it('reads given events with the same facts as the events of the turn', () =>
+    withState(async (h, state) => {
+      const id = await h.addBacklog();
+      await h.addEvent(id, 'e1', 'run-chat', { slug: 'a', message: 'hi', reply: 'ok' });
+      const { events } = await h.chat.takeInto(id, 'turn-1');
+
+      const given = await state.eventsOf('alpha', 'turn-1', events);
+
+      expect(given).toEqual((await state.read('alpha', 'turn-1')).events);
+      expect(given).toMatchObject([{ kind: 'run-chat', facts: { message: 'hi', reply: 'ok' } }]);
+    }));
+
   it('shows a change made by hand and an answer given on the run page at the next read', () =>
     withState(async (h, state) => {
       const id = await h.addBacklog();

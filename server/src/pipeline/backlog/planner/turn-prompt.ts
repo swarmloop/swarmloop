@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { BacklogEventRecord, BacklogMessageRecord } from '../../../history/backlog-writers';
 import type { SandboxMount } from '../../../core/sandbox-mount';
 import { settled } from '../../../contract/subtask';
 import { skillPrompt } from '../../../steps/shared/skill-prompt';
@@ -54,6 +55,10 @@ function milestoneText(milestone: NonNullable<TurnState['active']>): string {
   ].join('\n');
 }
 
+function messageText(message: { author: string; at: string; text: string }): string {
+  return `${message.author} (${message.at}): ${message.text}`;
+}
+
 function eventText(event: TurnState['events'][number]): string {
   const facts = Object.entries(event.facts).map(
     ([name, value]) => `    ${name}: ${value.replaceAll('\n', '\n      ')}`,
@@ -65,7 +70,7 @@ function eventText(event: TurnState['events'][number]): string {
 function sectionsOf(state: TurnState): Section[] {
   const { backlog } = state;
   const planned = state.planned.map(milestoneText);
-  const messages = state.messages.map((message) => `${message.author} (${message.at}): ${message.text}`);
+  const messages = state.messages.map(messageText);
   return [
     {
       heading: 'Backlog',
@@ -96,6 +101,10 @@ function sectionsOf(state: TurnState): Section[] {
   ];
 }
 
+/** What the follow-up of a turn tells the agent first. */
+const FOLLOW_UP_HEAD =
+  'These messages and events came while you worked. Give your whole answer again, with its result block, taking them in.';
+
 /** Builds the prompt of a planner turn from the state the database gives, never from a run's chat. */
 @Injectable()
 export class BacklogTurnPrompt {
@@ -110,5 +119,22 @@ export class BacklogTurnPrompt {
       sectionsOf(state),
       mounts,
     );
+  }
+
+  /** The follow-up of a turn: the messages and events that came after its brief, written as the brief writes them. */
+  async followUp(
+    backlogName: string,
+    turnKey: string,
+    added: { messages: BacklogMessageRecord[]; events: BacklogEventRecord[] },
+  ): Promise<string> {
+    const messages = added.messages.map((message) =>
+      messageText({ author: message.author, at: message.createdAt, text: message.text }),
+    );
+    const events = await this.state.eventsOf(backlogName, turnKey, added.events);
+    return [
+      FOLLOW_UP_HEAD,
+      ...(messages.length > 0 ? ['', 'Messages, oldest first', ...messages] : []),
+      ...(events.length > 0 ? ['', 'Events', ...events.map(eventText)] : []),
+    ].join('\n');
   }
 }
