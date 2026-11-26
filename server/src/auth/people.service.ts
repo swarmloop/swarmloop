@@ -46,9 +46,16 @@ export class PeopleService implements OnModuleInit {
     await this.people.save({ ...person, envTokenImportedAt: this.clock.iso() });
   }
 
-  /** Records a login the first time it is seen: an admin when no admin exists, else a member. */
-  async seen(login: string): Promise<void> {
-    if (await this.people.existsBy({ login })) {
+  /**
+   * Records a login: the first time as an admin when no admin exists, else a member. A photo is stored at every
+   * login; a call without one keeps the stored photo.
+   */
+  async seen(login: string, avatarUrl?: string): Promise<void> {
+    const known = await this.people.findOneBy({ login });
+    if (known) {
+      if (avatarUrl && known.avatarUrl !== avatarUrl) {
+        await this.people.save({ ...known, avatarUrl });
+      }
       return;
     }
     const first = !(await this.people.existsBy({ role: 'admin' }));
@@ -57,6 +64,7 @@ export class PeopleService implements OnModuleInit {
       role: first ? 'admin' : 'member',
       createdAt: this.clock.iso(),
       envTokenImportedAt: null,
+      avatarUrl: avatarUrl ?? null,
     });
     if (first) {
       await this.importEnvToken(person);
@@ -65,6 +73,11 @@ export class PeopleService implements OnModuleInit {
 
   async roleOf(login: string): Promise<Role> {
     return ((await this.people.findOneBy({ login }))?.role as Role | undefined) ?? 'member';
+  }
+
+  /** The photo stored at the person's latest login, or null. */
+  async avatarOf(login: string): Promise<string | null> {
+    return (await this.people.findOneBy({ login }))?.avatarUrl ?? null;
   }
 
   async isAdmin(login: string): Promise<boolean> {
