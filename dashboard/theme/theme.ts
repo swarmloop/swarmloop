@@ -1,4 +1,11 @@
-import { createTheme } from '@mui/material/styles';
+import { createTheme, type Theme } from '@mui/material/styles';
+
+const TOUCH_MIN = { minHeight: 40 };
+
+/** Below md a touch target is at least 40 px tall. */
+function touchRoot({ theme: t }: { theme: Theme }) {
+  return { [t.breakpoints.down('md')]: TOUCH_MIN };
+}
 
 export const theme = createTheme({
   cssVariables: {
@@ -96,7 +103,17 @@ export const theme = createTheme({
         }),
       },
     },
-    MuiButton: { defaultProps: { disableElevation: true }, styleOverrides: { root: { whiteSpace: 'nowrap' } } },
+    MuiButton: {
+      defaultProps: { disableElevation: true },
+      styleOverrides: { root: ({ theme: t }) => ({ whiteSpace: 'nowrap', [t.breakpoints.down('md')]: TOUCH_MIN }) },
+    },
+    MuiIconButton: {
+      styleOverrides: { root: ({ theme: t }) => ({ [t.breakpoints.down('md')]: { ...TOUCH_MIN, minWidth: 40 } }) },
+    },
+    MuiToggleButton: { styleOverrides: { root: touchRoot } },
+    MuiTab: { styleOverrides: { root: touchRoot } },
+    MuiListItemButton: { styleOverrides: { root: touchRoot } },
+    MuiMenuItem: { styleOverrides: { root: touchRoot } },
     MuiPaper: { defaultProps: { elevation: 0 } },
     MuiAppBar: { defaultProps: { elevation: 0, color: 'inherit' } },
   },
