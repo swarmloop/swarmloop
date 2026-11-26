@@ -1,10 +1,4 @@
-<<<<<<< HEAD
-import { Injectable, Logger } from '@nestjs/common';
-import { ERROR_CODES } from '../../contract/error-codes';
-import { outsideWaitOf } from '../../contract/outside-waits';
-=======
 import { Injectable } from '@nestjs/common';
->>>>>>> b887710c (own change)
 import { settled } from '../../contract/subtask';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -66,57 +60,6 @@ export class EpicMainMoves {
   /** Sends the epic its main move once per head. */
   private async move(backlog: Backlog, task: BacklogTaskRecord, epic: RunEntity, heads: NewHead[]): Promise<void> {
     const named = heads.map(({ repository, head }) => `${repository}@${head}`);
-<<<<<<< HEAD
-    const key = `epic-main-${epic.key}-${named.join('-')}`;
-    const payload = { main: heads.map(({ repository, head }) => `${repository} at ${head}`).join(', ') };
-    const last = await this.lastTry(epic, key);
-    let idempotencyKey = key;
-    if (last) {
-      if (last.state !== 'failed') return;
-      const { message, retryAt } = failureOf(last);
-      if (retryAt === null) {
-        await this.events.rebaseRefused(backlog.id as number, { task: task.slug, head: named.join(','), message });
-        return;
-      }
-      if (Date.parse(retryAt) > this.clock.now()) return;
-      idempotencyKey = `${key}-after-${last.id}`;
-    }
-    try {
-      await this.commands.accept('rebase', epic.key, payload, { idempotencyKey });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`${epic.key} did not take main: ${message}`);
-      await this.events.rebaseRefused(backlog.id as number, { task: task.slug, head: named.join(','), message });
-    }
-  }
-
-  /** The newest command of this move: the try after an outage when there is one, else the first. */
-  private async lastTry(epic: RunEntity, key: string) {
-    const after = await this.commands.latestByKeyPrefix(epic.id, `${key}-after-`);
-    if (after) return after;
-    const first = await this.commands.latestByKeyPrefix(epic.id, key);
-    return first?.idempotencyKey === key ? first : null;
-  }
-}
-
-/**
- * Why a command failed, and when the next try of a code host outage is; no time for any other reason. A stored error
- * with a retryAt and no code was written before the code was stored: a code host outage was the only failure that
- * ever stored a retryAt.
- */
-function failureOf(command: { result: string | null }): { message: string; retryAt: string | null } {
-  const stored = JSON.parse(command.result ?? 'null') as {
-    error?: { message?: string; code?: string; retryAt?: string };
-  } | null;
-  const error = stored?.error;
-  const wait = outsideWaitOf({
-    ...error,
-    code: error?.code ?? (error?.retryAt === undefined ? undefined : ERROR_CODES.HOST_UNAVAILABLE),
-  });
-  const message = error?.message ?? 'the rebase failed';
-  return wait?.code === ERROR_CODES.HOST_UNAVAILABLE ? { message, retryAt: wait.retryAt } : { message, retryAt: null };
-}
-=======
     await this.rebases.send({
       backlogId: backlog.id as number,
       task: task.slug,
@@ -127,4 +70,3 @@ function failureOf(command: { result: string | null }): { message: string; retry
     });
   }
 }
->>>>>>> b887710c (own change)
