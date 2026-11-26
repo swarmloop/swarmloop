@@ -13,6 +13,7 @@ import Skeleton from '@mui/material/Skeleton';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { ReadinessItem } from '@contract/readiness';
+import { usePhone } from '../../lib/use-phone';
 import { useReadiness } from './use-readiness';
 
 export const STATUS = {
@@ -62,20 +63,23 @@ function useNow(): number {
   return now;
 }
 
-const GRID_SX = {
-  listStyle: 'none',
-  m: 0,
-  p: 0,
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
-  gap: 1,
-} as const;
+/** One tile per row below 900 px, as many 100 px columns as fit from it. */
+const gridSx = (phone: boolean) =>
+  ({
+    listStyle: 'none',
+    m: 0,
+    p: 0,
+    display: 'grid',
+    gridTemplateColumns: phone ? 'minmax(0, 1fr)' : 'repeat(auto-fit, minmax(100px, 1fr))',
+    gap: 1,
+  }) as const;
 
 function PanelLoading(): ReactElement {
+  const phone = usePhone();
   return (
     <Paper variant="outlined" component="section" id="readiness" aria-label="Readiness" sx={{ p: { xs: 2, md: 2.5 } }}>
       <Typography sx={{ fontWeight: 600, mb: 1.5 }}>Checking readiness</Typography>
-      <Box component="ul" sx={GRID_SX}>
+      <Box component="ul" sx={gridSx(phone)}>
         {/* The stall item comes only after stalls, so a report always holds the other ids. */}
         {(Object.keys(NAMES) as ReadinessItem['id'][])
           .filter((id) => id !== 'stalls')
@@ -93,6 +97,7 @@ function PanelLoading(): ReactElement {
 export function ReadinessPanel(): ReactElement {
   const { items, error, loading, refreshFailed, checkedAt } = useReadiness();
   const now = useNow();
+  const phone = usePhone();
   if (error) {
     return (
       <Alert id="readiness" severity="warning">
@@ -134,7 +139,7 @@ export function ReadinessPanel(): ReactElement {
           </Typography>
         ) : null}
       </Box>
-      <Box component="ul" sx={GRID_SX}>
+      <Box component="ul" sx={gridSx(phone)}>
         {items.map((item) => {
           const { color, Icon, word } = STATUS[item.status];
           return (
