@@ -546,7 +546,7 @@ The text is plain words for a person: no raw JSON and no internal ids. A cut tex
 - **CI** is one workflow with the same commands as the checks, and it alone runs the server and dashboard tests (3.6).
 - **A release** tags a version, builds the images, runs a smoke test and publishes.
 
-**Today.** The approach is the rule since 24.11. Existing tests that break it time out under load (3.6); since 24.11 they run only in CI. steady-vitest fixed them for the dashboard (3.6). For the server, steady-agent-limit replaces a grown Jest worker between spec files and turns off git's upkeep in specs (3.6); CI's `server-test` and `server-test-seeds` jobs judge the whole suite, and the class is not called closed before they do.
+**Today.** The approach is the rule since 24.11. Existing tests that break it time out under load (3.6); since 24.11 they run only in CI. steady-vitest fixed them for the dashboard (3.6). For the server, steady-agent-limit replaces a grown Jest worker between spec files and turns off git's upkeep in specs (3.6); CI's `server-test` and `server-test-seeds` jobs judge the whole suite, and the class is not called closed before they do. The fault suite in `server/src/testing/faults/` injects the faults real runs met into the real application and checks each run with `assertSettled`.
 
 ## 3.25 The server process, health and readiness
 
