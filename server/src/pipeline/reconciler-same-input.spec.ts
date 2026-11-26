@@ -23,7 +23,6 @@ import { installScripts } from './run-driver.spec-helpers';
 import { ERROR_CODES } from '../contract/error-codes';
 import { refusalQuestion, sameInput } from '../steps/shared/same-input';
 import { StartGate } from './start-gate';
-import { SubtaskPort } from './subtask-port';
 
 const KEY = 'PROJ-81';
 const ASKED = {
@@ -92,9 +91,6 @@ describe('a SAME_INPUT wait that a restart left', () => {
   it('is resumed once, keyed by its open question, and the question is asked again at the same level', async () => {
     const { app, run, steps } = await refusedRun();
     try {
-      const asks = jest
-        .spyOn(app.app.get(SubtaskPort), 'askUp')
-        .mockResolvedValue({ asked: 'starter', level: 1, answer: null });
       await app.app.get(PlanChatStore).appendEntry(KEY, ASKED);
 
       await app.app.get(Reconciler).resumeSameInput();
@@ -107,9 +103,11 @@ describe('a SAME_INPUT wait that a restart left', () => {
       );
       expect(resumes.map((command) => command.idempotencyKey)).toEqual([`same-input-${ASKED.key}`]);
       expect(JSON.parse(resumes[0].payload)).toEqual({ by: 'machine', level: null });
-      expect(asks).toHaveBeenCalledTimes(1);
-      expect(asks.mock.calls[0][1].text).toContain('Not started again: same input as visit 1');
-      expect(asks.mock.calls[0][2]).toBe(0);
+      const { entries } = await app.app.get(PlanChatStore).read(KEY);
+      const refusal = entries.filter((entry) => entry.text.includes('Not started again: same input as visit 1'));
+      // The question the chain put to the run's own planner (level 0) once, besides the one seeded above, and the one put to the starter once.
+      expect(refusal.filter((entry) => entry.kind === 'question' && entry.key !== ASKED.key)).toHaveLength(1);
+      expect(refusal.filter((entry) => entry.kind === 'escalation')).toHaveLength(1);
       expect(steps.get('implement')?.count).toBe(0);
     } finally {
       await app.close();
