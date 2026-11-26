@@ -117,6 +117,20 @@ export interface LaunchView {
   createdAt: string;
 }
 
+/** One decision of the contract's log, in words. The ids are for a tooltip, never for visible text. */
+export interface DecisionView {
+  /** The task's title, or `Plan` for a line the server wrote with no task. */
+  task: string;
+  /** ISO time; null when none was stored. */
+  at: string | null;
+  /** The decision in words, without the item id prefix. */
+  text: string;
+  /** The task's id; '' when none. */
+  taskId: string;
+  /** The contract item id the decision names; null when none. */
+  item: string | null;
+}
+
 export interface FlowView {
   key: string;
   name: string;
@@ -148,8 +162,8 @@ export interface FlowView {
   taskLine?: string;
   /** The tasks that are done with green CI and wait for their merge, in plan order. */
   mergeQueue?: { id: string; title: string }[];
-  /** The `decisions:` the planner gave in the contract. Missing when there are none. */
-  decisions?: string;
+  /** The `decisions:` the planner gave in the contract, one entry each. Missing when there are none. */
+  decisions?: DecisionView[];
   /** The plan chat, always filled by the server. */
   conversation?: ConversationView;
   resume: 'ready' | 'need-answers' | 'running' | 'blocked' | 'done';
@@ -378,8 +392,8 @@ export interface ConnectionView {
   repositories: string[];
   selection: 'all' | 'selected' | null;
   health: { status: 'ok' | 'broken'; expiresAt: string | null; refreshedAt: string | null } | null;
-  /** Owners of the repositories this server works on that the installation does not cover. */
-  missingOwners?: string[];
+  /** `owner/name` of the repositories this server works on that neither the installation nor the server's token reaches. */
+  unreachable?: string[];
   /** People connected through the app; only for who may replace it. */
   connected?: string[];
   /** True when the viewer may replace the app: its maker, or an admin. */

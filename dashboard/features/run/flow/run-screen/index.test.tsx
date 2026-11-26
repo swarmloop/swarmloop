@@ -248,7 +248,7 @@ describe('RunScreen', () => {
         metrics: { ...base.metrics, usd: 0.5 },
         taskLine: 'Split: 1 tasks · 0 merged · 1 running',
         mergeQueue: [{ id: 'a', title: 'Add the column' }],
-        decisions: '- subtask a: use UTC',
+        decisions: [{ task: 'Add the column', at: null, text: 'use UTC', taskId: 'a', item: null }],
         tasks: [
           {
             id: 'a',

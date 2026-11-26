@@ -244,7 +244,7 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 1. A round starts the five reviewers together. Each one reads only its own skill and the diff, the brief, the requirements list, the plan and the decisions.
 2. Each answers `ok` or `return` with findings, and the server checks the requirements reviewer's answer against the requirements list.
 3. Any `return` sends the run to implement with the findings.
-4. When all five say `ok`, the report visit writes the report for the merge request: what was decided, where to look, and what was refused and why.
+4. When all five say `ok`, the report visit writes the report for the merge request: what was decided, where to look, and what was refused and why. The stored document and the merge request body head it from the facts of the checks and CI; the run page heads it from the run's outcome (`Merged` or `Closed without a merge`, else the same heading) through `RunReport.renderForPage`.
 5. A reviewer's question that it cannot settle goes up the chain (rule 8).
 6. A round interrupted by a restart resumes only its own reviewers' files.
 
@@ -489,7 +489,7 @@ A limit stops the run in a wait that names it (rule 18). Every visit stores only
   - come from an allowed host and origin.
 - **Secrets** are never logged, never put in a URL, and never sent to the browser.
 
-**Today.** Holds (`auth/`, `config/redact.ts`, `api/request-guard.ts`). The photo is stored with the person.
+**Today.** Holds (`auth/`, `config/redact.ts`, `api/request-guard.ts`). The photo is stored with the person. A token the host accepts from Connections (`POST /auth/:provider/token` with a signed-in person) adds a connection for that person and starts no session. The installation warning of a host names only the repositories of this server that neither the installation nor the server token reaches (`LoginProvider.serverTokenMisses`).
 
 ## 3.21 Integrations
 
@@ -526,9 +526,9 @@ Adapters are found by folder. A fake of each kind serves the tests.
 
 The text is plain words for a person: no raw JSON and no internal ids. A cut text says how much is left out and where the whole is.
 
-**Today.** Holds in the main. The board shows no return lines, a muted ×N of agent visits, and plain names. Settings' Server section follows `defaults.env` through `DefaultsLayout`; People and Appearance are not in Settings. Gaps:
+**Today.** Holds in the main. The board shows no return lines, a muted ×N of agent visits, and plain names. Settings' Server section follows `defaults.env` through `DefaultsLayout`; People and Appearance are not in Settings. Short lines come from the server, decisions read in words, long texts and path lists fold, and Connections say what a run uses (the server's key or the person's own) and fold a host's repositories; the report heading on the run page is in 3.7. Gaps:
 - held runs read as failures (held-run-says-so);
-- several screens are still being reworked in M1 (f121, f131, f132, done-lately, b04, f26).
+- several screens are still being reworked in M1 (f131, f132, done-lately, b04, f26).
 
 ## 3.24 Tests, CI and releases
 
@@ -551,7 +551,7 @@ The text is plain words for a person: no raw JSON and no internal ids. A cut tex
 - **The main loop does no heavy work.** Large file walks, git metadata copies and deletions run off the main thread, and a lint rule keeps them there. A worker thread ticks every second, so a blocked main loop or a sleeping machine is recorded as a stall.
 - **Health and readiness.** `/health` answers whether the server is up and paused. `/readiness` lists what the server needs and whether it has it: docker, volume mounts, a model credential for every role, and stalls in the last hour. Each item links to where it is fixed.
 
-**Today.** Holds (`pipeline/server-stalls/`, `eslint.main-thread-rules.mjs`, `readiness/`, `api/health.controller.ts`).
+**Today.** Holds (`pipeline/server-stalls/`, `eslint.main-thread-rules.mjs`, `readiness/`, `api/health.controller.ts`). Each readiness item carries a short line the server cuts, and the Disk item what swarmloop itself uses; the dashboard shows both as sent.
 
 ---
 

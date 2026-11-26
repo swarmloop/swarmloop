@@ -317,7 +317,7 @@ export class RunQueriesService {
     if (run.status === 'running' && run.currentStep === name) {
       visits.push(this.runningVisit(run, name, stats.at(-1)?.attempt ?? 0));
     }
-    const report = name === 'code-review' ? await this.runReport.render(run) : null;
+    const report = name === 'code-review' ? await this.runReport.renderForPage(run) : null;
     return {
       step: name,
       ...(await this.meta(run, name)),

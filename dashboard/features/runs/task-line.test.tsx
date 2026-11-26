@@ -7,11 +7,43 @@ import { TaskLine } from './task-line';
 describe('TaskLine', () => {
   it('carries the whole run name on hover', async () => {
     const name = 'a long run name '.repeat(10).trim();
-    render(<TaskLine run={{ ...runSummary(), name }} selected={false} onOpen={vi.fn()} onRemove={vi.fn()} />);
+    render(<TaskLine run={{ ...runSummary(), title: name }} selected={false} onOpen={vi.fn()} onRemove={vi.fn()} />);
 
     await userEvent.setup({ delay: null }).hover(screen.getByText(name));
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent(name);
+  });
+
+  it('names a subtask by its title in the text, the tooltip and the row menu', async () => {
+    const user = userEvent.setup({ delay: null });
+    const run = { ...runSummary(), name: 'First line of the prompt', title: 'The title of the subtask' };
+    const touch = vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === '(hover: none)',
+          media: query,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      render(<TaskLine run={run} selected={false} onOpen={vi.fn()} onRemove={vi.fn()} />);
+
+      expect(screen.queryByText(run.name)).toBeNull();
+      await user.hover(screen.getByText(run.title));
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(run.title);
+      await user.click(screen.getByRole('button', { name: `More actions for ${run.title}` }));
+      expect(screen.getByRole('menuitem', { name: 'Remove' })).toBeInTheDocument();
+    } finally {
+      touch.mockRestore();
+    }
+  });
+
+  it('labels the hover delete with the title', () => {
+    const run = { ...runSummary(), name: 'First line of the prompt', title: 'The title of the subtask' };
+    render(<TaskLine run={run} selected={false} onOpen={vi.fn()} onRemove={vi.fn()} />);
+
+    expect(screen.getByLabelText(`Remove ${run.title}`)).toBeInTheDocument();
   });
 
   it('keeps the delete rendered but hidden and not focusable until hover or focus', async () => {

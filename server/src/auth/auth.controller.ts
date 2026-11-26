@@ -190,7 +190,7 @@ export class AuthController {
     };
   }
 
-  /** Signs in with a personal access token the person made on the host: no application is needed. Open whenever the login is. */
+  /** Signs in with a personal access token the person made on the host: no application is needed. Open whenever the login is. A signed-in person's token is connected to them instead, with no new session. */
   @Post(':provider/token')
   async signInWithToken(
     @Param('provider') name: string,
@@ -211,6 +211,10 @@ export class AuthController {
     });
     if (!identity) {
       throw new BadRequestException(`${provider.label} did not accept this token`);
+    }
+    const { actor } = await this.auth.check(request.headers);
+    if (actor) {
+      return { url: await this.signIns.connectToken(provider, actor, identity, body.next) };
     }
     return { url: await this.signIns.complete(provider, identity, request.headers, response, body.next) };
   }

@@ -1,3 +1,4 @@
+import { planItemText } from '../../contract/plan-item';
 import { isSubtask, type Subtask } from '../../contract/subtask';
 import type { RunEntity } from '../../history/entities';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -147,7 +148,7 @@ export function renderContract(items: ContractItem[]): string {
 
 /** The l17 checklist items the server writes from the tasks: `title - files: .. - proof: ..`. */
 export function planItemsFromTasks(tasks: Pick<SplitTask, 'title' | 'files' | 'proof'>[]): string[] {
-  return tasks.map((task) => `${task.title} - files: ${task.files.join(', ')} - proof: ${task.proof}`);
+  return tasks.map(planItemText);
 }
 
 /** The documents of a split plan: its tasks, kept capabilities and contract. No graph clears the tasks of an earlier split. */

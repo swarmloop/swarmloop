@@ -126,16 +126,30 @@ describe('taskLine', () => {
 });
 
 describe('decisionsOf', () => {
-  it('gives the entries under decisions:, up to the next heading', () => {
-    expect(
-      decisionsOf('api:\n- GET /x\n\ndecisions:\n- subtask a: store UTC\n  in the column\n\nrisks:\n- none\n'),
-    ).toBe('- subtask a: store UTC\n  in the column');
+  const tasks = [{ id: 'a', title: 'Store times' }] as Parameters<typeof decisionsOf>[1];
+  const contract =
+    'api:\n- r1 (owner a): GET /x\n\ndecisions:\n- subtask a at 2026-11-21T08:18:04.107Z: r1: store UTC\n  in the column\n- the plan keeps one table\n- subtask zz: unknown task\n\nrisks:\n- none\n';
+
+  it('gives the task title, time, words, task id and item id of each entry', () => {
+    expect(decisionsOf(contract, tasks)[0]).toEqual({
+      task: 'Store times',
+      at: '2026-11-21T08:18:04.107Z',
+      text: 'store UTC\nin the column',
+      taskId: 'a',
+      item: 'r1',
+    });
+  });
+
+  it('says Plan for a line with no task, a null time and no item, and the task id for an unknown title', () => {
+    const [, plan, unknown] = decisionsOf(contract, tasks);
+    expect(plan).toEqual({ task: 'Plan', at: null, text: 'the plan keeps one table', taskId: '', item: null });
+    expect(unknown).toMatchObject({ task: 'zz', taskId: 'zz', text: 'unknown task' });
   });
 
   it('is empty without a decisions: block or without entries', () => {
-    expect(decisionsOf(null)).toBeNull();
-    expect(decisionsOf('api:\n- GET /x\n')).toBeNull();
-    expect(decisionsOf('decisions:\n')).toBeNull();
+    expect(decisionsOf(null, tasks)).toEqual([]);
+    expect(decisionsOf('api:\n- GET /x\n', tasks)).toEqual([]);
+    expect(decisionsOf('decisions:\n', tasks)).toEqual([]);
   });
 });
 
@@ -179,7 +193,7 @@ describe('taskView', () => {
       { id: 'a', title: 'A' },
       { id: 'c', title: 'C' },
     ]);
-    expect(view.decisions).toBe('- subtask b: store UTC');
+    expect(view.decisions).toEqual([{ task: 'B', at: null, text: 'store UTC', taskId: 'b', item: null }]);
   });
 
   it('leaves the merge queue and the decisions out when there are none', () => {

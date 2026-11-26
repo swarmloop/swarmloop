@@ -80,4 +80,14 @@ describe('RevisionCard', () => {
     expect(reply.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(card.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it('folds a long list of paths of a plan item after five', () => {
+    const files = Array.from({ length: 30 }, (_, index) => `src/file-${index}.ts`);
+    const item = `Add logging - files: ${files.join(', ')} - proof: a.spec.ts`;
+    render(<RevisionCard revision={revision({ added: [item], changed: [], dropped: [] })} />);
+
+    expect(screen.getByText('src/file-4.ts')).toBeVisible();
+    expect(screen.queryByText('src/file-5.ts')).toBeNull();
+    expect(screen.getByRole('button', { name: 'and 25 more files' })).toBeVisible();
+  });
 });

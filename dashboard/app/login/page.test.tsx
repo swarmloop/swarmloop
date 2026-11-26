@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../lib/api';
@@ -242,6 +242,28 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('link', { name: 'Continue with GitLab' })).toBeInTheDocument();
     expect(screen.getByLabelText('Personal access token')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in with token' })).toBeInTheDocument();
+  });
+
+  it('puts an or line between the buttons and a GitLab block with its icon and heading', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [gitlabToken] });
+
+    render(<LoginPage />);
+
+    const button = await screen.findByRole('link', { name: 'Continue with GitHub' });
+    const divider = screen.getByText('or');
+    const heading = screen.getByRole('heading', { name: 'GitLab' });
+    expect(button.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divider.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(heading).getByTestId('mark-gitlab')).toBeInTheDocument();
+  });
+
+  it('has no or line when no host takes a token', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [] });
+
+    render(<LoginPage />);
+
+    await screen.findByRole('link', { name: 'Continue with GitHub' });
+    expect(screen.queryByText('or')).not.toBeInTheDocument();
   });
 
   it('posts the token and goes to next', async () => {

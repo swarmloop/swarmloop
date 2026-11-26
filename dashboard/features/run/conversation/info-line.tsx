@@ -7,6 +7,7 @@ import ButtonBase from '@mui/material/ButtonBase';
 import Box from '@mui/material/Box';
 import MuiLink from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
+import { FoldedText } from '../../../components/ui/folded-text';
 
 /** One muted sentence. With `detail` it is a button that opens the whole text in place. */
 export function InfoLine({
@@ -41,7 +42,7 @@ export function InfoLine({
   if (!detail) {
     return (
       <Box sx={{ px: 1 }}>
-        {line}
+        <FoldedText text={sentence}>{line}</FoldedText>
         {link ? (
           <Typography variant="caption" sx={{ ml: 0.5 }}>
             <Link href={link.href}>{link.text}</Link>
@@ -53,14 +54,16 @@ export function InfoLine({
   }
   return (
     <Box sx={{ px: 1 }}>
-      <ButtonBase
-        aria-expanded={open}
-        aria-label={`${label}: ${sentence}`}
-        onClick={() => setOpen((value) => !value)}
-        sx={{ display: 'block', width: '100%', borderRadius: 1, textAlign: 'left' }}
-      >
-        {line}
-      </ButtonBase>
+      <FoldedText text={sentence}>
+        <ButtonBase
+          aria-expanded={open}
+          aria-label={`${label}: ${sentence}`}
+          onClick={() => setOpen((value) => !value)}
+          sx={{ display: 'block', width: '100%', borderRadius: 1, justifyContent: 'flex-start', textAlign: 'left' }}
+        >
+          {line}
+        </ButtonBase>
+      </FoldedText>
       {go}
       {open ? (
         <Box sx={{ mt: 0.5, pl: 1, borderLeft: 2, borderColor: 'divider', overflowWrap: 'anywhere' }}>{detail}</Box>

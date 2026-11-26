@@ -23,9 +23,30 @@ describe('ConnectionCard', () => {
     );
 
     const card = screen.getByRole('region', { name: 'Claude' });
-    expect(card).toHaveTextContent('Connected as alice@acme.test');
+    expect(card).toHaveTextContent('Runs use your alice@acme.test');
     expect(card).toHaveTextContent('f3a9');
     expect(screen.getByRole('button', { name: 'Test' })).toBeInTheDocument();
+  });
+
+  it('says a key ending in the last four characters when only a key is stored', () => {
+    render(
+      <ConnectionCard card={connectionCard({ status: 'connected', last4: 'f3a9' })} onChanged={() => undefined} />,
+    );
+
+    const card = screen.getByRole('region', { name: 'Claude' });
+    expect(card).toHaveTextContent('Runs use your key ending in f3a9');
+    expect(card).not.toHaveTextContent('· ends in');
+  });
+
+  it("says the server's key when the server default is all there is", () => {
+    render(
+      <ConnectionCard
+        card={connectionCard({ status: 'connected', serverDefault: true })}
+        onChanged={() => undefined}
+      />,
+    );
+
+    expect(screen.getByRole('region', { name: 'Claude' })).toHaveTextContent("Runs use the server's key");
   });
 
   it('shows the reason when it needs attention', () => {

@@ -213,6 +213,65 @@ describe('ConversationFeed', () => {
     }
   });
 
+  it('left-aligns a talk line and a question, folds a 20-line question under its asker line and keeps the talk link', async () => {
+    const user = userEvent.setup({ delay: null });
+    Element.prototype.scrollIntoView = () => undefined;
+    try {
+      const decide = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join('\n');
+      const entries: FeedEntry[] = [
+        { ...entry('ask-1', 'planner', 'Question 1'), kind: 'question', from: 'implement' },
+        { ...entry('escalate-ask-1', 'planner', 'Which store?'), kind: 'escalation', from: 'implement' },
+        entry('message-1', 'person', 'Use the cache'),
+        {
+          key: 'talk-1',
+          role: 'talk',
+          at: '2026-11-15T07:11:43.444Z',
+          who: 'Implement',
+          to: 'the planner',
+          asked: 'Which store?',
+          escalated: true,
+          escalation: 'escalate-ask-1',
+        },
+      ];
+      feed(
+        flowView({
+          status: 'waiting',
+          items: [
+            {
+              kind: 'question',
+              id: 'q1',
+              label: 'q1',
+              answer: '',
+              parts: {
+                decide,
+                sides: [],
+                full: '',
+                askedAt: '2026-11-15T07:11:43.444Z',
+                asker: 'implement',
+                entry: 'escalate-ask-1',
+              },
+            },
+          ],
+        }),
+        entries,
+      );
+
+      const card = screen.getByText('Implement asks').closest('article')!;
+      expect(screen.getByText('Implement asks').parentElement!.parentElement).toHaveStyle({ textAlign: 'left' });
+      expect(screen.getByRole('button', { name: /Implement asked the planner/ })).toHaveStyle({ textAlign: 'left' });
+      expect(within(card).getByText('Implement asks')).toBeVisible();
+      const folded = screen.getByText(/line 20/).parentElement!;
+      expect(getComputedStyle(folded.parentElement!).display).toBe('-webkit-box');
+      expect(getComputedStyle(folded).display).toBe('block');
+      await user.click(within(card).getByRole('button', { name: 'Show all' }));
+      expect(within(card).getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Go to the question' })).toBeVisible();
+      expect(screen.getByText('Use the cache').parentElement).toHaveStyle({ textAlign: 'left' });
+    } finally {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    }
+  });
+
   it('renders the label of a question without parts as markdown, and shows a paste request the same way', () => {
     feed(
       flowView({

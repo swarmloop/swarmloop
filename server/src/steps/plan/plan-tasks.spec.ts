@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { planItemParts } from '../../contract/plan-item';
 import { ARTIFACTS } from '../contract/artifacts';
 import { plan } from '../../agent-result/definitions/plan';
 import type { ContractItem, SplitFields, SplitTask } from '../../agent-result/definitions/split-fields';
@@ -58,6 +59,16 @@ describe('taskErrors', () => {
       'Add the column - files: a.ts, b.ts - proof: a.spec.ts "reads it"',
       'Send it - files: c.ts - proof: c.spec.ts "sends it"',
     ]);
+  });
+
+  it('reads back the items it writes, with and without files', () => {
+    const [item] = planItemsFromTasks([column]);
+    expect(planItemParts(item)).toEqual({
+      title: 'Add the column',
+      files: ['a.ts', 'b.ts'],
+      proof: 'a.spec.ts "reads it"',
+    });
+    expect(planItemParts('Just a line')).toEqual({ title: 'Just a line', files: [], proof: null });
   });
 
   it('names a task id that is not a part id', () => {

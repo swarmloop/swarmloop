@@ -34,6 +34,7 @@ const item = (status: 'ok' | 'warn' | 'fail') => ({
   id: 'docker' as const,
   status,
   line: 'docker says so',
+  short: 'running',
   action: 'start Docker',
 });
 

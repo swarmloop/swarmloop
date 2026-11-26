@@ -34,6 +34,15 @@ describe('RunReport', () => {
     expect(text).toContain('| — | — | ⏳ | — | 0 | 5 min |');
   });
 
+  it('heads the page report from the run outcome, and keeps the stored heading', async () => {
+    const report = reportOf(JSON.stringify(PARTS));
+    const outcome = (value: object) => ({ ...RUN, mergeOutcome: JSON.stringify(value) }) as unknown as RunEntity;
+    expect(await report.renderForPage(outcome({ merged: [] }))).toContain('## ✅ Merged · risk: low');
+    expect(await report.renderForPage(outcome({ closed: [] }))).toContain('## Closed without a merge · risk: low');
+    expect(await report.renderForPage(RUN)).toContain('## ⏳ Waiting for CI · risk: low');
+    expect(await report.render(outcome({ merged: [] }))).toContain('## ⏳ Waiting for CI · risk: low');
+  });
+
   it('gives nothing for a run without parts, or with parts of the old shape', async () => {
     expect(await reportOf(null).render(RUN)).toBeNull();
     expect(await reportOf('{"whatChanged":"a","codeReview":"b"}').render(RUN)).toBeNull();

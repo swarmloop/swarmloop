@@ -1,18 +1,15 @@
 import { credentialFor, runtimesInUse } from '../config/agents';
-import { access, stat } from 'fs/promises';
-import { constants } from 'fs';
-import { join } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import type { ReadinessId, ReadinessItem, ReadinessView } from '../contract/readiness';
 import { Clock } from '../core/clock';
 import { FetchFailed } from '../core/swarmloop-error';
-import { root } from '../history/run-paths';
 import { type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { ConnectionsService } from '../auth/connections.service';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
 import { ReadinessModelCredential } from './readiness-model-credential';
+import { ReadinessPaths } from './readiness-paths';
 import { ReadinessStalls } from './readiness-stalls';
 import { missingModelCredential, ok, worst, type Outcome } from './readiness-outcome';
 import { DiskGuard } from '../pipeline/disk-guard';
@@ -20,7 +17,7 @@ import { OwnUseMeter } from '../pipeline/own-use-meter';
 import { readDockerEngine } from '../sandbox/docker-machine';
 import { CHECK_CORES, checksAtOnce, sliceSize } from '../sandbox/core-slices';
 import { imageName } from '../sandbox/image-resolver';
-import { agentImage, sandboxUserId } from '../sandbox/sandbox-launch';
+import { agentImage } from '../sandbox/sandbox-launch';
 import { SandboxService } from '../sandbox/sandbox.service';
 
 const GB = 1024 ** 3;
@@ -51,6 +48,7 @@ export class ReadinessService {
     private readonly hosts: CodeHostRegistry,
     private readonly clock: Clock,
     private readonly meter: OwnUseMeter,
+    private readonly folders: ReadinessPaths,
     @Optional() private readonly connections?: ConnectionsService,
     @Optional() private readonly person?: ReadinessModelCredential,
     @Optional() private readonly stalls?: ReadinessStalls,
@@ -108,7 +106,7 @@ export class ReadinessService {
       ['arch', () => this.arch()],
       ['images', () => this.images()],
       ['disk', () => this.diskSpace()],
-      ['paths', () => this.paths()],
+      ['paths', () => this.folders.outcome()],
       ['ports', () => this.ports()],
       ['model-credential', () => this.modelCredential()],
       ['code-host-token', () => this.codeHostToken()],
@@ -119,7 +117,13 @@ export class ReadinessService {
           return { id, ...(await check()) };
         } catch (error) {
           const line = error instanceof Error ? error.message : String(error);
-          return { id, status: 'fail', line, action: 'fix the cause named in the line, then check again' };
+          return {
+            id,
+            status: 'fail',
+            line,
+            short: 'check failed',
+            action: 'fix the cause named in the line, then check again',
+          };
         }
       }),
     );
@@ -133,7 +137,13 @@ export class ReadinessService {
       return outcome ? { id: 'stalls', ...outcome } : null;
     } catch (error) {
       const line = error instanceof Error ? error.message : String(error);
-      return { id: 'stalls', status: 'warn', line, action: 'fix the cause named in the line, then check again' };
+      return {
+        id: 'stalls',
+        status: 'warn',
+        line,
+        short: 'check failed',
+        action: 'fix the cause named in the line, then check again',
+      };
     }
   }
 
@@ -141,19 +151,25 @@ export class ReadinessService {
     try {
       await this.sandbox.run(['info']);
     } catch {
-      return { status: 'fail', line: 'docker is not running', action: 'start Docker or mount the Docker socket' };
+      return {
+        status: 'fail',
+        line: 'docker is not running',
+        short: 'not running',
+        action: 'start Docker or mount the Docker socket',
+      };
     }
     const version = await readDockerEngine((args) => this.sandbox.run(args));
     if (version !== undefined && Number.parseInt(version, 10) < MIN_ENGINE_MAJOR) {
       return {
         status: 'fail',
+        short: 'too old',
         line: `Docker Engine ${version} cannot mount a volume subpath; swarmloop needs Engine ${MIN_ENGINE_MAJOR} or newer`,
         action: `update Docker to Engine ${MIN_ENGINE_MAJOR} or newer`,
       };
     }
     const machine = this.sandbox.knownMachine();
     if (!machine) {
-      return ok('docker answers');
+      return ok('docker answers', 'running');
     }
     const gb = Number((machine.memoryBytes / GB).toFixed(1));
     const asked = this.config.env.CHECKS_PARALLEL;
@@ -163,30 +179,37 @@ export class ReadinessService {
       asked > fit
         ? ` (CHECKS_PARALLEL ${asked}; ${fit} ${fit === 1 ? 'fits' : 'fit'} with ${CHECK_CORES} cores each)`
         : '';
-    return ok(
-      `${machine.cpus} CPUs · ${gb} GB · ${fit} ${fit === 1 ? 'check' : 'checks'} × ${size} ${size === 1 ? 'core' : 'cores'}${note}`,
-    );
+    const short = `${machine.cpus} CPUs · ${gb} GB · ${fit} ${fit === 1 ? 'check' : 'checks'} × ${size} ${size === 1 ? 'core' : 'cores'}`;
+    return ok(`${short}${note}`, short);
   }
 
   private arch(): Outcome {
     if (process.arch === 'x64' || process.arch === 'arm64') {
-      return ok(`${process.arch} is supported`);
+      return ok(`${process.arch} is supported`, process.arch);
     }
-    return { status: 'fail', line: `${process.arch} is not supported`, action: 'use an x64 or arm64 host' };
+    return {
+      status: 'fail',
+      line: `${process.arch} is not supported`,
+      short: process.arch,
+      action: 'use an x64 or arm64 host',
+    };
   }
 
   private async images(): Promise<Outcome> {
     const wanted = [...runtimesInUse(this.config.env).map(agentImage), imageName('egress')];
-    return worst(await Promise.all(wanted.map((image) => this.image(image))));
+    const outcomes = await Promise.all(wanted.map((image) => this.image(image)));
+    const missing = outcomes.filter((outcome) => outcome.status !== 'ok').length;
+    return worst(outcomes, missing > 0 ? `${missing} missing` : `${outcomes.length} present`);
   }
 
   private async image(image: string): Promise<Outcome> {
     if (await this.present(image)) {
-      return ok(`${image} is present`);
+      return ok(`${image} is present`, 'present');
     }
     return {
       status: 'fail',
       line: `${image} is missing`,
+      short: 'missing',
       action: 'run `docker compose up -d`, it pulls them',
     };
   }
@@ -203,77 +226,31 @@ export class ReadinessService {
   private async diskSpace(): Promise<Outcome> {
     const minimum = this.config.env.MIN_FREE_GB;
     const free = (await this.disk.smallestFree()) / GB;
-    const line = `${free.toFixed(1)} GB free, a step needs ${minimum} GB (MIN_FREE_GB); ${this.ownUse()}`;
+    const last = this.meter.last();
+    const line = `${free.toFixed(1)} GB free, a step needs ${minimum} GB (MIN_FREE_GB); ${last ? `${last.line}, ${this.age(last.at)}` : 'sizes not measured yet'}`;
+    const ownUse = last ? `${last.parts}, ${this.age(last.at)}` : 'sizes not measured yet';
+    const short = `${free.toFixed(1)} GB free`;
     if (free < minimum) {
-      return { status: 'fail', line, action: 'free some disk space or lower MIN_FREE_GB' };
+      return { status: 'fail', line, short, ownUse, action: 'free some disk space or lower MIN_FREE_GB' };
     }
     if (free < minimum * 1.5) {
-      return { status: 'warn', line, action: 'free some disk space before long runs' };
+      return { status: 'warn', line, short, ownUse, action: 'free some disk space before long runs' };
     }
-    return ok(line);
+    return { ...ok(line, short), ownUse };
   }
 
-  /** The last measure of the sizes with its age; the walk itself runs in the background. */
-  private ownUse(): string {
-    const last = this.meter.last();
-    if (!last) {
-      return 'sizes not measured yet';
-    }
-    const minutes = Math.floor((this.clock.now() - last.at) / 60_000);
-    return `${last.line}, ${minutes < 1 ? 'measured just now' : `measured ${minutes} min ago`}`;
-  }
-
-  private async paths(): Promise<Outcome> {
-    const base = root(this.config);
-    const owners = new Set([sandboxUserId(), process.getuid?.() ?? 0]);
-    const dirs = ['data', 'worktrees'].map((name) => join(base, name));
-    const outcomes: Outcome[] = [];
-    for (const dir of dirs) {
-      outcomes.push(await this.writable(dir, owners));
-    }
-    const mapped = [...dirs, ...(this.config.env.CHECKOUTS_ROOT ? [this.config.env.CHECKOUTS_ROOT] : [])];
-    for (const dir of mapped) {
-      outcomes.push(await this.daemonVisible(dir));
-    }
-    return worst(outcomes);
-  }
-
-  /** A directory the sandbox can use is writable and owned by the server user or the user the sandbox runs as. */
-  private async writable(dir: string, owners: Set<number>): Promise<Outcome> {
-    const fix = `chown the directory to uid ${[...owners].join(' or ')} and make it writable`;
-    try {
-      await access(dir, constants.W_OK);
-      if (!owners.has((await stat(dir)).uid)) {
-        return { status: 'fail', line: `${dir} has another owner`, action: fix };
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return ok(`${dir} is created on the first run`);
-      }
-      return { status: 'fail', line: `${dir} is not writable`, action: fix };
-    }
-    return ok(`${dir} is writable`);
-  }
-
-  private async daemonVisible(dir: string): Promise<Outcome> {
-    const place = await this.sandbox.daemonPlace(dir);
-    if ('volume' in place) {
-      const subpath = place.subpath ? `, subpath ${place.subpath}` : '';
-      return ok(`${dir} is volume ${place.volume} for the daemon${subpath}`);
-    }
-    if (!place.path) {
-      return {
-        status: 'fail',
-        line: `${dir} has no path the Docker daemon can see`,
-        action: 'mount the directory from the host and mount the Docker socket',
-      };
-    }
-    return ok(`${dir} is ${place.path} for the daemon`);
+  /** How long ago the sizes were measured, in words. */
+  private age(at: number): string {
+    const minutes = Math.floor((this.clock.now() - at) / 60_000);
+    return minutes < 1 ? 'measured just now' : `measured ${minutes} min ago`;
   }
 
   private async ports(): Promise<Outcome> {
     const api = this.config.env.SWARMLOOP_API_PORT;
-    return worst([await this.port('API', api, true), await this.port('dashboard', DASHBOARD_PORT, false)]);
+    return worst(
+      [await this.port('API', api, true), await this.port('dashboard', DASHBOARD_PORT, false)],
+      [api, DASHBOARD_PORT].join(' · '),
+    );
   }
 
   /** A port is free when nothing answers, and ours when its listener is swarmloop. */
@@ -283,10 +260,10 @@ export class ReadinessService {
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
       });
       const ours = apiCheck ? ((await response.json()) as { status?: string }).status === 'ok' : true;
-      return ours ? ok(`${name} port ${port} is ours`) : this.taken(name, port);
+      return ours ? ok(`${name} port ${port} is ours`, String(port)) : this.taken(name, port);
     } catch (error) {
       const code = (error as { cause?: { code?: string } }).cause?.code;
-      return code === 'ECONNREFUSED' ? ok(`${name} port ${port} is free`) : this.taken(name, port);
+      return code === 'ECONNREFUSED' ? ok(`${name} port ${port} is free`, String(port)) : this.taken(name, port);
     }
   }
 
@@ -294,19 +271,24 @@ export class ReadinessService {
     return {
       status: 'fail',
       line: `${name} port ${port} is used by another process`,
+      short: String(port),
       action: 'stop the other process or change the port',
     };
   }
 
   /** The credential of every runtime a role names, one outcome each. */
   private modelCredential(): Outcome {
-    return worst(runtimesInUse(this.config.env).map((runtime) => this.runtimeCredential(runtime)));
+    const runtimes = runtimesInUse(this.config.env);
+    return worst(
+      runtimes.map((runtime) => this.runtimeCredential(runtime)),
+      runtimes.join(' · '),
+    );
   }
 
   private runtimeCredential(runtime: RuntimeName): Outcome {
     try {
       const { name } = credentialFor(this.config.env, runtime);
-      return ok(`${name} is set for ${runtime}`);
+      return ok(`${name} is set for ${runtime}`, runtime);
     } catch (error) {
       return missingModelCredential(runtime, error instanceof Error ? error.message : String(error));
     }
@@ -315,19 +297,20 @@ export class ReadinessService {
   private async codeHostToken(): Promise<Outcome> {
     const named = this.hosts.names.filter((name) => this.hosts.credentials(name).token.trim() !== '');
     if (named.length === 0 && (await this.connections?.anyConnected())) {
-      return ok('a person is connected to a code host');
+      return ok('a person is connected to a code host', 'connected');
     }
     if (named.length === 0) {
       return {
         status: 'warn',
         line: 'no code host token is set',
+        short: 'not set',
         action: `Connect ${codeHostAdapters()
           .map((adapter) => adapter.label)
           .join(' or ')} in Connections to publish`,
         link: '/connections',
       };
     }
-    return worst(await Promise.all(named.map((name) => this.hostToken(name))));
+    return worst(await Promise.all(named.map((name) => this.hostToken(name))), named.join(' · '));
   }
 
   /** One free, read-only call: who the token belongs to. */
@@ -338,11 +321,21 @@ export class ReadinessService {
     } catch (error) {
       const calls = error instanceof FetchFailed ? error.httpCalls : [];
       if (calls.some((call) => call.statusCode === 401 || call.statusCode === 403)) {
-        return { status: 'fail', line: `${key} was rejected`, action: `replace ${key} with a valid token` };
+        return {
+          status: 'fail',
+          line: `${key} was rejected`,
+          short: name,
+          action: `replace ${key} with a valid token`,
+        };
       }
-      return { status: 'warn', line: `${key} could not be checked`, action: 'check the network and the base URL' };
+      return {
+        status: 'warn',
+        line: `${key} could not be checked`,
+        short: name,
+        action: 'check the network and the base URL',
+      };
     }
-    return ok(`${key} is accepted`);
+    return ok(`${key} is accepted`, name);
   }
 }
 

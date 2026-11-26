@@ -141,6 +141,33 @@ export class HttpOAuthProvider implements LoginProvider {
     return false;
   }
 
+  async serverTokenMisses(repos: RepoRef[]): Promise<RepoRef[]> {
+    if (this.serverToken === '') {
+      return repos;
+    }
+    const headers = this.endpoints.userHeaders(this.serverToken);
+    const misses = async (repo: RepoRef): Promise<boolean> => {
+      try {
+        const response = await request(
+          this.clock,
+          `${this.endpoints.api}${this.endpoints.repoPath(repo)}`,
+          headers,
+          [],
+        );
+        return response.status === 403 || response.status === 404;
+      } catch {
+        return false;
+      }
+    };
+    const missed: RepoRef[] = [];
+    for (let at = 0; at < repos.length; at += PUSH_CHECKS_AT_ONCE) {
+      const batch = repos.slice(at, at + PUSH_CHECKS_AT_ONCE);
+      const answers = await Promise.all(batch.map(misses));
+      missed.push(...batch.filter((_, index) => answers[index]));
+    }
+    return missed;
+  }
+
   private credentials(): AppCredentials {
     const app = this.apps.credentials(this.name);
     if (!app) {

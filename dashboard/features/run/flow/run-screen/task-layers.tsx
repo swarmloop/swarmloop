@@ -4,7 +4,7 @@ import Button from '@mui/material/Button';
 import LinearProgress from '@mui/material/LinearProgress';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import type { TaskEntry } from '@contract/api';
+import type { DecisionView, TaskEntry } from '@contract/api';
 import { epicFigures } from '@contract/epic-figures';
 import { needsPerson } from '@contract/run-state';
 import { unmetDepends } from '@contract/subtask';
@@ -42,7 +42,7 @@ export function TaskLayers({
   epic?: { usd: number; durationMs: number };
   ownUsd?: number;
   mergeQueue?: { id: string; title: string }[];
-  decisions?: string;
+  decisions?: DecisionView[];
   onSkip: (taskId: string) => Promise<unknown>;
   /** The latest plan change: the tasks it added or changed are marked. */
   revision?: PlanRevision | null;
@@ -125,7 +125,7 @@ export function TaskLayers({
           ))}
         </Box>
       ) : null}
-      {decisions ? <TaskDecisions text={decisions} /> : null}
+      {decisions ? <TaskDecisions decisions={decisions} /> : null}
     </Box>
   );
 }

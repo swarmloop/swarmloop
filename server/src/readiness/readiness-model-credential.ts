@@ -19,13 +19,13 @@ export class ReadinessModelCredential {
     const saved = await this.settings.read(login);
     const agents = runAgents(this.config.env, { agents: saved?.agents ?? null });
     const runtimes = [...new Set(agents.map((agent) => agent.runtime))];
-    return worst(await Promise.all(runtimes.map((runtime) => this.runtime(runtime, login))));
+    return worst(await Promise.all(runtimes.map((runtime) => this.runtime(runtime, login))), runtimes.join(' · '));
   }
 
   private async runtime(runtime: RuntimeName, login: string): Promise<Outcome> {
     const found = await this.credentials.runtimeCredential(runtime, login);
     return found
-      ? ok(`${found.name} is set for ${runtime}`)
+      ? ok(`${found.name} is set for ${runtime}`, runtime)
       : missingModelCredential(runtime, missingCredential(runtime));
   }
 }

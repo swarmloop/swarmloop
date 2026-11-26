@@ -1,5 +1,5 @@
 import type { DocumentEntity } from '../../history/entities';
-import type { FlowView, TaskEntry } from '../../contract/api';
+import type { DecisionView, FlowView, TaskEntry } from '../../contract/api';
 import type { RunEta } from '../../contract/eta';
 import { readInterruption, type InterruptionNote } from '../../contract/interruption';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../../contract/subtask';
 import { STEPS, type StepName } from '../../contract/steps';
 import { readPlan } from '../../steps/plan/plan-record';
+import { readContract } from '../../steps/shared/contract-items';
 import { composedReturn, handoffText } from '../../steps/shared/handoff';
 import { latest } from './status';
 import { isResultKind } from '../../agent-result/result-definition';
@@ -173,16 +174,21 @@ export function taskLine(documents: DocumentEntity[], currentStep: string): stri
   return tasks.length > 0 && reached && taskEntries(documents).length > 0 ? splitLine(tasks) : null;
 }
 
-/** The `decisions:` block of the contract: its entries, without the heading. */
-export function decisionsOf(contract: string | null): string | null {
-  const lines = (contract ?? '').split('\n');
-  const start = lines.findIndex((line) => /^decisions:\s*$/.test(line));
-  if (start < 0) {
-    return null;
-  }
-  const rest = lines.slice(start + 1);
-  const end = rest.findIndex((line) => /^[\w ]+:\s*$/.test(line));
-  return (end < 0 ? rest : rest.slice(0, end)).join('\n').trim() || null;
+/** The decisions of the contract, each with its task's title and the contract item it names, when it names one. */
+export function decisionsOf(contract: string | null, tasks: Subtask[]): DecisionView[] {
+  const { items, decisions } = readContract(contract ?? '');
+  const titles = new Map(tasks.map((task) => [task.id, task.title]));
+  const ids = items.map((item) => item.id).filter((id) => id !== '');
+  return decisions.map((decision) => {
+    const item = ids.find((id) => decision.text.startsWith(`${id}: `)) ?? null;
+    return {
+      task: decision.task ? (titles.get(decision.task) ?? decision.task) : 'Plan',
+      at: decision.at,
+      text: item ? decision.text.slice(item.length + 2) : decision.text,
+      taskId: decision.task,
+      item,
+    };
+  });
 }
 
 /** The own run of each task, by task id. */
@@ -198,14 +204,13 @@ export function taskView(
   const tasks = taskEntries(documents, children, etas);
   const line = taskLine(documents, currentStep);
   const shown = new Map(tasks.map((task) => [task.id, task.status]));
-  const queue = parseSubtasks(latest(documents, 'subtasks'))
-    .filter((task) => shown.get(task.id) === 'green')
-    .map(({ id, title }) => ({ id, title }));
-  const decisions = decisionsOf(latest(documents, 'contract'));
+  const subtasks = parseSubtasks(latest(documents, 'subtasks'));
+  const queue = subtasks.filter((task) => shown.get(task.id) === 'green').map(({ id, title }) => ({ id, title }));
+  const decisions = decisionsOf(latest(documents, 'contract'), subtasks);
   return {
     ...(tasks.length > 0 ? { tasks } : {}),
     ...(line ? { taskLine: line } : {}),
     ...(tasks.length > 0 && queue.length > 0 ? { mergeQueue: queue } : {}),
-    ...(tasks.length > 0 && decisions ? { decisions } : {}),
+    ...(tasks.length > 0 && decisions.length > 0 ? { decisions } : {}),
   };
 }

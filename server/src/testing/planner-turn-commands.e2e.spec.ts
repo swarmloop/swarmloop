@@ -35,7 +35,7 @@ const STANDING = [
   SPLIT_R('c', 'R3'),
   {
     id: 'gap-1',
-    title: 'Close the gap in R3',
+    title: 'Close the gap: Requirement R3',
     description: [
       'The final requirements review marked these as not delivered:',
       '- R3 is missing: nothing writes it',

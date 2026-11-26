@@ -17,7 +17,7 @@ export interface FakeHost {
   secrets: string[];
   /** `<login>:<owner>/<name>` of the repositories a person can push to. */
   pushers: Set<string>;
-  /** `<login>:<owner>/<name>` of the repositories a person cannot see: the host answers 404. */
+  /** `<login or bearer token>:<owner>/<name>` of the repositories a person or a token cannot see: the host answers 404. */
   hidden: Set<string>;
   /** A GitLab personal access token to its login. A `glpat-` token that is not here is refused at `/user`. */
   personal: Map<string, string>;
@@ -114,7 +114,7 @@ export async function startFakeHosts(): Promise<FakeHost> {
         response.writeHead(204).end();
       } else if (path.startsWith('/api/v3/repos/') && request.method === 'GET') {
         const project = path.split('?')[0].slice('/api/v3/repos/'.length);
-        if (hidden.has(`${name}:${project}`)) {
+        if (hidden.has(`${name}:${project}`) || hidden.has(`${bearer}:${project}`)) {
           response.writeHead(404).end();
         } else {
           send({ id: 99, permissions: { push: pushers.has(`${name}:${project}`) } });

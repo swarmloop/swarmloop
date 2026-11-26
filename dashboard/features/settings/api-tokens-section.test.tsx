@@ -30,6 +30,19 @@ beforeEach(() => {
 });
 
 describe('ApiTokensSection', () => {
+  it('shows placeholders, not a table, until the token list arrives', async () => {
+    let arrive: (value: { tokens: TokenView[] }) => void = () => undefined;
+    vi.mocked(listTokens).mockReturnValue(new Promise((resolve) => (arrive = resolve)));
+    render(<ApiTokensSection />);
+
+    expect(screen.getAllByTestId('tokens-placeholder').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('table', { name: 'API tokens' })).toBeNull();
+
+    arrive({ tokens: [token] });
+    expect(await screen.findByRole('table', { name: 'API tokens' })).toBeInTheDocument();
+    expect(screen.queryByTestId('tokens-placeholder')).toBeNull();
+  });
+
   it('lists name, created, last used and expiry', async () => {
     vi.mocked(listTokens).mockResolvedValue({
       tokens: [

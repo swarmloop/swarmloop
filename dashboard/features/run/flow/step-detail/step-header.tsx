@@ -130,7 +130,7 @@ export function StepHeader({
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, minWidth: 0 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
           <Typography>{stepLabel(step)}</Typography>
           {!step.startsWith('code-review-') && (runStatus === 'failed' || runStatus === 'blocked') ? (
             <Typography sx={{ fontSize: 12, color: statusColor(runStatus) }}>{runStatus}</Typography>
@@ -151,31 +151,33 @@ export function StepHeader({
           ) : null}
         </Box>
         {view.visits.length > 1 || attempts > 0 ? (
-          <AttemptSelector
-            items={view.visits.map((item, index) => {
-              const status = shownStatus(
-                item.status,
-                index === view.visits.length - 1,
-                runStatus,
-                step,
-                item.decision,
-                item.killReason,
-              );
-              const state = stepState(status, null);
-              return {
-                key: item.key,
-                label: String(item.attempt),
-                color: toneColor(state.tone),
-                menuText: `${item.attempt} · ${status} · ${duration(item.durationMs)}`,
-              };
-            })}
-            selected={view.visits[attempt]?.key}
-            onSelect={(key) => {
-              const index = view.visits.findIndex((item) => item.key === key);
-              follow.current = index === view.visits.length - 1;
-              setAttempt(index);
-            }}
-          />
+          <Box sx={{ flex: '1 1 auto', minWidth: 0, display: 'flex', justifyContent: 'flex-end' }}>
+            <AttemptSelector
+              items={view.visits.map((item, index) => {
+                const status = shownStatus(
+                  item.status,
+                  index === view.visits.length - 1,
+                  runStatus,
+                  step,
+                  item.decision,
+                  item.killReason,
+                );
+                const state = stepState(status, null);
+                return {
+                  key: item.key,
+                  label: String(item.attempt),
+                  color: toneColor(state.tone),
+                  menuText: `${item.attempt} · ${status} · ${duration(item.durationMs)}`,
+                };
+              })}
+              selected={view.visits[attempt]?.key}
+              onSelect={(key) => {
+                const index = view.visits.findIndex((item) => item.key === key);
+                follow.current = index === view.visits.length - 1;
+                setAttempt(index);
+              }}
+            />
+          </Box>
         ) : null}
       </Box>
       {server ? null : (

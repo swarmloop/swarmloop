@@ -18,7 +18,10 @@ import { useCardActions } from './use-card-actions';
 function statusLine(card: Card): string {
   switch (card.status) {
     case 'connected':
-      return `Connected as ${card.account ?? 'this account'}`;
+      if (card.account !== null) {
+        return `Runs use your ${card.account}`;
+      }
+      return card.last4 ? `Runs use your key ending in ${card.last4}` : "Runs use the server's key";
     case 'attention':
       return `Needs attention: ${card.reason ?? 'the connection does not work'}`;
     case 'not-connected':
@@ -54,7 +57,7 @@ export function ConnectionCard({ card, onChanged }: { card: Card; onChanged: () 
       <CardHeading card={card} />
       <Typography color={card.status === 'attention' ? 'error.main' : 'text.primary'}>
         {statusLine(card)}
-        {card.last4 ? ` · ends in ${card.last4}` : ''}
+        {card.account !== null && card.last4 ? ` · ends in ${card.last4}` : ''}
       </Typography>
       {result ? <Alert severity={result.severity}>{result.text}</Alert> : null}
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 'auto' }}>

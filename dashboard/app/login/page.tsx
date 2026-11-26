@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
@@ -99,9 +100,18 @@ function ProviderButtons({ providers, next }: { providers: string[]; next: strin
 function TokenSignIns({ tokens, next }: { tokens: TokenSignInView[]; next: string | null }): ReactElement {
   return (
     <>
-      {tokens.map((entry) => (
-        <TokenSignIn key={entry.provider} entry={entry} label={hostOf(entry.provider).label} next={next} />
-      ))}
+      {tokens.map((entry) => {
+        const { label, Mark } = hostOf(entry.provider);
+        return (
+          <Box key={entry.provider} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, width: '100%' }}>
+            <Typography variant="subtitle1" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Mark />
+              {label}
+            </Typography>
+            <TokenSignIn entry={entry} label={label} next={next} />
+          </Box>
+        );
+      })}
     </>
   );
 }
@@ -161,6 +171,7 @@ export default function LoginPage(): ReactElement {
     choice = (
       <>
         <ProviderButtons providers={providers} next={next} />
+        {providers.length > 0 && tokens.length > 0 ? <Divider flexItem>or</Divider> : null}
         <TokenSignIns tokens={tokens} next={next} />
       </>
     );
