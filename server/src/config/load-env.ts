@@ -2,7 +2,10 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { SettingSource } from '../contract/settings';
 import { envSchema } from './env.schema';
+import { parseEnvFile, readDefaultSettings } from './default-settings';
 import { resolveRepoRoot } from './repo-root';
+
+export { parseEnvFile, readDefaultSettings };
 
 interface LoadedSettings {
   readonly values: Readonly<Record<string, string>>;
@@ -21,18 +24,6 @@ function launchEnvironment(target: NodeJS.ProcessEnv = process.env): Readonly<No
   );
 }
 
-export function parseEnvFile(body: string): Record<string, string> {
-  const values: Record<string, string> = {};
-  for (const line of body.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const match = /^(?:export\s+)?([^=\s]+)\s*=(.*)$/.exec(trimmed);
-    if (!match) continue;
-    values[match[1]] = unquote(match[2].trim());
-  }
-  return values;
-}
-
 function readOptionalFile(path: string): Record<string, string> {
   try {
     return parseEnvFile(readFileSync(path, 'utf8'));
@@ -40,10 +31,6 @@ function readOptionalFile(path: string): Record<string, string> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
     throw error;
   }
-}
-
-export function readDefaultSettings(): Record<string, string> {
-  return parseEnvFile(readFileSync(join(resolveRepoRoot(undefined, __dirname), 'defaults.env'), 'utf8'));
 }
 
 export function envFilePath(root: string, launchEnv: Readonly<NodeJS.ProcessEnv> = launchEnvironment()): string {
@@ -95,11 +82,4 @@ export function applySettings(settings: LoadedSettings, target: NodeJS.ProcessEn
 export function assertSettings(settings: LoadedSettings): string | null {
   const { error } = envSchema.validate(settings.values, { abortEarly: false, allowUnknown: true, convert: true });
   return error ? error.message : null;
-}
-
-function unquote(value: string): string {
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
-  return value;
 }

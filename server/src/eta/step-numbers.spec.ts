@@ -4,13 +4,13 @@ import { stepNumbers } from './step-numbers';
 describe('stepNumbers', () => {
   it('gives an empty table for no history', () => {
     const table = stepNumbers([]);
-    expect(table.plain).toEqual({ steps: {}, whole: null });
-    expect(table.subtask).toEqual({ steps: {}, whole: null });
+    expect(table.plain).toEqual({ steps: {}, visits: {}, whole: null });
+    expect(table.subtask).toEqual({ steps: {}, visits: {}, whole: null });
   });
 
   it('uses only the newest 50 runs that entered the step', () => {
     const old = Array.from({ length: 30 }, (_, i) =>
-      finishedRun(i, { entries: [{ step: 'implement', startedAt: at(i - 100) }] }),
+      finishedRun(i, { entries: [{ step: 'implement', startedAt: at(i - 100), finishedAt: at(i) }] }),
     );
     const fresh = Array.from({ length: 50 }, (_, i) => finishedRun(1000 + i));
     const table = stepNumbers([...old, ...fresh]);
@@ -20,7 +20,7 @@ describe('stepNumbers', () => {
 
   it('takes the median of the samples', () => {
     const runs = [10, 20, 90].map((spent, i) =>
-      finishedRun(i, { entries: [{ step: 'checks', startedAt: at(i - spent) }] }),
+      finishedRun(i, { entries: [{ step: 'checks', startedAt: at(i - spent), finishedAt: at(i) }] }),
     );
     expect(stepNumbers(runs).plain.steps.checks).toBe(20 * MIN);
   });
@@ -37,10 +37,21 @@ describe('stepNumbers', () => {
 
   it('samples a step entered twice from its first entry', () => {
     const entries = [
-      { step: 'implement', startedAt: at(-10) },
-      { step: 'implement', startedAt: at(-40) },
+      { step: 'implement', startedAt: at(-10), finishedAt: at(0) },
+      { step: 'implement', startedAt: at(-40), finishedAt: at(-30) },
     ];
     expect(stepNumbers([finishedRun(0, { entries })]).plain.steps.implement).toBe(40 * MIN);
+  });
+
+  it('takes the median working time of one visit of a step, waits left out', () => {
+    const entries = [
+      { step: 'checks', startedAt: at(-40), finishedAt: at(-30) },
+      { step: 'checks', startedAt: at(-20), finishedAt: at(-5) },
+      { step: 'checks', startedAt: at(-4), finishedAt: at(0) },
+    ];
+    const waits = [{ from: at(-18), to: at(-15) }];
+    const table = stepNumbers([finishedRun(0, { entries, waits })]);
+    expect(table.plain.visits.checks).toBe(10 * MIN);
   });
 
   it('keeps subtask numbers apart and ends them at the merge', () => {

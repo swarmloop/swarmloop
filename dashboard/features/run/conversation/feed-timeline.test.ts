@@ -47,6 +47,67 @@ describe('feedTimeline', () => {
     expect(rows.map((row) => row.key)).toEqual(['question:q1', 'a', 'revision:1', 'b', 'question:q2']);
   });
 
+  it('adds one line per return at its time with its words, and none for a return without words', () => {
+    const flow = flowView({
+      returns: [
+        {
+          counter: 'checks',
+          count: 2,
+          from: 'checks',
+          to: 'implement',
+          at: at('12:40'),
+          words: 'Checks sent it back: lint',
+        },
+        {
+          counter: 'review',
+          count: 1,
+          from: 'code-review',
+          to: 'implement',
+          at: at('12:20'),
+          words: 'Code review sent it back: quality',
+        },
+        { counter: 'pipeline', count: 1, from: 'pipeline', to: 'implement', at: at('12:50') },
+      ],
+    });
+    const rows = feedTimeline(flow, [entry('between', '12:30')]);
+    expect(rows.map((row) => row.key)).toEqual(['return:review', 'between', 'return:checks']);
+    expect(rows.map((row) => (row.type === 'info' ? row.sentence : null))).toEqual([
+      'Code review sent it back: quality',
+      null,
+      'Checks sent it back: lint',
+    ]);
+  });
+
+  it('adds one relaunch line at its time next to the return lines, and no return', () => {
+    const flow = flowView({
+      returns: [
+        {
+          counter: 'checks',
+          count: 1,
+          from: 'checks',
+          to: 'implement',
+          at: at('12:20'),
+          words: 'Checks sent it back: lint',
+        },
+      ],
+      relaunches: [
+        {
+          at: at('12:40'),
+          reason: 'Rebased onto the epic after input merged',
+          phases: ['checks', 'ci'],
+          steps: ['checks', 'commit', 'merge-request', 'pipeline'],
+          open: false,
+        },
+      ],
+    });
+    const rows = feedTimeline(flow, []);
+    expect(rows.map((row) => row.key)).toEqual(['return:checks', `relaunch:${at('12:40')}`]);
+    expect(rows.map((row) => (row.type === 'info' ? row.sentence : null))).toEqual([
+      'Checks sent it back: lint',
+      'Rebased onto the epic after input merged: checks and CI run again',
+    ]);
+  });
+
   it('puts a revision after the reply of its version on a tie, and lists revisions without entries', () => {
     const flow = flowView({ conversation: conversation({ revisions: [revision(1, '12:30')] }) });
     expect(feedTimeline(flow, [entry('reply', '12:30', 'planner')]).map((row) => row.key)).toEqual([

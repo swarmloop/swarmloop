@@ -8,6 +8,7 @@ import {
   plainText,
   waitsForPerson,
 } from './conversation-words';
+import { relaunchLine } from '../relaunch-words';
 
 /** One thing the conversation shows, with the time it happened. */
 type FeedRow =
@@ -52,6 +53,15 @@ export function feedTimeline(flow: FlowView, entries: FeedEntry[]): FeedRow[] {
       key: `${item.kind}:${item.id}`,
       at: asked.get(item.id) ?? flow.updatedAt,
       item,
+    })),
+    ...flow.returns.flatMap((edge): FeedRow[] =>
+      edge.words && edge.at ? [{ type: 'info', key: `return:${edge.counter}`, at: edge.at, sentence: edge.words }] : [],
+    ),
+    ...(flow.relaunches ?? []).map((relaunch): FeedRow => ({
+      type: 'info',
+      key: `relaunch:${relaunch.at}`,
+      at: relaunch.at,
+      sentence: relaunchLine(relaunch, ': '),
     })),
   ];
   const limit = limitWaitSentence(flow);

@@ -141,6 +141,18 @@ describe('the run page follows its run', () => {
     expect(page.logOf('checks', 1)?.body).toBe('tests pass again\n');
   });
 
+  it('shows the latest line of a waiting check command, which replaces the one before', async () => {
+    const { page } = await start();
+
+    hub().log({ key: KEY, step: 'checks', command: 2, body: 'waiting for a free check slot (2 ahead)\n' });
+    await pass();
+    expect(page.logOf('checks', 2)?.body).toBe('waiting for a free check slot (2 ahead)\n');
+
+    hub().log({ key: KEY, step: 'checks', command: 2, body: 'waiting for a free check slot (1 ahead)\n' });
+    await pass();
+    expect(page.logOf('checks', 2)?.body).toBe('waiting for a free check slot (1 ahead)\n');
+  });
+
   it('shows a conversation message after a document write, and after a reconnect as a fresh read does', async () => {
     const { page, socket } = await start();
     const message = (text: string) => ({

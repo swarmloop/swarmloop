@@ -1,6 +1,8 @@
 import { activeDurationMs, toDurationParts } from '../../history/active-duration';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
-import type { FlowView } from '../../contract/api';
+import type { CheckCommandView, FlowView } from '../../contract/api';
+import type { RelaunchView } from '../../contract/relaunch';
+import { returnWords } from './return-words';
 import type { LiveUsage } from '../../contract/live';
 import {
   IMPROVE_SKIPPED_NOTE,
@@ -17,6 +19,7 @@ import { shortLine } from '../../contract/short-text';
 import { knownAttempts, OutputFiles } from '../../core/attempt-output';
 import { chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import type { OpenReviewRound } from '../../steps/shared/open-review-rounds';
+import { awaitsRelaunch } from './relaunch';
 export { latest } from './status';
 import { PHASES } from './run-view.types';
 
@@ -60,6 +63,24 @@ export function metrics(
   };
 }
 
+/** A reviewer chip, or the report, of a code review the open relaunch runs again reads idle until the review starts. */
+function reviewChip(
+  status: string,
+  parentStat: StepStatEntity | undefined,
+  relaunch: RelaunchView | undefined,
+): string {
+  const started = status === 'running' || status === 'preparing';
+  return !started && awaitsRelaunch('code-review', parentStat, relaunch) ? 'idle' : status;
+}
+
+function reportOf(
+  chip: ReturnType<typeof reportChip>,
+  latestStats: Map<string, StepStatEntity>,
+  relaunch: RelaunchView | undefined,
+): ReturnType<typeof reportChip> {
+  return { ...chip, status: reviewChip(chip.status, latestStats.get('code-review'), relaunch) };
+}
+
 export function phases(
   run: RunEntity,
   stats: StepStatEntity[],
@@ -67,6 +88,8 @@ export function phases(
   root: string,
   loops: LoopEventEntity[] = [],
   open?: OpenReviewRound,
+  rows: CheckCommandView[] = [],
+  relaunch?: RelaunchView,
 ): FlowView['phases'] {
   const latestStats = new Map<string, StepStatEntity>();
   for (const stat of stats) {
@@ -81,14 +104,15 @@ export function phases(
       const stat = own ?? latestStats.get(parent);
       const round = isReviewStep(name) ? reviewerRound(name, run, stats, documents, outputs, preparing, open) : null;
       const log = isReviewStep(name) && !own && !round ? outputs.read(run.key, name, run.activeAttempt) : '';
-      const status = chipStatus(name, run, stat, documents, round, log);
+      const chip = chipStatus(name, run, stat, documents, round, log, relaunch);
+      const status = isReviewStep(name) ? reviewChip(chip, latestStats.get(parent), relaunch) : chip;
       return {
         name,
         status,
         current: isReviewStep(name) ? status === 'running' || status === 'preparing' : parent === run.currentStep,
         attempts: chipAttempts(name, run, stats, documents, outputs, round),
         ...(status === 'skipped' && name === 'implement-improve' ? { note: IMPROVE_SKIPPED_NOTE } : {}),
-        ...(status === 'returned' ? returnNote(name, latestStats.get(parent), documents, loops) : {}),
+        ...(status === 'returned' ? returnNote(name, latestStats.get(parent), documents, loops, rows) : {}),
       };
     });
     if (phase.phase !== 'code-review') {
@@ -97,11 +121,15 @@ export function phases(
     const working = steps.filter((step) => step.current).map((step) => requireReviewer(step.name));
     return {
       phase: phase.phase,
-      steps: [...steps, reportChip(run, stats, documents, outputs, preparing, open, working)],
+      steps: [
+        ...steps,
+        reportOf(reportChip(run, stats, documents, outputs, preparing, open, working), latestStats, relaunch),
+      ],
     };
   });
 }
 
+type ReturnEdge = FlowView['returns'][number];
 const WHY_CHARS = 60;
 const CHECKS_COUNTER = 'checks';
 
@@ -115,12 +143,14 @@ function failedCommand(loop: LoopEventEntity | undefined): string | undefined {
   return readLoopDetail(loop?.detail).commands?.[0];
 }
 
-function whyOf(counter: string, loops: LoopEventEntity[]): { why: string } | Record<string, never> {
+/** What a counter's latest loop event says: why in short, when it happened and the return in words. */
+function loopFacts(counter: string, loops: LoopEventEntity[], rows: CheckCommandView[]): Partial<ReturnEdge> {
   const loop = latestLoop(loops, counter);
   if (!loop) return {};
   const why = counter === CHECKS_COUNTER ? failedCommand(loop) : undefined;
   const text = why ?? shortLine(loop.reason.split('\n')[0] ?? '', WHY_CHARS);
-  return text ? { why: text } : {};
+  const words = returnWords(counter, loop, rows);
+  return { ...(text ? { why: text } : {}), at: loop.createdAt, ...(words ? { words } : {}) };
 }
 
 function issueCount(documents: DocumentEntity[], stat: StepStatEntity | undefined): number | null {
@@ -141,14 +171,20 @@ function returnNote(
   stat: StepStatEntity | undefined,
   documents: DocumentEntity[],
   loops: LoopEventEntity[],
+  rows: CheckCommandView[],
 ): { returnNote: string } | Record<string, never> {
-  const command = name === CHECKS_COUNTER ? failedCommand(latestLoop(loops, CHECKS_COUNTER)) : undefined;
-  if (command) return { returnNote: command };
+  const loop = name === CHECKS_COUNTER ? latestLoop(loops, CHECKS_COUNTER) : undefined;
+  const words = loop ? returnWords(CHECKS_COUNTER, loop, rows) : undefined;
+  if (words) return { returnNote: words };
   const count = issueCount(documents, stat);
   return count === null ? {} : { returnNote: `${count} notes` };
 }
 
-export function returns(run: RunEntity, loops: LoopEventEntity[] = []): FlowView['returns'] {
+export function returns(
+  run: RunEntity,
+  loops: LoopEventEntity[] = [],
+  rows: CheckCommandView[] = [],
+): FlowView['returns'] {
   const edges: FlowView['returns'] = [];
   if (run.attemptsReview > 0) {
     edges.push({
@@ -156,7 +192,7 @@ export function returns(run: RunEntity, loops: LoopEventEntity[] = []): FlowView
       count: run.attemptsReview,
       from: 'code-review',
       to: 'implement',
-      ...whyOf('review', loops),
+      ...loopFacts('review', loops, rows),
     });
   }
   if (run.attemptsPipeline > 0) {
@@ -165,7 +201,7 @@ export function returns(run: RunEntity, loops: LoopEventEntity[] = []): FlowView
       count: run.attemptsPipeline,
       from: 'pipeline',
       to: 'implement',
-      ...whyOf('pipeline', loops),
+      ...loopFacts('pipeline', loops, rows),
     });
   }
   if (run.attemptsChecks > 0) {
@@ -174,7 +210,7 @@ export function returns(run: RunEntity, loops: LoopEventEntity[] = []): FlowView
       count: run.attemptsChecks,
       from: 'checks',
       to: 'implement',
-      ...whyOf(CHECKS_COUNTER, loops),
+      ...loopFacts(CHECKS_COUNTER, loops, rows),
     });
   }
   return edges.sort((a, b) => boardPlace(a.from) - boardPlace(b.from));

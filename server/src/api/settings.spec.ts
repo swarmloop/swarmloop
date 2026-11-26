@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { SwarmloopConfigModule } from '../config/config.module';
+import { DefaultsLayout } from '../config/defaults-layout';
 import { testEnv } from '../config/env.spec-helpers';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { SettingSources } from '../config/setting-sources';
@@ -18,7 +19,7 @@ import { UserSettingRepository } from '../history/user-setting.repository';
 import { fakeConnection } from '../testing/fake-connection';
 import { seededBoot } from './runs-boot.spec-helpers';
 import { SettingsController } from './settings.controller';
-import { SettingsService } from './settings.service';
+import { PROCESS_ENV_NAMES, SERVER_NAMES, SettingsService } from './settings.service';
 
 const KEYS = { ANTHROPIC_API_KEY: 'sk-secret-anthropic', SWARMLOOP_SECRET: 'top-secret-value' };
 const MINE: SettingsBody = {
@@ -59,7 +60,9 @@ async function world(extra: Partial<SwarmloopEnv> = {}, sources = new SettingSou
   const config = new AppConfig(env);
   const clock = new SystemClock();
   const credentials = new PersonalCredentials(app.get(IntegrationSecretRepository), new SecretBox('k'), clock, config);
-  const controller = new SettingsController(new SettingsService(config, repo, clock, credentials, sources));
+  const controller = new SettingsController(
+    new SettingsService(config, repo, clock, credentials, sources, DefaultsLayout.fromDefaultsFile()),
+  );
   return { app, repo, controller, env, root, credentials };
 }
 
@@ -235,6 +238,16 @@ describe('settings', () => {
     }
   });
 
+  it('lists every server setting, each found in the real defaults.env', async () => {
+    const { app, controller } = await world();
+    try {
+      const shown = (await controller.read('alice')).server.map((entry) => entry.name);
+      expect([...shown].sort()).toEqual([...SERVER_NAMES, ...PROCESS_ENV_NAMES].sort());
+    } finally {
+      await app.close();
+    }
+  });
+
   it('shows secrets only as set or not set', async () => {
     const { app, controller } = await world();
     try {
@@ -245,12 +258,10 @@ describe('settings', () => {
       expect(Object.keys(named)).toEqual(
         expect.arrayContaining(['PROJECT_HOSTS_ALLOW', 'SANDBOX_EGRESS', 'SANDBOX_DOCKER_RUNTIME']),
       );
-      expect(view.server.find((entry) => entry.name === 'CHECKS_PARALLEL')?.description).toBe(
-        'Check commands that run at once on the whole server',
-      );
-      expect(view.server.find((entry) => entry.name === 'AGENTS_PARALLEL')?.description).toBe(
-        'Agent containers that run at once on the whole server',
-      );
+      expect(view.server.find((entry) => entry.name === 'AGENTS_PARALLEL')).toMatchObject({
+        group: 'Pipeline limits and maintenance.',
+        description: 'Agent containers that run at once on the whole server.',
+      });
       expect(named.MAX_RUN_USD).toBe(String(testEnv().MAX_RUN_USD));
       expect(JSON.stringify(view)).not.toMatch(/sk-secret-anthropic|top-secret-value/);
     } finally {
@@ -295,6 +306,7 @@ describe('settings', () => {
           new SystemClock(),
           credentials,
           module.get(SettingSources),
+          module.get(DefaultsLayout),
         );
         return (await service.view('alice')).server.find((entry) => entry.name === 'MAX_RETURNS');
       };

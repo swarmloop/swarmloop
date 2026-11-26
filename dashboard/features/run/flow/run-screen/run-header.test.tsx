@@ -119,6 +119,36 @@ describe('RunHeader', () => {
     expect(screen.queryByRole('link', { name: /·/ })).not.toBeInTheDocument();
   });
 
+  describe('a relaunch after a rebase', () => {
+    const relaunch = (open: boolean, reason = 'Rebased onto the epic after input merged') => ({
+      at: '2026-11-22T02:13:57.000Z',
+      reason,
+      phases: ['checks', 'ci'],
+      steps: ['checks', 'commit', 'merge-request', 'pipeline'],
+      open,
+    });
+
+    it('says why and which phases run again while the latest relaunch is open', () => {
+      render(<RunHeader {...headerProps()} flow={flowView({ relaunches: [relaunch(false), relaunch(true)] })} />);
+      expect(
+        screen.getByText('Rebased onto the epic after input merged · checks and CI run again'),
+      ).toBeInTheDocument();
+    });
+
+    it('reads the reason of a run rebased onto main the same way', () => {
+      render(<RunHeader {...headerProps()} flow={flowView({ relaunches: [relaunch(true, 'Rebased onto main')] })} />);
+      expect(screen.getByText('Rebased onto main · checks and CI run again')).toBeInTheDocument();
+    });
+
+    it('says nothing once the relaunch is not open, or when there is none', () => {
+      const { unmount } = render(<RunHeader {...headerProps()} flow={flowView({ relaunches: [relaunch(false)] })} />);
+      expect(screen.queryByText(/run again/)).not.toBeInTheDocument();
+      unmount();
+      render(<RunHeader {...headerProps()} flow={flowView()} />);
+      expect(screen.queryByText(/run again/)).not.toBeInTheDocument();
+    });
+  });
+
   it('opens the requirements step from the title', async () => {
     const user = userEvent.setup({ delay: null });
     const props = header('running', { flow: flowView({ title: 'Fix the login' }) });

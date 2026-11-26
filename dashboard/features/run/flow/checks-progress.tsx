@@ -5,11 +5,12 @@ import type { CheckCommandView } from '@contract/api';
 import { statusColor } from '../../../theme/theme';
 import { commandCounts } from '../check-commands';
 
-/** How far the checks are: a thin bar split into passed, failed, running and queued, and `passed/total` or `N failed`. */
+/** How far the checks are: a thin bar split into passed, skipped, failed, running and queued, and `passed/run`, over the commands that run, or `N failed`. */
 export function ChecksProgress({ commands }: { commands: CheckCommandView[] }): ReactElement {
   const counts = commandCounts(commands);
   const parts = [
     { key: 'passed', count: counts.passed, color: statusColor('done') },
+    { key: 'skipped', count: counts.skipped, color: statusColor('skipped') },
     { key: 'failed', count: counts.failed, color: statusColor('failed') },
     { key: 'running', count: counts.running, color: statusColor('running') },
     { key: 'queued', count: counts.queued, color: 'divider' },
@@ -37,7 +38,7 @@ export function ChecksProgress({ commands }: { commands: CheckCommandView[] }): 
         </Box>
       ) : (
         <Box component="span" sx={{ fontSize: 11, color: 'text.secondary' }}>
-          {counts.passed}/{counts.total}
+          {counts.passed}/{counts.total - counts.skipped}
         </Box>
       )}
     </Box>

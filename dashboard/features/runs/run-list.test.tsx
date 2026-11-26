@@ -380,20 +380,25 @@ describe('RunList', () => {
     it('keeps the delete out of the accessible tree until the row is hovered or focused', async () => {
       const user = userEvent.setup({ delay: null });
       renderList([STATE_RUNS[0].run]);
+      const remove = () => screen.getByLabelText('Remove Working run');
+      const button = remove();
+      expect(button).not.toBeVisible();
+      expect(button).toHaveAttribute('tabindex', '-1');
       expect(screen.queryByRole('button', { name: 'Remove Working run' })).not.toBeInTheDocument();
 
       await user.hover(screen.getByText('Working run'));
-      expect(screen.getByRole('button', { name: 'Remove Working run' })).toBeInTheDocument();
+      expect(remove()).toBe(button);
+      expect(button).toBeVisible();
 
       await user.unhover(screen.getByText('Working run'));
-      expect(screen.queryByRole('button', { name: 'Remove Working run' })).not.toBeInTheDocument();
+      expect(button).not.toBeVisible();
 
       await user.tab();
       await user.tab();
       expect(screen.getByText('Working run').closest('[data-nav]')).toHaveFocus();
-      expect(screen.getByRole('button', { name: 'Remove Working run' })).toBeInTheDocument();
+      expect(button).toBeVisible();
       await user.tab();
-      expect(screen.getByRole('button', { name: 'Remove Working run' })).toHaveFocus();
+      expect(button).toHaveFocus();
     });
 
     it('offers a ⋯ menu with Remove where there is no hover', async () => {
@@ -549,11 +554,13 @@ describe('RunList', () => {
     it('shows the delete of a task only on hover', async () => {
       const user = userEvent.setup({ delay: null });
       renderList(epic);
-      expect(screen.queryByRole('button', { name: 'Remove Task C' })).not.toBeInTheDocument();
+      const remove = screen.getByLabelText('Remove Task C');
+      expect(remove).not.toBeVisible();
+      expect(remove).toHaveAttribute('tabindex', '-1');
 
       await user.hover(screen.getByText('Task C'));
 
-      expect(screen.getByRole('button', { name: 'Remove Task C' })).toBeInTheDocument();
+      expect(remove).toBeVisible();
     });
 
     it('does not mute a blocked task', () => {

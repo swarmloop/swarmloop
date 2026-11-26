@@ -1,15 +1,6 @@
-import type {
-  RunOutcome,
-  StatsCiReturns,
-  StatsDay,
-  StatsReason,
-  StatsRun,
-  StatsShare,
-  StatsView,
-} from '../contract/api';
-import type { StatsRows, StatsRunRow, StatsStepRow } from '../history/stats.repository';
-import { agentStep, limited, round, RUNTIME_DEFAULT, share, sortedShares } from './stats-groups';
-import { NON_RETURN_COUNTERS, readLoopDetail } from '../history/loop-detail';
+import type { StatsDay, StatsRun, StatsShare, StatsView } from '../contract/api';
+import type { StatsRows, StatsRunRow } from '../history/stats.repository';
+import { limited, round, share } from './stats-groups';
 import { readOutcome } from '../history/run-state';
 import { runName } from './run-view/flow';
 import { viewTitle } from './run-view/run-title';
@@ -17,9 +8,11 @@ import { localDay, MINUTE_MS } from './local-day';
 import { stallsOf } from './stats-stalls';
 import { personMessagesOf } from './stats-person';
 import { requirementsOf } from './stats-requirements';
-import { countedRunsOf, sumOver } from './stats-units';
+import { spendOf } from './stats-spend';
+import { returnsOf } from './stats-returns';
+import { countedRunsOf, median, outcomeOf, subtaskTasksOf, sumOver, unitsOf } from './stats-units';
 
-export { localDay };
+export { localDay, outcomeOf };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETURN_BUCKETS = ['0', '1', '2', '3', '4+'];
@@ -44,28 +37,6 @@ export function rangeStart(now: number, range: StatsRange): string | null {
   return new Date(Date.parse(`${first}T00:00:00Z`) + range.tzOffset * MINUTE_MS).toISOString();
 }
 
-export function outcomeOf(status: string): RunOutcome {
-  if (status === 'done') {
-    return 'done';
-  }
-  return status === 'failed' || status === 'blocked' ? 'failed' : 'active';
-}
-
-function exactMedian(values: number[]): number | null {
-  if (values.length === 0) {
-    return null;
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
-/** The median in whole numbers. */
-function median(values: number[]): number | null {
-  const exact = exactMedian(values);
-  return exact === null ? null : Math.round(exact);
-}
-
 function emptyDays(from: string, to: string): Map<string, StatsDay> {
   const days = new Map<string, StatsDay>();
   for (let day = from; day <= to; day = shiftDay(day, 1)) {
@@ -74,6 +45,8 @@ function emptyDays(from: string, to: string): Map<string, StatsDay> {
       done: 0,
       active: 0,
       failed: 0,
+      epics: { done: 0, active: 0, failed: 0 },
+      tasks: { done: 0, active: 0, failed: 0 },
       usd: 0,
       returns: 0,
       merged: 0,
@@ -97,139 +70,8 @@ function toMergeMs(run: StatsRunRow): number | null {
   return Number.isFinite(at) ? Math.max(0, at - doneAt) : null;
 }
 
-/**
- * Spend and tokens: in all, by run, by step, by model and by agent, and dollars on the day each step finished.
- * A step that recorded no runtime ran on the runtime of its run.
- */
-function spendOf(steps: StatsStepRow[], days: Map<string, StatsDay>, tzOffset: number, runtimes: Map<number, string>) {
-  const totals = { usd: 0, tokensIn: 0, tokensOut: 0, agentMs: 0 };
-  const byRun = new Map<number, { usd: number; tokens: number }>();
-  const shellEdits = new Map<number, number>();
-  const byAgent = new Map<number, Map<string, { usd: number; tokens: number }>>();
-  const bySteps = new Map<string, StatsShare>();
-  const byModels = new Map<string, StatsShare>();
-  const byEfforts = new Map<string, StatsShare>();
-  for (const step of steps) {
-    const tokens = step.tokensIn + step.tokensOut;
-    totals.usd += step.usd;
-    totals.tokensIn += step.tokensIn;
-    totals.tokensOut += step.tokensOut;
-    shellEdits.set(step.runId, (shellEdits.get(step.runId) ?? 0) + step.shellEdits);
-    const run = byRun.get(step.runId) ?? { usd: 0, tokens: 0 };
-    byRun.set(step.runId, { usd: run.usd + step.usd, tokens: run.tokens + tokens });
-    const runtime = step.runtime ?? runtimes.get(step.runId);
-    if (runtime !== undefined) {
-      const agents = byAgent.get(step.runId) ?? new Map<string, { usd: number; tokens: number }>();
-      const agent = agents.get(runtime) ?? { usd: 0, tokens: 0 };
-      agents.set(runtime, { usd: agent.usd + step.usd, tokens: agent.tokens + tokens });
-      byAgent.set(step.runId, agents);
-    }
-    if (agentStep(step)) {
-      totals.agentMs += step.durationMs;
-      share(bySteps, step.step, step.usd, tokens, limited(step) ? 0 : 1);
-      share(byEfforts, step.effort ?? RUNTIME_DEFAULT, step.usd, tokens, limited(step) ? 0 : 1);
-    }
-    if (step.model) {
-      share(byModels, step.model, step.usd, tokens, limited(step) ? 0 : 1);
-    }
-    const day = days.get(localDay(step.finishedAt, tzOffset));
-    if (day) {
-      day.usd += step.usd;
-    }
-  }
-  return {
-    totals,
-    byRun,
-    shellEdits,
-    byAgent,
-    steps: sortedShares(bySteps),
-    models: sortedShares(byModels),
-    efforts: sortedShares(byEfforts),
-  };
-}
-
-/** What sent the work back: the loop counter. Returns of the checks step before it had its own counter were recorded under implement. */
-function kindOf(loop: StatsRows['loops'][number]): string {
-  return loop.counter === 'implement' && loop.reason === 'required checks failed' ? 'checks' : loop.counter;
-}
-
-function ranked(counts: Map<string, number>): { name: string; returns: number }[] {
-  return [...counts.entries()]
-    .map(([name, returns]) => ({ name, returns }))
-    .sort((a, b) => b.returns - a.returns || a.name.localeCompare(b.name));
-}
-
-/** Returns: by run, by kind, by reason (one reviewer per entry), the CI ones by whether the checks had passed, and on the day each happened. */
-function returnsOf(loops: StatsRows['loops'], days: Map<string, StatsDay>, tzOffset: number) {
-  const byRun = new Map<number, number>();
-  const kinds = new Map<string, number>();
-  const reasons = new Map<string, number>();
-  const commands = new Map<string, number>();
-  const ciJobs = new Map<string, number>();
-  const ci: StatsCiReturns = { only: 0, withChecks: 0, jobs: [] };
-  const count = (counts: Map<string, number>, name: string): void => {
-    counts.set(name, (counts.get(name) ?? 0) + 1);
-  };
-  for (const loop of loops.filter(({ counter }) => !NON_RETURN_COUNTERS.includes(counter))) {
-    byRun.set(loop.runId, (byRun.get(loop.runId) ?? 0) + 1);
-    const day = days.get(localDay(loop.createdAt, tzOffset));
-    if (day) {
-      day.returns += 1;
-    }
-    const kind = kindOf(loop);
-    const detail = readLoopDetail(loop.detail);
-    count(kinds, kind);
-    if (kind === 'review') {
-      const reviewers = loop.reason
-        .split(',')
-        .map((name) => name.trim().replace(/^review_/, ''))
-        .filter((name) => name !== '');
-      (reviewers.length > 0 ? reviewers : ['review']).forEach((name) => count(reasons, name));
-      continue;
-    }
-    count(reasons, kind);
-    (kind === 'checks' ? (detail.commands ?? []) : []).forEach((name) => count(commands, name));
-    if (kind === 'pipeline') {
-      if (detail.ciOnly) {
-        ci.only += 1;
-        (detail.jobs ?? []).forEach((name) => count(ciJobs, name));
-      } else {
-        ci.withChecks += 1;
-      }
-    }
-  }
-  const bars: StatsReason[] = ranked(reasons).map((reason) =>
-    reason.name === 'checks' && commands.size > 0 ? { ...reason, commands: ranked(commands) } : reason,
-  );
-  return {
-    byRun,
-    review: kinds.get('review') ?? 0,
-    pipeline: kinds.get('pipeline') ?? 0,
-    kinds: ranked(kinds).map(({ name, returns }) => ({ kind: name, returns })),
-    reasons: bars,
-    ci: { ...ci, jobs: ranked(ciJobs) },
-  };
-}
-
-/**
- * Tasks: the done runs with no parent. A split run is one task with its subtasks, whatever their state, so its spend
- * and returns are summed over the run and its subtasks.
- */
-function tasksOf(runs: StatsRunRow[], spent: Map<number, { usd: number }>, backs: Map<number, number>) {
-  const tasks = countedRunsOf(runs)
-    .filter(({ run }) => outcomeOf(run.status) === 'done')
-    .map(({ ids }) => ({
-      usd: sumOver(ids, (id) => spent.get(id)?.usd ?? 0),
-      returns: sumOver(ids, (id) => backs.get(id) ?? 0),
-    }));
-  const usds = tasks.map((task) => task.usd);
-  return {
-    tasks: tasks.length,
-    usdPerTask: tasks.length > 0 ? round(usds.reduce((a, b) => a + b, 0) / tasks.length) : 0,
-    medianUsdPerTask: round(exactMedian(usds) ?? 0),
-    tasksBack: tasks.filter((task) => task.returns > 0).length,
-    medianReturnsPerTask: median(tasks.map((task) => task.returns)),
-  };
+function newestFirst(a: StatsRun, b: StatsRun): number {
+  return b.createdAt.localeCompare(a.createdAt) || a.key.localeCompare(b.key);
 }
 
 /** The statistics of the runs in `rows`. `durations` is the working time of each run by id. */
@@ -266,11 +108,23 @@ export function buildStats(
     }
   }
   const counted = countedRunsOf(rows.runs);
+  /** A run as the table shows it: its own figures, and its subtasks' when it has any. */
+  const rowOf = (run: StatsRunRow, ids: number[]): StatsRun => ({
+    key: run.key,
+    name: runName(run.key, run.prompt),
+    title: viewTitle(run, requirements.get(run.id) ?? null),
+    status: run.status,
+    outcome: outcomeOf(run.status),
+    kind: ids.length > 1 ? 'epic' : 'task',
+    usd: round(sumOver(ids, (id) => spend.byRun.get(id)?.usd ?? 0)),
+    returns: sumOver(ids, (id) => returns.byRun.get(id) ?? 0),
+    shellEdits: sumOver(ids, (id) => spend.shellEdits.get(id) ?? 0),
+    durationMs: sumOver(ids, (id) => durations.get(id) ?? 0),
+    createdAt: run.createdAt,
+  });
   const runs: StatsRun[] = counted.map(({ run, ids }) => {
-    const outcome = outcomeOf(run.status);
-    const backs = sumOver(ids, (id) => returns.byRun.get(id) ?? 0);
-    const usd = sumOver(ids, (id) => spend.byRun.get(id)?.usd ?? 0);
-    const durationMs = sumOver(ids, (id) => durations.get(id) ?? 0);
+    const row = rowOf(run, ids);
+    const { outcome, returns: backs, durationMs } = row;
     counts[outcome] += 1;
     if (run.state === 'merged') {
       mergedIds.push(run.id);
@@ -300,25 +154,22 @@ export function buildStats(
         }
       }
     }
-    const name = runName(run.key, run.prompt);
-    return {
-      key: run.key,
-      name,
-      title: viewTitle(run, requirements.get(run.id) ?? null),
-      status: run.status,
-      outcome,
-      usd: round(usd),
-      returns: backs,
-      shellEdits: sumOver(ids, (id) => spend.shellEdits.get(id) ?? 0),
-      durationMs,
-      createdAt: run.createdAt,
-    };
+    return row;
   });
 
   const requirementsSum = requirementsOf(mergedIds, mergedDocuments);
+  const units = unitsOf(rows.runs, {
+    usdOf: (id) => spend.byRun.get(id)?.usd ?? 0,
+    returnsOf: (id) => returns.byRun.get(id) ?? 0,
+    workMsOf: (id) => durations.get(id) ?? 0,
+    days,
+    tzOffset: range.tzOffset,
+  });
   return {
     from,
     to,
+    epics: units.epics,
+    tasks: units.tasks,
     totals: {
       runs: counted.length,
       ...counts,
@@ -328,7 +179,6 @@ export function buildStats(
       reviewReturns: returns.review,
       pipelineReturns: returns.pipeline,
       returnsByKind: returns.kinds,
-      ...tasksOf(rows.runs, spend.byRun, returns.byRun),
       firstPass,
       limits: rows.steps.filter(limited).length,
       agentMs: spend.totals.agentMs,
@@ -354,6 +204,9 @@ export function buildStats(
     reasons: returns.reasons,
     ciReturns: returns.ci,
     returnsPerRun: RETURN_BUCKETS.map((bucket, index) => ({ returns: bucket, runs: buckets[index] })),
-    runs: runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.key.localeCompare(b.key)),
+    runs: runs.sort(newestFirst),
+    subtasks: subtaskTasksOf(rows.runs)
+      .map((run) => rowOf(run, [run.id]))
+      .sort(newestFirst),
   };
 }

@@ -18,7 +18,7 @@ const PARTS: { value: Mode; word: string; Icon: typeof ContrastIcon }[] = [
   { value: 'dark', word: 'Dark', Icon: DarkModeOutlined },
 ];
 
-/** The Theme row of the account menu: a label and a three-part control that stores the choice like the settings switch. */
+/** The Theme row of the account menu: a label and a three-part control. */
 export function AccountTheme(): ReactElement | null {
   const { mode, setMode } = useColorScheme();
   if (!mode) {

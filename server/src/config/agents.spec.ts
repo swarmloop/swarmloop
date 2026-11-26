@@ -85,19 +85,23 @@ describe('agentFor', () => {
     const planned = ['research', 'plan', 'plan-improve', 'merge-request', 'code-review', 'code-review-report'];
     const built = ['implement', 'implement-improve', 'rebase'];
     for (const step of [...planned, ...CODE_REVIEWERS.map((name) => `code-review-${name}`)]) {
-      expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'plan-m' });
-      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'plan-m' });
+      expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'plan-m', effort: 'high' });
+      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'plan-m', effort: 'high' });
     }
     for (const step of built) {
-      expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'impl-m' });
-      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'impl-m' });
+      expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'impl-m', effort: 'high' });
+      expect(agentFor(env, child, step)).toEqual({ runtime: 'claude', model: 'impl-m', effort: 'high' });
     }
   });
 
   it('with AGENTS_IMPLEMENT=codex:gpt-6.1-sol implement and subtask implement use Codex', () => {
     const env = testEnv({ AGENTS_IMPLEMENT: 'codex:gpt-6.1-sol' });
-    expect(agentFor(env, null, 'implement')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol' });
-    expect(agentFor(env, { parentRunId: 1 }, 'implement')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol' });
+    expect(agentFor(env, null, 'implement')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol', effort: 'high' });
+    expect(agentFor(env, { parentRunId: 1 }, 'implement')).toEqual({
+      runtime: 'codex',
+      model: 'gpt-6.1-sol',
+      effort: 'high',
+    });
   });
 
   it('uses the first agent of a role and sends review to another runtime than implement', () => {
@@ -105,8 +109,12 @@ describe('agentFor', () => {
       AGENTS_IMPLEMENT: 'codex:gpt-6.1-sol,claude:fallback',
       AGENTS_REVIEW: 'claude:claude-opus-5-5',
     });
-    expect(agentFor(env, null, 'implement')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol' });
-    expect(agentFor(env, null, 'code-review-security')).toEqual({ runtime: 'claude', model: 'claude-opus-5-5' });
+    expect(agentFor(env, null, 'implement')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol', effort: 'high' });
+    expect(agentFor(env, null, 'code-review-security')).toEqual({
+      runtime: 'claude',
+      model: 'claude-opus-5-5',
+      effort: 'high',
+    });
     expect(agentFor(env, null, 'plan')).toEqual({ runtime: 'cursor', model: 'grok-4.7-high' });
   });
 
@@ -117,10 +125,10 @@ describe('agentFor', () => {
       AGENTS_PLAN: 'claude:main-plan',
     });
     const child = { parentRunId: 1 };
-    expect(agentFor(env, child, 'implement')).toEqual({ runtime: 'claude', model: 'sub-impl' });
-    expect(agentFor(env, child, 'plan')).toEqual({ runtime: 'claude', model: 'main-plan' });
+    expect(agentFor(env, child, 'implement')).toEqual({ runtime: 'claude', model: 'sub-impl', effort: 'medium' });
+    expect(agentFor(env, child, 'plan')).toEqual({ runtime: 'claude', model: 'main-plan', effort: 'high' });
     expect(agentFor(env, child, 'code-review')).toEqual({ runtime: 'cursor', model: 'grok-4.7-high' });
-    expect(agentFor(env, {}, 'implement')).toEqual({ runtime: 'codex', model: 'main-impl' });
+    expect(agentFor(env, {}, 'implement')).toEqual({ runtime: 'codex', model: 'main-impl', effort: 'high' });
     expect(roleOf(child, 'implement')).toEqual({ role: 'implement', tier: 'subtask' });
     expect(roleOf({ parentRunId: null }, 'code-review-quality')).toEqual({ role: 'review', tier: 'main' });
     expect(roleOf(null, 'commit')).toBeNull();
@@ -140,7 +148,7 @@ describe('agentFor with a stored choice', () => {
   };
 
   it('uses the stored list before env and keeps its order', () => {
-    expect(agentFor(env, { agents }, 'plan')).toEqual({ runtime: 'claude', model: 'mine' });
+    expect(agentFor(env, { agents }, 'plan')).toEqual({ runtime: 'claude', model: 'mine', effort: 'high' });
     expect(agentsFor(env, { agents }, 'plan').map((agent) => agent.model)).toEqual(['mine', 'next']);
   });
 
@@ -149,7 +157,11 @@ describe('agentFor with a stored choice', () => {
       runtime: 'cursor',
       model: 'env-sub-plan',
     });
-    expect(agentFor(env, { parentRunId: 3, agents }, 'plan')).toEqual({ runtime: 'codex', model: 'sub-mine' });
+    expect(agentFor(env, { parentRunId: 3, agents }, 'plan')).toEqual({
+      runtime: 'codex',
+      model: 'sub-mine',
+      effort: 'medium',
+    });
   });
 
   it('uses env for a role the choice does not name, and when there is no choice', () => {
@@ -173,6 +185,7 @@ describe('firstAvailable', () => {
     expect(firstAvailable(agentsFor(env, null, 'code-review-quality'), new Set())).toEqual({
       runtime: 'claude',
       model: 'review-m',
+      effort: 'high',
     });
   });
 
@@ -180,6 +193,7 @@ describe('firstAvailable', () => {
     expect(firstAvailable(agentsFor(env, null, 'code-review'), new Set(['claude']))).toEqual({
       runtime: 'codex',
       model: 'gpt-6.1-sol',
+      effort: 'high',
     });
     expect(firstAvailable(agentsFor(env, null, 'code-review'), new Set(['claude', 'codex']))).toEqual({
       runtime: 'cursor',
@@ -321,7 +335,11 @@ describe('agents with an effort', () => {
 
   it('drops a stored level its runtime no longer declares and keeps the model', () => {
     const agents = { main: { plan: [{ runtime: 'codex', model: 'gpt-6.1-sol', effort: 'max' }] } };
-    expect(agentFor(claudeEnv(), { agents }, 'plan')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol' });
+    expect(agentFor(claudeEnv(), { agents }, 'plan')).toEqual({
+      runtime: 'codex',
+      model: 'gpt-6.1-sol',
+      effort: 'high',
+    });
   });
 
   it('raises the parent of a split run to EPIC_EFFORT and says so', () => {
@@ -376,6 +394,7 @@ describe('agents with an effort', () => {
     expect(agentFor(claudeEnv({ AGENTS_SUBTASK_PLAN: 'claude:sub' }), { parentRunId: 2 }, 'plan')).toEqual({
       runtime: 'claude',
       model: 'sub',
+      effort: 'medium',
     });
   });
 
@@ -389,9 +408,28 @@ describe('agents with an effort', () => {
     });
   });
 
-  it('names the runtimes whose env agents name an effort', () => {
+  it('runs an entry without an effort at the level of the entry before it, capped to what its runtime offers', () => {
+    const after = (own: string) =>
+      agentsFor(testEnv({ AGENTS_PLAN: `claude:claude-opus-5-5:${own},codex:gpt-6.1-sol` }), null, 'plan')[1];
+    expect(after('high')).toMatchObject({ runtime: 'codex', effort: 'high' });
+    expect(after('max')).toMatchObject({ runtime: 'codex', effort: 'xhigh', effortNote: 'capped:max' });
+  });
+
+  it('runs a first entry without an effort at the defaults.env level of its role and tier', () => {
+    const env = testEnv({ AGENTS_IMPLEMENT: 'claude:a', AGENTS_SUBTASK_REVIEW: 'claude:b' });
+    expect(agentFor(env, null, 'implement').effort).toBe('high');
+    expect(agentFor(env, { parentRunId: 1 }, 'code-review').effort).toBe('medium');
+  });
+
+  it('raises the plan of an epic parent whose first entry has no effort', () => {
+    const env = testEnv({ AGENTS_PLAN: 'claude:claude-opus-5-5', EPIC_EFFORT: 'xhigh' });
+    expect(agentFor(env, epicRun, 'plan')).toMatchObject({ effort: 'xhigh', effortNote: 'epic' });
+  });
+
+  it('names every runtime the env lists name, since each entry runs at a level', () => {
     expect(runtimesNamingEffort(testEnv({ AGENTS_PLAN: 'claude:m:high', AGENTS_REVIEW: 'cursor:grok-4.7' }))).toEqual([
       'claude',
+      'cursor',
     ]);
   });
 });
@@ -439,14 +477,14 @@ describe('the backlog tier', () => {
 
   it('has its own list, with the fallback order', () => {
     expect(backlogPlanAgents(env)).toEqual([
-      { runtime: 'claude', model: 'backlog-a' },
-      { runtime: 'codex', model: 'backlog-b' },
+      { runtime: 'claude', model: 'backlog-a', effort: 'xhigh' },
+      { runtime: 'codex', model: 'backlog-b', effort: 'xhigh' },
     ]);
   });
 
   it('gives a stored choice before env', () => {
     const stored = { backlog: { plan: [{ runtime: 'codex', model: 'mine' }] } };
-    expect(backlogPlanAgents(env, stored)).toEqual([{ runtime: 'codex', model: 'mine' }]);
+    expect(backlogPlanAgents(env, stored)).toEqual([{ runtime: 'codex', model: 'mine', effort: 'xhigh' }]);
   });
 
   it('falls back to the main plan role when its list is empty', () => {
@@ -465,7 +503,7 @@ describe('the backlog tier', () => {
   it('is listed by the readers of every list, and by the start-up check', () => {
     expect(runtimesInUse(env)).toEqual(['cursor', 'claude', 'codex']);
     expect(knownModels(env)).toMatchObject({ claude: ['backlog-a'], codex: ['backlog-b'] });
-    expect(runtimesNamingEffort(testEnv({ AGENTS_BACKLOG_PLAN: 'claude:m:high' }))).toEqual(['claude']);
+    expect(runtimesNamingEffort(testEnv({ AGENTS_BACKLOG_PLAN: 'claude:m:high' }))).toEqual(['cursor', 'claude']);
     expect(() => assertAgents({ ...testEnv({ AGENTS_BACKLOG_PLAN: 'gemini:g' }), ...KEYS })).toThrow(
       /AGENTS_BACKLOG_PLAN.*gemini/,
     );
@@ -483,18 +521,32 @@ describe('the backlog helpers', () => {
     const env = testEnv({ AGENTS_BACKLOG_READ: 'claude:a:high,codex:b' });
     const [first, second] = backlogReadAgents(env);
     expect(first).toEqual({ runtime: 'claude', model: 'a', effort: 'high' });
-    expect(second).toEqual({ runtime: 'codex', model: 'b' });
+    expect(second).toEqual({ runtime: 'codex', model: 'b', effort: 'high' });
   });
 
   it('resolves a level against what its runtime declares for the model, as for every list', () => {
-    const levels = jest.spyOn(runtimeFor('claude'), 'efforts');
+    const offered = {
+      claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+      codex: ['low', 'medium', 'high', 'xhigh'],
+    } as const;
+    const spies = (['claude', 'codex'] as const).map((name) =>
+      jest.spyOn(runtimeFor(name), 'efforts').mockReturnValue(offered[name]),
+    );
     try {
-      levels.mockReturnValueOnce(['low', 'medium']).mockReturnValue(['low']);
-      const [capped] = backlogReadAgents(testEnv({ AGENTS_BACKLOG_READ: 'claude:m:medium' }));
-      expect(capped).toEqual({ runtime: 'claude', model: 'm', effort: 'low', effortNote: 'capped:medium' });
+      const [first, second] = backlogReadAgents(testEnv({ AGENTS_BACKLOG_READ: 'claude:a:max,codex:b' }));
+      expect(first).toEqual({ runtime: 'claude', model: 'a', effort: 'max' });
+      expect(second).toEqual({ runtime: 'codex', model: 'b', effort: 'xhigh', effortNote: 'capped:max' });
     } finally {
-      levels.mockRestore();
+      spies.forEach((spy) => spy.mockRestore());
     }
+  });
+
+  it('runs a helper at the level before it, and a first one at its own list level, never the plan role', () => {
+    const plan = { AGENTS_PLAN: 'claude:claude-opus-5-5:xhigh' };
+    const [first] = backlogReadAgents(testEnv({ ...plan, AGENTS_BACKLOG_READ: 'claude:claude-sonnet-5-5' }));
+    expect(first.effort).toBe('medium');
+    const list = 'claude:claude-opus-5-5:high,claude:claude-sonnet-5-5';
+    expect(backlogReadAgents(testEnv({ ...plan, AGENTS_BACKLOG_READ: list }))[1].effort).toBe('high');
   });
 
   it('gives no helper for an empty list and passes the start-up check', () => {
@@ -511,7 +563,7 @@ describe('the backlog helpers', () => {
 
   it('names a runtime whose helper has a level, and leaves readiness and models alone', () => {
     const env = testEnv({ AGENTS_BACKLOG_READ: 'claude:m:high' });
-    expect(runtimesNamingEffort(env)).toEqual(['claude']);
+    expect(runtimesNamingEffort(env)).toEqual(['cursor', 'claude']);
     expect(runtimesInUse(env)).not.toContain('claude');
     expect(knownModels(env).claude ?? []).not.toContain('m');
   });

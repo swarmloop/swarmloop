@@ -9,6 +9,7 @@ import { CODE_REVIEWERS, isReviewStep, pipelineStepOf, requireReviewer } from '.
 import { reviewLogDecision } from '../../contract/readable-log-review';
 import { storedReview } from '../../agent-result/stored-review';
 import { LIMIT_VISIT } from '../../history/visit.repository';
+import type { RelaunchView } from '../../contract/relaunch';
 import { stepStatus, latest } from './status';
 import type { FlowView } from '../../contract/api';
 import { REVIEW_KINDS } from './run-view.types';
@@ -55,16 +56,27 @@ export function chipStatus(
   round: { attempts: number; status: string } | null,
   /** The last log of a reviewer that has no stored visit of its own, when no round is open. */
   log = '',
+  relaunch?: RelaunchView,
 ): string {
   if (!isReviewStep(name)) {
-    return stepStatus(pipelineStepOf(name), run, stat);
+    return stepStatus(pipelineStepOf(name), run, stat, relaunch);
   }
   if (round) {
     return round.status;
   }
-  if (stat?.step === name) {
-    return storedReviewerStatus(stat, documents, requireReviewer(name));
-  }
+  const status =
+    stat?.step === name
+      ? storedReviewerStatus(stat, documents, requireReviewer(name))
+      : storedReviewerChip(run, documents, name, log);
+  return settledEarlier(run, status);
+}
+
+/** A return from before the round that runs now was answered by implement: it reads like any finished step. */
+function settledEarlier(run: RunEntity, status: string): string {
+  return roundOpen(run) && status === 'returned' ? 'done' : status;
+}
+
+function storedReviewerChip(run: RunEntity, documents: DocumentEntity[], name: string, log: string): string {
   const saved = storedDecision(documents, requireReviewer(name));
   const fromLog = reviewLogDecision(log);
   const decision = run.currentStep === 'code-review' && fromLog ? fromLog : (saved ?? fromLog);
@@ -146,7 +158,10 @@ export function reportChip(
   const verdict = angleVerdict(documents);
   const visit = stats.filter((item) => item.step === 'code-review').at(-1);
   const loopStatus = stepStatus('code-review', run, visit);
-  const shown = decisionStatus(verdict, (latest(documents, 'review_report') ?? '').trim() ? 'done' : 'idle');
+  const shown = settledEarlier(
+    run,
+    decisionStatus(verdict, (latest(documents, 'review_report') ?? '').trim() ? 'done' : 'idle'),
+  );
   const status =
     run.currentStep !== 'code-review' && (loopStatus === 'failed' || loopStatus === 'returned') ? loopStatus : shown;
   return { name: 'code-review', status, current: false, attempts: saved };
@@ -164,8 +179,7 @@ export function chipAttempts(
   if (isReviewStep(name)) {
     return round ? round.attempts : reviewerAttempts(name, stats, documents);
   }
-  const own = stats.filter((stat) => stat.step === name);
-  const last = own.at(-1)?.attempt ?? 0;
+  const last = agentVisits(stats.filter((stat) => stat.step === name));
   if (run.status === 'running' && run.currentStep === name) {
     return last + 1;
   }
@@ -177,6 +191,18 @@ export function chipAttempts(
     return 0;
   }
   return last;
+}
+
+/**
+ * The visits of a step in which an agent ran: a stat that names a model. A pass that only waits, such as an epic's
+ * implement waiting for its tasks, names none and is no visit. A launch that ended on a provider limit and the one
+ * after it are one visit.
+ */
+function agentVisits(own: StepStatEntity[]): number {
+  const agent = own.filter((stat) => stat.model);
+  const stopped = (stat: StepStatEntity): boolean =>
+    stat.status === LIMIT_VISIT.status && stat.killReason === LIMIT_VISIT.killReason;
+  return agent.filter((stat) => !stopped(stat)).length + (agent.length > 0 && stopped(agent[agent.length - 1]) ? 1 : 0);
 }
 
 /** The stored visits of a reviewer: its own, or the code-review visits that hold a document of its kind. */

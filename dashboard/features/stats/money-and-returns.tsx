@@ -90,6 +90,7 @@ function reasonDetail(reason: StatsReason): string {
 
 /** CI returns by whether the checks of the same content had passed; for the ones they had, the jobs to cover with a check. */
 function CiOnly({ ci }: { ci: StatsCiReturns }): ReactElement | null {
+  const [open, setOpen] = useState(false);
   if (ci.only + ci.withChecks === 0) {
     return null;
   }
@@ -98,10 +99,25 @@ function CiOnly({ ci }: { ci: StatsCiReturns }): ReactElement | null {
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
         CI returns
       </Typography>
-      <Typography sx={{ fontSize: 13 }}>
+      <Typography
+        component={ci.jobs.length > 0 ? 'button' : 'p'}
+        aria-expanded={ci.jobs.length > 0 ? open : undefined}
+        onClick={ci.jobs.length > 0 ? () => setOpen((now) => !now) : undefined}
+        sx={{
+          fontSize: 13,
+          m: 0,
+          p: 0,
+          border: 0,
+          bgcolor: 'transparent',
+          color: 'inherit',
+          font: 'inherit',
+          textAlign: 'left',
+          cursor: ci.jobs.length > 0 ? 'pointer' : undefined,
+        }}
+      >
         CI only: {ci.only} · CI and checks: {ci.withChecks}
       </Typography>
-      {ci.jobs.length > 0 ? (
+      {open && ci.jobs.length > 0 ? (
         <Box component="ul" aria-label="CI-only jobs" sx={{ m: 0, mt: 0.5, pl: 2.5, fontSize: 12.5 }}>
           {ci.jobs.map((job) => (
             <li key={job.name}>
@@ -137,7 +153,14 @@ export function Returns({ stats }: { stats: StatsView }): ReactElement {
         headline={`${returns} ${returns === 1 ? 'return' : 'returns'}`}
         note={`${returnsByKind(totals.returnsByKind, ' · ')} · ${percent(totals.firstPass, totals.done)} of done runs passed first time`}
       >
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 172px' }, gap: 3, alignItems: 'start' }}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'minmax(0, 1fr) 172px' },
+            gap: 3,
+            alignItems: 'start',
+          }}
+        >
           <BarList
             rows={rows}
             color={CHART.returns}

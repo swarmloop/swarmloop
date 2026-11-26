@@ -80,7 +80,7 @@ describe('plan-improve step of an epic', () => {
       expect(marked.run?.epicAt).toBeTruthy();
       expect(marked.run?.currentStep).toBe('plan-improve');
       expect(marked.subtasks.map((item) => item.title)).toEqual(['First graph']);
-      expect(input(0).effort).toBeUndefined();
+      expect(input(0).effort).toBe('high');
 
       const second = await visit();
       expect(second.exitCode).toBe(0);

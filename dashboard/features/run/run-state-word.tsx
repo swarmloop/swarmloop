@@ -1,8 +1,7 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import type { ComponentType, ReactElement } from 'react';
 import AccountTree from '@mui/icons-material/AccountTree';
-import Autorenew from '@mui/icons-material/Autorenew';
 import Block from '@mui/icons-material/Block';
 import CallMerge from '@mui/icons-material/CallMerge';
 import CheckCircle from '@mui/icons-material/CheckCircle';
@@ -15,8 +14,10 @@ import PauseCircleOutline from '@mui/icons-material/PauseCircleOutline';
 import Replay from '@mui/icons-material/Replay';
 import SkipNext from '@mui/icons-material/SkipNext';
 import StopCircleOutlined from '@mui/icons-material/StopCircleOutlined';
+import type { SvgIconProps } from '@mui/material/SvgIcon';
 import Tooltip from '@mui/material/Tooltip';
 import type { StateIcon, StateTone, StateWord } from '@contract/run-state';
+import { WorkingIcon } from './working-icon';
 
 /** One color rule for every state: who acts next. */
 export function toneColor(tone: StateTone): string {
@@ -29,8 +30,8 @@ export function toneColor(tone: StateTone): string {
   }[tone];
 }
 
-const ICONS: Record<StateIcon, typeof Autorenew> = {
-  working: Autorenew,
+const ICONS: Record<StateIcon, ComponentType<SvgIconProps>> = {
+  working: WorkingIcon,
   person: ChatBubbleOutline,
   paused: PauseCircleOutline,
   retrying: Replay,

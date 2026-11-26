@@ -56,7 +56,7 @@ describe('a run uses the starter settings', () => {
       await start('proj-1', 'alice');
       const run = await runs.findRun('proj-1');
       expect(run?.agents).toEqual(MINE.agents);
-      expect(agentFor(env, run, 'plan')).toEqual({ runtime: 'claude', model: 'mine-plan' });
+      expect(agentFor(env, run, 'plan')).toEqual({ runtime: 'claude', model: 'mine-plan', effort: 'high' });
     } finally {
       await app.close();
     }
@@ -69,7 +69,7 @@ describe('a run uses the starter settings', () => {
       await start('proj-2', 'alice');
       await settings.save('alice', THEIRS);
       const run = await runs.findRun('proj-2');
-      expect(agentFor(env, run, 'plan')).toEqual({ runtime: 'claude', model: 'mine-plan' });
+      expect(agentFor(env, run, 'plan')).toEqual({ runtime: 'claude', model: 'mine-plan', effort: 'high' });
     } finally {
       await app.close();
     }
@@ -82,7 +82,11 @@ describe('a run uses the starter settings', () => {
       await settings.save('bob', THEIRS);
       await start('proj-3', 'alice');
       await start('proj-4', 'bob');
-      expect(agentFor(env, await runs.findRun('proj-4'), 'plan')).toEqual({ runtime: 'codex', model: 'theirs-plan' });
+      expect(agentFor(env, await runs.findRun('proj-4'), 'plan')).toEqual({
+        runtime: 'codex',
+        model: 'theirs-plan',
+        effort: 'high',
+      });
       expect(agentFor(env, await runs.findRun('proj-3'), 'plan').model).toBe('mine-plan');
     } finally {
       await app.close();
@@ -114,7 +118,7 @@ describe('a run uses the starter settings', () => {
       const child = await runs.openSubtask('proj-7-a', parent?.id ?? 0, 'a', 'alice', parent?.agents);
       expect(child.agents).toEqual(MINE.agents);
       expect(child.runtime).toBe('codex');
-      expect(agentFor(env, child, 'implement')).toEqual({ runtime: 'codex', model: 'mine-sub' });
+      expect(agentFor(env, child, 'implement')).toEqual({ runtime: 'codex', model: 'mine-sub', effort: 'medium' });
       expect(agentFor(env, parent, 'implement').runtime).not.toBe('codex');
     } finally {
       await app.close();

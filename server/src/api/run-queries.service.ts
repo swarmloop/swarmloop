@@ -33,6 +33,7 @@ import { epicTotal } from '../steps/shared/epic-total';
 import { STEP_KINDS } from './run-view/run-view.types';
 import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
 import { latest, metrics, phases, returns, runName } from './run-view/flow';
+import { openRelaunch, relaunchViews } from './run-view/relaunch';
 import { reason, sentence, withSkip } from './run-view/flow-waiting';
 import { belongsToVisit, documentView, interruptionOf, withReturnNotes } from './run-view/documents';
 import { mergeRequestViews } from './run-view/merge-requests';
@@ -130,6 +131,7 @@ export class RunQueriesService {
     const checkCommands = latestCommandViews(await this.checkCommands.list(run.id));
     const label = (await this.backlogs.labelsFor([run.key])).get(run.key);
     const parent = await parentOf(this.runs, this.documents, run);
+    const relaunches = relaunchViews(run, launches, stats, documents);
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
@@ -174,12 +176,22 @@ export class RunQueriesService {
       ),
       phases: withRestartWait(
         withPlaceChips(
-          phases(shown, stats, documents, root(this.config), loops, this.openRounds?.of(run.key)),
+          phases(
+            shown,
+            stats,
+            documents,
+            root(this.config),
+            loops,
+            this.openRounds?.of(run.key),
+            checkCommands,
+            openRelaunch(relaunches),
+          ),
           this.gate.agentWait(run.key),
         ),
         run,
       ),
-      returns: returns(shown, loops),
+      returns: returns(shown, loops, checkCommands),
+      ...(relaunches.length > 0 ? { relaunches } : {}),
       ...(checkCommands.length > 0 ? { checkCommands } : {}),
       items: open,
       paths: run.currentStep === 'commit' ? parsePaths(latest(documents, 'commit') ?? '') : [],
@@ -226,6 +238,7 @@ export class RunQueriesService {
       runs: this.runs,
       visits: this.visits,
       documents: this.documents,
+      flows: this.flows,
       commands: this.commands,
       pipeline: this.pipeline,
       live: this.live,

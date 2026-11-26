@@ -7,6 +7,7 @@ import type { RunRepository } from '../history/run.repository';
 import type { VisitRepository } from '../history/visit.repository';
 import { documentView, filesOf, withoutServerRecords } from './run-view/documents';
 import { launchView, loopView } from './run-view/live';
+import { relaunchViews } from './run-view/relaunch';
 import { requireRun } from './run-queries-run';
 import { outputsOf, visitLogSize } from './run-queries-log';
 
@@ -27,7 +28,8 @@ export async function readHistory(
 ): Promise<HistoryView> {
   const { runs, documents: documentRepository, visits, events, flows, config } = sources;
   const run = await requireRun(runs, key);
-  const documents = withoutServerRecords(await documentRepository.listDocuments(run.id));
+  const stored = await documentRepository.listDocuments(run.id);
+  const documents = withoutServerRecords(stored);
   const stats = await visits.listStats(run.id);
   const exchanges = await visits.listExchanges(stats.map((stat) => stat.id));
   const samples = await visits.listSamples(stats.map((stat) => stat.id));
@@ -38,7 +40,9 @@ export async function readHistory(
   const newestReviewerFile =
     !reviewing && stats.some((stat) => !stat.attemptId && stat.step.startsWith('code-review-'));
   const outputs = await outputsOf(config, run, stats, newestReviewerFile);
+  const relaunches = relaunchViews(run, launches, stats, stored);
   return {
+    ...(relaunches.length > 0 ? { relaunches } : {}),
     launches: launches.map(launchView),
     documents: documents.filter((document) => document.kind !== 'log').map(documentView),
     files: filesOf(documents),

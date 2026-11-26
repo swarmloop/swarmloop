@@ -31,4 +31,23 @@ describe('FlowRepository', () => {
       await db.close();
     }
   });
+
+  it('marks a launch with its cause and lists the relaunches after a rebase of several runs in one read', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const flows = db.app.get(FlowRepository);
+      await flows.noteFlow('run-a', ['planning'], null);
+      await flows.noteFlow('run-a', ['checks', 'ci'], 'checks', 'rebase');
+      await flows.noteFlow('run-b', ['planning'], null);
+      const runs = db.app.get(RunRepository);
+      const a = (await runs.findRun('run-a'))!;
+      const b = (await runs.findRun('run-b'))!;
+      const found = await flows.listRebases([a.id, b.id]);
+      expect([...found.keys()]).toEqual([a.id]);
+      expect(found.get(a.id)).toEqual([expect.objectContaining({ fromStep: 'checks', cause: 'rebase' })]);
+      expect((await flows.listFlows(a.id)).map((row) => row.cause)).toEqual([null, 'rebase']);
+    } finally {
+      await db.close();
+    }
+  });
 });

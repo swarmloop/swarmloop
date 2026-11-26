@@ -42,7 +42,9 @@ describe('the rebase of a done subtask by its parent', () => {
 
       const fresh = await runs.findRun('proj-81');
       expect(fresh?.currentStep).toBe('checks');
-      const phases = JSON.parse((await flows.listFlows(fresh?.id ?? 0)).at(-1)?.phases ?? '[]') as string[];
+      const rows = await flows.listFlows(fresh?.id ?? 0);
+      expect(rows.at(-1)?.cause).toBe('rebase');
+      const phases = JSON.parse(rows.at(-1)?.phases ?? '[]') as string[];
       expect(phases).toEqual(expect.arrayContaining(['checks', 'ci']));
       expect(phases).not.toContain('code-review');
     } finally {

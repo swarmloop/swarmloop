@@ -42,7 +42,7 @@ export function RowDelete({
   run: RunSummary;
   shown: boolean;
   onRemove: (run: RunSummary) => void;
-}): ReactElement | null {
+}): ReactElement {
   const touch = useMediaQuery('(hover: none)');
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   if (touch) {
@@ -77,14 +77,20 @@ export function RowDelete({
       </>
     );
   }
-  if (!shown) {
-    return null;
-  }
   return (
     <IconButton
       size="small"
       aria-label={`Remove ${run.name}`}
-      sx={{ color: 'text.secondary', p: 0, width: 22, height: 22, flexShrink: 0 }}
+      aria-hidden={shown ? undefined : true}
+      tabIndex={shown ? undefined : -1}
+      sx={{
+        color: 'text.secondary',
+        p: 0,
+        width: 22,
+        height: 22,
+        flexShrink: 0,
+        visibility: shown ? 'visible' : 'hidden',
+      }}
       onClick={(event) => {
         event.stopPropagation();
         onRemove(run);

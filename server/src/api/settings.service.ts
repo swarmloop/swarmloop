@@ -1,7 +1,15 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { loadPriceTable } from '../agent/prices';
 import { useCachedModelList } from '../agent/runtime-model-lists';
-import { knownModels, missingCredential, namedAgentsFor, namedBacklogPlanAgents, parseAgent } from '../config/agents';
+import {
+  baseLevelOf,
+  knownModels,
+  missingCredential,
+  namedAgentsFor,
+  namedBacklogPlanAgents,
+  parseAgent,
+} from '../config/agents';
+import { DefaultsLayout } from '../config/defaults-layout';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { resolveRepoRoot } from '../config/repo-root';
 import { rawEnv } from '../config/process-env';
@@ -9,8 +17,8 @@ import { SettingSources } from '../config/setting-sources';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { Clock } from '../core/clock';
 import type { SettingsBody, StoredAgents } from '../contract/api';
-import type { SettingsView } from '../contract/settings';
-import { isEffort } from '../contract/effort';
+import type { ServerSetting, SettingsView } from '../contract/settings';
+import { isEffort, type Effort } from '../contract/effort';
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { RUNTIME_NAMES, runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -22,8 +30,8 @@ const ROLES = Object.keys(ROLE_STEPS) as (keyof typeof ROLE_STEPS)[];
 /** The backlog's planner has the plan role only. */
 const BACKLOG_ROLES = ['plan'] as const;
 
-/** The settings that stay env only, in the order the Server section shows them. */
-const SERVER_NAMES = [
+/** The settings that stay env only; defaults.env gives their order, groups and descriptions. */
+export const SERVER_NAMES = [
   'SWARMLOOP_API_PORT',
   'SWARMLOOP_API_HOST',
   'SWARMLOOP_PUBLIC_URL',
@@ -62,16 +70,8 @@ const SERVER_NAMES = [
   ...codeHostAdapters().map((adapter) => adapter.clientEnvKeys.clientSecret),
 ] as const satisfies readonly (keyof SwarmloopEnv)[];
 
-/** What a server setting means, for the settings it is worth saying for. */
-const SERVER_DESCRIPTIONS: Record<string, string> = {
-  CHECKS_PARALLEL: 'Check commands that run at once on the whole server',
-  AGENTS_PARALLEL: 'Agent containers that run at once on the whole server',
-  EPIC_REPLAN_EVERY_MERGE:
-    'The parent planner looks at every merged task before its dependents start; false: only when the task differs from its plan',
-};
-
 /** Server settings the sandbox reads straight from the process env; `SwarmloopEnv` does not carry them. */
-const PROCESS_ENV_NAMES = ['PROJECT_HOSTS_ALLOW'] as const;
+export const PROCESS_ENV_NAMES = ['PROJECT_HOSTS_ALLOW'] as const;
 
 const SECRET = /TOKEN$|SECRET$|API_KEY$/;
 
@@ -87,31 +87,42 @@ export class SettingsService {
     private readonly clock: Clock,
     private readonly credentials: PersonalCredentials,
     private readonly sources: SettingSources,
+    private readonly layout: DefaultsLayout,
   ) {}
 
   async view(actor: string | null): Promise<SettingsView> {
-    const env = this.config.env;
     const login = actor;
     const { runtimes, limited } = await this.models(login);
     const settings = login ? ((await this.stored.read(login)) ?? {}) : {};
     return {
       settings,
-      defaults: { agents: this.defaultAgents() },
+      defaults: { agents: this.defaultAgents(), levels: this.defaultLevels() },
       runtimes,
       modelsLimited: limited,
-      server: [...SERVER_NAMES, ...PROCESS_ENV_NAMES].map((name) => {
-        const value = String((name in env ? env[name as keyof SwarmloopEnv] : rawEnv()[name]) ?? '');
-        const secret = SECRET.test(name);
-        const description = SERVER_DESCRIPTIONS[name];
-        return {
-          name,
-          secret,
-          source: this.sources.get(name) ?? 'default',
-          value: secret ? (value === '' ? 'not set' : 'set') : value,
-          ...(description ? { description } : {}),
-        };
-      }),
+      server: this.serverSettings(),
     };
+  }
+
+  /** The server's settings in the order of defaults.env, each with its group and description from that file. */
+  private serverSettings(): ServerSetting[] {
+    const env = this.config.env;
+    const shown = new Set<string>([...SERVER_NAMES, ...PROCESS_ENV_NAMES]);
+    return this.layout.groups.flatMap((group) =>
+      group.settings
+        .filter(({ name }) => shown.has(name))
+        .map(({ name, description }) => {
+          const value = String((name in env ? env[name as keyof SwarmloopEnv] : rawEnv()[name]) ?? '');
+          const secret = SECRET.test(name);
+          return {
+            name,
+            group: group.name,
+            secret,
+            source: this.sources.get(name) ?? 'default',
+            value: secret ? (value === '' ? 'not set' : 'set') : value,
+            ...(description ? { description } : {}),
+          };
+        }),
+    );
   }
 
   /** Checks the whole body, then replaces the person's settings. A refused body changes nothing. */
@@ -119,6 +130,20 @@ export class SettingsService {
     const settings = await this.validate(body, login);
     await this.stored.save(login, settings);
     return this.view(login);
+  }
+
+  private defaultLevels(): SettingsView['defaults']['levels'] {
+    const env = this.config.env;
+    const levelsOf = (tier: 'main' | 'subtask') =>
+      Object.fromEntries(ROLES.map((role) => [role, baseLevelOf(env, role, tier)])) as Record<
+        keyof typeof ROLE_STEPS,
+        Effort
+      >;
+    return {
+      main: levelsOf('main'),
+      subtask: levelsOf('subtask'),
+      backlog: { plan: baseLevelOf(env, 'plan', 'backlog') },
+    };
   }
 
   private defaultAgents(): SettingsView['defaults']['agents'] {

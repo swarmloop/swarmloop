@@ -3,27 +3,32 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsView } from '@contract/settings';
 import { ApiError } from '../../lib/api';
-import { getSession, getSettings, saveSettings } from '../../lib/endpoints';
+import { getSettings, saveSettings } from '../../lib/endpoints';
 import { SettingsPage } from './settings-page';
 
-vi.mock('../../lib/endpoints', () => ({ getSettings: vi.fn(), saveSettings: vi.fn(), getSession: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({ getSettings: vi.fn(), saveSettings: vi.fn() }));
 vi.mock('../connections', () => ({ ConnectionsPage: () => <p>connections page</p> }));
 vi.mock('./api-tokens-section', () => ({ ApiTokensSection: () => <p>tokens section</p> }));
-vi.mock('./people-section', () => ({ PeopleSection: () => <p>people section</p> }));
-vi.mock('../shell', () => ({ ThemeModeSwitch: () => <p>theme switch</p> }));
 
 const roles = { plan: ['claude:opus'], implement: ['claude:sonnet'], review: ['claude:sonnet'] };
 const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
   settings,
-  defaults: { agents: { main: roles, subtask: roles, backlog: { plan: ['claude:opus:high'] } } },
+  defaults: {
+    agents: { main: roles, subtask: roles, backlog: { plan: ['claude:opus:high'] } },
+    levels: {
+      main: { plan: 'high', implement: 'high', review: 'high' },
+      subtask: { plan: 'medium', implement: 'medium', review: 'medium' },
+      backlog: { plan: 'xhigh' },
+    },
+  },
   runtimes: [
     { runtime: 'claude', models: ['opus', 'sonnet'], efforts: { opus: ['low', 'high'], sonnet: [] } },
     { runtime: 'codex', models: ['gpt', 'gpt-priced'], efforts: {} },
   ],
   modelsLimited: false,
   server: [
-    { name: 'MAX_RUN_USD', secret: false, source: 'default', value: '5' },
-    { name: 'SWARMLOOP_SECRET', secret: true, source: 'default', value: 'set' },
+    { name: 'MAX_RUN_USD', group: 'Limits.', secret: false, source: 'default', value: '5' },
+    { name: 'SWARMLOOP_SECRET', group: 'Authentication.', secret: true, source: 'default', value: 'set' },
   ],
 });
 const own = (...entries: [string, string][]): SettingsView['settings'] => ({
@@ -34,7 +39,6 @@ const ownHigh: SettingsView['settings'] = {
 };
 
 beforeEach(() => {
-  vi.mocked(getSession).mockReset().mockResolvedValue({ user: 'alice', role: 'member' });
   vi.mocked(getSettings).mockReset().mockResolvedValue(view());
   vi.mocked(saveSettings)
     .mockReset()
@@ -115,16 +119,96 @@ describe('SettingsPage', () => {
     expect(await screen.findByText('Saved')).toBeInTheDocument();
   });
 
-  it('offers the levels of the chosen model, with the runtime default first', async () => {
+  it('offers the levels of the chosen model and no empty choice', async () => {
     const user = await openOwnPlan();
 
     await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus' }));
 
-    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
-      'Runtime default',
-      'low',
-      'high',
-    ]);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['low', 'high']);
+  });
+
+  it('shows the level an entry without an effort runs at and where it comes from', async () => {
+    await openOwnPlan(own(['claude', 'opus']));
+    expect(screen.getByRole('combobox', { name: 'Effort of claude:opus' })).toHaveTextContent(
+      'high · default for plan',
+    );
+  });
+
+  it('shows the level of the entry above, and the plain level for an own effort', async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      ...view(),
+      runtimes: [
+        {
+          runtime: 'claude',
+          models: ['opus', 'sonnet'],
+          efforts: { opus: ['low', 'high'], sonnet: ['low', 'high', 'xhigh'] },
+        },
+      ],
+    });
+    vi.mocked(getSettings).mockResolvedValue({
+      ...(await getSettings()),
+      settings: {
+        agents: {
+          main: {
+            plan: [
+              { runtime: 'claude', model: 'opus', effort: 'high' },
+              { runtime: 'claude', model: 'sonnet' },
+            ],
+          },
+        },
+      },
+    });
+    render(<SettingsPage />);
+    await screen.findByRole('list', { name: 'main plan' });
+    expect(screen.getByRole('combobox', { name: 'Effort of claude:opus:high' })).toHaveTextContent(/^high$/);
+    expect(screen.getByRole('combobox', { name: 'Effort of claude:sonnet' })).toHaveTextContent('high · as above');
+  });
+
+  it('shows the level before the cap on the next entry as xhigh when the entry above is max', async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      ...view({
+        agents: {
+          main: {
+            plan: [
+              { runtime: 'claude', model: 'opus', effort: 'max' },
+              { runtime: 'codex', model: 'gpt' },
+            ],
+          },
+        },
+      }),
+      runtimes: [
+        { runtime: 'claude', models: ['opus'], efforts: { opus: ['low', 'high', 'xhigh', 'max'] } },
+        { runtime: 'codex', models: ['gpt'], efforts: { gpt: ['low', 'high', 'xhigh'] } },
+      ],
+    });
+    render(<SettingsPage />);
+    await screen.findByRole('list', { name: 'main plan' });
+    expect(screen.getByRole('combobox', { name: 'Effort of codex:gpt' })).toHaveTextContent('xhigh · as above');
+  });
+
+  it('adds a runtime and model that stores no effort', async () => {
+    const user = await openOwnPlan();
+
+    await user.click(screen.getByRole('combobox', { name: 'Add to main plan' }));
+    await user.click(await screen.findByRole('option', { name: 'claude:sonnet' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      agents: {
+        main: {
+          plan: [
+            { runtime: 'claude', model: 'opus' },
+            { runtime: 'claude', model: 'sonnet' },
+          ],
+        },
+      },
+    });
+  });
+
+  it('sends a saved list back unchanged until a level is picked', async () => {
+    const user = await openOwnPlan(own(['claude', 'opus']));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saveSettings).toHaveBeenCalledWith(own(['claude', 'opus']));
   });
 
   it('offers no level for a model that has none', async () => {
@@ -137,22 +221,24 @@ describe('SettingsPage', () => {
     const user = await openOwnPlan();
 
     await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus' }));
-    await user.click(await screen.findByRole('option', { name: 'high' }));
+    await user.click(await screen.findByRole('option', { name: 'low' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(saveSettings).toHaveBeenCalledWith({
-      agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'high' }] } },
+      agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'low' }] } },
     });
   });
 
-  it('saves no level after the runtime default is chosen', async () => {
+  it('saves the level picked in place of an own one', async () => {
     const user = await openOwnPlan(ownHigh);
 
     await user.click(screen.getByRole('combobox', { name: 'Effort of claude:opus:high' }));
-    await user.click(await screen.findByRole('option', { name: 'Runtime default' }));
+    await user.click(await screen.findByRole('option', { name: 'low' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(saveSettings).toHaveBeenCalledWith({ agents: { main: { plan: [{ runtime: 'claude', model: 'opus' }] } } });
+    expect(saveSettings).toHaveBeenCalledWith({
+      agents: { main: { plan: [{ runtime: 'claude', model: 'opus', effort: 'low' }] } },
+    });
   });
 
   it('clears a level the new model lacks', async () => {
@@ -217,6 +303,7 @@ describe('SettingsPage', () => {
     described.server = [
       {
         name: 'CHECKS_PARALLEL',
+        group: 'Limits.',
         secret: false,
         source: 'default',
         value: '3',
@@ -239,8 +326,6 @@ describe('SettingsPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Connections' }));
     expect(screen.getByText('connections page')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Appearance' }));
-    expect(screen.getByText('theme switch')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Server' }));
     expect(screen.getByText('MAX_RUN_USD')).toBeInTheDocument();
     expect(screen.getByText('set')).toBeInTheDocument();
@@ -250,9 +335,9 @@ describe('SettingsPage', () => {
     const user = userEvent.setup({ delay: null });
     const sourced = view();
     sourced.server = [
-      { name: 'MAX_RUN_USD', secret: false, source: 'default', value: '5' },
-      { name: 'MAX_RETURNS', secret: false, source: '.env', value: '7' },
-      { name: 'SWARMLOOP_SECRET', secret: true, source: 'environment', value: 'set' },
+      { name: 'MAX_RUN_USD', group: 'Limits.', secret: false, source: 'default', value: '5' },
+      { name: 'MAX_RETURNS', group: 'Limits.', secret: false, source: '.env', value: '7' },
+      { name: 'SWARMLOOP_SECRET', group: 'Authentication.', secret: true, source: 'environment', value: 'set' },
     ];
     vi.mocked(getSettings).mockResolvedValue(sourced);
     render(<SettingsPage />);
@@ -266,18 +351,31 @@ describe('SettingsPage', () => {
     expect(screen.getByText('SWARMLOOP_SECRET').nextElementSibling).toHaveTextContent('setenvironment');
   });
 
-  it('lists API tokens for a member and People only for an admin', async () => {
+  it('says the Server section is read only and heads each group of defaults.env', async () => {
     const user = userEvent.setup({ delay: null });
-    const { unmount } = render(<SettingsPage />);
+    render(<SettingsPage />);
+    await screen.findByRole('button', { name: 'Save' });
+
+    await user.click(screen.getByRole('button', { name: 'Server' }));
+
+    expect(
+      screen.getByText(
+        'Read only. Each value comes from .env, the environment or defaults.env. To change one, edit its line in .env and run docker compose up -d.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual([
+      'Limits.',
+      'Authentication.',
+    ]);
+  });
+
+  it('lists API tokens, and no People and no Appearance entry', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<SettingsPage />);
     await screen.findAllByLabelText('Server default for main plan');
-    expect(screen.queryByRole('button', { name: 'People' })).not.toBeInTheDocument();
+    const entries = within(screen.getByRole('navigation', { name: 'settings sections' })).getAllByRole('button');
+    expect(entries.map((entry) => entry.textContent)).toEqual(['Agents', 'Connections', 'API tokens', 'Server']);
     await user.click(screen.getByRole('button', { name: 'API tokens' }));
     expect(screen.getByText('tokens section')).toBeInTheDocument();
-    unmount();
-
-    vi.mocked(getSession).mockResolvedValue({ user: 'alice', role: 'admin' });
-    render(<SettingsPage />);
-    await user.click(await screen.findByRole('button', { name: 'People' }));
-    expect(screen.getByText('people section')).toBeInTheDocument();
   });
 });

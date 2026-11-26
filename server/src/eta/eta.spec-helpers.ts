@@ -6,9 +6,9 @@ export const NOW = '2026-11-19T12:00:00.000Z';
 export const at = (minutes: number): string => new Date(Date.parse(NOW) + minutes * MIN).toISOString();
 
 export const emptyTable = (): EtaTable => ({
-  plain: { steps: {}, whole: null },
-  epic: { steps: {}, whole: null },
-  subtask: { steps: {}, whole: null },
+  plain: { steps: {}, visits: {}, whole: null },
+  epic: { steps: {}, visits: {}, whole: null },
+  subtask: { steps: {}, visits: {}, whole: null },
 });
 
 export function liveRun(extra: Partial<LiveRun> = {}): LiveRun {
@@ -31,7 +31,7 @@ export function finishedRun(endMin: number, extra: Partial<FinishedRunInput> = {
     mergedAt: null,
     parentRunId: null,
     epicAt: null,
-    entries: [{ step: 'implement', startedAt: at(endMin - 30) }],
+    entries: [{ step: 'implement', startedAt: at(endMin - 30), finishedAt: at(endMin) }],
     waits: [],
     ...extra,
   };

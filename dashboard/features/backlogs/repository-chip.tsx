@@ -2,18 +2,17 @@
 
 import { type ReactElement, useEffect, useState } from 'react';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import AutorenewIcon from '@mui/icons-material/Autorenew';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import Chip from '@mui/material/Chip';
 import type { RepositoryMainView } from '@contract/repository-main';
 import type { StateTone } from '@contract/run-state';
 import { getRepositoryMain } from '../../lib/backlog-endpoints';
-import { toneColor } from '../run';
+import { toneColor, WorkingIcon } from '../run';
 
 const STATES = {
   green: { words: 'green', tone: 'done', Icon: CheckCircleIcon },
-  pending: { words: 'running', tone: 'working', Icon: AutorenewIcon },
+  pending: { words: 'running', tone: 'working', Icon: WorkingIcon },
   red: { words: 'red', tone: 'error', Icon: ErrorOutlineIcon },
 } as const;
 

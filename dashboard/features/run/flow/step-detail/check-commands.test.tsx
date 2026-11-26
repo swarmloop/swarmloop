@@ -129,6 +129,68 @@ describe('CheckCommands', () => {
     );
   });
 
+  it('shows the latest live line of a waiting command in place of queued', () => {
+    list([row({ status: 'waiting', startedAt: null, endedAt: null, exitCode: null })]);
+    expect(screen.getByText('queued')).toBeInTheDocument();
+
+    act(() =>
+      receive('log', { key: 'run-1', step: 'checks', command: 0, body: 'waiting for a free check slot (2 ahead)\n' }),
+    );
+
+    expect(screen.getByText('waiting for a free check slot (2 ahead)')).toBeInTheDocument();
+    expect(screen.queryByText('queued')).toBeNull();
+  });
+
+  describe('a skipped row', () => {
+    const skipRecord = (command: string, tail: string) => ({
+      kind: 'checks',
+      attempt: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      body: JSON.stringify({ repo: 'api', command, name: 'x', skipped: true, exitCode: 0, tail }),
+    });
+    const skipped = (index: number, name: string) =>
+      row({ index, name, command: `cmd ${index}`, status: 'skipped', startedAt: null, endedAt: null });
+    const withDocuments = visitView({
+      attemptId: 'att-1',
+      status: 'running',
+      documents: [skipRecord('cmd 0', 'no change in its paths')],
+    });
+
+    it('is muted with its reason, has no output box, and sorts after the commands that run', () => {
+      render(
+        <LiveBridgeProvider>
+          <Watching />
+          <CheckCommands
+            runKey="run-1"
+            commands={[
+              skipped(0, 'lint'),
+              row({ index: 1, name: 'tests', status: 'waiting', startedAt: null, endedAt: null }),
+            ]}
+            visit={withDocuments}
+            now={0}
+          />
+        </LiveBridgeProvider>,
+        { wrapper: QueryWrapper },
+      );
+
+      const disabled = createTheme().palette.text.disabled;
+      expect(screen.getByText('lint')).toHaveStyle({ color: disabled });
+      expect(screen.getByText('skipped · no change in its paths')).toHaveStyle({ color: disabled });
+      expect(screen.queryByRole('button', { name: /lint/ })).toBeNull();
+      expect(screen.queryByLabelText(/Output of cmd 0/)).toBeNull();
+      expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+        expect.stringContaining('tests'),
+        expect.stringContaining('lint'),
+      ]);
+    });
+
+    it('says skipped alone when no record names it', () => {
+      list([skipped(0, 'lint')]);
+
+      expect(screen.getByText('skipped')).toBeInTheDocument();
+    });
+  });
+
   it('opens a line in place to its full command, output and own chart', async () => {
     const user = userEvent.setup({ delay: null });
     list([row({}), row({ index: 1, name: 'lint', command: 'npm run lint' })]);

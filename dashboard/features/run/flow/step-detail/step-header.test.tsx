@@ -48,7 +48,13 @@ describe('StepHeader', () => {
       visit: view.visits[0],
       attempt: 0,
       attempts: 1,
-      commands: { passed: 8, total: 12, slowest: { command: 'unit tests', ms: 65_000 } },
+      commands: {
+        passed: 8,
+        total: 12,
+        skipped: 0,
+        waitsForSlot: false,
+        slowest: { command: 'unit tests', ms: 65_000 },
+      },
     });
 
     expect(screen.getByText('8/12 passed · slowest: unit tests 1m 5s')).toBeInTheDocument();
@@ -56,6 +62,28 @@ describe('StepHeader', () => {
     expect(screen.queryByText(/ in$| out$/)).toBeNull();
     expect(screen.queryByText(/cpu|mem /)).toBeNull();
     expect(screen.queryByText('server')).toBeNull();
+  });
+
+  it('reads skipped commands apart from the passed ones, over the commands that run', () => {
+    header({
+      label: 'running',
+      commands: { passed: 0, total: 8, skipped: 4, waitsForSlot: false, slowest: null },
+    });
+
+    expect(screen.getByText('0/8 passed · 4 skipped')).toBeInTheDocument();
+  });
+
+  it('reads waits for a free check slot in place of running, and running when a command runs', () => {
+    header({ label: 'running', commands: { passed: 0, total: 8, skipped: 4, waitsForSlot: true, slowest: null } });
+
+    expect(screen.getByText('waits for a free check slot')).toBeInTheDocument();
+    expect(screen.queryByText('running')).toBeNull();
+  });
+
+  it('keeps running when a command runs', () => {
+    header({ label: 'running', commands: { passed: 0, total: 8, skipped: 0, waitsForSlot: false, slowest: null } });
+
+    expect(screen.getByText('running')).toBeInTheDocument();
   });
 
   it('says the step has not run when there is no visit', () => {

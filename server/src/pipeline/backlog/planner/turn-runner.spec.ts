@@ -175,7 +175,7 @@ describe('BacklogTurnRunner', () => {
         h.agent.script = ['limit', turnResult('Hi.')];
         await h.runner.run('one', 'turn-a');
         expect(h.agent.launches.map((launch) => launch.runtime)).toEqual(['claude', 'codex']);
-        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', codeOnlyByHelper: true });
+        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', effort: 'medium', codeOnlyByHelper: true });
         expect(h.agent.launches[1].helper).toBeUndefined();
       },
       {

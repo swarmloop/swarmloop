@@ -8,6 +8,7 @@ import { restartWaitSentence } from '@contract/restart-wait';
 import { localTime } from '../../../lib/format';
 import { phaseLabel } from '../../../lib/phase-label';
 import { stepLabel, withReport } from '../phases';
+import { SLOT_WAIT, waitsForSlot } from '../check-commands';
 import type { CheckCommandView, FlowView } from '@contract/api';
 import { ChecksProgress } from './checks-progress';
 import { stateWord, type StateReason } from '@contract/run-state';
@@ -108,30 +109,12 @@ export function FlowBoard({
                             (step.restartedAt ? restartWaitSentence(step.restartedAt, localTime) : undefined)}
                         </Box>
                       ) : null}
-                      {step.attempts > 0 ? (
-                        <Tooltip describeChild title={`ran ${step.attempts === 1 ? 'once' : `${step.attempts} times`}`}>
-                          <Box
-                            component="span"
-                            sx={{
-                              ml: 'auto',
-                              minWidth: 18,
-                              height: 18,
-                              px: 0.5,
-                              borderRadius: 9,
-                              bgcolor: tone,
-                              color: 'primary.contrastText',
-                              fontSize: 11,
-                              lineHeight: '18px',
-                              textAlign: 'center',
-                            }}
-                          >
-                            {step.attempts}
-                          </Box>
-                        </Tooltip>
+                      {step.attempts > 1 ? (
+                        <Box component="span" sx={{ ml: 'auto', fontSize: 10, color: 'text.secondary' }}>
+                          {`×${step.attempts}`}
+                        </Box>
                       ) : null}
-                      {step.name === 'checks' && checkCommands.length > 0 ? (
-                        <ChecksProgress commands={checkCommands} />
-                      ) : null}
+                      {step.name === 'checks' ? <ChecksCard step={step} commands={checkCommands} /> : null}
                     </Box>
                   </Tooltip>
                 );
@@ -140,67 +123,35 @@ export function FlowBoard({
           </Box>
         ))}
       </Box>
-      {returns.length > 0 ? (
-        <Box sx={{ position: 'relative', mt: 1, height: returns.length * 36 }}>
-          {returns.map((edge, index) => {
-            const target = phaseIndex(phases, 'implement');
-            const from = Math.max(phaseIndex(phases, edge.from), target);
-            const span = from - target + 1;
-            return (
-              <Box
-                key={`${edge.counter}:${index}`}
-                sx={{
-                  position: 'absolute',
-                  top: index * 36,
-                  left: `${(target / columns) * 100}%`,
-                  width: `${(span / columns) * 100}%`,
-                  height: 12,
-                  borderLeft: '1px solid',
-                  borderBottom: '1px solid',
-                  borderColor: 'error.main',
-                  borderBottomLeftRadius: 8,
-                }}
-              >
-                <Typography
-                  component="span"
-                  variant="body2"
-                  sx={{ position: 'absolute', right: 0, top: 14, color: 'error.main' }}
-                >
-                  {returnLabel(edge)}
-                </Typography>
-              </Box>
-            );
-          })}
-        </Box>
-      ) : null}
     </Box>
   );
 }
 
-/** Where the work of a returned step went: the target of its return edge. */
-function returnTarget(returns: FlowView['returns'], step: string): string {
-  const from = step.startsWith('code-review') ? 'code-review' : step;
-  return returns.find((edge) => edge.from === from)?.to ?? 'implement';
-}
-
-function returnLabel(edge: FlowView['returns'][number]): string {
-  const base = `${edge.from} → ${edge.to} · ${edge.count === 1 ? 'once' : `${edge.count} times`}`;
-  return edge.why ? `${base} (${edge.why})` : base;
-}
-
 type Step = FlowView['phases'][number]['steps'][number];
+
+/** What the checks card adds: the wait for a free check slot while no command runs, and how far the commands are. */
+function ChecksCard({ step, commands }: { step: Step; commands: CheckCommandView[] }): ReactElement {
+  return (
+    <>
+      {step.status === 'running' && waitsForSlot(commands) ? (
+        <Box component="span" sx={{ fontSize: 10, color: 'text.secondary' }}>
+          {SLOT_WAIT}
+        </Box>
+      ) : null}
+      {commands.length > 0 ? <ChecksProgress commands={commands} /> : null}
+    </>
+  );
+}
+
+/** The words of the return a step sent: the code review's reviewers all send theirs from `code-review`. */
+function returnWords(returns: FlowView['returns'], step: string): string {
+  const from = step.startsWith('code-review') ? 'code-review' : step;
+  return returns.find((edge) => edge.from === from)?.words ?? 'Sent work back';
+}
 
 /** What the hover on a card says: why a step went back, or what the run waits for. */
 function cardTip(step: Step, returns: FlowView['returns'], stateReason: StateReason | null): string {
-  if (step.status === 'returned')
-    return `returned: ${step.returnNote ?? `returned to ${returnTarget(returns, step.name)}`}`;
+  if (step.status === 'returned') return step.returnNote ?? returnWords(returns, step.name);
   if (step.status === 'waiting' && step.current) return stateWord('waiting', stateReason, {}, localTime).word;
   return '';
-}
-
-function phaseIndex(phases: FlowView['phases'], step: string): number {
-  const index = phases.findIndex((phase) =>
-    phase.steps.some((item) => item.name === step || (step === 'code-review' && item.name.startsWith('code-review-'))),
-  );
-  return Math.max(index, 0);
 }
