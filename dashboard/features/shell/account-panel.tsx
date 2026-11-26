@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
+import Drawer from '@mui/material/Drawer';
 import Fade from '@mui/material/Fade';
 import MenuItem from '@mui/material/MenuItem';
 import Popover from '@mui/material/Popover';
@@ -18,6 +19,7 @@ import MenuBookOutlined from '@mui/icons-material/MenuBookOutlined';
 import PowerOutlined from '@mui/icons-material/PowerOutlined';
 import SettingsOutlined from '@mui/icons-material/SettingsOutlined';
 import { logout } from '../../lib/endpoints';
+import { usePhone } from '../../lib/use-phone';
 import { readmeUrl } from './account-links';
 import { AccountVersion } from './account-version';
 import { AccountTheme } from './account-theme';
@@ -128,6 +130,7 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
             target="_blank"
             rel="noreferrer"
             tabIndex={-1}
+            onClick={onClose}
             sx={itemSx}
           >
             <Row icon={<MenuBookOutlined />}>Documentation</Row>
@@ -149,10 +152,24 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
   );
 }
 
-/** The popover of the account menu: it opens upward from the trigger and never covers it. */
+/** The account menu: a popover that opens upward from the trigger, or a bottom sheet below 900 px. */
 export function AccountPanel(props: AccountPanelProps): ReactElement {
   const { id, anchor, onClose } = props;
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const phone = usePhone();
+  if (phone) {
+    return (
+      <Drawer
+        id={id}
+        anchor="bottom"
+        open={anchor !== null}
+        onClose={onClose}
+        slotProps={{ paper: { sx: { borderRadius: '12px 12px 0 0', backgroundImage: 'none' } } }}
+      >
+        <AccountMenu {...props} />
+      </Drawer>
+    );
+  }
   return (
     <Popover
       id={id}

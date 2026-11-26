@@ -2,18 +2,11 @@
 
 import type { ReactElement } from 'react';
 import type { Route } from 'next';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Suspense, useState } from 'react';
-import AddIcon from '@mui/icons-material/Add';
-import MenuIcon from '@mui/icons-material/Menu';
-import AppBar from '@mui/material/AppBar';
+import { Suspense, useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
-import IconButton from '@mui/material/IconButton';
 import Toolbar from '@mui/material/Toolbar';
-import Typography from '@mui/material/Typography';
 import type { RunSummary } from '@contract/api';
 import { BacklogList } from '../features/backlogs';
 import { usePhone } from '../lib/use-phone';
@@ -21,6 +14,7 @@ import { NewRunDialog } from '../features/new-run';
 import { ReadinessStatus, useReadiness } from '../features/readiness';
 import { RemoveRunDialog, RunColumn, useRuns } from '../features/runs';
 import { Account, MainNav, PauseBanner, Shell, useNewRun } from '../features/shell';
+import { DashboardHeader } from './dashboard-header';
 import { hostOf } from './login/hosts';
 
 const DrawerWidth = 280;
@@ -68,9 +62,10 @@ function DashboardFrame({
   const selected = decodePart(matched);
 
   const onBacklogs = /^\/backlogs(\/|$)/.test(pathname);
-  // The phone layout applies on the backlogs paths only; the runs pages keep their drawer at every width.
-  const phone = usePhone() && onBacklogs;
+  const phone = usePhone();
   const [listOpen, setListOpen] = useState(false);
+  // A link in the drawer (the main nav, the account menu) opens another page: the list must not cover it.
+  useEffect(() => setListOpen(false), [pathname]);
   const backlogSelected = decodePart(pathname.match(/^\/backlogs\/([^/]+)/)?.[1] ?? '');
 
   async function confirmRemove(): Promise<void> {
@@ -86,67 +81,14 @@ function DashboardFrame({
 
   return (
     <>
-      <AppBar
-        position="fixed"
-        sx={{
-          bgcolor: 'background.paper',
-          borderBottom: 1,
-          borderColor: 'divider',
-          zIndex: (theme) => theme.zIndex.drawer + 1,
-        }}
-      >
-        <Toolbar>
-          {phone ? (
-            <IconButton edge="start" aria-label="Open the list of backlogs" onClick={() => setListOpen(true)}>
-              <MenuIcon />
-            </IconButton>
-          ) : null}
-          <Box>
-            <Box
-              component={Link}
-              href="/"
-              aria-label="swarmloop, overview"
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 1.25,
-                color: 'inherit',
-                textDecoration: 'none',
-                borderRadius: 1,
-                '&:focus-visible': { outline: 2, outlineColor: 'primary.main', outlineOffset: 2 },
-              }}
-            >
-              <Box component="img" src="/logo.svg" alt="" width={36} height={36} sx={{ display: 'block' }} />
-              <Typography variant="h5" sx={{ fontFamily: 'var(--font-sans)' }}>
-                swarmloop
-              </Typography>
-            </Box>
-          </Box>
-          <MainNav />
-          <Box sx={{ flexGrow: 1 }} />
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mr: 2 }}>
-            <Box
-              component="span"
-              sx={{
-                width: 7,
-                height: 7,
-                borderRadius: '50%',
-                bgcolor: connected ? 'primary.main' : 'text.disabled',
-                animation: connected ? 'swarmloop-pulse 1.6s ease-in-out infinite' : 'none',
-              }}
-            />
-            <Typography variant="body2" color="text.secondary">
-              {connected ? 'live' : 'offline'}
-            </Typography>
-          </Box>
-          <ReadinessStatus />
-          <Box component="span" title={blocker?.action}>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openNewRun} disabled={blocker !== null}>
-              New run
-            </Button>
-          </Box>
-        </Toolbar>
-      </AppBar>
+      <DashboardHeader
+        connected={connected}
+        blocker={blocker}
+        onNewRun={openNewRun}
+        onMenu={() => setListOpen(true)}
+        phone={phone}
+        menuLabel={onBacklogs ? 'Open the list of backlogs' : 'Open the list of runs'}
+      />
       <Drawer
         variant={phone ? 'temporary' : 'permanent'}
         open={phone ? listOpen : undefined}
@@ -166,6 +108,12 @@ function DashboardFrame({
         }}
       >
         <Toolbar />
+        {phone ? (
+          <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+            <MainNav />
+            <ReadinessStatus />
+          </Box>
+        ) : null}
         <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {onBacklogs ? (
             <BacklogList selected={backlogSelected} onPick={() => setListOpen(false)} />
@@ -183,7 +131,10 @@ function DashboardFrame({
                 loaded={loaded}
                 error={error}
                 onRetry={retry}
-                onOpen={(key, search) => router.push(`/runs/${key}${search}` as Route)}
+                onOpen={(key, search) => {
+                  setListOpen(false);
+                  router.push(`/runs/${key}${search}` as Route);
+                }}
                 onRemove={(run, search) => setPendingRemove({ run, search })}
               />
             </Suspense>
