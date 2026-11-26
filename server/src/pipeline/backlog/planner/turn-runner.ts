@@ -23,6 +23,7 @@ import { AgentLauncher } from '../../../steps/shared/agent-launcher';
 import type { LaunchOwner } from '../../../steps/shared/agent-launch-request';
 import { agentFailure } from '../../../steps/shared/agent-result';
 import { PlannerTurnActions } from './planner-actions';
+import { plannerChatFor } from './planner-chat';
 import { BacklogTurnPrompt } from './turn-prompt';
 import { TurnTies } from './turn-ties';
 import { turnView } from './planner-views';
@@ -70,11 +71,24 @@ function itemsAfter(now: Items, before: Items): Items {
   };
 }
 
-/** What one launch of a turn sends: the prompt of its chat, the whole brief for a chat that is gone, and the agent it runs on. */
+/** What one launch of a turn sends: the prompt of its chat, whether it continues that chat, the brief for a new chat, and the agent it runs on. */
 interface TurnSend {
   prompt: string;
+  resume: boolean;
   brief?: string;
   agent?: Agent;
+}
+
+/** The chat a turn's launches share: its key and the brief that starts it anew. */
+interface TurnChat {
+  chatKey: string;
+  fresh: string;
+}
+
+/** The stop of a call the turn's own time limit killed, or null. */
+function timeLimitStop(result: Pick<AgentRunResult, 'killReason'>, limitMs: number): SwarmloopError | null {
+  if (result.killReason !== 'time') return null;
+  return new SwarmloopError(`The planner stopped at its time limit of ${Math.round(limitMs / 60_000)} minutes.`);
 }
 
 /** Runs one planner turn: opens its read only worktrees, launches the planner, applies its result, and closes the worktrees. */
@@ -109,14 +123,30 @@ export class BacklogTurnRunner {
       const space = await this.workspace.open(backlog, turnKey);
       const held = await this.chat.itemsOfTurn(turnKey);
       await this.copyFiles(backlog.id as number, turnKey, held.messages);
-      const { fresh: brief } = await this.prompt.build(backlogName, turnKey, space.mounts, space.names);
-      const send = await this.sender(backlog, turnKey, space);
-      let answer = await send({ prompt: brief });
+      const agents = await this.agentsOf(backlog);
+      // Before the brief: building it writes into the chat's state folder, which would hide a chat whose state is gone.
+      const env = this.config.env;
+      const planner = await plannerChatFor(
+        { root: root(this.config), share: env.BACKLOG_CHAT_CONTEXT_SHARE, calls: this.calls },
+        backlog.id as number,
+        agents[0],
+      );
+      const built = await this.prompt.build(backlogName, turnKey, space.mounts, space.names);
+      if (planner.reason !== null) this.logger.log(`turn ${turnKey}: new planner chat: ${planner.reason}`);
+      const send = await this.sender(backlog, turnKey, space, agents, { chatKey: planner.chatKey, fresh: built.fresh });
+      let answer = await send({ prompt: planner.resume ? built.prompt : built.fresh, resume: planner.resume });
       const added = await this.cameWhileWorking(backlog, turnKey, held);
       if (added) {
         const followUp = await this.prompt.followUp(backlogName, turnKey, added);
-        answer = await send({ prompt: followUp, brief: `${brief}\n\n${followUp}`, agent: answer.agent });
+        answer = await send({
+          prompt: followUp,
+          resume: true,
+          brief: `${built.fresh}\n\n${followUp}`,
+          agent: answer.agent,
+        });
       }
+      const turn = (await this.chat.findTurn(turnKey)) as BacklogTurnRecord;
+      await this.chat.saveTurn({ ...turn, seenState: built.seen });
       await this.actions.apply(backlogName, turnKey, answer.value);
       return { status: 'done' };
     } catch (error) {
@@ -158,21 +188,26 @@ export class BacklogTurnRunner {
     return this.chat.saveTurn({
       ...row,
       usd: await this.calls.spendOfTurn(row.turnKey),
-      tokensIn: await this.calls.tokensOfTurn(row.turnKey),
-      tokensOut: 0,
+      ...(await this.calls.turnTokens(row.turnKey)),
     });
   }
 
-  /** The turn's launches: each one is a call of the same chat, on the agent given or the first of the role. */
+  /** The agents of the backlog's planner role, as its owner set them or as shipped. */
+  private async agentsOf(backlog: BacklogRecord): Promise<Agent[]> {
+    const stored = (await this.settings.read(backlog.owner))?.agents ?? null;
+    return backlogPlanAgents(this.config.env, stored);
+  }
+
+  /** The turn's launches: each one is a call of the planner chat, on the agent given or the first of the role. */
   private async sender(
     backlog: BacklogRecord,
     turnKey: string,
     space: Awaited<ReturnType<BacklogTurnWorkspace['open']>>,
+    agents: Agent[],
+    planner: TurnChat,
   ): Promise<(send: TurnSend) => Promise<{ value: BacklogTurnResult; agent: Agent }>> {
     const env = this.config.env;
     const dir = root(this.config);
-    const stored = (await this.settings.read(backlog.owner))?.agents ?? null;
-    const agents = backlogPlanAgents(env, stored);
     let row = (await this.chat.findTurn(turnKey)) as BacklogTurnRecord;
     const owner: LaunchOwner = {
       id: row.id as number,
@@ -203,7 +238,7 @@ export class BacklogTurnRunner {
         transcript: outputFileFor(dir, turnKey, TURN_STEP, null),
       });
     };
-    return async ({ prompt, brief, agent = agents[0] }) => {
+    return async ({ prompt, resume, brief = planner.fresh, agent = agents[0] }) => {
       const { runtime, model, ...effort } = agent;
       try {
         const result = await this.launcher.launch({
@@ -211,16 +246,21 @@ export class BacklogTurnRunner {
           run: owner,
           login: backlog.owner,
           key: turnKey,
+          chatKey: planner.chatKey,
           step: TURN_STEP,
           mode: 'plan',
           tools: 'plan',
           runtime,
           model,
           ...effort,
-          timeLimitMs: env.PLAN_TIMEOUT_MS,
+          timeLimitMs: env.BACKLOG_PLAN_TIMEOUT_MS,
+          continuePrompt: null,
+          resume,
           prompt,
-          // A chat that is gone, or another agent, starts from the whole brief; the first launch's prompt is that brief.
-          ...(brief === undefined ? {} : { freshPrompt: brief, brief }),
+          // A chat that is gone, or another agent, starts from the whole brief.
+          freshPrompt: brief,
+          brief,
+          briefFor: () => brief,
           workspace: space.workspace,
           mounts: space.mounts,
           helpers: backlogReadAgents(env),
@@ -231,6 +271,8 @@ export class BacklogTurnRunner {
         });
         const ran: Agent = result.agent ?? agent;
         await record(result, ran);
+        const stopped = timeLimitStop(result, env.BACKLOG_PLAN_TIMEOUT_MS);
+        if (stopped) throw stopped;
         const failure = agentFailure(result, TURN_STEP, 'plan');
         if (failure) throw new SwarmloopError(`The planner's agent did not finish: ${failure}.`);
         if (result.resultValue === undefined) throw new SwarmloopError('the planner gave no usable answer');
@@ -238,7 +280,7 @@ export class BacklogTurnRunner {
       } catch (error) {
         const tried = error instanceof ResultInvalid || isModelOutage(error) ? error.result : undefined;
         if (tried) await record(tried, agent);
-        throw error;
+        throw (tried && timeLimitStop(tried, env.BACKLOG_PLAN_TIMEOUT_MS)) || error;
       }
     };
   }

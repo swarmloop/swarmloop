@@ -88,7 +88,7 @@ export function diffSeen(seen: SeenState, state: TurnState): StateChanges {
       .map(([key, text]) => ({ key, text })),
     gone: Object.keys(seen.lines).filter((key) => !(key in lines)),
     briefs: Object.entries(briefs)
-      .filter(([slug, hash]) => slug in seen.briefs && seen.briefs[slug] !== hash)
+      .filter(([slug, hash]) => Object.hasOwn(seen.briefs, slug) && seen.briefs[slug] !== hash)
       .map(([slug]) => slug),
     decisions: state.allDecisions.filter((item) => item.id > seen.decision).reverse(),
   };

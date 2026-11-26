@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import { storeRun } from './store-run.spec-helpers';
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { attachmentsMount } from '../agent/agent-args';
+import { attachmentsMount, briefMounts } from '../agent/agent-args';
 import { AppConfig } from '../config/env';
 import { AttachmentStore } from '../history/attachment-store';
 import { attachmentsDir, root } from '../history/run-paths';
@@ -19,6 +19,9 @@ import { ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/reason-words';
 import type { BacklogTurnResult } from '../agent-result/definitions/backlog-turn';
 import { remoteProject } from '../integrations/code-host/remote-project';
+import { plannerChatKey } from '../pipeline/backlog/planner/planner-chat-key';
+import { sessionFileName, sessionHome } from '../history/session-group';
+import { agentStateDir } from '../sandbox/sandbox-launch';
 import { BacklogPlanner } from '../pipeline/backlog/planner/backlog-planner';
 import { CommandService } from '../pipeline/command.service';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
@@ -54,7 +57,11 @@ describe('a backlog of two repositories is planned, run and accepted through the
   let flow: Awaited<ReturnType<typeof createFlowHarness>>;
   let project: string;
   /** What each planner turn was launched with: its prompt, and the files mount its sandbox gets. */
-  let launches: { prompt: string; mount: ReturnType<typeof attachmentsMount> }[];
+  let launches: {
+    prompt: string;
+    mount: ReturnType<typeof attachmentsMount>;
+    sessionFile?: string;
+  }[];
 
   beforeEach(async () => {
     launches = [];
@@ -71,6 +78,7 @@ describe('a backlog of two repositories is planned, run and accepted through the
         launches.push({
           prompt: input.prompt ?? '',
           mount: attachmentsMount(attachmentsDir(config, input.runKey ?? '')),
+          sessionFile: input.sessionFile,
         });
       }
       return scripted(input);
@@ -199,6 +207,36 @@ describe('a backlog of two repositories is planned, run and accepted through the
     expect(launches[0].prompt).toContain('Attachments:');
     expect(launches[0].prompt).toContain('mockup.png');
     expect(launches[0].mount).toMatchObject({ containerPath: '/work/brief/attachments', readonly: true });
+  });
+
+  it('runs two turns of one backlog on one chat: the second gets the changes, and both read the brief files', async () => {
+    const { actions } = flow.backlog();
+    await actions.createBacklog(OWNER, { name: BACKLOG, repositories: REPOSITORIES, mergeMode: 'green' });
+    const id = (await backlogs().findBacklog(BACKLOG))!.id as number;
+    const chat = flow.app.app.get(BacklogChatService);
+    const planner = flow.app.app.get(BacklogPlanner);
+
+    await chat.post(OWNER, BACKLOG, 'Plan the shop with orders.', 'first');
+    await planner.whenIdle();
+    await chat.post(OWNER, BACKLOG, 'Thanks, carry on.', 'second');
+    await planner.whenIdle();
+
+    expect(launches).toHaveLength(2);
+    const [first, second] = launches;
+    const session = sessionFileName(plannerChatKey(id), 'backlog-plan');
+    expect(first.sessionFile).toMatch(new RegExp(`${session}$`));
+    expect(second.sessionFile).toBe(first.sessionFile);
+    expect(first.prompt).toContain('You keep one chat for this backlog');
+    expect(second.prompt).toContain('Thanks, carry on.');
+    expect(second.prompt).not.toContain('You keep one chat for this backlog');
+    const [mount] = briefMounts(
+      agentStateDir(root(flow.app.app.get(AppConfig)), plannerChatKey(id), sessionHome('backlog-plan')),
+      'backlog-plan',
+      [],
+    );
+    expect(mount).toMatchObject({ containerPath: '/work/brief', readonly: true });
+    expect(existsSync(join(mount.hostPath, 'decisions.md'))).toBe(true);
+    expect(existsSync(join(mount.hostPath, 'tasks', 'a.md'))).toBe(true);
   });
 });
 

@@ -70,6 +70,15 @@ describe('turn changes', () => {
     expect(changes.briefs).toEqual(['edit']);
   });
 
+  it('shows a task named like an Object property as new when the seen state does not hold it', () => {
+    const seen = decodeSeen(encodeSeen(stateOf([task('a')])));
+
+    const changes = diffSeen(seen!, stateOf([task('a'), task('constructor'), task('toString')]));
+
+    expect(changes.changed.map((item) => item.key)).toEqual(['task:constructor', 'task:toString']);
+    expect(changes.briefs).toEqual([]);
+  });
+
   it('reports the decisions after the seen one, oldest first', () => {
     const seen = decodeSeen(
       encodeSeen(
