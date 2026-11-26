@@ -117,6 +117,8 @@ export class MergeLook {
         (value) => lookErrors(state, value as StarterAnswerResult, startedAt, source),
         [task.id, task.title, ...commits, summary, ...marks],
         implementStart(ctx.options),
+        false,
+        'merge-look',
       ),
     );
     if (!visit) return null;

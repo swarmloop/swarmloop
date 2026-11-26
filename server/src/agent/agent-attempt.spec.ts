@@ -4,8 +4,7 @@ import { readResult } from '../agent-result/read-result';
 import { resultAnswer } from '../testing/result-answer';
 import { priceTokens } from './limits';
 import { AttemptMeter } from './agent-attempt';
-import type { ChatUsage } from '../history/chat-usage.repository';
-import { NO_USAGE } from './since-recorded';
+import { NO_USAGE, type ChatUsage } from './since-recorded';
 
 const prices = {
   'test-model': { inputPerMillion: 1, outputPerMillion: 2, cacheReadPerMillion: 0.1, cacheWritePerMillion: 1 },

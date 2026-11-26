@@ -7,6 +7,7 @@ import type { StateReason } from '../../contract/run-state';
 import type { VisitDraft } from '../../history/visit';
 import type { ResultDefinition } from '../../agent-result/result-definition';
 import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';
+import type { Tie } from '../../history/agent-call';
 
 /**
  * Whose spend and visits a launch counts: a run, or any other owner with the same facts (the backlog planner's turn).
@@ -27,6 +28,14 @@ export interface LaunchOwner {
   recordLimit?: (visit: VisitDraft) => Promise<void>;
   /** Stores what an agent start of this owner waits for (null: nothing), instead of the state of a run. */
   recordStartWait?: (wait: StateReason | null) => Promise<void>;
+}
+
+/** What a caller says of its call. Everything else the log records comes from the run key. */
+export interface CallContextHints {
+  /** Why the call is made, when the step's name does not say: an answer to a part, a person or a reviewer, a merge look. */
+  purpose?: string;
+  /** The tasks, runs and epics the call's result is tied to, read from its validated value. */
+  ties?: (resultValue: unknown) => Promise<Tie[]>;
 }
 
 export interface AgentLaunchRequest extends EffortFields {
@@ -71,4 +80,6 @@ export interface AgentLaunchRequest extends EffortFields {
   brief?: string;
   /** The full prompt for a new chat on the given runtime. Defaults to `brief`. */
   briefFor?: (runtime: RuntimeName) => string;
+  /** What the log records of the call beyond what the request already says. */
+  call?: CallContextHints;
 }

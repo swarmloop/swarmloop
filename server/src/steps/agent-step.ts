@@ -324,6 +324,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
           briefFor: launch.briefFor && ((runtime) => fullPrompt(launch.briefFor?.(runtime) ?? launch.prompt)),
           result: launch.result,
           check: launch.check,
+          call: launch.call,
           answerErrors,
           project: launch.project,
           projectFor: launch.projectFor,

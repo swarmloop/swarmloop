@@ -5,6 +5,7 @@ import type { RuntimeName } from '../integrations/agent-runtime/runtime-name';
 import type { ManifestHosts, ProjectLaunch } from '../sandbox/sandbox-launch';
 import type { OpenedStep } from './step-run';
 import type { StepContext } from './base-step';
+import type { CallContextHints } from './shared/agent-launch-request';
 import type { LaunchResult } from './shared/result-exchange';
 
 export interface ModelStepContext {
@@ -36,5 +37,7 @@ export interface ModelStepContext {
     result?: ResultDefinition;
     /** Checks the validated object. Each message goes back to the agent in the follow-up. */
     check?: (value: unknown) => string[];
+    /** What the log records of the call beyond the request. */
+    call?: CallContextHints;
   }) => Promise<LaunchResult>;
 }

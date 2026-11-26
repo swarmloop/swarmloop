@@ -10,6 +10,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
 import type { Repository } from 'typeorm';
+import { AgentCallRepository } from '../../history/agent-call.repository';
 import { DocumentEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
@@ -568,6 +569,29 @@ async function storePlanVisit(app: Awaited<ReturnType<typeof boot>>, key: string
     document: null,
     resumed: false,
   });
+  // What a chat has cost is read from the log: the visit's call is a row of it.
+  const calls = app.get(AgentCallRepository);
+  const row = await calls.open({
+    kind: 'call',
+    startedAt: at,
+    runKey: key,
+    step: 'plan',
+    chatId: 'chat-1',
+    resumed: false,
+    runtime: 'cursor',
+    model: 'opus-5.5-extra-high',
+    requestText: 'plan',
+  });
+  await calls.addRequest(row, {
+    model: 'opus-5.5-extra-high',
+    input: 10,
+    cacheRead: 0,
+    cacheWrite: 0,
+    output: 4,
+    usd: 0.01,
+    price: {},
+  });
+  await calls.finish(row, { endKind: 'done', finishedAt: at, durationMs: 5, responseText: '' });
 }
 
 async function putImpact(app: Awaited<ReturnType<typeof boot>>, key: string, body: string): Promise<void> {

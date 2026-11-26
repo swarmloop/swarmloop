@@ -1,4 +1,9 @@
-import type { ChatUsage } from '../history/chat-usage.repository';
+/** What a chat has cost so far. Prompt-side tokens include cache, as `step_stats` stores them. */
+export interface ChatUsage {
+  usd: number;
+  tokensIn: number;
+  tokensOut: number;
+}
 
 export const NO_USAGE: ChatUsage = { usd: 0, tokensIn: 0, tokensOut: 0 };
 
@@ -8,12 +13,4 @@ export const NO_USAGE: ChatUsage = { usd: 0, tokensIn: 0, tokensOut: 0 };
  */
 export function sinceRecorded(total: number, previous: number): number {
   return total >= previous ? total - previous : total;
-}
-
-export function plusUsage(left: ChatUsage, right: ChatUsage): ChatUsage {
-  return {
-    usd: left.usd + right.usd,
-    tokensIn: left.tokensIn + right.tokensIn,
-    tokensOut: left.tokensOut + right.tokensOut,
-  };
 }

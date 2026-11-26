@@ -130,7 +130,6 @@ export async function plannerTurnsHarness(
     config,
     undefined,
     undefined,
-    undefined,
     startWaits as never,
   );
   const failingOpen = { next: null as Error | null };

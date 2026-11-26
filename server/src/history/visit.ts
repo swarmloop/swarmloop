@@ -1,5 +1,4 @@
 import type { HttpCallDraft } from '../core/swarmloop-error';
-import type { ChatUsage } from './chat-usage.repository';
 import type { Effort, EffortFields } from '../contract/effort';
 
 export interface SampleDraft {
@@ -32,7 +31,7 @@ export interface ExchangeDraft extends EffortFields {
   resumed: boolean;
   killReason: string | null;
   /** The session totals the launch's last result line reported. Null or absent when it reported none. */
-  reported?: ChatUsage | null;
+  reported?: { usd: number; tokensIn: number; tokensOut: number } | null;
 }
 
 export interface DocumentDraft {

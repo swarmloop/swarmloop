@@ -1,7 +1,6 @@
 import type { Logger } from '@nestjs/common';
-import type { ChatUsage } from '../history/chat-usage.repository';
 import { type DecisionWatch, findPrice, hasModelDecision, type ModelPrice, noteDecision, priceTokens } from './limits';
-import { sinceRecorded } from './since-recorded';
+import { sinceRecorded, type ChatUsage } from './since-recorded';
 import { type PricedRequest, RequestLedger, type RequestUsage } from './request-usage';
 import { partOfTotal, readStreamLine, type StreamPiece, takeAnswer } from './stream';
 import type { ModelUsage, OwnUsage } from './stream-usage';

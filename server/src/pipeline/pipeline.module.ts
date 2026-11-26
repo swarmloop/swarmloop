@@ -40,9 +40,10 @@ import { RemoteRepositories } from '../steps/prepare/remote-repositories.service
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
 import { AgentDoor } from '../steps/shared/agent-door';
+import { AgentCallRecorder } from '../steps/shared/agent-call-recorder';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { CallContexts } from '../steps/shared/call-context';
 import { SpendLimit } from '../steps/shared/spend-limit';
-import { AttemptChatUsage } from '../steps/shared/attempt-chat-usage';
 import { RunReport } from '../steps/shared/run-report';
 import { OpenReviewRounds } from '../steps/shared/open-review-rounds';
 import { StaleReview } from '../steps/shared/stale-review';
@@ -147,10 +148,11 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     ImplementImproveStep,
     ChecksStep,
     CodeReviewStep,
+    AgentCallRecorder,
+    CallContexts,
     AgentLauncher,
     AgentDoor,
     SpendLimit,
-    AttemptChatUsage,
     LimitFailover,
     LimitRelease,
     RunReport,

@@ -8,8 +8,9 @@ import { redact } from '../../config/redact';
 import { AGENT_RUNNER, readSession } from '../../agent/agent-runner';
 import { chatStateRemoved } from '../../agent/agent-session';
 import { LoopDetector } from '../../agent/loop-detector';
-import type { AgentProcessRunner, AgentRunResult } from '../../agent/agent-runner';
+import type { AgentProcessRunner, AgentRunInput as RunnerInput, AgentRunResult } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
+import type { StepEventBody } from '../../contract/step-events';
 import { AgentWorkFeed } from '../../contract/readable-log';
 import type { AgentWork } from '../../contract/readable-log';
 import { outputFileFor } from '../../core/attempt-output';
@@ -17,10 +18,11 @@ import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
 import { AttachmentStore } from '../../history/attachment-store';
 import { sessionFileName } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
-import { ChatUsageRepository } from '../../history/chat-usage.repository';
-import type { ChatUsage } from '../../history/chat-usage.repository';
 import { NO_USAGE } from '../../agent/since-recorded';
-import { AttemptChatUsage } from './attempt-chat-usage';
+import type { OpenScope } from '../../history/agent-call';
+import { AgentCallRecorder } from './agent-call-recorder';
+import type { CallLink, OpenCall } from './agent-call-recorder';
+import { ResultInvalid } from './answer-errors';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
 import { withAttachments } from './attachments-section';
@@ -55,6 +57,17 @@ function helperInput(request: AgentLaunchRequest): Pick<AgentRunInput, 'helper'>
   };
 }
 
+/** What runOnce has made by the time it builds the runner's input. */
+interface LaunchOwn {
+  sessionFile: string;
+  chatId: string | null;
+  call: OpenCall | undefined;
+  loop: ReturnType<typeof loopWatch> | undefined;
+  ending: string | undefined;
+  feed: AgentWorkFeed;
+  work: (item: AgentWork) => void;
+}
+
 /** Starts one agent process for a step: the session file, the prompt prefix, and the run's spend counters. */
 @Injectable()
 export class AgentLauncher {
@@ -65,8 +78,7 @@ export class AgentLauncher {
     @Optional() private readonly failover?: LimitFailover,
     @Optional() private readonly config?: AppConfig,
     @Optional() private readonly files?: AttachmentStore,
-    @Optional() private readonly chatUsage?: ChatUsageRepository,
-    @Optional() private readonly attemptUsage?: AttemptChatUsage,
+    @Optional() private readonly calls?: AgentCallRecorder,
     @Optional() private readonly startWaits?: StartWaits,
   ) {}
 
@@ -78,11 +90,14 @@ export class AgentLauncher {
     const request = withAnswerErrors(asked);
     const failover = request.failover ? this.failover : undefined;
     if (!failover) {
-      return this.launchOn(request);
+      return (await this.launchOn(request)).result;
     }
     let current = await this.moved(request, await failover.start(request));
+    let chain: number[] = [];
+    let replaces: number | undefined;
     for (;;) {
-      const result = await this.launchOn(current);
+      const launched = await this.launchOn(current, replaces);
+      const result = { ...launched.result, callIds: [...chain, ...(launched.result.callIds ?? [])] };
       if (!result.limit) {
         return current.runtime === request.runtime &&
           current.model === request.model &&
@@ -90,8 +105,20 @@ export class AgentLauncher {
           ? result
           : { ...result, agent: { runtime: current.runtime, model: current.model, ...effortFields(current) } };
       }
+      chain = result.callIds;
+      replaces = launched.main;
       current = await this.moved(current, await failover.limited(current, result));
     }
+  }
+
+  /** Writes the row of a start the door refused, with its reason. */
+  async refused(request: AgentLaunchRequest, reason: string): Promise<void> {
+    await this.calls?.refused(request, reason);
+  }
+
+  /** Ends the rows a dead process left open in the scope, keeping their streamed cost. The caller settles the dead work; nothing runs on boot. */
+  async closeLeftOpen(scope: OpenScope): Promise<void> {
+    await this.calls?.closeLeftOpen(scope);
   }
 
   /** A launch on another runtime mounts the CLI of that runtime into the project image. */
@@ -99,24 +126,46 @@ export class AgentLauncher {
     return from.runtime === to.runtime || !to.projectFor ? to : { ...to, project: await to.projectFor(to.runtime) };
   }
 
-  private async launchOn(request: AgentLaunchRequest): Promise<LaunchResult> {
-    const result = await this.runOnce(request);
+  /** One launch with its follow-ups. `main` is the row of its last call, which a failover after a limit replaces. */
+  private async launchOn(
+    request: AgentLaunchRequest,
+    replacesId?: number,
+  ): Promise<{ result: LaunchResult; main?: number }> {
+    const callIds: number[] = [];
+    let main: number | undefined;
+    const run = async (call: AgentLaunchRequest, link: CallLink): Promise<AgentRunResult> => {
+      const ran = await this.runOnce(call, link);
+      callIds.push(...ran.ids);
+      main = ran.ids[0];
+      return ran.result;
+    };
+    const result = await run(request, { replacesId });
     if (result.outage) {
-      throw new ModelHostUnavailable(result.outage, result);
+      throw new ModelHostUnavailable(result.outage, Object.assign({}, result, { callIds }));
     }
     if (request.result && answerIsReadable(request, result)) {
       const exchange = await exchangeResult(request, result, (followUp) =>
-        this.runOnce(resultFollowUpRequest(request, followUp)),
-      );
+        run(resultFollowUpRequest(request, followUp), { followUp: true }),
+      ).catch((error: unknown) => {
+        // The reviewers that store a refused answer's visit link its rows by this.
+        if (error instanceof ResultInvalid && error.result) Object.assign(error.result, { callIds });
+        throw error;
+      });
       if (exchange.result.outage) {
-        throw new ModelHostUnavailable(exchange.result.outage, exchange.result);
+        throw new ModelHostUnavailable(exchange.result.outage, Object.assign({}, exchange.result, { callIds }));
       }
-      return { ...exchange.result, resultValue: exchange.value };
+      if (main !== undefined && request.call?.ties) {
+        await this.calls?.setTies(main, await request.call.ties(exchange.value));
+      }
+      return { result: { ...exchange.result, resultValue: exchange.value, callIds }, main };
     }
-    return result;
+    return { result: { ...result, callIds }, main };
   }
 
-  private async runOnce(request: AgentLaunchRequest): Promise<AgentRunResult> {
+  private async runOnce(
+    request: AgentLaunchRequest,
+    link: CallLink,
+  ): Promise<{ result: AgentRunResult; ids: number[] }> {
     assertNotStopped(this.runStop, request.key);
     const directory = join(request.root, 'data');
     mkdirSync(directory, { recursive: true });
@@ -125,7 +174,6 @@ export class AgentLauncher {
     const stored = await readSession(sessionFile, request.runtime);
     const removed = chatStateRemoved(request.root, request.key, session, stored);
     const chatId = request.resume === false || removed ? null : (stored?.chatId ?? null);
-    const before = await this.chatBefore(request, chatId);
     const launch = {
       runtime: request.runtime,
       model: request.model,
@@ -133,26 +181,14 @@ export class AgentLauncher {
       chatId,
       resumed: chatId !== null,
     };
-    recordStepEvent({
-      kind: 'session.changed',
-      session: chatId === null ? 'new chat' : 'same chat',
-      runtime: launch.runtime,
-      model: launch.model,
-      reason: chatId !== null ? null : newChatReason(request.resume, existsSync(sessionFile), removed),
-    });
-    this.recordCap(request);
-    recordStepEvent({
-      kind: 'context.manifest',
-      sections: promptSections(request.prompt),
-      artifacts: request.mounts.map((mount) => mount.containerPath),
-      cut: [],
-    });
-    recordStepEvent({ kind: 'agent.launched', ...launch });
-    const startWaits = this.startWaits;
+    this.recordStart(request, launch, existsSync(sessionFile), removed);
+    const call = await this.calls?.begin(request, { chatId, ...link });
+    if (call) {
+      request.run.spentUsd = call.before.spentUsd;
+    }
     const feed = new AgentWorkFeed([request.workspace, ...request.mounts.map((mount) => mount.containerPath)], () =>
       performance.now(),
     );
-    const names = this.files?.names(request.key) ?? [];
     const ending = request.result ? RESULT_AS_BEFORE : undefined;
     const loop = this.config ? loopWatch(new LoopDetector(this.config.env.LOOP_REPEAT), ending) : undefined;
     const work = (item: AgentWork): void => {
@@ -160,7 +196,31 @@ export class AgentLauncher {
       recordWork(safe);
       loop?.note(safe);
     };
-    const result = await this.agent.run({
+    const input = await this.agentInput(request, { sessionFile, chatId, call, loop, ending, feed, work });
+    const result = await this.ran(request, input, call);
+    feed.finish().forEach(work);
+    recordStepEvent({
+      kind: 'agent.finished',
+      ...launch,
+      chatId: result.chatId,
+      resumed: result.resumed,
+      killReason: result.killReason,
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      usd: result.usd,
+    });
+    request.run.agentCalls += result.calls;
+    // The owner's spend is the log's: launches that overlap on one owner never count a request twice.
+    request.run.spentUsd = call ? await call.spent() : request.run.spentUsd + result.usd;
+    return { result, ids: call?.ids ?? [] };
+  }
+
+  /** What the runner is given for one launch of the request: its prompt, its chat, and the spend counters of its owner. */
+  private async agentInput(request: AgentLaunchRequest, own: LaunchOwn): Promise<RunnerInput> {
+    const { sessionFile, chatId, call, loop, ending, feed, work } = own;
+    const names = this.files?.names(request.key) ?? [];
+    const startWaits = this.startWaits;
+    return {
       loop,
       onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(work)),
       // A launch killed mid-tool leaves a block open that would hold back every later launch's events.
@@ -180,10 +240,12 @@ export class AgentLauncher {
       ...helperInput(request),
       agentCalls: request.run.agentCalls,
       spentUsd: request.run.spentUsd,
-      tokensInRun: request.run.tokensSoFar ?? (await this.visits.tokenTotal(request.run.id)),
+      tokensInRun:
+        call?.before.tokensInRun ?? request.run.tokensSoFar ?? (await this.visits.tokenTotal(request.run.id)),
       resumeChatId: chatId,
-      prior: before.reported,
-      chatSpentUsd: before.spentUsd,
+      prior: call?.before.prior ?? NO_USAGE,
+      chatSpentUsd: call?.before.chatSpentUsd ?? 0,
+      onRequest: call?.onRequest,
       runKey: request.key,
       login: request.login,
       step: request.step,
@@ -201,49 +263,54 @@ export class AgentLauncher {
       resultName: request.result?.name,
       answered: this.answered(request),
       project: request.project,
-    });
-    feed.finish().forEach(work);
-    if (result.chatId) {
-      this.attemptUsage?.add(request.key, request.run.activeAttempt ?? '', result.chatId, result);
-    }
-    recordStepEvent({
-      kind: 'agent.finished',
-      ...launch,
-      chatId: result.chatId,
-      resumed: result.resumed,
-      killReason: result.killReason,
-      tokensIn: result.tokensIn,
-      tokensOut: result.tokensOut,
-      usd: result.usd,
-    });
-    request.run.agentCalls += result.calls;
-    request.run.spentUsd += result.usd;
-    return result;
+    };
   }
 
-  /**
-   * The chat to resume: the session totals its previous launch reported (what a session total is taken against), and
-   * what it already cost: its stored visits and the launches of this attempt that are not stored yet.
-   */
-  private async chatBefore(
+  /** Runs the agent. The call's row ends on every path: with the result, or with the error that cut the launch short. */
+  private async ran(
     request: AgentLaunchRequest,
-    chatId: string | null,
-  ): Promise<{ reported: ChatUsage; spentUsd: number }> {
-    if (chatId === null) {
-      return { reported: NO_USAGE, spentUsd: 0 };
+    input: RunnerInput,
+    call: OpenCall | undefined,
+  ): Promise<AgentRunResult> {
+    let result: AgentRunResult;
+    try {
+      result = await this.agent.run(input);
+    } catch (error) {
+      await call?.finish({ error }, false);
+      throw error;
     }
-    const attemptId = request.run.activeAttempt ?? '';
-    const inAttempt = this.attemptUsage?.reportedOf(request.key, attemptId, chatId);
-    const reported = inAttempt === undefined ? ((await this.chatUsage?.lastReportedOf(chatId)) ?? null) : inAttempt;
-    const stored = (await this.chatUsage?.totalsOf(chatId)) ?? NO_USAGE;
-    const spentUsd = stored.usd + (this.attemptUsage?.of(request.key, attemptId, chatId) ?? NO_USAGE).usd;
-    return { reported: reported ?? NO_USAGE, spentUsd };
+    await call?.finish({ result }, this.runStop.halted(request.key));
+    return result;
   }
 
   /** The answer is complete when its result block is valid. */
   private answered(request: AgentLaunchRequest): ((text: string) => boolean) | undefined {
     const definition = request.result;
     return definition && ((text) => readResult(definition, text).ok);
+  }
+
+  /** The events of a launch that starts: its chat, why a new one, the context it gets, and the agent that launches. */
+  private recordStart(
+    request: AgentLaunchRequest,
+    launch: Omit<Extract<StepEventBody, { kind: 'agent.launched' }>, 'kind'>,
+    sessionStored: boolean,
+    removed: boolean,
+  ): void {
+    recordStepEvent({
+      kind: 'session.changed',
+      session: launch.chatId === null ? 'new chat' : 'same chat',
+      runtime: launch.runtime,
+      model: launch.model,
+      reason: launch.chatId !== null ? null : newChatReason(request.resume, sessionStored, removed),
+    });
+    this.recordCap(request);
+    recordStepEvent({
+      kind: 'context.manifest',
+      sections: promptSections(request.prompt),
+      artifacts: request.mounts.map((mount) => mount.containerPath),
+      cut: [],
+    });
+    recordStepEvent({ kind: 'agent.launched', ...launch });
   }
 
   /** An effort the runtime could not give is said once per launch: what the model supports and what ran instead. */

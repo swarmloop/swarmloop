@@ -140,6 +140,7 @@ export async function answerMessages(deps: MessageDeps | null, ctx: ModelStepCon
       mounts,
       result: asked,
       check,
+      call: { purpose: 'answer-person' },
     });
     const reply = launched.resultValue as PlanReplyResult;
     return { reply, applied: await conversation.applyReply(ctx, reply, reason) };

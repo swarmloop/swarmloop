@@ -286,6 +286,8 @@ export class SubtaskPlannerAnswer {
         },
         [questions],
         start,
+        false,
+        'answer-part',
       ),
     );
     if (!visit || 'refused' in visit) return null;
