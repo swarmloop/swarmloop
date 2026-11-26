@@ -259,6 +259,19 @@ describe('deriveState of a run with a next try', () => {
     },
   );
 
+  it('keeps a refused start with the host wait it was set with, and has no such key without it', () => {
+    const withIt = JSON.stringify({ code: ERROR_CODES.HOST_UNAVAILABLE, message: 'down', retryAt, refusedStart: true });
+    expect(storedState({ status: 'waiting', stateReason: withIt }).reason).toEqual({
+      code: ERROR_CODES.HOST_UNAVAILABLE,
+      message: 'down',
+      retryAt,
+      refusedStart: true,
+    });
+    expect(
+      storedState({ status: 'waiting', stateReason: stored(ERROR_CODES.HOST_UNAVAILABLE) }).reason,
+    ).not.toHaveProperty('refusedStart');
+  });
+
   it('keeps the next try through a write', () => {
     const run = {
       status: 'running',
