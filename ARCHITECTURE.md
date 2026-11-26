@@ -244,7 +244,7 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 1. A round starts the five reviewers together. Each one reads only its own skill and the diff, the brief, the requirements list, the plan and the decisions.
 2. Each answers `ok` or `return` with findings, and the server checks the requirements reviewer's answer against the requirements list.
 3. Any `return` sends the run to implement with the findings.
-4. When all five say `ok`, the report visit writes the report for the merge request: what was decided, where to look, and what was refused and why.
+4. When all five say `ok`, the report visit writes the report for the merge request: what was decided, where to look, and what was refused and why. The stored document and the merge request body head it from the facts of the checks and CI; the run page heads it from the run's outcome (`Merged` or `Closed without a merge`, else the same heading) through `RunReport.renderForPage`.
 5. A reviewer's question that it cannot settle goes up the chain (rule 8).
 6. A round interrupted by a restart resumes only its own reviewers' files.
 

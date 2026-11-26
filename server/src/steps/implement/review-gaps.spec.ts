@@ -65,6 +65,40 @@ describe('final review gaps', () => {
     expect(tasks.map((item) => item.id)).toEqual(['a', 'b', 'gap-1']);
     expect(tasks[2]).toMatchObject({ covers: ['R2'], status: 'running' });
     expect(tasks[2].description).toContain('Gap for: R2, api');
+    expect(tasks[2].title).toBe('Close the gap: two, the api');
+    expect(tasks[2].proof).toContain('R2, api');
+  });
+
+  it('titles a gap by the first five words of each requirement, cut at 80 characters with an ellipsis', async () => {
+    const { parent, documents } = await merged();
+    const long = (word: string) => `${word} one two three four five six`;
+    await documents.putDocument(
+      parent,
+      'requirement_list',
+      `${JSON.stringify([
+        { id: 'R1', text: long('alpha') },
+        { id: 'R2', text: long('bravo') },
+        { id: 'R3', text: long('charlie') },
+      ])}\n`,
+    );
+    await reviewed(documents, parent, review({ R1: 'missing', R2: 'missing', R3: 'missing' }, 'return'));
+
+    await pass(app);
+
+    const [gap] = (await tasksOf(app)).slice(-1);
+    expect(gap.title).toHaveLength(80);
+    expect(gap.title.startsWith('Close the gap: alpha one two three four, bravo one two')).toBe(true);
+    expect(gap.title.endsWith('…')).toBe(true);
+    expect(gap.description).toContain('Gap for: R1, R2, R3');
+  });
+
+  it('titles a gap by the id when no text names it', async () => {
+    const { parent, documents } = await merged();
+    await reviewed(documents, parent, review({ R9: 'missing' }, 'return'));
+
+    await pass(app);
+
+    expect((await tasksOf(app)).slice(-1)[0].title).toBe('Close the gap: R9');
   });
 
   it('does not take the same review twice, and a new review of the same id is a new gap', async () => {

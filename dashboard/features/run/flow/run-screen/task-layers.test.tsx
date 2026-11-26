@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RunSummary, TaskEntry } from '@contract/api';
 import type { RunState } from '@contract/run-state';
 import type { SubtaskStatus } from '@contract/subtask';
-import { localTime } from '../../../../lib/format';
+import { localTime, when } from '../../../../lib/format';
 import { RunList } from '../../../runs';
 import { runSummary } from '../../../../test/fixtures';
 import { TaskLayers } from './task-layers';
@@ -314,7 +314,15 @@ describe('TaskLayers', () => {
         now={0}
         tasks={tasks}
         mergeQueue={[{ id: 't3', title: 'Send it' }]}
-        decisions="- subtask a: use `UTC`"
+        decisions={[
+          {
+            task: 'Store times',
+            at: '2026-11-21T08:18:04.107Z',
+            text: 'use `UTC`',
+            taskId: 'a',
+            item: 'r1',
+          },
+        ]}
         onSkip={vi.fn()}
       />,
     );
@@ -323,11 +331,32 @@ describe('TaskLayers', () => {
     const decisions = screen.getByRole('region', { name: 'Decisions' });
     expect(decisions).toHaveTextContent('Decisions');
     expect(within(decisions).getByText('UTC').tagName).toBe('CODE');
+    expect(decisions).toHaveTextContent(`Store times · ${when('2026-11-21T08:18:04.107Z')} · use UTC`);
+    expect(decisions).not.toHaveTextContent('2026-11-21T08');
+    expect(decisions).not.toHaveTextContent('r1');
+    expect(within(decisions).getByLabelText('task a · decision r1 · 2026-11-21T08:18:04.107Z')).toBeInTheDocument();
 
     rerender(<TaskLayers now={0} tasks={tasks} onSkip={vi.fn()} />);
 
     expect(screen.queryByRole('region', { name: 'Merge queue' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Decisions' })).not.toBeInTheDocument();
+  });
+
+  it('leaves the time out of a decision with none, and folds more than six decisions', async () => {
+    const decisions = Array.from({ length: 7 }, (_, index) => ({
+      task: 'Plan',
+      at: null,
+      text: `choice ${index}`,
+      taskId: '',
+      item: null,
+    }));
+    render(<TaskLayers now={0} tasks={tasks} decisions={decisions} onSkip={vi.fn()} />);
+    const region = screen.getByRole('region', { name: 'Decisions' });
+
+    expect(region).toHaveTextContent('Plan · choice 0');
+    expect(region).not.toHaveTextContent('choice 6');
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Show all' }));
+    expect(region).toHaveTextContent('choice 6');
   });
 
   it('gives the same task order in the run list and in the Tasks section', async () => {

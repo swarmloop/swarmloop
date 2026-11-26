@@ -108,7 +108,7 @@ describe('runs api', () => {
 
       expect(flow.taskLine).toBe('Split: 2 tasks · 1 merged');
       expect(flow.mergeQueue).toEqual([{ id: 'a', title: 'A' }]);
-      expect(flow.decisions).toBe('- subtask a: store UTC');
+      expect(flow.decisions).toEqual([expect.objectContaining({ taskId: 'a', text: 'store UTC', at: null })]);
       const [a, b] = flow.tasks ?? [];
       expect(a?.run).toMatchObject({ key: 'proj-split-a', currentStep: 'ci', usd: 2.5 });
       expect(b?.run).toBeUndefined();

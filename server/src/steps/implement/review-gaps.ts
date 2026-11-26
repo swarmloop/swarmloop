@@ -108,6 +108,24 @@ function filesFor(ids: string[], state: GapState): string[] {
   return [...new Set((own.length > 0 ? own : state.tasks).flatMap((task) => task.files))];
 }
 
+const TITLE_WORDS = 5;
+const TITLE_LIMIT = 80;
+
+/** The first words of the requirement's text, else of the contract item's text, else the id. */
+function shortName(id: string, state: GapState): string {
+  const text =
+    state.requirements.find((requirement) => requirement.id === id)?.text ??
+    readContract(state.contract).items.find((item) => item.id === id)?.text ??
+    '';
+  return text.split(/\s+/).filter(Boolean).slice(0, TITLE_WORDS).join(' ') || id;
+}
+
+/** `Close the gap: ` and the short name of each id, at most 80 characters, cut with `…`. */
+function gapTitle(ids: string[], state: GapState): string {
+  const title = `Close the gap: ${ids.map((id) => shortName(id, state)).join(', ')}`;
+  return title.length > TITLE_LIMIT ? `${title.slice(0, TITLE_LIMIT - 1)}…` : title;
+}
+
 function gapTask(gap: Gap, state: GapState): SplitTask {
   const ids = idsOf(gap.marks);
   const known = new Set(state.requirements.map((requirement) => requirement.id));
@@ -115,7 +133,7 @@ function gapTask(gap: Gap, state: GapState): SplitTask {
   const count = state.tasks.filter((task) => task.id.startsWith(GAP_PREFIX)).length;
   return {
     id: `${GAP_PREFIX}${count + 1}`,
-    title: `Close the gap in ${ids.join(', ')}`,
+    title: gapTitle(ids, state),
     description: [
       `The final requirements review marked these as not delivered:`,
       ...lines,
