@@ -193,6 +193,52 @@ describe('AgentDoor', () => {
     }
   });
 
+  it('refuses a machine start on the same input again while the run waits for the host with a refused start', async () => {
+    const { app, run, runs, door, launched, request, start, store } = await setup();
+    try {
+      let startId = '';
+      await door.outside({ ...start('machine'), admitted: (id) => void (startId = id) }, request());
+      await store(startId, 'words');
+      writeRunState(run, {
+        status: 'waiting',
+        currentStep: 'plan',
+        reason: {
+          code: ERROR_CODES.HOST_UNAVAILABLE,
+          message: 'down',
+          retryAt: '2026-11-26T12:00:00.000Z',
+          refusedStart: true,
+        },
+      });
+      await storeRun(runs, run);
+
+      const refused = await door.outside(start('machine'), request()).catch((error: unknown) => error);
+
+      expect((refused as StartRefused).kind).toBe('same-input');
+      expect(launched).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('runs the unfinished visit again while the run waits for the host with no refused start', async () => {
+    const { app, run, runs, door, launched, request, start } = await setup();
+    try {
+      await door.outside(start('machine'), request());
+      writeRunState(run, {
+        status: 'waiting',
+        currentStep: 'plan',
+        reason: { code: ERROR_CODES.HOST_UNAVAILABLE, message: 'down', retryAt: '2026-11-26T12:00:00.000Z' },
+      });
+      await storeRun(runs, run);
+
+      await door.outside(start('machine'), request());
+
+      expect(launched).toHaveLength(2);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('refuses an outside start when the limit is reached on the launch run while a step holds the run', async () => {
     const { app, run, runs, door, launched, refusals, request, start } = await setup({ MAX_RUN_USD: '25' });
     try {
