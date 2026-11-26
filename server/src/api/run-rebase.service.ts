@@ -1,13 +1,11 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { isHostOutage } from '../core/swarmloop-error';
 import { RunRef } from '../contract/api';
-import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
 import { WorkspaceGuard } from '../pipeline/workspace-guard';
-import { SubtaskPort } from '../pipeline/subtask-port';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { RunRebase } from '../steps/run-rebase';
-import { mainMovedNote } from '../steps/implement/split-rebase';
+import { EpicTasksMove } from '../steps/shared/epic-tasks-move';
 import { RunCommandsService } from './run-commands.service';
 
 type RebaseNext = 'resume' | 'start' | 'stay' | 'resolve';
@@ -22,7 +20,7 @@ export class RunRebaseService {
     private readonly commands: RunCommandsService,
     private readonly runs: RunRepository,
     private readonly workspace: WorkspaceGuard,
-    private readonly subtasks: SubtaskPort,
+    private readonly tasksMove: EpicTasksMove,
   ) {}
 
   /**
@@ -34,7 +32,8 @@ export class RunRebaseService {
     const run = await this.runs.findRun(key);
     if (run) await this.workspace.ensureForRequest(run);
     const next = await this.rebaseOrConflict(key, byParent, main !== undefined, keepsWait);
-    if (run?.split) await this.moveSubtasks(run, next, main);
+    // An epic whose rebase conflicted moves none: the end of its resolution round moves them.
+    if (run?.split && next !== 'resolve') await this.tasksMove.move(run);
     if (next === 'stay') return { key, status: keepsWait ? 'waiting' : 'blocked' };
     // A parent's or main's rebase of an idle task is the machine's start; a person's rebase keeps the default.
     const machine = byParent || main !== undefined;
@@ -43,16 +42,6 @@ export class RunRebaseService {
       key,
       await (machine ? this.pipeline.startDetached(key, { startBy: MACHINE.by }) : this.pipeline.startDetached(key)),
     );
-  }
-
-  /**
-   * A person's Rebase sends each open subtask a plain rebase; a main move names the epic's new tip and says why.
-   * An epic whose rebase conflicted moves none: the end of its resolution round moves them.
-   */
-  private async moveSubtasks(run: RunEntity, next: RebaseNext, main?: string): Promise<void> {
-    if (next === 'resolve') return;
-    if (main === undefined) return this.subtasks.rebaseOpen(run);
-    await this.subtasks.rebaseOpen(run, { tip: await this.action.tipOf(run.key), note: mainMovedNote(main) });
   }
 
   /** A person who asks for a Rebase while the host is down gets the plain reason; the automatic callers get the outage itself. */

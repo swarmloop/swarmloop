@@ -205,6 +205,7 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
         nothing,
         nothing,
         nothing,
+        { pending: jest.fn().mockResolvedValue([]) } as never,
       );
       await settler.settleRebase(run);
       expect(run.status).toBe('blocked');

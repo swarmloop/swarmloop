@@ -1,4 +1,5 @@
 import { ConflictException } from '@nestjs/common';
+import type { RunEntity } from '../history/entities';
 import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { RunRebaseService } from './run-rebase.service';
 
@@ -43,7 +44,7 @@ function startingWith(next: 'resume' | 'start') {
 function splitEpic(next: 'resume' | 'start' | 'stay' | 'resolve') {
   const seen = {
     rebase: [] as unknown[][],
-    moved: [] as unknown[][],
+    moved: [] as RunEntity[],
     resume: undefined as unknown,
     start: undefined as unknown,
   };
@@ -54,7 +55,6 @@ function splitEpic(next: 'resume' | 'start' | 'stay' | 'resolve') {
         seen.rebase.push(args);
         return next;
       },
-      tipOf: async () => 'demo@abc',
     } as never,
     {
       startDetached: async (_key: string, options: unknown) => {
@@ -71,7 +71,7 @@ function splitEpic(next: 'resume' | 'start' | 'stay' | 'resolve') {
     } as never,
     { findRun: async () => run } as never,
     { ensureForRequest: async () => undefined } as never,
-    { rebaseOpen: async (...args: unknown[]) => void seen.moved.push(args) } as never,
+    { move: async (parent: RunEntity) => void seen.moved.push(parent) } as never,
   );
   return { service, seen, run };
 }
@@ -81,9 +81,7 @@ describe('run rebase service', () => {
     const { service, seen, run } = splitEpic('resume');
     await service.rebase('PROJ-1', false, 'demo at abc123');
     expect(seen.rebase[0]?.slice(2)).toEqual([false, true, false]);
-    expect(seen.moved).toEqual([
-      [run, { tip: 'demo@abc', note: 'rebased onto the epic after main moved on (demo at abc123)' }],
-    ]);
+    expect(seen.moved).toEqual([run]);
     expect(seen.resume).toEqual({ by: 'machine', level: null });
   });
 
@@ -110,10 +108,10 @@ describe('run rebase service', () => {
     expect(seen.resume).toBeUndefined();
   });
 
-  it("sends the open subtasks no event on a person's Rebase of an epic", async () => {
+  it("moves the open subtasks of an epic on a person's Rebase", async () => {
     const { service, seen, run } = splitEpic('resume');
     await service.rebase('PROJ-1');
-    expect(seen.moved).toEqual([[run]]);
+    expect(seen.moved).toEqual([run]);
   });
 
   it("starts a parent's rebase of a task as the machine and a person's rebase with no start", async () => {

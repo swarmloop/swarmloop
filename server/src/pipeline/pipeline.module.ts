@@ -29,6 +29,7 @@ import { SplitImplementStep } from '../steps/implement/split-implement.step';
 import { SplitMerge } from '../steps/implement/split-merge';
 import { SplitRebase } from '../steps/implement/split-rebase';
 import { EpicRound } from '../steps/shared/epic-round';
+import { EpicTasksMove } from '../steps/shared/epic-tasks-move';
 import { SubtaskOps } from '../steps/shared/subtask-ops';
 import { SubtaskPort } from './subtask-port';
 import { PlanImproveStep } from '../steps/plan-improve/plan-improve.step';
@@ -147,6 +148,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     SplitImplementStep,
     SplitMerge,
     SplitRebase,
+    EpicTasksMove,
     EpicRound,
     SubtaskPort,
     { provide: SubtaskOps, useExisting: SubtaskPort },
@@ -237,6 +239,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PlannerRunPort,
     PlannerTurnActions,
     SubtaskPort,
+    EpicTasksMove,
     Housekeeping,
     WorkspaceGuard,
     DiskGuard,

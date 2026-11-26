@@ -211,9 +211,9 @@ describe('code review of an epic whose resolution round is open', () => {
       await storeRun(runs, run);
       await documents.putDocument(run, 'subtasks', JSON.stringify(tasks));
       if (round !== null) await documents.putDocument(run, 'epic_round', round);
-      const ended: Subtask[][] = [];
-      jest.spyOn(app.get(EpicRound), 'finish').mockImplementation((_parent, moved) => {
-        ended.push(moved);
+      const ended: string[] = [];
+      jest.spyOn(app.get(EpicRound), 'finish').mockImplementation((parent) => {
+        ended.push(parent.key);
         return Promise.resolve({ conflict });
       });
       const rebase = jest.spyOn(app.get(SubtaskOps), 'rebase');
@@ -245,7 +245,6 @@ describe('code review of an epic whose resolution round is open', () => {
     expect(done.exitCode).toBe(0);
     expect(after.currentStep).toBe('implement');
     expect(ended).toHaveLength(1);
-    expect(ended[0]?.map((item) => item.id)).toEqual(['a', 'b', 'c']);
     expect(round?.trim()).toBe('');
     expect(notes?.trim()).toBe('');
     expect(JSON.parse(issues ?? '[]')).toEqual([]);

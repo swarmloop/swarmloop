@@ -12,20 +12,30 @@ const EVENT: RebaseEvent = { tip: 'web@abc', note: 'rebased onto the epic' };
 const REQUEST: SubtaskMergeRequest = { repo: 'web', project: 'acme/web', iid: 1 };
 
 interface Setup {
-  accepted: { payload: Record<string, unknown> }[];
+  accepted: { payload: Record<string, unknown>; key: string | undefined }[];
   documents: Map<string, string>;
   rebases: SubtaskRebases;
 }
 
 /** The rebase commands of one part with the given state, worktrees and merge requests; `asking` says it waits on a question. */
-function setup(options: { worktrees?: boolean; requests?: SubtaskMergeRequest[]; asking?: boolean } = {}): Setup {
-  const { worktrees = true, requests = [], asking = false } = options;
+function setup(
+  options: {
+    worktrees?: boolean;
+    requests?: SubtaskMergeRequest[];
+    asking?: boolean;
+    tip?: string | null;
+    dead?: string[];
+  } = {},
+): Setup {
+  const { worktrees = true, requests = [], asking = false, tip = null, dead = [] } = options;
   const documents = new Map<string, string>(worktrees ? [[ARTIFACTS.repos.kind, 'web']] : []);
   const accepted: Setup['accepted'] = [];
   const commands = {
-    accept: (_type: string, _key: string, payload: Record<string, unknown>) => {
-      accepted.push({ payload });
-      return Promise.resolve({ replayed: false, command: { state: 'done', id: 1 } });
+    accept: (_type: string, _key: string, payload: Record<string, unknown>, options?: { idempotencyKey?: string }) => {
+      const key = options?.idempotencyKey;
+      accepted.push({ payload, key });
+      const died = key !== undefined && dead.includes(key);
+      return Promise.resolve({ replayed: died, command: { state: died ? 'failed' : 'done', id: 7 } });
     },
   } as unknown as CommandService;
   const store = {
@@ -42,6 +52,7 @@ function setup(options: { worktrees?: boolean; requests?: SubtaskMergeRequest[];
     undefined,
     () => Promise.resolve(asking),
     () => Promise.resolve(requests),
+    () => Promise.resolve(tip),
     { warn: () => undefined } as unknown as Logger,
   );
   return { accepted, documents, rebases };
@@ -110,6 +121,35 @@ describe('SubtaskRebases', () => {
     expect(await rebases.rebase(part({ status: 'running', currentStep: 'implement' }), EVENT)).toBe(true);
     expect(accepted).toEqual([]);
     expect(documents.get(ARTIFACTS.pendingRebase.kind)).toBe(EVENT.note);
+  });
+
+  it('keys the plain move by the parent tip it moves onto', async () => {
+    const { accepted, rebases } = setup({ requests: [REQUEST], tip: 'web@def' });
+    await rebases.rebase(part({ status: 'done', currentStep: 'pipeline' }));
+    expect(accepted.map((sent) => sent.key)).toEqual(['subtask-rebase-f1-a-web@def']);
+  });
+
+  it('sends the plain move once for one parent tip: a second pass sends the same key', async () => {
+    const { accepted, rebases } = setup({ requests: [REQUEST], tip: 'web@def' });
+    const run = part({ status: 'done', currentStep: 'pipeline' });
+    await rebases.rebase(run);
+    await rebases.rebase(run);
+    expect(new Set(accepted.map((sent) => sent.key))).toEqual(new Set(['subtask-rebase-f1-a-web@def']));
+  });
+
+  it('sends the plain move again under a new key when its command at that tip died', async () => {
+    const { accepted, rebases } = setup({ requests: [REQUEST], tip: 'web@def', dead: ['subtask-rebase-f1-a-web@def'] });
+    await rebases.rebase(part({ status: 'done', currentStep: 'pipeline' }));
+    expect(accepted.map((sent) => sent.key)).toEqual([
+      'subtask-rebase-f1-a-web@def',
+      'subtask-rebase-f1-a-web@def-after-7',
+    ]);
+  });
+
+  it('keys the plain move by revision and generation when the parent has no tip', async () => {
+    const { accepted, rebases } = setup({ requests: [REQUEST] });
+    await rebases.rebase(part({ status: 'done', currentStep: 'pipeline' }));
+    expect(accepted.map((sent) => sent.key)).toEqual(['subtask-rebase-1-1']);
   });
 
   it('says a part keeps its wait only while it waits on a question or a sibling', async () => {

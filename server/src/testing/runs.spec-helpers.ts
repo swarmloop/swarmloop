@@ -18,6 +18,8 @@ import { CommandService } from '../pipeline/command.service';
 import { StartGate } from '../pipeline/start-gate';
 import { RunGuards } from '../pipeline/run-guards';
 import { SubtaskPort } from '../pipeline/subtask-port';
+import { SubtaskOps } from '../steps/shared/subtask-ops';
+import { EpicTasksMove } from '../steps/shared/epic-tasks-move';
 import { AgentDoor } from '../steps/shared/agent-door';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { SpendLimit } from '../steps/shared/spend-limit';
@@ -96,6 +98,8 @@ export async function boot(
         inject: [RunRepository, DocumentRepository, SpendLimit],
       },
       SubtaskPort,
+      { provide: SubtaskOps, useExisting: SubtaskPort },
+      EpicTasksMove,
       { provide: AgentLauncher, useValue: {} },
       { provide: CodeHostRegistry, useValue: { tokensFor: () => Promise.resolve({}) } },
       RunStop,
