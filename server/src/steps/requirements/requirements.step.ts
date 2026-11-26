@@ -7,7 +7,7 @@ import { RunEntity } from '../../history/entities';
 import { SampleDraft, sampleSelf } from '../../history/visit';
 import {
   FetchFailed,
-  HostUnavailable,
+  isHostOutage,
   HttpCallDraft,
   IssueNotFound,
   SwarmloopError,
@@ -194,7 +194,7 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
       if (waiting) {
         return finish({
           written: emptyWrite(),
-          calls: error instanceof HostUnavailable ? error.httpCalls : [],
+          calls: isHostOutage(error) ? error.httpCalls : [],
           outcome: 'waiting',
           exitCode: 0,
           message: waiting.message,

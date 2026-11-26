@@ -1,7 +1,7 @@
 import type { CodeHostServerEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
 import { GitRuleRefused } from '../../core/git-rule-refused';
-import { FetchFailed, HostUnavailable, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
+import { FetchFailed, isHostOutage, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
 import { request } from '../http';
 import { configuredHost } from './provider-message';
 import { remoteProject } from './remote-project';
@@ -112,7 +112,7 @@ export abstract class HostCalls {
   }
 
   protected rethrow(error: unknown, calls: HttpCallDraft[]): never {
-    if (error instanceof FetchFailed || error instanceof HostUnavailable || error instanceof GitRuleRefused) {
+    if (error instanceof FetchFailed || isHostOutage(error) || error instanceof GitRuleRefused) {
       throw error;
     }
     const message = error instanceof Error ? error.message : this.failure;

@@ -2,7 +2,7 @@ import { delay } from '../../core/delay';
 import type { AwakeTime } from '../../core/awake-time';
 import type { SwarmloopEnv } from '../../config/env';
 import type { CodeHost } from '../../integrations/code-host/code-host';
-import { FetchFailed, HostUnavailable, type HttpCallDraft } from '../../core/swarmloop-error';
+import { FetchFailed, isHostOutage, type HttpCallDraft } from '../../core/swarmloop-error';
 import { cancelErrorNote, isRunning, runRows, type Seen } from './pipeline-report';
 
 type LoadSeen = (jobs?: boolean) => Promise<Seen[]>;
@@ -25,7 +25,7 @@ export async function cancelRunning(input: {
       const result = await host.cancelPipeline(item.project, item.id);
       calls.push(...result.httpCalls);
     } catch (error) {
-      if (error instanceof HostUnavailable) {
+      if (isHostOutage(error)) {
         throw error;
       }
       if (error instanceof FetchFailed) {
@@ -43,7 +43,7 @@ export async function cancelRunning(input: {
         return runRows(named, isRunning).find((row) => row.project === item.project && row.id === item.id) ?? item;
       });
     } catch (error) {
-      if (error instanceof HostUnavailable) {
+      if (isHostOutage(error)) {
         throw error;
       }
       if (error instanceof FetchFailed) {

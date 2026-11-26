@@ -18,7 +18,7 @@ import type { OpenedStep } from '../steps/step-run';
 import { closeStep, openStep, preparedMs } from '../steps/step-run';
 import type { HttpCallDraft } from '../core/swarmloop-error';
 import { reportFailure } from './shared/step-failure';
-import { FetchFailed, HostUnavailable } from '../core/swarmloop-error';
+import { FetchFailed, isHostOutage } from '../core/swarmloop-error';
 import { errorEnd } from './step-error-end';
 import { recordHandoff } from './shared/handoff';
 import { recordEnd, recordInputs, stepEventSink } from './shared/step-event-recording';
@@ -220,7 +220,7 @@ abstract class StepCore implements Step {
       if (closed) {
         throw error;
       }
-      if (error instanceof FetchFailed || error instanceof HostUnavailable) {
+      if (error instanceof FetchFailed || isHostOutage(error)) {
         calls.push(...error.httpCalls);
       }
       const ending = errorEnd(error, opened.startedAt, this.clock, this.config.env);

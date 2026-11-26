@@ -11,7 +11,7 @@ import { planChatTakes } from '../steps/plan/plan.prompts';
 import { PlanConversation } from '../steps/shared/plan-conversation';
 import { replyEscalation } from '../steps/shared/reply-escalation';
 import { StarterExchange } from '../steps/shared/starter-exchange';
-import { hostRoute, ModelHostUnavailable } from '../steps/shared/model-host-unavailable';
+import { hostRoute, isModelOutage, ModelHostUnavailable } from '../steps/shared/model-host-unavailable';
 import { CommandService } from './command.service';
 import { PlannerTurns } from './planner-turns';
 import { StartGate } from './start-gate';
@@ -116,7 +116,7 @@ export class PlannerOwnTurn {
         'answer-person',
       );
     } catch (error) {
-      if (!(error instanceof ModelHostUnavailable)) {
+      if (!isModelOutage(error)) {
         // Any other end settles the wait too, so no pass launches the same outage's reply again.
         await this.chat.wait(key, keys, null);
         throw error;
