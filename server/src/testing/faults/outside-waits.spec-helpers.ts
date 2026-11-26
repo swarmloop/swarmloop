@@ -1,28 +1,15 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { storeRun } from '../store-run.spec-helpers';
+import { epicLoop } from '../epic-loop.spec-helpers';
 import { agentFor } from '../../config/agents';
 import { AppConfig } from '../../config/env';
-import { ERROR_CODES } from '../../contract/error-codes';
-import type { Subtask } from '../../contract/subtask';
-import type { StepName } from '../../contract/steps';
-import type { StepOptions } from '../../core/pipeline-result';
-import { AgentCallRepository } from '../../history/agent-call.repository';
-import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import { sessionFileName, sessionHome } from '../../history/session-group';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { RunRepository } from '../../history/run.repository';
 import { CommandService } from '../../pipeline/command.service';
-import { PipelineService } from '../../pipeline/pipeline.service';
-import { installScripts } from '../../pipeline/run-driver.spec-helpers';
-import { renderMergeRequest } from '../../steps/merge-request/merge-request-record';
-import { ARTIFACTS } from '../../steps/contract/artifacts';
-import { renderNeeds } from '../../steps/shared/needs';
-import type { Step, StepSnapshot } from '../../steps/step';
-import { StepRegistry } from '../../steps/step.registry';
 import type { createFlowHarness } from '../flow-harness';
-import { loggedCall, save } from '../runs.spec-helpers';
 import type { RunStateChange } from '../../history/run-state';
 import { writeRunState } from '../../history/run-state';
 import { PERSON_RESUME } from '../../pipeline/resume-sender';
@@ -87,23 +74,6 @@ export async function reconcilerWorld() {
   return { ...fixture, accepted, outside, reconciler, waiting };
 }
 
-const REQUIREMENTS = (key: string) =>
-  `${JSON.stringify({
-    prompt: 'Ship the field\n',
-    tickets: [{ key, summary: 'Ship the field' }],
-    plan: { name: 'plan', overview: '', items: ['do it'], decision: 'approve' },
-  })}\n`;
-
-const task = (id: string): Subtask => ({
-  id,
-  title: `Task ${id}`,
-  description: `Do ${id}.`,
-  depends: [],
-  files: [`src/${id}.ts`],
-  proof: `${id}.spec.ts`,
-  status: 'waiting',
-});
-
 /** The task has a plan chat to talk in, as a run whose plan step ran has: the planner of the run answers a question in it. */
 function planChatOf(flow: Awaited<ReturnType<typeof createFlowHarness>>, run: RunEntity): void {
   const key = run.key;
@@ -125,94 +95,16 @@ function planChatOf(flow: Awaited<ReturnType<typeof createFlowHarness>>, run: Ru
 
 /**
  * An epic whose subtask `<key>-a` runs a scripted implement that ends every visit on the same need (on a sibling that
- * has merged), as flow-loop.e2e.spec.ts does: a machine start of that task is refused as the same input of its last
+ * has merged), as epic-loop.spec-helpers.ts sets up for flow-loop.e2e.spec.ts: a machine start of that task is refused as the same input of its last
  * visit. The task has had its first visit when this returns.
  */
 export async function loopingTask(flow: Awaited<ReturnType<typeof createFlowHarness>>, key: string) {
   const runs = flow.app.app.get(RunRepository);
-  const documents = flow.app.app.get(DocumentRepository);
-  const taskKey = `${key}-a`;
-  const requirements = REQUIREMENTS(key);
-  const settle = async () => {
-    for (let round = 0; round < 4; round++) {
-      await flow.app.app.get(CommandService).idle();
-      await flow.app.pipeline.whenIdle(key);
-      await flow.app.pipeline.whenIdle(taskKey);
-    }
-  };
-
-  const parent = await save(runs, key, 'implement', 'waiting');
-  parent.split = true;
-  parent.projects = 'demo\n';
-  await storeRun(runs, parent);
-  await documents.putDocument(parent, 'requirements', requirements);
-  await documents.putDocument(parent, 'repos', 'demo\n');
-  await documents.putDocument(parent, 'subtasks', `${JSON.stringify([task('a'), task('b')])}\n`);
-  await flow.app.pipeline.step('implement', key);
-  await flow.app.app.get(CommandService).idle();
-  const merged = (await runs.findRun(`${key}-b`))!;
-  await documents.putDocument(merged, 'requirements', requirements);
-  await documents.putDocument(merged, 'repos', 'demo\n');
-  const record = { project: 'demo', iid: 1, url: 'https://code.example/demo/1', draft: false, summary: 'adds it' };
-  await documents.putDocument(merged, 'merge_request', renderMergeRequest([record]));
-  writeRunState(merged, { status: 'done', currentStep: 'done' });
-  await storeRun(runs, merged);
-  await flow.app.pipeline.step('implement', key);
-  await flow.app.app.get(CommandService).idle();
-  const waiting = (await runs.findRun(taskKey))!;
-  await documents.putDocument(waiting, 'requirements', requirements);
-  await documents.putDocument(waiting, 'repos', 'demo\n');
-  writeRunState(waiting, { status: 'waiting', currentStep: 'implement' });
-  await storeRun(runs, waiting);
-  mkdirSync(join(flow.app.root, 'worktrees', taskKey, 'demo'), { recursive: true });
-  flow.app.clock.advance(60_000);
-  const registry = flow.app.app.get<{ get(name: StepName): Step | null }>(StepRegistry);
-  const real = registry.get('implement')!;
-  const steps = installScripts(
-    flow.app,
-    {
-      implement: async (_visit, ctx) => {
-        await ctx.write(ARTIFACTS.needs, renderNeeds([{ id: 'b', what: 'which retry policy wins' }]));
-        const now = ctx.clock.iso();
-        const call = await loggedCall(flow.app.app.get(AgentCallRepository), {
-          model: 'fake',
-          startedAt: now,
-          finishedAt: now,
-          durationMs: 0,
-          requestText: 'implement',
-          responseText: 'I cannot decide which retry policy wins.',
-        });
-        return { outcome: 'waiting', exitCode: 0, code: ERROR_CODES.SUBTASK_WAITING, visit: { callIds: [call] } };
-      },
-    },
-    ['implement'],
-  );
-  const scripted = registry.get('implement')!;
-  const others = registry.get.bind(registry);
-  const pick = (runKey: string) => (runKey === taskKey ? scripted : real);
-  registry.get = (name) =>
-    name !== 'implement'
-      ? others(name)
-      : new Proxy(real, {
-          get: (target, prop) => {
-            if (prop === 'usesModel') return true;
-            if (prop === 'execute')
-              return (runKey: string, options: StepOptions, snapshot?: StepSnapshot) =>
-                pick(runKey).execute(runKey, options, snapshot);
-            if (prop === 'missingInput')
-              return (runKey: string, options: StepOptions) => pick(runKey).missingInput(runKey, options);
-            const value: unknown = Reflect.get(target, prop, target);
-            return typeof value === 'function' ? value.bind(target) : value;
-          },
-        });
-  const detached = PipelineService.prototype.startDetached.bind(flow.app.pipeline);
-  jest.spyOn(flow.app.pipeline, 'startDetached').mockImplementation((runKey, ...rest) => {
-    if (runKey === key || runKey === taskKey) return detached(runKey, ...rest);
-    flow.launched.push(runKey);
-    return Promise.resolve({ exitCode: 0, message: `${runKey} started` });
-  });
-  await flow.app.app.get(CommandService).submit('resume', taskKey, { ...PERSON_RESUME });
-  await settle();
-  planChatOf(flow, (await runs.findRun(taskKey))!);
-  return { taskKey, settle, visits: () => steps.get('implement')?.count ?? 0, task: () => runs.findRun(taskKey) };
+  const loop = epicLoop(flow, key);
+  await loop.seed();
+  const visits = loop.fakeAgent();
+  await flow.app.app.get(CommandService).submit('resume', loop.taskKey, { ...PERSON_RESUME });
+  await loop.settle();
+  planChatOf(flow, (await runs.findRun(loop.taskKey))!);
+  return { taskKey: loop.taskKey, settle: loop.settle, visits, task: () => runs.findRun(loop.taskKey) };
 }
