@@ -29,6 +29,10 @@ CI runs type checks, tests, lint and structure checks, dependency-cycle and unus
 
 Keep pull requests small, tested, and CI green. In the description, explain what changed, why, and how it was tested.
 
+## Faults
+
+A fault found by a real run gets a spec in `server/src/testing/faults/` first, and that spec fails on the code that had the fault. The spec injects the fault into the real application at a named point, lets the system settle, and ends with `assertSettled` from `settle.spec-helpers.ts`. The fix lands in the same change as its spec.
+
 ## Releases
 
 A release is a tag on `main`: `git tag v0.2.0 && git push origin v0.2.0`. The release workflow builds the images, starts the stack from them, moves `:latest` to them and creates the GitHub release with `compose.yml` only, and pulls the images with `docker compose -f compose.yml pull`. A tag with a suffix (`v0.2.0-rc1`) is a prerelease and leaves `:latest` alone. Add the version to `CHANGELOG.md` before tagging.
