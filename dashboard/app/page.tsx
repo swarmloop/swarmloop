@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { DoneLately, NeedsYou, NowSection, OverviewFooter, OverviewNumbers } from '../features/overview';
 import { ReadinessLine } from '../features/readiness';
 import { useLiveBridge } from '../features/shell';
+import { usePhone } from '../lib/use-phone';
 import { HOSTS } from './login/hosts';
 
 /** The app bar (64 px) and the main area's vertical padding (24 px twice). */
@@ -30,6 +31,7 @@ export default function HomePage(): React.ReactElement {
   // The same counts as the run list's switch, so a subtask is never counted on its own.
   const all = useLiveBridge((snapshot) => snapshot.counts.all);
   const empty = loaded && all === 0;
+  const phone = usePhone();
 
   return (
     <ThemeProvider theme={pageTheme}>
@@ -38,9 +40,8 @@ export default function HomePage(): React.ReactElement {
           display: 'flex',
           flexDirection: 'column',
           gap: 1,
-          // Short content fills the viewport; the fullest page is sized to fit it, so nothing is clipped or scrolls inside.
-          minHeight: `calc(100vh - ${CHROME})`,
-          maxHeight: `calc(100vh - ${CHROME})`,
+          // From 900 px short content fills the viewport and the fullest page is sized to fit it, so nothing is clipped or scrolls inside; below it the page grows and scrolls down.
+          ...(phone ? {} : { minHeight: `calc(100vh - ${CHROME})`, maxHeight: `calc(100vh - ${CHROME})` }),
           typography: 'body2',
         }}
       >
