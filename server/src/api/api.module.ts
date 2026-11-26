@@ -28,6 +28,8 @@ import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 import { StatsController } from './stats.controller';
 import { AgentCallsController } from './agent-calls.controller';
+import { DoneLatelyController } from './done-lately.controller';
+import { DoneLatelyService } from './done-lately.service';
 import { AgentCallQueries } from '../history/agent-call-queries';
 import { SubtaskClose } from './subtask-close';
 import { BacklogStart } from './backlog-start';
@@ -66,10 +68,12 @@ import { RequestTiming } from './request-timing';
     RepositoriesController,
     StatsController,
     AgentCallsController,
+    DoneLatelyController,
     SettingsController,
   ],
   providers: [
     AgentCallQueries,
+    DoneLatelyService,
     RunQueriesService,
     RunListRows,
     EtaSummary,
