@@ -2,7 +2,7 @@ import { agentFor } from '../../config/agents';
 import { basename } from 'path';
 import type { SwarmloopEnv } from '../../config/env';
 import type { EventRepository } from '../../history/event.repository';
-import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
+import type { DocumentDraft } from '../../history/visit';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
@@ -36,7 +36,7 @@ import { fixNotes, withKeep } from './review-input';
 import { planChangesOf, type PlanChangesSection } from '../shared/plan-changes';
 import { requirementsCheck } from './requirements-check';
 import { readContract } from '../shared/contract-items';
-import { closeReview, recordAngle } from './review-report';
+import { closeReview, recordAngle, type ReportCall } from './review-report';
 import type { Finished, Reviewer, ReviewDeps, Usage } from './reviewer';
 import { projectRules } from '../shared/project-rules';
 import { REVIEWERS, runJob } from './reviewer';
@@ -131,7 +131,7 @@ export async function routeReview(
   ctx: StepContext,
   opinions: Opinion[],
   documents: DocumentDraft[],
-  exchanges: ExchangeDraft[],
+  call: ReportCall | null,
   thirdParty: boolean,
   usage: Usage,
   pass: Route = { to: 'next' },
@@ -141,7 +141,7 @@ export async function routeReview(
   const line = `${opened.startedAt} code-review waiting\n${summary}`;
   const returning = opinions.filter((item) => item.decision === 'return');
   if (returning.length === 0 || thirdParty) {
-    return closeReview(ctx, pass, `${opened.startedAt} code-review done\n${summary}`, documents, exchanges, usage);
+    return closeReview(ctx, pass, `${opened.startedAt} code-review done\n${summary}`, documents, call, usage);
   }
   const issues = returning.map((item) => {
     const source = item.kind.slice(REVIEWS.prefix.length);
@@ -152,7 +152,7 @@ export async function routeReview(
     kinds: returning.map((item) => item.kind),
     line,
     documents,
-    exchanges,
+    call,
     usage,
   });
 }
@@ -164,7 +164,7 @@ interface ReturnToImplement {
   kinds: string[];
   line: string;
   documents: DocumentDraft[];
-  exchanges: ExchangeDraft[];
+  call: ReportCall | null;
   usage?: Usage;
 }
 
@@ -175,7 +175,7 @@ export async function returnToImplement(
   back: ReturnToImplement,
 ): Promise<PipelineResult> {
   const { opened } = ctx;
-  const { issues, kinds, line, documents, exchanges, usage } = back;
+  const { issues, kinds, line, documents, call, usage } = back;
   opened.run.attemptsReview += 1;
   await events.recordLoop(opened.run, 'review', opened.run.attemptsReview, kinds.join(','));
   const listed = textDocument(ARTIFACTS.issues.kind, ARTIFACTS.issues.format(issues));
@@ -184,7 +184,7 @@ export async function returnToImplement(
     { to: 'return', step: 'implement', issues },
     line,
     [...documents, returnNotes(issues), listed],
-    exchanges,
+    call,
     usage,
   );
 }

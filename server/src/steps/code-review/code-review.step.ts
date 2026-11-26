@@ -145,7 +145,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   }
 
   protected override failureVisit(): Partial<VisitDraft> {
-    return { mode: 'ask', exchanges: [], samples: [], httpCalls: [] };
+    return { mode: 'ask', samples: [], httpCalls: [] };
   }
 
   /** The review ends its own visit, so `work` hands the closed result back through `VisitLeftOpen`. */
@@ -229,7 +229,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
         failed('code-review does not fit'),
         `${opened.startedAt} code-review does not fit`,
         [],
-        [],
+        null,
       );
     }
     writeReviewDiff(root(this.config), key, diff.patch);

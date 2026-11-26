@@ -189,12 +189,12 @@ describe('model visit duration', () => {
       runtime: 'cursor',
       model: 'm',
       agent: { ...emptyAgent(), durationMs: 25 },
-      prompt: 'p',
+      callIds: [7, 8],
       status: 'done',
       exitCode: 0,
     });
     expect(visit.durationMs).toBeGreaterThanOrEqual(4_000);
-    expect(visit.exchange?.durationMs).toBe(25);
+    expect(visit.callIds).toEqual([7, 8]);
   });
 });
 
@@ -232,7 +232,6 @@ describe('combineAgentResults', () => {
       runtime: 'cursor',
       model: 'm',
       agent: folded,
-      prompt: 'p',
       status: 'done',
       exitCode: 0,
     });

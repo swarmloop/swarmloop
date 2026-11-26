@@ -1,16 +1,16 @@
 import 'reflect-metadata';
 import { storeRun } from './store-run.spec-helpers';
-import { DataSource } from 'typeorm';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON, type StateReason } from '../contract/run-state';
-import { AgentExchangeEntity, StepStatEntity } from '../history/entities';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { StepStatEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { VisitStartRepository } from '../history/visit-start.repository';
 import { writeRunState } from '../history/run-state';
 import { assertInvariants } from './flow-invariants';
-import { save } from './runs.spec-helpers';
+import { loggedCall, save } from './runs.spec-helpers';
 import { createTestApp, type TestApp } from './test-app';
 
 const RETRY_AT = '2026-01-01T00:05:00.000Z';
@@ -163,15 +163,19 @@ describe('assertInvariants', () => {
       });
       await visits.saveStat(stat);
       if (visit.exchange !== false) {
-        await app.app.get(DataSource).getRepository(AgentExchangeEntity).save({
-          stepStatId: stat.id,
-          model: 'm',
-          startedAt: now,
-          finishedAt: now,
-          durationMs: 0,
-          requestText: '',
-          responseText: '',
-        });
+        await app.app.get(AgentCallRepository).linkVisit(
+          [
+            await loggedCall(app.app.get(AgentCallRepository), {
+              model: 'm',
+              startedAt: now,
+              finishedAt: now,
+              durationMs: 0,
+              requestText: 'ask',
+              responseText: '',
+            }),
+          ],
+          stat.id,
+        );
       }
       return { run, stat };
     };

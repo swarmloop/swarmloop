@@ -15,7 +15,6 @@ describe('modelVisit', () => {
       model: 'm',
       agent: { samples: [agent], calls: 1 } as unknown as AgentRunResult,
       samples: [setup],
-      prompt: '',
       status: 'done',
       exitCode: 0,
     });

@@ -7,7 +7,6 @@ import type { DocumentRepository } from '../../history/document.repository';
 import type { PlanChatStore } from '../../history/plan-chat.store';
 import type { VisitRepository } from '../../history/visit.repository';
 import type { SampleDraft } from '../../history/visit';
-import type { AgentRunResult } from '../../agent/agent-runner';
 import type { LaunchResult } from '../shared/result-exchange';
 import { resumableChat } from '../../agent/agent-session';
 import type { OpenedStep } from '../../steps/step-run';
@@ -43,8 +42,7 @@ export interface Finished extends EffortFields {
   reviewer: Reviewer;
   runtime: RuntimeName;
   model: string;
-  prompt: string;
-  result: AgentRunResult | null;
+  result: LaunchResult | null;
   parsed?: Opinion;
   error?: string;
   answerErrors?: string[];
@@ -197,7 +195,6 @@ async function one(
       runtime: agent.runtime,
       model: agent.model,
       ...effortFields(agent),
-      prompt: job.prompt,
       startId,
     };
     refused = refusedWrite(result.output);
@@ -223,7 +220,6 @@ async function one(
       runtime: job.runtime,
       model: job.model,
       ...effortFields(job),
-      prompt: job.prompt,
       result: error instanceof ResultInvalid || error instanceof ModelHostUnavailable ? (error.result ?? null) : null,
       error: message,
       ...(error instanceof ResultInvalid ? { answerErrors: error.errors } : {}),

@@ -82,7 +82,7 @@ describe('decision facts of a report visit', () => {
       ...reviewDocuments(opinionOf('review_security', result('ok'))),
       { kind: 'review_performance', fileName: '', body: 'old run\ndecision: return\n' },
     ];
-    const closed = (await closeReview(ctx, { to: 'next' }, 'line', documents, [])) as unknown as {
+    const closed = (await closeReview(ctx, { to: 'next' }, 'line', documents, null)) as unknown as {
       facts: { details: string[] };
     };
     expect(closed.facts.details).toEqual(['quality: return', 'security: ok', 'performance: return']);

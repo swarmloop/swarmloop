@@ -414,7 +414,6 @@ describe('code-review step', () => {
       tokensOut: 0,
       usd: 0,
       samples: [],
-      exchange: null,
       httpCalls: [],
       document: { kind: 'error', fileName: '', body: 'code-review does not fit\n' },
       resumed: false,

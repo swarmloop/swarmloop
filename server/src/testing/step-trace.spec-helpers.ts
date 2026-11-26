@@ -38,6 +38,24 @@ export function recordingDocuments(documents: DocumentRepository): RecordingDocu
   }) as RecordingDocuments;
 }
 
+/**
+ * The calls a visit linked, as the recorded traces show them: one exchange for the visit, with the requests of its
+ * launches one after the other (a launcher follow-up is no new request of the visit) and the last call's response.
+ */
+function visitExchanges(rows: AgentExchangeEntity[]) {
+  const [first] = rows;
+  if (!first) return [];
+  const asked = rows.filter((row) => row.startReason !== 'follow-up').map((row) => row.requestText);
+  return [
+    {
+      model: first.model,
+      requestText: asked.join('\n\n'),
+      responseText: rows[rows.length - 1].responseText,
+      chatId: first.chatId,
+    },
+  ];
+}
+
 /** The observable result of a run as plain JSON: no timestamps, no pid. `reads` maps a step to the kinds it read. */
 export async function traceRun(dataSource: DataSource, key: string, reads: Record<string, string[]>) {
   const run = await dataSource.getRepository(RunEntity).findOneByOrFail({ key });
@@ -64,9 +82,7 @@ export async function traceRun(dataSource: DataSource, key: string, reads: Recor
         url,
         statusCode,
       })),
-      exchanges: (await dataSource.getRepository(AgentExchangeEntity).find(byStat)).map(
-        ({ model, requestText, responseText, chatId }) => ({ model, requestText, responseText, chatId }),
-      ),
+      exchanges: visitExchanges(await dataSource.getRepository(AgentExchangeEntity).find(byStat)),
     });
   }
   const events = await dataSource.getRepository(StepEventEntity).find({ where: { runId }, order: { seq: 'ASC' } });

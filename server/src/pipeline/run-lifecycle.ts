@@ -83,7 +83,6 @@ export class RunLifecycle implements OnApplicationBootstrap {
               tokensOut: 0,
               usd: 0,
               samples: [],
-              exchange: null,
               httpCalls: [],
               document: null,
               documents: [{ kind: 'error', fileName: '', body: `${failure.message}\n` }],

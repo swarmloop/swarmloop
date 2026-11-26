@@ -26,15 +26,13 @@ export interface RequirementsFinish {
 
 export function requirementsVisit(samples: SampleDraft[], input: RequirementsFinish): Partial<VisitDraft> {
   return {
-    model: input.written.exchange?.model ?? null,
-    mode: input.written.exchange ? 'agent' : null,
     exitCode: input.exitCode,
     killReason: input.written.killReason,
     tokensIn: input.written.tokensIn,
     tokensOut: input.written.tokensOut,
     usd: input.written.usd,
     samples,
-    exchange: input.written.exchange,
+    callIds: input.written.callIds,
     httpCalls: input.calls,
     resumed: input.written.resumed,
   };
@@ -67,7 +65,7 @@ export function emptyWrite(): RequirementsWrite {
     usd: 0,
     tokensIn: 0,
     tokensOut: 0,
-    exchange: null,
+    callIds: [],
     killReason: null,
     samples: [],
     resumed: false,

@@ -1,5 +1,5 @@
 import type { DocumentRepository } from '../../history/document.repository';
-import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
+import type { DocumentDraft } from '../../history/visit';
 import type { PipelineResult } from '../../core/pipeline-result';
 import type { StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -18,7 +18,7 @@ import type { PlanChatEntry } from '../../contract/plan-chat';
 import type { EventRepository } from '../../history/event.repository';
 import type { PlanChatStore } from '../../history/plan-chat.store';
 import { reviewAnswerKey } from '../shared/review-answer-key';
-import { closeReview } from './review-report';
+import { closeReview, type ReportCall } from './review-report';
 import type { Finished, Usage } from './reviewer';
 
 /** One line for the person: the reviewer, its finding and the answer of implement side by side. `askedAt` makes the ask its own event. */
@@ -56,7 +56,7 @@ export function askPerson(
   ctx: StepContext,
   asks: StoredQuestion[],
   documents: DocumentDraft[],
-  exchanges: ExchangeDraft[],
+  call: ReportCall | null,
   usage: Usage,
 ): Promise<PipelineResult> {
   const body = renderQuestions(asks.map((ask) => ask.question));
@@ -69,7 +69,7 @@ export function askPerson(
       textDocument(ARTIFACTS.reviewQuestions.kind, body),
       textDocument(ARTIFACTS.questionParts.kind, ARTIFACTS.questionParts.format(asks)),
     ],
-    exchanges,
+    call,
     usage,
   );
 }
@@ -141,7 +141,7 @@ async function closeRuledOut(
     ctx,
     opinions,
     [textDocument(ARTIFACTS.reviewQuestions.kind, ''), ...opinions.flatMap(reviewDocuments)],
-    [],
+    null,
     false,
     { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] },
   );
@@ -170,7 +170,7 @@ async function settleAnswers(
       { to: 'wait', reason: 'questions are open' },
       `${ctx.opened.startedAt} code-review waiting\n${questionsBody}`,
       [],
-      [],
+      null,
     );
   }
   const typed = await typedAnswer(ctx.opened.run.key, asked.id, planner?.chat);
@@ -198,7 +198,7 @@ async function settleAnswers(
       returnNotes(issues),
       textDocument(ARTIFACTS.issues.kind, ARTIFACTS.issues.format(issues)),
     ],
-    [],
+    null,
   );
   if (typed && planner) await planner.chat.markTaken(ctx.opened.run.key, [typed.key]);
   return closed;

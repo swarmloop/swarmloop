@@ -32,7 +32,6 @@ export async function closeStopped(visits: VisitRepository, clock: Clock, run: R
     tokensOut: 0,
     usd: 0,
     samples: [],
-    exchange: null,
     httpCalls: [],
     document: null,
     documents: [],

@@ -27,7 +27,8 @@
         "server/src/steps/shared/agent-door.ts",
         "server/src/pipeline/backlog/planner/turn-runner.ts",
         "server/src/steps/shared/agent-launcher.ts",
-        "server/src/pipeline/pipeline.module.ts"
+        "server/src/pipeline/pipeline.module.ts",
+        "server/src/pipeline/run-settler.ts"
       ],
       "pattern": "\\bAgentLauncher\\b"
     },

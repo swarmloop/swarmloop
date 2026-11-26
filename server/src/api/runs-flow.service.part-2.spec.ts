@@ -12,11 +12,12 @@ import { join } from 'path';
 
 import { RunRepository } from '../history/run.repository';
 
+import { AgentCallRepository } from '../history/agent-call.repository';
 import { VisitRepository } from '../history/visit.repository';
 
 import { RunQueriesService } from './run-queries.service';
 
-import { save, visit } from '../testing/runs.spec-helpers';
+import { loggedCall, save, visit } from '../testing/runs.spec-helpers';
 import { seededBoot } from './runs-boot.spec-helpers';
 
 describe('runs api', () => {
@@ -325,17 +326,16 @@ describe('runs api', () => {
       await visits.finishVisit(run, {
         ...visit('code-review', 'done'),
         durationMs: 11_000,
-        exchange: {
-          model: 'grok-4.7-high',
-          startedAt: '2026-10-28T10:01:09.000Z',
-          finishedAt: '2026-10-28T10:01:11.000Z',
-          durationMs: 2_000,
-          requestText: 'Write the report',
-          responseText: 'summary',
-          chatId: null,
-          resumed: false,
-          killReason: null,
-        },
+        callIds: [
+          await loggedCall(app.get(AgentCallRepository), {
+            model: 'grok-4.7-high',
+            startedAt: '2026-10-28T10:01:09.000Z',
+            finishedAt: '2026-10-28T10:01:11.000Z',
+            durationMs: 2_000,
+            requestText: 'Write the report',
+            responseText: 'summary',
+          }),
+        ],
       });
       run.status = 'done';
       run.currentStep = 'done';
@@ -348,17 +348,16 @@ describe('runs api', () => {
       await visits.finishVisit(short, {
         ...visit('code-review', 'done'),
         durationMs: 1_000,
-        exchange: {
-          model: 'grok-4.7-high',
-          startedAt: '2026-10-28T11:00:08.000Z',
-          finishedAt: '2026-10-28T11:00:10.000Z',
-          durationMs: 2_000,
-          requestText: 'Write the report',
-          responseText: 'summary',
-          chatId: null,
-          resumed: false,
-          killReason: null,
-        },
+        callIds: [
+          await loggedCall(app.get(AgentCallRepository), {
+            model: 'grok-4.7-high',
+            startedAt: '2026-10-28T11:00:08.000Z',
+            finishedAt: '2026-10-28T11:00:10.000Z',
+            durationMs: 2_000,
+            requestText: 'Write the report',
+            responseText: 'summary',
+          }),
+        ],
       });
       short.status = 'done';
       short.currentStep = 'done';
@@ -385,17 +384,16 @@ describe('runs api', () => {
       const visits = app.get(VisitRepository);
       const run = await runs.begin('proj-loop', 'code-review');
       run.stepStartedAt = null;
-      const report = (startedAt: string, finishedAt: string, durationMs: number) => ({
-        model: 'grok-4.7-high',
-        startedAt,
-        finishedAt,
-        durationMs,
-        requestText: 'Write the report',
-        responseText: 'summary',
-        chatId: null,
-        resumed: false,
-        killReason: null,
-      });
+      const report = async (startedAt: string, finishedAt: string, durationMs: number) => [
+        await loggedCall(app.get(AgentCallRepository), {
+          model: 'grok-4.7-high',
+          startedAt,
+          finishedAt,
+          durationMs,
+          requestText: 'Write the report',
+          responseText: 'summary',
+        }),
+      ];
       await visits.finishVisit(run, {
         ...visit('code-review-quality', 'done'),
         durationMs: 3_000,
@@ -407,7 +405,7 @@ describe('runs api', () => {
         durationMs: 5_000,
         startedAt: '2026-10-28T10:00:00.000Z',
         finishedAt: '2026-10-28T10:00:05.000Z',
-        exchange: report('2026-10-28T10:00:04.000Z', '2026-10-28T10:00:05.000Z', 1_000),
+        callIds: await report('2026-10-28T10:00:04.000Z', '2026-10-28T10:00:05.000Z', 1_000),
       });
       await visits.finishVisit(run, {
         ...visit('implement', 'done'),
@@ -432,7 +430,7 @@ describe('runs api', () => {
         durationMs: 12_000,
         startedAt: '2026-10-28T10:20:00.000Z',
         finishedAt: '2026-10-28T10:20:12.000Z',
-        exchange: report('2026-10-28T10:20:10.000Z', '2026-10-28T10:20:12.000Z', 2_000),
+        callIds: await report('2026-10-28T10:20:10.000Z', '2026-10-28T10:20:12.000Z', 2_000),
       });
       run.status = 'done';
       run.currentStep = 'done';

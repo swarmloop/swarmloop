@@ -1,4 +1,4 @@
-import type { ExchangeDraft, SampleDraft } from '../../history/visit';
+import type { SampleDraft } from '../../history/visit';
 import type { KillReason } from '../../core/kill-reason';
 import type { IssueBundle } from '../issue-tracker/issue-bundle';
 
@@ -20,7 +20,8 @@ export interface RequirementsWrite {
   usd: number;
   tokensIn: number;
   tokensOut: number;
-  exchange: ExchangeDraft | null;
+  /** The rows of the call log the write's agent calls made; none when no agent ran. */
+  callIds: number[];
   killReason: KillReason | null;
   samples: SampleDraft[];
   resumed: boolean;

@@ -64,7 +64,8 @@ interface ModelRun {
   /** The errors of the answer the step's last visit failed on, told to the agent on the first launch. */
   answerErrors?: string[];
   workspace: string;
-  prompt: string;
+  /** The rows of the call log that the visit's launches wrote, in order. */
+  callIds: number[];
   agentResult: AgentRunResult | null;
   launched: AgentRunResult[];
   /** Samples of containers the step started besides the agent's, such as a project setup. */
@@ -131,7 +132,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       auto: options.auto,
       answerErrors: options.answerErrors,
       workspace: join(root(this.config), 'worktrees', opened.run.key),
-      prompt: '',
+      callIds: [],
       agentResult: null,
       launched: [],
       samples: [],
@@ -224,7 +225,6 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       model,
       ...effortFields({ effort, effortNote }),
       agent: null,
-      prompt: '',
       status: 'failed',
       exitCode: 1,
     });
@@ -263,8 +263,8 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       model: run.profile.model,
       ...effortFields(run.profile),
       agent: run.agentResult,
+      callIds: run.callIds,
       samples: run.samples,
-      prompt: run.prompt,
       status,
       exitCode,
       documents,
@@ -333,7 +333,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       .catch((error: unknown) => {
         if (error instanceof ResultInvalid) run.refusal = refusedWrite(error.output) ?? run.refusal;
         if (error instanceof ModelHostUnavailable) {
-          run.prompt = run.prompt ? `${run.prompt}\n\n${prompt}` : prompt;
+          run.callIds.push(...(error.result.callIds ?? []));
           run.launched.push(error.result);
           run.agentResult = combineAgentResults(run.launched);
         }
@@ -344,7 +344,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       const { effort: _effort, effortNote: _effortNote, ...profile } = run.profile;
       run.profile = { ...profile, ...result.agent };
     }
-    run.prompt = run.prompt ? `${run.prompt}\n\n${prompt}` : prompt;
+    run.callIds.push(...(result.callIds ?? []));
     run.launched.push(result);
     if (briefed && result.chatId) await this.briefing.remember(run.opened.run, result.chatId, briefed);
     run.agentResult = combineAgentResults(run.launched);

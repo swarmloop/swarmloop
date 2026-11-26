@@ -11,6 +11,7 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { HistoryModule } from './history.module';
 import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 import type { VisitDraft } from './visit';
+import { AgentCallRepository } from './agent-call.repository';
 
 export async function repositoryDatabase() {
   const root = mkdtempSync(join(tmpdir(), 'swarmloop-repository-'));
@@ -49,6 +50,29 @@ export async function repositoryDatabase() {
   }
 }
 
+/** Seeds one finished call of the log, as the launcher writes it, and returns its id for a visit's `callIds`. */
+export async function repositoryCall(app: {
+  get(token: typeof AgentCallRepository): AgentCallRepository;
+}): Promise<number> {
+  const calls = app.get(AgentCallRepository);
+  const id = await calls.open({
+    kind: 'call',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    chatId: 'chat-1',
+    resumed: false,
+    runtime: 'claude',
+    model: 'test-model',
+    requestText: 'request',
+  });
+  await calls.finish(id, {
+    endKind: 'done',
+    finishedAt: '2026-01-01T00:00:01.000Z',
+    durationMs: 1000,
+    responseText: 'response',
+  });
+  return id;
+}
+
 export function repositoryVisit(): VisitDraft {
   return {
     step: 'code-review',
@@ -64,17 +88,6 @@ export function repositoryVisit(): VisitDraft {
     tokensOut: 3,
     usd: 0,
     samples: [{ sampledAt: '2026-01-01T00:00:00.000Z', cpuPercent: 10, rssBytes: 100, source: 'agent' }],
-    exchange: {
-      model: 'test-model',
-      startedAt: '2026-01-01T00:00:00.000Z',
-      finishedAt: '2026-01-01T00:00:01.000Z',
-      durationMs: 1000,
-      requestText: 'request',
-      responseText: 'response',
-      chatId: 'chat-1',
-      resumed: false,
-      killReason: null,
-    },
     httpCalls: [],
     document: { kind: 'review_report', fileName: 'report.md', body: 'first report' },
     resumed: false,

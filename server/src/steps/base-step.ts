@@ -276,7 +276,6 @@ abstract class StepCore implements Step {
       tokensOut: 0,
       usd: 0,
       samples: [sampleSelf(finishedAt)],
-      exchange: null,
       httpCalls: calls,
       document: null,
       resumed: false,

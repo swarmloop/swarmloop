@@ -11,16 +11,40 @@ import type {
   ResourceSampleEntity,
 } from '../../history/entities';
 
-/** The agent exchanges of one stored visit. */
-export function exchangesOf(exchanges: AgentExchangeEntity[], statId: number): VisitView['exchanges'] {
-  return exchanges
-    .filter((exchange) => exchange.stepStatId === statId)
-    .map((exchange) => ({
-      model: exchange.model,
-      durationMs: exchange.durationMs,
-      request: exchange.requestText,
-      response: exchange.responseText,
-    }));
+/** What the log keeps that is not an exchange of the chat: a helper's call, a keep-warm ping and the mark where pings stopped. */
+const NOT_EXCHANGES = new Set(['helper', 'ping', 'ping-stop']);
+
+/**
+ * The agent exchanges of one stored visit: one per launch. A launch is its first call and the follow-ups after it,
+ * each linked to the call before by `previousId`; it shows the first call's request and the last call's response.
+ * A row with no request text (the cost row the log's migration made for an old visit that had no exchange) is no exchange.
+ */
+export function exchangesOf(rows: AgentExchangeEntity[], statId: number): VisitView['exchanges'] {
+  const launches: VisitView['exchanges'] = [];
+  const byLastCall = new Map<number, VisitView['exchanges'][number]>();
+  for (const row of rows) {
+    if (row.stepStatId !== statId || NOT_EXCHANGES.has(row.kind) || row.requestText === '') {
+      continue;
+    }
+    const launch =
+      row.startReason === 'follow-up' && row.previousId !== null ? byLastCall.get(row.previousId) : undefined;
+    if (launch) {
+      byLastCall.delete(row.previousId!);
+      launch.response = row.responseText;
+      launch.durationMs += row.durationMs;
+      byLastCall.set(row.id, launch);
+      continue;
+    }
+    const first = {
+      model: row.model,
+      durationMs: row.durationMs,
+      request: row.requestText,
+      response: row.responseText,
+    };
+    launches.push(first);
+    byLastCall.set(row.id, first);
+  }
+  return launches;
 }
 
 /** The effort a stored visit ran with, left out when it ran at its runtime's default. */
