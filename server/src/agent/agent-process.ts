@@ -1,3 +1,4 @@
+import { constants } from 'os';
 import type { SandboxChild, SandboxService } from '../sandbox/sandbox.service';
 import { markedInterval } from '../core/entered-marks';
 import type { AwakeTime } from '../core/awake-time';
@@ -18,6 +19,12 @@ interface AgentProcessTimeouts {
   idleLimitMs: number;
   wallLimitMs: number;
   timeout(reason: Extract<KillReason, 'idle' | 'time'>): void;
+}
+
+/** The exit code of a close: a child ended by a signal gives 128 plus its number, as a shell reads it. */
+function exitCodeOf(code: number | null, signal: NodeJS.Signals | null): number {
+  if (code !== null) return code;
+  return signal ? 128 + constants.signals[signal] : 1;
 }
 
 /** One child process and its lifecycle. It deliberately knows nothing about agent runs or sessions. */
@@ -48,6 +55,11 @@ export class AgentProcess {
 
   get containerName(): string {
     return this.child.containerName;
+  }
+
+  /** The memory the container was started with; undefined when it has no cap. */
+  get memoryCapBytes(): number | undefined {
+    return this.child.memoryCapBytes;
   }
 
   kill(force = true): void {
@@ -120,7 +132,7 @@ export class AgentProcess {
       if (this.closedEarly !== null) {
         finish(this.closedEarly);
       }
-      this.child.on('close', (code) => finish(code ?? 1));
+      this.child.on('close', (code, signal) => finish(exitCodeOf(code, signal)));
       const watch = markedInterval(
         'agent watch',
         () => {
@@ -148,7 +160,7 @@ export class AgentProcess {
   private readonly keepErr = (chunk: Buffer): void => {
     this.earlyErr.push(chunk);
   };
-  private readonly rememberClose = (code: number | null): void => {
-    this.closedEarly = code ?? 1;
+  private readonly rememberClose = (code: number | null, signal: NodeJS.Signals | null): void => {
+    this.closedEarly = exitCodeOf(code, signal);
   };
 }

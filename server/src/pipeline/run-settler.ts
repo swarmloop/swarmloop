@@ -16,6 +16,7 @@ import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
 import type { CommandEntity, RunEntity, StepStatEntity } from '../history/entities';
 import { figuresOf } from '../history/agent-call';
 import { AgentCallRepository } from '../history/agent-call.repository';
+import { CommandRepository } from '../history/command.repository';
 import { CheckCommandRepository } from '../history/check-command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -64,14 +65,17 @@ export class RunSettler {
     private readonly calls: AgentCallRepository,
     private readonly launcher: AgentLauncher,
     private readonly stream: AttemptStream,
+    private readonly commands: CommandRepository,
   ) {}
 
   /**
    * A journal below `completed` is read before the run continues or blocks. Files that no longer match the last
    * checkpoint block it with `REBASE_CONFLICT`; otherwise the rebase resumes through `RunRebase`, without a new
-   * generation. A repo in `conflict` waits for a person, so it is neither.
+   * generation. A repo in `conflict` waits for a person, so it is neither. A run with a rebase command still to run
+   * is left to that command, which resumes the same journal.
    */
   async settleRebase(run: RunEntity): Promise<boolean> {
+    if ((await this.commands.pending(run.id)).some((command) => command.type === 'rebase')) return false;
     const journal = parseJournal(await this.documents.latestBody(run.key, REBASE_JOURNAL));
     if (!unfinished(journal)) return false;
     const open = Object.entries(journal).filter(([, entry]) => entry.checkpoint !== 'completed');

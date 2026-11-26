@@ -1,5 +1,5 @@
 import type { AgentRunResult } from '../../agent/agent-runner';
-import { agentFailure, refusedWrite, withRefusal } from './agent-result';
+import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './agent-result';
 
 const WRITE_REFUSED = 'Cannot write to /work/x/a.php while in plan mode.';
 
@@ -27,6 +27,22 @@ describe('agentFailure', () => {
       expect(agentFailure(agent({ exitCode: 1, output: 'boom\n' }), 'implement', mode)).toBe('implement failed: boom');
     });
 
+    it(`names the signal that ended the process in ${mode} mode`, () => {
+      expect(agentFailure(agent({ exitCode: 139, signal: 'SIGSEGV', output: 'boom\n' }), 'implement', mode)).toBe(
+        'implement failed: ended by SIGSEGV',
+      );
+    });
+
+    it(`keeps the exit text of exit 143 when no signal was reported in ${mode} mode`, () => {
+      expect(agentFailure(agent({ exitCode: 143, output: '' }), 'implement', mode)).toBe('implement failed');
+    });
+
+    it(`lets a kill of ours win over a signal in ${mode} mode`, () => {
+      expect(agentFailure(agent({ killReason: 'time', signal: 'SIGTERM' }), 'implement', mode)).toBe(
+        'process killed: time',
+      );
+    });
+
     it(`reads the first non-empty line of a short failed output in ${mode} mode`, () => {
       expect(agentFailure(agent({ exitCode: 2, output: '\n\n  first line  \nsecond\n' }), 'implement', mode)).toBe(
         'implement failed: first line',
@@ -44,6 +60,13 @@ describe('agentFailure', () => {
       expect(agentFailure(agent({ output: refused('Bash') }), 'implement', mode)).toBeNull();
     });
   }
+});
+
+describe('combineAgentResults', () => {
+  it('keeps the signal that ended the last launch', () => {
+    const combined = combineAgentResults([agent({}), agent({ exitCode: 143, signal: 'SIGTERM' })]);
+    expect(combined?.signal).toBe('SIGTERM');
+  });
 });
 
 describe('refusedWrite', () => {

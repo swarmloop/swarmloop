@@ -93,7 +93,7 @@ export function writePriceCache(root: string): void {
 
 export async function start(
   label: string,
-  steps: { chunks: string[]; code?: number; advance?: number }[],
+  steps: { chunks: string[]; code?: number; advance?: number; memoryCapBytes?: number }[],
   patch: Partial<AgentRunInput> = {},
   env: Partial<SwarmloopEnv> = {},
   stop = new RunStop(),
@@ -118,7 +118,9 @@ export async function start(
       return Promise.reject(new Error('unexpected spawn'));
     }
     now += next.advance ?? 0;
-    return Promise.resolve(fakeChild(next.chunks, next.code ?? 0));
+    return Promise.resolve(
+      Object.assign(fakeChild(next.chunks, next.code ?? 0), { memoryCapBytes: next.memoryCapBytes }),
+    );
   });
   const runner = new AgentProcessRunner(config(root, env), new SystemClock(), sandbox(spawn), stop);
   try {

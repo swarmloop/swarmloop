@@ -14,7 +14,7 @@ import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.re
 import { modelApiHosts } from '../sandbox/sandbox-launch';
 import type { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
-import type { AgentRunResult } from './agent-result';
+import { endedBySignal, type AgentRunResult } from './agent-result';
 import type { KillReason } from './limits';
 import type { RunStop } from './run-stop';
 import { loadPriceTable } from './prices';
@@ -285,6 +285,7 @@ export class AgentLaunch {
         reported: meter.reported(),
         killReason: finalKillReason,
         exitCode: finishedByResult ? 0 : killReason ? 1 : exitCode,
+        ...endedBySignal(exitCode, finishedByResult || killReason !== null, process),
         output,
         resumed,
         decided: meter.decided(input.answered),

@@ -18,6 +18,7 @@ import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
 import { BlockAgentRunner, type ScriptedAnswer } from './result-answer';
 import { remember } from './runs.spec-helpers';
+import { assertSettled, settle } from './faults/settle.spec-helpers';
 
 const KEY = 'PROJ-710';
 const FIRST = ['add the field - files: a.ts - proof: a.spec.ts'];
@@ -193,6 +194,8 @@ describe('a person writes to the planner of a run no step drives', () => {
     };
 
     const wait = await stoppedByOutage();
+    await settle(flow.app);
+    await assertSettled(flow.app);
     await wake();
     await idle();
     expect(planTurns()).toBe(1);
@@ -210,6 +213,8 @@ describe('a person writes to the planner of a run no step drives', () => {
     await idle();
     expect(planTurns()).toBe(2);
     await assertInvariants(flow.app);
+    await settle(flow.app);
+    await assertSettled(flow.app);
   });
 
   it('takes the message of a stopped run once in the reconciler pass after the outage next try', async () => {
@@ -231,12 +236,15 @@ describe('a person writes to the planner of a run no step drives', () => {
 
     await pass();
     expect(planTurns()).toBe(2);
-    await assertInvariants(flow.app);
+    await settle(flow.app);
+    await assertSettled(flow.app);
   });
 
   it('clears the wait when the retried reply fails for another reason, and the next pass does not launch it again', async () => {
     await start({ 'plan-turn': [OUTAGE, { text: 'no result block here' }] });
     const wait = await stoppedByOutage();
+    await settle(flow.app);
+    await assertSettled(flow.app);
     flow.app.clock.advance(Date.parse(wait.retryAt) - flow.app.clock.now() + 1);
 
     for (let pass = 0; pass < 2; pass++) {
@@ -247,7 +255,8 @@ describe('a person writes to the planner of a run no step drives', () => {
     expect(planTurns()).toBe(2);
     expect(await store().pending(KEY)).toEqual([]);
     expect(storedState((await runOf())!).state).toBe('stopped');
-    await assertInvariants(flow.app);
+    await settle(flow.app);
+    await assertSettled(flow.app);
   });
 
   it('resumes a run that waits in implement, and the resumed run takes the message before its next step', async () => {

@@ -4,7 +4,7 @@ import type { RunEntity } from '../history/entities';
 import type { RunRepository } from '../history/run.repository';
 import { storedState } from '../history/run-state';
 import { ERROR_CODES } from '../contract/error-codes';
-import { isSubtask, parseSubtasks, settled, SUBTASKS_KIND } from '../contract/subtask';
+import { isSubtask } from '../contract/subtask';
 import type { RebaseEvent, SubtaskMergeRequest } from '../steps/shared/subtask-ops';
 import type { DocumentRepository } from '../history/document.repository';
 import { mergeHandoff } from '../steps/shared/handoff';
@@ -24,6 +24,7 @@ export class SubtaskRebases {
     private readonly rebaser: RunRebase | undefined,
     private readonly asking: (run: RunEntity) => Promise<boolean>,
     private readonly mergeRequests: (run: RunEntity) => Promise<SubtaskMergeRequest[]>,
+    private readonly parentTip: (run: RunEntity) => Promise<string | null>,
     private readonly logger: Logger,
   ) {}
 
@@ -52,18 +53,20 @@ export class SubtaskRebases {
   }
 
   /**
-   * Sends the Rebase. The key names the event; when the command of that key died, the next try is a new event named
-   * after the command that died, so a rebase that failed once is sent again and never the same one twice.
+   * Sends the Rebase. The key names the parent tip the run moves onto; when the command of that key died, the next
+   * try is a new event named after the command that died, so a rebase that failed once is sent again and never the
+   * same one twice. A run whose parent has no tip keeps the key of its revision and generation.
    */
   private async sendRebase(run: RunEntity, keepsWait: boolean, event?: RebaseEvent): Promise<void> {
     const payload = keepsWait ? { byParent: true, keepsWait: true } : { byParent: true };
-    if (!event) {
+    const tip = event?.tip ?? (await this.parentTip(run));
+    if (!tip) {
       await this.commands.accept('rebase', run.key, payload, {
         idempotencyKey: `subtask-rebase-${run.revision}-${run.generation}`,
       });
       return;
     }
-    let idempotencyKey = `subtask-rebase-${run.key}-${event.tip}`;
+    let idempotencyKey = `subtask-rebase-${run.key}-${tip}`;
     for (;;) {
       const sent = await this.commands.accept('rebase', run.key, payload, { idempotencyKey });
       if (!sent.replayed || sent.command.state !== 'failed') return;
@@ -117,16 +120,5 @@ export class SubtaskRebases {
     const moved = await this.runs.findRun(key);
     if (moved) await this.noteRebase(moved, note);
     return moved?.currentStep ?? null;
-  }
-
-  /** Sends a Rebase to every subtask of the parent that is not merged or skipped; with an event, each is moved for that event. */
-  async rebaseOpen(parent: RunEntity, event?: RebaseEvent): Promise<void> {
-    const open = parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND)).filter(
-      (task) => !settled(task),
-    );
-    for (const task of open) {
-      const child = await this.runs.findSubtask(parent, task.id);
-      if (child) await this.rebase(child, event);
-    }
   }
 }
