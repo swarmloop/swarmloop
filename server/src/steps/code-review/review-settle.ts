@@ -196,7 +196,7 @@ export class ReviewSettle {
     const pass: Route = { to: 'jump', step: 'implement' };
     if (!this.epicRound || !opened.run.split || opinions.some((item) => item.decision === 'return')) return none;
     if ((await ctx.reread(ARTIFACTS.epicRound))?.trim() !== 'open') return none;
-    const { conflict } = await this.epicRound.finish(opened.run, (await ctx.reread(ARTIFACTS.subtasks)) ?? []);
+    const { conflict } = await this.epicRound.finish(opened.run);
     if (conflict) {
       return {
         documents: [...recorded, textDocument(ARTIFACTS.rebaseConflict.kind, ownConflictMarker(conflict))],

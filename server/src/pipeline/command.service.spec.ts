@@ -337,6 +337,38 @@ describe('CommandService', () => {
     }
   });
 
+  it('runs again a Rebase that was executing at a crash, since a rebase can be repeated', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-command-rebase-'));
+    const first = await seededBoot(root);
+    let rebaseId = '';
+    try {
+      await save(first.get(RunRepository), 'proj-1', 'implement', 'waiting');
+      const repository = first.get(CommandRepository);
+      const accepted = await repository.accept({ type: 'rebase', key: 'proj-1', payload: {}, admit: () => undefined });
+      rebaseId = accepted.command.id;
+      await repository.start(rebaseId);
+    } finally {
+      await first.close();
+    }
+    const second = await seededBoot(root);
+    try {
+      const commands = second.get(CommandService);
+      const ran: string[] = [];
+      commands.register('rebase', (key: string) => {
+        ran.push(key);
+        return Promise.resolve({ key, status: 'started' });
+      });
+
+      await commands.recover();
+      await commands.idle();
+
+      expect(ran).toEqual(['proj-1']);
+      expect((await second.get(CommandRepository).find(rebaseId))?.state).toBe('succeeded');
+    } finally {
+      await second.close();
+    }
+  });
+
   it('ends a stored accepted command of a type that has no handler failed with its reason', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-command-removed-'));
     const first = await seededBoot(root);

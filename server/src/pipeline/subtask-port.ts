@@ -126,9 +126,16 @@ export class SubtaskPort extends SubtaskOps {
       rebaser,
       (run) => this.asking(run),
       (run) => this.mergeRequests(run),
+      (run) => this.parentTip(run),
       this.logger,
     );
     this.end = new SubtaskEnd(runs, documents, planning.chat, this, this.logger, retention);
+  }
+
+  /** The tip of the run's parent that a move of the run lands on, or null for a port without a rebaser. */
+  private async parentTip(run: RunEntity): Promise<string | null> {
+    const parent = run.parentRunId === null ? null : await this.runs.findById(run.parentRunId);
+    return parent && this.rebaser ? this.rebaser.tipOf(parent.key) : null;
   }
 
   register(starter: SubtaskStarter): void {
@@ -311,10 +318,6 @@ export class SubtaskPort extends SubtaskOps {
 
   applyPendingRebase(key: string): Promise<string | null> {
     return this.rebases.applyPendingRebase(key);
-  }
-
-  rebaseOpen(parent: RunEntity, event?: RebaseEvent): Promise<void> {
-    return this.rebases.rebaseOpen(parent, event);
   }
 
   /** The open merge requests of a subtask run a person skips. */

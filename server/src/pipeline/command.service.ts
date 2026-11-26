@@ -210,11 +210,12 @@ export class CommandService {
   }
 
   /**
-   * A command a dead process took: a Stop and a Remove run again (both can be repeated), a command whose run
-   * is done is confirmed, any other is failed.
+   * A command a dead process took: a Stop, a Remove and a Rebase run again (each can be repeated: the journal resumes
+   * a half-done rebase, its push is by lease and each subtask move is keyed by the tip), a command whose run is done
+   * is confirmed, any other is failed.
    */
   private async settleLost(command: CommandEntity): Promise<void> {
-    if (command.type === 'stop' || command.type === 'remove') {
+    if (command.type === 'stop' || command.type === 'remove' || command.type === 'rebase') {
       await this.commands.requeue(command.id);
       return;
     }
