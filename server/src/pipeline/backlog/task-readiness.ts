@@ -79,7 +79,7 @@ export function repositoriesOf(tasks: BacklogTask[]): string[] {
 }
 
 /** The task that fixes a repository's main and is not merged or skipped, other than `task`. */
-function fixerOf(repo: string, task: BacklogTask, tasks: BacklogTask[]): BacklogTask | undefined {
+export function fixerOf(repo: string, task: BacklogTask, tasks: BacklogTask[]): BacklogTask | undefined {
   return tasks.find((other) => other.id !== task.id && other.fixesMain === repo && !settled(other));
 }
 

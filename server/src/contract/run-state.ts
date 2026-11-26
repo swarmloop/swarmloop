@@ -130,6 +130,7 @@ export const AUTO_RETRY_CODES: readonly string[] = [
   REASON.serverPause,
   REASON.asksPlanner,
   REASON.sameInput,
+  REASON.waitsForMain,
 ];
 
 /** The waiting codes whose next try is timed: a person may try now. */
@@ -153,6 +154,7 @@ function waitingActions(reasonCode: string | null): RunAction[] {
   return reasonCode &&
     (reasonCode === REASON.asksPlanner ||
       reasonCode === REASON.sameInput ||
+      reasonCode === REASON.waitsForMain ||
       SUBTASK_WAIT_CODES.includes(reasonCode as ErrorCode))
     ? ['stop', 'resume', 'replay', 'rebase']
     : ['answer', 'replay', 'rebase'];

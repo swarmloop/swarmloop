@@ -3,11 +3,13 @@ import type { CommandService, SubmitOptions } from '../pipeline/command.service'
 import { PlannerRunPort, type PlannerRunCommand } from '../pipeline/backlog/planner/planner-run-port';
 import type { QuestionPassOn } from '../pipeline/question-pass-on';
 import type { PlanChatService } from './plan-chat.service';
+import type { RedMainWait } from '../pipeline/backlog/red-main-wait';
+import type { RunRepository } from '../history/run.repository';
 import { PlannerRunCommands } from './planner-run-commands';
 
 type Sent = { service: string; type: string; key: string; payload: unknown; options?: SubmitOptions };
 
-function wired() {
+function wired(waitsFor: string | null = null) {
   const sent: Sent[] = [];
   const commands = {
     submit: async (type: string, key: string, payload: unknown, options?: SubmitOptions) => {
@@ -27,7 +29,9 @@ function wired() {
     },
   } as unknown as QuestionPassOn;
   const port = new PlannerRunPort();
-  new PlannerRunCommands(port, commands, chat, passOn).onModuleInit();
+  const redMain = { repositoryFor: async () => waitsFor } as unknown as RedMainWait;
+  const runs = { findRun: async (key: string) => ({ key }) } as unknown as RunRepository;
+  new PlannerRunCommands(port, commands, chat, passOn, redMain, runs).onModuleInit();
   return { port, sent, passes };
 }
 
@@ -71,6 +75,16 @@ describe('PlannerRunCommands', () => {
     await port.send({ type: 'passOn', run: 'r1', question: 'Which?', line: 'Only you can choose.' }, 'ada', 'k-0');
     expect(passes).toEqual([{ run: 'r1', question: 'Which?', line: 'Only you can choose.' }]);
     expect(sent).toEqual([]);
+  });
+
+  it('carries the repository whose red main the run waits for in the answer, whichever form it takes', async () => {
+    const { port, sent } = wired('web');
+    await port.send({ type: 'answer', run: 'r1', answers: [{ kind: 'question', id: 'Q', body: 'a' }] }, 'ada', 'k-0');
+    await port.send({ type: 'answer', run: 'r1', answers: [{ body: 'b' }] }, 'ada', 'k-1');
+    expect(sent.map((one) => one.payload)).toEqual([
+      { answers: [{ kind: 'question', id: 'Q', body: 'a' }], waitsForMain: 'web' },
+      { message: 'b', waitsForMain: 'web' },
+    ]);
   });
 
   it('sends an answer that names no question as a message, which answers every open question', async () => {

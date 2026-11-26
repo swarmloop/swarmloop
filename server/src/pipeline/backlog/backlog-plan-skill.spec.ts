@@ -59,6 +59,12 @@ describe('the backlog-plan skill', () => {
     }
   });
 
+  it("says that a run whose red is its repository's red main waits for a green main after its fix task", () => {
+    expect(skill).toContain(
+      "When a run's red is its repository's red main, add or keep that fix task, then answer the run: the run waits for a green main and goes on by itself.",
+    );
+  });
+
   it('says that what arrives while a turn runs comes once, in the same chat, and asks for the whole answer again', () => {
     const start = skill.split('\n\n').find((paragraph) => paragraph.startsWith('Each turn starts from'));
     expect(start).toContain(
