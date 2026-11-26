@@ -187,7 +187,7 @@ describe('a task that needs a sibling waits for it', () => {
   const view = () => flow.app.app.get(RunQueriesService).flow(KEY);
   const handoff = async () => handoffText(await documents().latestBody(`${KEY}-a`, 'handoff'));
 
-  it('tells the task why its need was refused when the planner gives no answer', async () => {
+  it('puts a need that names no task to the person as a question when the planner gives no answer, and the task waits for it', async () => {
     await seedEpic([task('a'), task('b')]);
     jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue(null);
     await needs('a', 'research', '- zzz: something');

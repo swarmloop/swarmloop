@@ -491,12 +491,14 @@ describe('the parent finds what a subtask asks at plan and implement', () => {
 
   it('keeps the answer recorded when the gate holds the start back for a stopped task', async () => {
     const run = { key: 'child', status: 'waiting', currentStep: 'implement' } as RunEntity;
-    const { planner, appended, resume } = answerer({}, [escalation]);
+    const { planner, appended, taken, resume } = answerer({}, [escalation]);
     resume.mockResolvedValue('stopped');
 
-    await planner.deliver(run, 'Use a cursor.');
+    await expect(planner.deliver(run, 'Use a cursor.')).resolves.toBeUndefined();
 
-    expect(appended).toMatchObject([{ kind: 'answer', text: 'Use a cursor.' }]);
+    expect(appended).toMatchObject([{ key: 'answer-escalate-ask-1', kind: 'answer', text: 'Use a cursor.' }]);
+    // The escalation is closed, so the answer is read once the person resumes the task, and no later pass asks again.
+    expect(taken).toEqual(['escalate-ask-1']);
   });
 
   it("records the planner's typed finding for the subtask's review next to the answer it sends", async () => {
