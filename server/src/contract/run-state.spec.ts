@@ -40,6 +40,19 @@ describe('SAME_INPUT, a refused start that a planner is asked about', () => {
   });
 });
 
+describe('WAITS_FOR_MAIN, a run that waits for a green main', () => {
+  it('offers stop, resume, replay and rebase, reads its stored words as working and needs no person', () => {
+    const reason = { code: REASON.waitsForMain, message: 'waits for a green main of web' };
+    expect(actionsFor('waiting', REASON.waitsForMain)).toEqual(['stop', 'resume', 'replay', 'rebase']);
+    expect(Object.keys(NEEDS_PERSON)).not.toContain(REASON.waitsForMain);
+    expect(needsPerson('waiting', reason)).toBe(false);
+    expect(stateWord('waiting', reason, {}, String)).toMatchObject({
+      word: 'waits for a green main of web',
+      tone: 'working',
+    });
+  });
+});
+
 describe('actionsFor a parent whose own edits conflict with a merged task', () => {
   it('offers Resume after PARENT_TREE_CONFLICT', () => {
     expect(actionsFor('blocked', ERROR_CODES.PARENT_TREE_CONFLICT)).toEqual(['resume', 'replay']);

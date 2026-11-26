@@ -16,6 +16,7 @@ import { SubtaskClose } from './subtask-close';
 import { storedState, writeRunState } from '../history/run-state';
 import { PhaseName, pipelineStepOf, STEPS } from '../contract/steps';
 import { REASON, STOP_NOTE } from '../contract/run-state';
+import { checkBlockResumeStep } from '../steps/shared/check-block-resume';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import { RunFolders } from '../pipeline/run-folders';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
@@ -252,14 +253,23 @@ export class RunCommandsService {
     if (run?.split && (!start || start.by === 'person') && storedState(run).state === 'stopped') {
       await this.subtasks.resumeStopped(run);
     }
-    const result = await this.pipeline.startDetached(key, {
-      ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
-      ...(start ? { startBy: start.by, level: start.level } : {}),
-    });
+    const result = await this.startResumed(key, run, prompt, start);
     if (pass && result.message.includes('already running')) {
       return { key, status: 'started' };
     }
     return this.accepted(key, result);
+  }
+
+  /** Starts the run's step; a block from a repeated check returns to implementation, wherever it was written. */
+  private startResumed(key: string, run: RunEntity | null, prompt?: string, start?: SubtaskStart) {
+    const options = {
+      ...(prompt?.trim() ? { prompt: prompt.trim() } : {}),
+      ...(start ? { startBy: start.by, level: start.level } : {}),
+    };
+    const step = run && storedState(run).reason?.code === REASON.checkFailed ? checkBlockResumeStep(run) : null;
+    return step && step !== run?.currentStep
+      ? this.pipeline.startDetached(key, options, step)
+      : this.pipeline.startDetached(key, options);
   }
 
   /** New run always opens the next free session. Resume keeps the current one. */

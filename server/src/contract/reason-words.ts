@@ -39,6 +39,7 @@ export const REASON = {
   serverPause: 'SERVER_PAUSE',
   asksPlanner: 'ASKS_PLANNER',
   sameInput: 'SAME_INPUT',
+  waitsForMain: 'WAITS_FOR_MAIN',
 } as const;
 
 /** The reason code of a run that waits for answers. */
@@ -126,6 +127,7 @@ export const REASON_WORDS: Readonly<Record<ReasonCode, ReasonKind>> = {
   [REASON.serverPause]: 'place',
   [REASON.asksPlanner]: 'planner',
   [REASON.sameInput]: 'planner',
+  [REASON.waitsForMain]: 'place',
   [NEEDS_ANSWERS]: 'state',
 };
 

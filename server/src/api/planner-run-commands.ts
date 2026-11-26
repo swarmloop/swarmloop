@@ -5,6 +5,8 @@ import { CommandService } from '../pipeline/command.service';
 import { PlannerRunPort, type PlannerRunCommand } from '../pipeline/backlog/planner/planner-run-port';
 import { PERSON_RESUME } from '../pipeline/resume-sender';
 import { QuestionPassOn } from '../pipeline/question-pass-on';
+import { RedMainWait } from '../pipeline/backlog/red-main-wait';
+import { RunRepository } from '../history/run.repository';
 import { PlanChatService } from './plan-chat.service';
 
 /**
@@ -24,6 +26,8 @@ export class PlannerRunCommands implements OnModuleInit {
     private readonly commands: CommandService,
     private readonly chat: PlanChatService,
     private readonly passOn: QuestionPassOn,
+    private readonly redMain: RedMainWait,
+    private readonly runs: RunRepository,
   ) {}
 
   onModuleInit(): void {
@@ -34,7 +38,7 @@ export class PlannerRunCommands implements OnModuleInit {
     const options = { idempotencyKey };
     switch (command.type) {
       case 'answer':
-        await this.commands.submit('answer', command.run, answerPayload(command.answers), options);
+        await this.commands.submit('answer', command.run, await this.answerWith(command), options);
         return;
       case 'resume':
         await this.commands.submit('resume', command.run, { ...PERSON_RESUME }, { ...options, actor: owner });
@@ -63,5 +67,13 @@ export class PlannerRunCommands implements OnModuleInit {
         await this.passOn.passOrRefuse(command.run, command.question, command.line);
         return;
     }
+  }
+
+  /** The answer the person's route would send, with the repository whose red main the run waits for, when it has one. */
+  private async answerWith(command: Extract<PlannerRunCommand, { type: 'answer' }>) {
+    const payload = answerPayload(command.answers);
+    const run = await this.runs.findRun(command.run);
+    const waitsForMain = run ? await this.redMain.repositoryFor(run) : null;
+    return waitsForMain === null ? payload : { ...payload, waitsForMain };
   }
 }

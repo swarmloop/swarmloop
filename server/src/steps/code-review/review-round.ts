@@ -64,6 +64,8 @@ interface RoundInput {
   starter: string;
   subtasks: Subtask[] | null;
   keep: KeepLine[] | null;
+  /** The files the change touches outside the task's own files or its plan; the prompt lists them. */
+  outside: string[];
   /** True while an epic's resolution of its own rebase conflict is being judged. */
   round?: boolean;
   auto: boolean | undefined;
@@ -194,6 +196,8 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
   const names = input.mounts.map((mount) => basename(mount.hostPath));
   const notesSection = input.notes?.trim() ? [{ heading: 'Implementation', body: input.notes }] : [];
   const listSection = input.list ? [requirementsSection(input.list)] : [];
+  const outsideSection =
+    input.outside.length > 0 ? [{ heading: 'Files outside the plan', body: input.outside.join('\n') }] : [];
   const planSection = input.coveredPlan.trim() ? [{ heading: 'Plan', body: input.coveredPlan }] : [];
   const starterSection = input.starter.trim() ? [{ heading: 'Parent run', body: input.starter.trim() }] : [];
   const listed = withSubtasks(
@@ -207,6 +211,7 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
               ...listSection,
               ...planSection,
               ...(changes ? [changes] : []),
+              ...outsideSection,
               ...starterSection,
             ],
             input.returned,
