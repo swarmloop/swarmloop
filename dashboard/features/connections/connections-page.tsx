@@ -17,6 +17,7 @@ import {
   installMore,
   replaceApp,
 } from '../../lib/endpoints';
+import { usePhone } from '../../lib/use-phone';
 import { Placeholders } from '../overview';
 import { ConfirmDialog } from '../shell';
 import { ConnectionCard } from './connection-card';
@@ -36,6 +37,7 @@ function disconnected(people: string[]): string {
 
 /** Per host: the app, the connected account, the repositories, the health of the token, and Reconnect and Disconnect. */
 export function ConnectionsPage(): ReactElement {
+  const phone = usePhone();
   const [connections, setConnections] = useState<ConnectionView[] | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [tokens, setTokens] = useState<TokenSignInView[]>([]);
@@ -106,7 +108,10 @@ export function ConnectionsPage(): ReactElement {
         {cards.map((card) => {
           const connection = (connections ?? []).find((item) => item.host === card.id);
           return (
-            <Grid key={card.id} size={connection?.installs && connection.app === null ? 12 : { xs: 12, md: 6 }}>
+            <Grid
+              key={card.id}
+              size={phone || (connection?.installs && connection.app === null) ? 12 : { xs: 12, md: 6 }}
+            >
               {connection?.installs && connection.app === null ? (
                 <FirstRun />
               ) : connection ? (
