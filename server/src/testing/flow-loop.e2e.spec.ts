@@ -22,6 +22,7 @@ import { SubtaskPort } from '../pipeline/subtask-port';
 import { readVisitInput } from '../steps/shared/visit-input';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { ARTIFACTS } from '../steps/contract/artifacts';
+import { handoffSection } from '../steps/shared/handoff';
 import { renderNeeds } from '../steps/shared/needs';
 import type { Step, StepSnapshot } from '../steps/step';
 import type { StepOptions } from '../core/pipeline-result';
@@ -173,7 +174,7 @@ describe('a subtask that keeps writing the same need on a merged sibling', () =>
   it('starts the task once on each input, asks the epic planner once, and ends with the question at the person', async () => {
     await seed();
     fakeAgent();
-    const askAbout = jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue(DECISION);
+    jest.spyOn(flow.app.app.get(SubtaskPort), 'askAbout').mockResolvedValue(DECISION);
 
     await flow.app.app.get(CommandService).submit('resume', TASK, { ...PERSON_RESUME });
     await settle();
@@ -182,7 +183,9 @@ describe('a subtask that keeps writing the same need on a merged sibling', () =>
     await flow.app.pipeline.step('implement', KEY);
     await settle();
 
-    expect(askAbout).toHaveBeenCalledTimes(1);
+    // The stub's decision reaches the task through its handoff, where its next start reads it.
+    const handoff = await documents().latestBody(TASK, ARTIFACTS.handoff.kind);
+    expect(handoffSection(handoff, 'implement')).toBe(DECISION);
     const rows = await starts();
     expect(rows.map((row) => [row.startedBy, row.level])).toEqual([
       ['person', null],
