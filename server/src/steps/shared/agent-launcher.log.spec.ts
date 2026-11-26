@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import Joi from 'joi';
@@ -85,8 +85,8 @@ async function harness(script: Behavior[], failover?: unknown) {
     run: async (input: AgentRunInput) => {
       inputs.push(input);
       const result = await (script.shift() ?? streams([]))(input);
-      if (result.chatId) {
-        // What the runner leaves after a launch: the chat the next launch of the step resumes.
+      if (result.chatId && !input.fork) {
+        // What the runner leaves after a launch that is a visit: the chat the next launch of the step resumes.
         mkdirSync(agentStateDir(root, input.runKey, sessionHome(input.step)), { recursive: true });
         writeFileSync(
           input.sessionFile,
@@ -452,16 +452,140 @@ describe('the log the launcher writes', () => {
     });
   });
 
-  it('sets the ties of the answer on the row that gave it', async () => {
-    const answer = streams([modelRequest('m1')], ended({ responseText: resultAnswer('ok', { items: ['a'] }) }));
-    await withHarness([answer], async ({ launcher, request, rows }) => {
-      await launcher.launch(
-        request({
-          result: definition,
-          call: { ties: async (value) => [{ task: `${(value as { items: string[] }).items[0]}`, general: false }] },
-        }),
-      );
-      expect(JSON.parse((await rows())[0].ties ?? '[]')).toEqual([{ task: 'a', general: false }]);
+  describe('the ties of a call', () => {
+    const general = [{ task: 'first', general: true }];
+    /** The ties of a turn: the general tie before its result, the task its first item names after. */
+    const ties = async (value: unknown) =>
+      value === undefined ? general : [{ task: (value as { items: string[] }).items[0], general: false }];
+    const tiesOf = async (rows: () => Promise<AgentExchangeEntity[]>) =>
+      (await rows()).map((row) => JSON.parse(row.ties ?? '[]') as unknown);
+
+    it('are on the row from its open, before the call has run', async () => {
+      let seen: unknown;
+      const watching: Behavior = async () => {
+        seen = await tiesOf(rows);
+        return ended();
+      };
+      let rows!: () => Promise<AgentExchangeEntity[]>;
+      await withHarness([watching], async (h) => {
+        rows = h.rows;
+        await h.launcher.launch(h.request({ call: { ties } }));
+      });
+      expect(seen).toEqual([general]);
+    });
+
+    it.each([
+      ['dies', () => Promise.reject(new RangeError('the process vanished'))],
+      ['hits a limit', () => ended({ limit: { window: 'five-hour' }, chatId: null, exitCode: 1 })],
+      ['fails', () => ended({ exitCode: 2 })],
+      ['times out', () => ended({ killReason: 'idle' })],
+    ])('stay on the row of a call that %s', async (_name, behavior) => {
+      await withHarness([behavior], async ({ launcher, request, rows }) => {
+        await launcher.launch(request({ call: { ties } })).catch(() => undefined);
+        expect(await tiesOf(rows)).toEqual([general]);
+      });
+    });
+
+    it('are replaced by the tasks a valid result names, on the call and on each follow-up', async () => {
+      const wrong = streams([modelRequest('m1')], ended({ responseText: 'no block' }));
+      const fixed = streams([modelRequest('m2')], ended({ responseText: resultAnswer('ok', { items: ['a'] }) }));
+      await withHarness([wrong, fixed], async ({ launcher, request, rows }) => {
+        await launcher.launch(request({ result: definition, call: { ties } }));
+        expect(await tiesOf(rows)).toEqual([[{ task: 'a', general: false }], [{ task: 'a', general: false }]]);
+      });
+    });
+
+    it('stay general when the result is refused for good', async () => {
+      const wrong = streams([], ended({ responseText: 'no block' }));
+      await withHarness([wrong, wrong, wrong], async ({ launcher, request, rows }) => {
+        await launcher.launch(request({ result: definition, call: { ties } })).catch(() => undefined);
+        expect(new Set((await tiesOf(rows)).map((row) => JSON.stringify(row)))).toEqual(
+          new Set([JSON.stringify(general)]),
+        );
+      });
+    });
+  });
+
+  describe('a keep-warm ping', () => {
+    const DUE = '2026-01-01T00:50:00.000Z';
+    /** A first call in chat-1, then the ping request for it. */
+    async function chatWithPing(h: Harness, over: Partial<AgentLaunchRequest> = {}) {
+      await h.launcher.launch(h.request());
+      const [first] = await h.rows();
+      const ping = h.request({
+        tools: 'none',
+        prompt: 'one word',
+        run: { id: h.run.id, agentCalls: 0, spentUsd: 0, activeAttempt: null },
+        call: { ping: { chatId: 'chat-1', dueAt: DUE, previousId: first.id } },
+        ...over,
+      });
+      return { first, ping };
+    }
+
+    it('is one row of kind ping, keeps the chat id the fork reported another for, and runs on a fork with no tools', async () => {
+      const ping = streams([modelRequest('p1', { usd: 0.02 })], ended({ chatId: 'fork-9', responseText: 'ok' }));
+      await withHarness([streams([modelRequest('m1')]), ping], async (h) => {
+        const { first, ping: request } = await chatWithPing(h);
+        await h.launcher.ping(request);
+        const [, row, ...others] = await h.rows();
+        expect(others).toEqual([]);
+        expect(row).toMatchObject({
+          kind: 'ping',
+          startReason: 'ping',
+          chatId: 'chat-1',
+          previousId: first.id,
+          dueAt: DUE,
+          runKey: 'run-1',
+          step: 'implement',
+          attemptId: null,
+          runtime: 'claude',
+          model: 'opus',
+          effort: 'high',
+          endKind: 'done',
+          ownUsd: 0.02,
+          requestText: 'one word',
+        });
+        expect(h.inputs[1]).toMatchObject({ fork: true, tools: 'none', resumeChatId: 'chat-1', prompt: 'one word' });
+        expect(existsSync(h.inputs[1].outputFile)).toBe(false);
+        expect(h.inputs[1].outputFile).not.toBe(h.inputs[0].outputFile);
+      });
+    });
+
+    it('records no visit start and leaves no spend on the run it was given', async () => {
+      await withHarness([streams([modelRequest('m1')]), streams([modelRequest('p1')])], async (h) => {
+        const { ping } = await chatWithPing(h);
+        await h.launcher.ping(ping);
+        expect(await h.db.app.get(VisitStartRepository).forRun(h.run.id)).toEqual([]);
+        expect(ping.run.spentUsd).toBe(0);
+      });
+    });
+
+    it('is one row for a due time, however often it is asked', async () => {
+      await withHarness([streams([modelRequest('m1')]), streams([]), streams([])], async (h) => {
+        const { ping } = await chatWithPing(h);
+        await h.launcher.ping(ping);
+        await h.launcher.ping(ping);
+        expect((await h.rows()).filter((row) => row.kind === 'ping')).toHaveLength(1);
+        expect(h.inputs).toHaveLength(2);
+      });
+    });
+
+    it.each([
+      ['a limit', () => ended({ limit: { window: 'five-hour', resetsAt: AT }, chatId: null }), 'limit'],
+      ['an outage', () => ended({ outage: { host: 'api.example', detail: 'down' } }), 'outage'],
+      ['an error', () => ended({ exitCode: 2 }), 'failed'],
+      ['a thrown error', () => Promise.reject(new RangeError('gone')), 'failed'],
+    ])('ends its row on %s with the cost it streamed, and does not throw', async (_name, end, endKind) => {
+      const failing: Behavior = (input) => {
+        input.onRequest?.(modelRequest('p1', { usd: 0.03 }));
+        return (end as () => AgentRunResult | Promise<AgentRunResult>)();
+      };
+      await withHarness([streams([modelRequest('m1')]), failing], async (h) => {
+        const { ping } = await chatWithPing(h);
+        await expect(h.launcher.ping(ping)).resolves.toBeUndefined();
+        const row = (await h.rows()).find((found) => found.kind === 'ping');
+        expect(row).toMatchObject({ endKind, chatId: 'chat-1', ownUsd: 0.03 });
+      });
     });
   });
 });

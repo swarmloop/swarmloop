@@ -10,7 +10,6 @@ import { chatStateRemoved } from '../../agent/agent-session';
 import { LoopDetector } from '../../agent/loop-detector';
 import type { AgentProcessRunner, AgentRunInput as RunnerInput, AgentRunResult } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
-import type { StepEventBody } from '../../contract/step-events';
 import { AgentWorkFeed } from '../../contract/readable-log';
 import type { AgentWork } from '../../contract/readable-log';
 import { outputFileFor } from '../../core/attempt-output';
@@ -27,13 +26,13 @@ import { assertNotStopped } from '../../agent/step-stopped';
 import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
 import { withAttachments } from './attachments-section';
 import { withLogReads } from './outside-reads';
-import { promptSections } from './prompt-manifest';
 import { StartWaits } from './start-waits';
 import { LimitFailover } from './limit-failover';
 import { ModelHostUnavailable } from './model-host-unavailable';
 import type { AgentRunInput } from '../../agent/agent-run-input';
 import type { AgentLaunchRequest } from './agent-launch-request';
-import { loopWatch, newChatReason, recordWork } from './launch-work';
+import { pingInput, withThrowawayOutput } from './launch-ping';
+import { loopWatch, recordStart, recordWork } from './launch-work';
 import { answerIsReadable, exchangeResult, resultFollowUpRequest, withAnswerErrors } from './result-exchange';
 import type { LaunchResult } from './result-exchange';
 import { readResult } from '../../agent-result/read-result';
@@ -116,6 +115,26 @@ export class AgentLauncher {
     await this.calls?.refused(request, reason);
   }
 
+  /**
+   * Runs a keep-warm ping: the chat resumed on a fork that is saved nowhere, to read its prompt cache. It takes no agent
+   * place, writes no session file and never starts a second launch. Its row ends on every path with what it streamed,
+   * and keeps the chat's own id. A ping whose due time already has a row does not run.
+   */
+  async ping(request: AgentLaunchRequest): Promise<void> {
+    const ping = request.call?.ping;
+    const call = ping ? await this.calls?.beginPing(request, ping) : null;
+    if (!ping || !call) return;
+    try {
+      const result = await withThrowawayOutput((outputFile) =>
+        this.agent.run(pingInput(request, ping, call, outputFile)),
+      );
+      // The fork reports a chat id of its own; the row keeps the chat it read.
+      await call.finish({ result: { ...result, chatId: null } }, this.runStop.halted(request.key));
+    } catch (error) {
+      await call.finish({ error }, false);
+    }
+  }
+
   /** Ends the rows a dead process left open in the scope, keeping their streamed cost. The caller settles the dead work; nothing runs on boot. */
   async closeLeftOpen(scope: OpenScope): Promise<void> {
     await this.calls?.closeLeftOpen(scope);
@@ -132,11 +151,14 @@ export class AgentLauncher {
     replacesId?: number,
   ): Promise<{ result: LaunchResult; main?: number }> {
     const callIds: number[] = [];
+    /** The launch's own rows, its first call and each follow-up; the helpers' rows are not. */
+    const own: number[] = [];
     let main: number | undefined;
     const run = async (call: AgentLaunchRequest, link: CallLink): Promise<AgentRunResult> => {
       const ran = await this.runOnce(call, link);
       callIds.push(...ran.ids);
       main = ran.ids[0];
+      if (main !== undefined) own.push(main);
       return ran.result;
     };
     const result = await run(request, { replacesId });
@@ -154,8 +176,10 @@ export class AgentLauncher {
       if (exchange.result.outage) {
         throw new ModelHostUnavailable(exchange.result.outage, Object.assign({}, exchange.result, { callIds }));
       }
-      if (main !== undefined && request.call?.ties) {
-        await this.calls?.setTies(main, await request.call.ties(exchange.value));
+      if (request.call?.ties) {
+        // The valid result adds the ties its actions name to the ones written when each row opened.
+        const ties = await request.call.ties(exchange.value);
+        for (const id of own) await this.calls?.setTies(id, ties);
       }
       return { result: { ...exchange.result, resultValue: exchange.value, callIds }, main };
     }
@@ -181,7 +205,7 @@ export class AgentLauncher {
       chatId,
       resumed: chatId !== null,
     };
-    this.recordStart(request, launch, existsSync(sessionFile), removed);
+    recordStart(request, launch, existsSync(sessionFile), removed);
     const call = await this.calls?.begin(request, { chatId, ...link });
     if (call) {
       request.run.spentUsd = call.before.spentUsd;
@@ -287,44 +311,6 @@ export class AgentLauncher {
   private answered(request: AgentLaunchRequest): ((text: string) => boolean) | undefined {
     const definition = request.result;
     return definition && ((text) => readResult(definition, text).ok);
-  }
-
-  /** The events of a launch that starts: its chat, why a new one, the context it gets, and the agent that launches. */
-  private recordStart(
-    request: AgentLaunchRequest,
-    launch: Omit<Extract<StepEventBody, { kind: 'agent.launched' }>, 'kind'>,
-    sessionStored: boolean,
-    removed: boolean,
-  ): void {
-    recordStepEvent({
-      kind: 'session.changed',
-      session: launch.chatId === null ? 'new chat' : 'same chat',
-      runtime: launch.runtime,
-      model: launch.model,
-      reason: launch.chatId !== null ? null : newChatReason(request.resume, sessionStored, removed),
-    });
-    this.recordCap(request);
-    recordStepEvent({
-      kind: 'context.manifest',
-      sections: promptSections(request.prompt),
-      artifacts: request.mounts.map((mount) => mount.containerPath),
-      cut: [],
-    });
-    recordStepEvent({ kind: 'agent.launched', ...launch });
-  }
-
-  /** An effort the runtime could not give is said once per launch: what the model supports and what ran instead. */
-  private recordCap(request: AgentLaunchRequest): void {
-    const wanted = request.effortNote?.startsWith('capped:') ? request.effortNote.slice('capped:'.length) : null;
-    if (wanted && request.effort) {
-      recordStepEvent({
-        kind: 'agent.effort_capped',
-        model: request.model,
-        level: request.effort,
-        wanted,
-        text: `${request.model} supports up to ${request.effort}; ran at ${request.effort} instead of ${wanted}.`,
-      });
-    }
   }
 }
 

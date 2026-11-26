@@ -21,10 +21,10 @@ function addAll(into: string[], values: (string | undefined)[]): void {
   for (const value of values) if (value) into.push(value);
 }
 
-/** What the turn's actions name: a command to a run names its run; any other action names its task. */
-function namesOfActions(result: BacklogTurnResult): Names {
+/** What the turn's actions name: a command to a run names its run; any other action names its task. A turn with no result yet has no actions. */
+function namesOfActions(result: BacklogTurnResult | undefined): Names {
   const names: Names = { tasks: [], runs: [] };
-  for (const action of result.actions) {
+  for (const action of result?.actions ?? []) {
     if (isRunAction(action)) addAll(names.runs, [action.run]);
     else if ('task' in action) addAll(names.tasks, [action.task]);
   }
@@ -58,7 +58,7 @@ export class TurnTies {
 
   /**
    * Reads the turn's events, which are known before the launch, and returns the function that gives the ties once the
-   * result's actions are known. A turn that names none is tied to the first running task of the backlog in its order,
+   * result's actions are known; called with no value, it gives the ties of the events alone. A turn that names none is tied to the first running task of the backlog in its order,
    * else the first waiting one, and that tie is marked general; with neither, it has no tie.
    */
   async of(backlogId: number, turnKey: string): Promise<(value: unknown) => Promise<Tie[]>> {
@@ -66,7 +66,7 @@ export class TurnTies {
     const named = namesOfEvents(events);
     return async (value) => {
       const tasks = await this.backlogs.tasks(backlogId);
-      const fromActions = namesOfActions(value as BacklogTurnResult);
+      const fromActions = namesOfActions(value as BacklogTurnResult | undefined);
       const ties = new Map<string, Tie>();
       const add = (tie: Tie | null): void => {
         const id = tie ? (tie.task ?? tie.run ?? tie.epic) : undefined;

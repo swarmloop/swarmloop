@@ -9,14 +9,18 @@ import { TurnTies } from './turn-ties';
 type TiesOf = (actions?: BacklogTurnAction[]) => Promise<Tie[]>;
 type Harness = Awaited<ReturnType<typeof backlogHarness>>;
 
-async function withTies(body: (h: Harness, backlogId: number, tiesOf: TiesOf) => Promise<void>): Promise<void> {
+async function withTies(
+  body: (h: Harness, backlogId: number, tiesOf: TiesOf, tiesBeforeResult: () => Promise<Tie[]>) => Promise<void>,
+): Promise<void> {
   const h = await backlogHarness();
   try {
     const backlogId = (await h.seedBacklog('one')).id as number;
     const chat = h.db.app.get(BacklogChatRepository);
     const ties = new TurnTies(h.backlogs, chat, h.db.app.get(RunRepository));
     const tiesOf: TiesOf = async (actions = []) => (await ties.of(backlogId, 'turn-a'))({ say: '', actions });
-    await body(h, backlogId, tiesOf);
+    /** The ties a turn row has when it opens: its result is not known yet. */
+    const tiesBeforeResult = async () => (await ties.of(backlogId, 'turn-a'))(undefined);
+    await body(h, backlogId, tiesOf, tiesBeforeResult);
   } finally {
     await h.db.close();
   }
@@ -88,5 +92,24 @@ describe('TurnTies', () => {
       expect(await tiesOf()).toEqual([]);
       await h.seedTask(id, 'next', { status: 'waiting' });
       expect(await tiesOf()).toEqual([{ task: 'next', general: true }]);
+    }));
+
+  it('gives the ties its events name, and no action ties, to a turn that has no result yet', () =>
+    withTies(async (h, id, tiesOf, tiesBeforeResult) => {
+      await h.seedTask(id, 'a', { status: 'waiting' });
+      await h.seedTask(id, 'b', { status: 'waiting' });
+      await takeEvent(h, id, { slug: 'b' });
+      expect(await tiesBeforeResult()).toEqual([{ task: 'b', general: false }]);
+      expect(await tiesOf([{ action: 'deleteTask', task: 'a' }])).toEqual([
+        { task: 'b', general: false },
+        { task: 'a', general: false },
+      ]);
+    }));
+
+  it('gives the general tie to a turn that names none and has no result yet', () =>
+    withTies(async (h, id, _tiesOf, tiesBeforeResult) => {
+      await h.seedTask(id, 'going', { runKey: 'going-1', status: 'running' });
+      await takeEvent(h, id, { repository: 'web' });
+      expect(await tiesBeforeResult()).toEqual([{ task: 'going', run: 'going-1', general: true }]);
     }));
 });

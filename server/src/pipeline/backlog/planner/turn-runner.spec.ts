@@ -188,6 +188,31 @@ describe('BacklogTurnRunner', () => {
       { AGENTS_BACKLOG_PLAN: 'claude:m-claude,codex:m-codex' },
     ));
 
+  it("ties each row of a turn that every agent's usage limit stopped to what its events name, or to the general tie", () =>
+    withTurn(
+      async (h, id) => {
+        await h.seedTask(id, 'a', { status: 'waiting' });
+        await h.seedTask(id, 'going', { runKey: 'going-1', status: 'running' });
+        h.agent.script = ['limit', 'limit'];
+        await h.runner.run('one', 'turn-a');
+        const rows = await h.logOf('turn-a');
+        expect(rows.map((row) => row.endKind)).toEqual(['limit', 'limit']);
+        for (const row of rows) {
+          expect(JSON.parse(row.ties ?? '[]')).toEqual([{ task: 'going', run: 'going-1', general: true }]);
+        }
+
+        await h.openTurn(id, 'turn-b');
+        await h.backlogs.recordEvent(id, 'merged-a', 'task-merged', { slug: 'a' });
+        await h.chat.takeInto(id, 'turn-b');
+        h.agent.script = ['limit', 'limit'];
+        await h.runner.run('one', 'turn-b');
+        for (const row of await h.logOf('turn-b')) {
+          expect(JSON.parse(row.ties ?? '[]')).toEqual([{ task: 'a', general: false }]);
+        }
+      },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude,codex:m-codex' },
+    ));
+
   it('gives the turn the first helper of the runtime that runs it', () =>
     withTurn(
       async (h) => {

@@ -18,7 +18,7 @@ import type { AgentRunResult } from './agent-result';
 import type { KillReason } from './limits';
 import type { RunStop } from './run-stop';
 import { loadPriceTable } from './prices';
-import { recordLaunch } from './agent-launches';
+import { LaunchScope } from './launch-scope';
 import { readOnlyTree } from './agent-args';
 import type { AgentLaunchEnv } from './agent-launch-env';
 import type { AgentLaunchPrep } from './agent-launch-prep';
@@ -91,19 +91,21 @@ export class AgentLaunch {
     let started = this.clock.now();
     let awake = new AwakeTime(this.clock, SAMPLE_MS);
     const hold = new StartHold(input.onStartWait);
+    const scope = new LaunchScope(input, this.live);
+    const { live } = scope;
     const workMounts = readOnlyTree(runtime.name, input.mode)
       ? input.mounts.map((mount) => ({ ...mount, readonly: true }))
       : input.mounts;
     const step = input.liveStep ?? input.step;
     const onPaused = (): void => {
       hold.waits();
-      this.live?.changed(input.runKey);
-      this.live?.log({ key: input.runKey, step, body: `${SERVER_PAUSE_NOTE}\n` });
+      live?.changed(input.runKey);
+      live?.log({ key: input.runKey, step, body: `${SERVER_PAUSE_NOTE}\n` });
     };
     const onWait = (text: string): void => {
       hold.waits();
-      this.live?.changed(input.runKey);
-      this.live?.log({ key: input.runKey, step, body: `${text}\n` });
+      live?.changed(input.runKey);
+      live?.log({ key: input.runKey, step, body: `${text}\n` });
     };
     const process = await AgentProcess.spawn(
       this.sandbox,
@@ -123,13 +125,13 @@ export class AgentLaunch {
         ...(input.project ? { project: input.project } : {}),
         ...tmp,
       },
-      { onPaused, agent: { step, onWait } },
+      scope.held(onPaused, { step, onWait }),
     ).finally(() => hold.spawned());
     if (hold.wasHeld) {
       // The wait for the pause to end or for an agent place is neither the visit's time nor a host suspension.
       started = this.clock.now();
       awake = new AwakeTime(this.clock, SAMPLE_MS);
-      this.live?.changed(input.runKey);
+      live?.changed(input.runKey);
     }
     const baseline =
       priorOutput.length === 0 || priorOutput.endsWith('\n')
@@ -145,10 +147,10 @@ export class AgentLaunch {
       },
       input.onRequest,
     );
-    const log = new AttemptLog(input.outputFile, input.runKey, step, baseline, () => meter.billed(), this.live);
-    const sessionWrites = new SessionWrites(input.sessionFile, runtime.name);
+    const log = new AttemptLog(input.outputFile, input.runKey, step, baseline, () => meter.billed(), live);
+    const sessionWrites = new SessionWrites(scope.sessionFile, runtime.name);
     try {
-      await recordLaunch(input.outputFile, input.runKey, step);
+      await scope.countLaunch(step);
       await log.begin();
       const sessionUsd = (): number => (input.chatSpentUsd ?? 0) + meter.billed().usd;
 
