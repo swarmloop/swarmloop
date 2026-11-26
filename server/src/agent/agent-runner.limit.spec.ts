@@ -82,4 +82,30 @@ describe('AgentProcessRunner provider limit', () => {
     expect(result.limit).toBeUndefined();
     expect(launches).toHaveLength(1);
   });
+
+  it('returns a signal end and launches once, because a stopped container is no attempt to repeat', async () => {
+    const { result, launches } = await start(
+      'signal',
+      [{ chunks: [], code: 143 }],
+      { resumeChatId: null, runtime: 'claude' },
+      { MAX_LAUNCHES: 3 },
+    );
+    expect(result).toMatchObject({ exitCode: 143, signal: 'SIGTERM', killReason: null });
+    expect(launches).toHaveLength(1);
+  });
+
+  it('relaunches a crash by another signal, which is no stop from outside', async () => {
+    const { result, launches } = await start(
+      'crash',
+      [
+        { chunks: [], code: 139 },
+        { chunks: [], code: 139 },
+        { chunks: [], code: 139 },
+      ],
+      { resumeChatId: null, runtime: 'claude' },
+      { MAX_LAUNCHES: 3 },
+    );
+    expect(result.signal).toBe('SIGSEGV');
+    expect(launches.length).toBeGreaterThan(1);
+  });
 });

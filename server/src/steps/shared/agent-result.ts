@@ -34,9 +34,13 @@ export function combineAgentResults(results: AgentRunResult[]): AgentRunResult |
   };
 }
 
-/** What the last launch ended on besides an answer: its usage limit or the outage of its model host. */
-function endOf(last: AgentRunResult | undefined): Pick<AgentRunResult, 'limit' | 'outage'> {
-  return { ...(last?.limit ? { limit: last.limit } : {}), ...(last?.outage ? { outage: last.outage } : {}) };
+/** What the last launch ended on besides an answer: its usage limit, the outage of its model host or the signal that ended it. */
+function endOf(last: AgentRunResult | undefined): Pick<AgentRunResult, 'limit' | 'outage' | 'signal'> {
+  return {
+    ...(last?.limit ? { limit: last.limit } : {}),
+    ...(last?.outage ? { outage: last.outage } : {}),
+    ...(last?.signal ? { signal: last.signal } : {}),
+  };
 }
 
 /** A later output that already contains an earlier launch replaces it. One that does not is appended. */
@@ -71,6 +75,9 @@ export function agentFailure(result: AgentRunResult, step: string, mode: string)
   }
   if (result.killReason) {
     return `process killed: ${result.killReason}`;
+  }
+  if (result.signal) {
+    return `${step} failed: ended by ${result.signal}`;
   }
   if (result.exitCode !== 0) {
     const detail = shortFailure(result.output);
