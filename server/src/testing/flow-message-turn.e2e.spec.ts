@@ -236,7 +236,8 @@ describe('a person writes to the planner of a run no step drives', () => {
 
     await pass();
     expect(planTurns()).toBe(2);
-    await assertInvariants(flow.app);
+    await settle(flow.app);
+    await assertSettled(flow.app);
   });
 
   it('clears the wait when the retried reply fails for another reason, and the next pass does not launch it again', async () => {

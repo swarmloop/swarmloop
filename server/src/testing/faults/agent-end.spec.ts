@@ -61,9 +61,10 @@ describe('an agent that ends before its answer', () => {
   const resume = () => flow.app.app.get(CommandService).submit('resume', KEY, { ...PERSON_RESUME });
   const stored = async () => storedState((await flow.app.app.get(RunRepository).findRun(KEY))!);
 
-  // Whether a signal that no Stop caused settles waiting by itself needs a bounded retry rule for a wait on the
-  // outside (c04). Until it lands this case holds what must hold either way: the step is not lost, the signal is
-  // never worded as another step's failure, a person can go on, and every place reads one state.
+  // c04's table of outside waits (contract/outside-waits.ts) has no rule for a signal-ended agent, so whether such a
+  // signal settles waiting by itself is c04's class and is not patched here. This case holds what must hold either
+  // way: the step is not lost, the signal is never worded as another step's failure, a person can go on, and every
+  // place reads one state.
   it('exit 143 without a Stop ends the visit, names the step, and leaves the run a way on', async () => {
     await start((answered) => Promise.resolve({ ...answered, exitCode: 143, killReason: null, responseText: '' }));
 
