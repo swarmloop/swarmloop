@@ -10,7 +10,7 @@ import { BacklogHeader } from './backlog-header';
 import { BacklogSections } from './panel/backlog-sections';
 import { MilestonePanel } from './panel/milestone-panel';
 import { useBacklog } from './use-backlog';
-import { usePhone } from './use-phone';
+import { usePhone } from '../../lib/use-phone';
 
 type PhoneTab = 'chat' | 'milestone' | 'backlog';
 
