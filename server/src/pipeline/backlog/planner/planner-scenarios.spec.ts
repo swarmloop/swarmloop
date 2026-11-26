@@ -1,3 +1,8 @@
+import { REASON, SKIPPED_NOTE } from '../../../contract/run-state';
+import { DocumentRepository } from '../../../history/document.repository';
+import type { RunEntity } from '../../../history/entities';
+import { storedState } from '../../../history/run-state';
+import { OPEN_ITEM_KINDS, openItems } from '../../../steps/shared/open-items';
 import { BacklogQueries } from '../backlog-queries';
 import { turnResult, withPlanner } from './planner-scenarios.spec-helpers';
 
@@ -336,6 +341,38 @@ describe('planner scenarios: scripted turn results', () => {
       expect(await harness.lines(backlogId)).toEqual([
         'Added.',
         'I did not move nowhere to milestone M1: no task nowhere',
+      ]);
+    }));
+  it("skipBacklogTask ends the started task's run as skipped and closes its question", () =>
+    withPlanner(async (harness) => {
+      const { backlogId } = await harness.seed();
+      await harness.task(backlogId, null, 'going', { runKey: 'going-1', status: 'running' });
+      await harness.run('going-1', { status: 'waiting' });
+      await harness.runs.change('going-1', (row) => {
+        row.currentStep = 'research';
+      });
+      const documents = harness.app.get(DocumentRepository);
+      const waiting = (await harness.runs.findRun('going-1')) as RunEntity;
+      await documents.putDocument(waiting, 'questions', '- which one?\n');
+
+      await harness.turns.apply(
+        'alpha',
+        'turn-1',
+        turnResult('Skipped.', { action: 'skipBacklogTask', task: 'going' }),
+      );
+
+      expect((await harness.tasks(backlogId))[0].status).toBe('skipped');
+      expect(storedState((await harness.runs.findRun('going-1')) as RunEntity).state).not.toBe('skipped');
+      await harness.taskRun.endSkipped();
+
+      const ended = (await harness.runs.findRun('going-1')) as RunEntity;
+      expect(storedState(ended)).toMatchObject({
+        state: 'skipped',
+        reason: { code: REASON.skipped, message: SKIPPED_NOTE },
+      });
+      const stored = await documents.latestDocuments([ended.id], [...OPEN_ITEM_KINDS]);
+      expect(openItems(ended, stored, []).map((item) => [item.id, item.answer])).toEqual([
+        ['which one?', SKIPPED_NOTE],
       ]);
     }));
 });

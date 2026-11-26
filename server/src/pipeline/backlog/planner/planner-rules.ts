@@ -65,7 +65,6 @@ export class PlannerRules {
       case 'changeTask':
         return this.changed(backlog, tasks, action);
       case 'deleteTask':
-      case 'skipBacklogTask':
       case 'moveItem':
       case 'dropItem':
         return this.verdict(action, this.startedRefusal(tasks, action.task));
@@ -74,6 +73,7 @@ export class PlannerRules {
       case 'addRequirements':
       case 'recordDecision':
       case 'addItem':
+      case 'skipBacklogTask':
       case 'pause':
       case 'unpause':
       case 'closeRequirement':
@@ -126,11 +126,11 @@ export class PlannerRules {
       : `${outside} is not a repository of this backlog: ask the person in the chat to add it to the backlog`;
   }
 
-  /** A task that has started takes no change from the planner: its own planner takes the message, or a new task goes in. */
+  /** A task that has started takes no change, delete, move or drop from the planner (its Skip is the person's Skip): its own planner takes the message, or a new task goes in. */
   private startedRefusal(tasks: BacklogTaskRecord[], slug: string): string | null {
     const task = tasks.find((other) => other.slug === slug);
     return task?.runKey
-      ? `${slug} has started: write to its run with planChat, or add a new task; skipTask or stop act on its run`
+      ? `${slug} has started: skipBacklogTask skips it, stop stops its run, and planChat to its run or a new task changes it`
       : null;
   }
 

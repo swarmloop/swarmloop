@@ -70,8 +70,11 @@ export class PlanChatStore {
     return entries.find((entry) => entry.kind === 'answer' && entry.from === step && entry.state === 'pending') ?? null;
   }
 
-  /** Marks the entries with these keys as taken. A taken or unknown key is left alone, and nothing is written for none. */
-  markTaken(key: string, entryKeys: readonly string[]): Promise<void> {
+  /**
+   * Marks the entries with these keys as taken, each with `closed` when a skip took it. A taken or unknown key is
+   * left alone, and nothing is written for none.
+   */
+  markTaken(key: string, entryKeys: readonly string[], closed?: string): Promise<void> {
     return this.change(key, (log) =>
       log.entries.some((entry) => entry.state === 'pending' && entryKeys.includes(entry.key))
         ? {
@@ -79,7 +82,7 @@ export class PlanChatStore {
             entries: log.entries.map((entry) => {
               if (entry.state !== 'pending' || !entryKeys.includes(entry.key)) return entry;
               const { wait: _dropped, ...taken } = entry;
-              return { ...taken, state: 'taken' };
+              return { ...taken, state: 'taken', ...(closed === undefined ? {} : { closed }) };
             }),
           }
         : log,

@@ -6,6 +6,7 @@ import type { PlanChatStore } from '../history/plan-chat.store';
 import type { RunRepository } from '../history/run.repository';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import { asksForStarter } from '../steps/shared/starter-asks';
+import { closeSkippedQuestions } from './skipped-questions';
 import { PlannerTurns, type PlannerTurn } from './planner-turns';
 
 const turn = (id: string, at: string): PlannerTurn => ({ id, at, text: `text of ${id}` });
@@ -212,6 +213,7 @@ function asked(
   const prompts: string[] = [];
   const documents = {
     latestBody: (_key: string, kind: string) => Promise.resolve(stored[kind] ?? null),
+    latestDocuments: () => Promise.resolve([]),
     putDocument: (_run: unknown, kind: string, body: string) => {
       stored[kind] = body;
       return Promise.resolve();
@@ -251,7 +253,7 @@ function asked(
   };
   const clock = { now: () => 0, iso: () => '2026-01-01T00:01:00.000Z' };
   const turns = new PlannerTurns(chat, documents, conversation, runs as unknown as RunRepository, clock);
-  return { turns, held, prompts, stored, released };
+  return { turns, held, prompts, stored, released, chat, documents };
 }
 
 describe('PlannerTurns answering a step question', () => {
@@ -491,6 +493,16 @@ describe('PlannerTurns raising an escalation the planner wrote', () => {
 
     expect(await turns.raise({ key: 'run-1', parentRunId: 7 } as RunEntity)).toBe(false);
 
+    expect(stored.questions).toBeUndefined();
+  });
+
+  it('raises nothing for an escalation a skip closed', async () => {
+    const { turns, stored, chat, documents } = asked([written()], null, {}, { parentRunId: null });
+    const run = { id: 1, key: 'run-1', parentRunId: null } as RunEntity;
+
+    await closeSkippedQuestions({ documents, chat }, run, 'this task was skipped');
+
+    expect(await turns.raise(run)).toBe(false);
     expect(stored.questions).toBeUndefined();
   });
 

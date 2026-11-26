@@ -13,6 +13,9 @@ import { BacklogActionSupport } from '../backlog-action-support';
 import { BacklogActions } from '../backlog-actions';
 import { BacklogQueries } from '../backlog-queries';
 import { BacklogTaskActions } from '../backlog-task-actions';
+import { TaskRunSkip } from '../task-run-skip';
+import { DocumentRepository } from '../../../history/document.repository';
+import { PlanChatStore } from '../../../history/plan-chat.store';
 import { holdServices } from '../../../steps/shared/question-holds.spec-helpers';
 import { LeftQuestions } from './left-questions';
 import { PlannerTurnActions } from './planner-actions';
@@ -47,14 +50,15 @@ interface PlannerParts {
 export function plannerTurnActions({ app, backlogs, chat, runs, clock, config, commands, port }: PlannerParts) {
   const queries = new BacklogQueries(backlogs, runs);
   const support = new BacklogActionSupport(backlogs, clock);
-  const taskActions = new BacklogTaskActions(backlogs, queries, runs, commands, clock, support);
+  const taskRun = new TaskRunSkip(backlogs, runs, app.get(DocumentRepository), app.get(PlanChatStore), commands);
+  const taskActions = new BacklogTaskActions(backlogs, queries, taskRun, clock, support);
   const actions = new BacklogActions(backlogs, queries, clock, config, support, taskActions);
   const rules = new PlannerRules(backlogs, runs);
   const calls = new PlannerBacklogCalls(actions, support, backlogs);
   const { holds, passOn } = holdServices(app, clock);
   const left = new LeftQuestions(chat, holds, passOn, runs, backlogs, clock);
   const turns = new PlannerTurnActions(backlogs, chat, rules, calls, port, clock, left);
-  return { rules, calls, turns };
+  return { rules, calls, turns, taskRun };
 }
 
 /** The planner's apply path over a real database and a fake port that records what it is asked to send. */
@@ -74,7 +78,7 @@ export async function plannerHarness() {
     }
     sent.push({ command, owner, key });
   });
-  const { rules, calls, turns } = plannerTurnActions({
+  const { rules, calls, turns, taskRun } = plannerTurnActions({
     app: db.app,
     backlogs: db.backlogs,
     chat: db.chat,
@@ -91,6 +95,7 @@ export async function plannerHarness() {
     rules,
     calls,
     turns,
+    taskRun,
     sent,
     runs,
     /** The next command the port is asked to send fails with this error. */

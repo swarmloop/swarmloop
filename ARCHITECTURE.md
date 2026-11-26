@@ -58,7 +58,7 @@ A run is in exactly one of five states:
 | **working** | A step runs. |
 | **waiting** | It waits on one named thing, with the time of its next try when there is one. The thing is one of: a child run, a planner's answer, a person, a merge, an outside service (model provider, code host, CI, docker, disk) or a free place. |
 | **stopped** | A person stopped it. Only a person starts it again. |
-| **done** | It is merged, or it was closed or skipped, and it says which. |
+| **done** | It is merged, or it was closed or skipped, and it says which. A skip ends a started run as skipped through one path and closes each of its open questions, a planner's escalation among them, with the skip as the reason, so no one is asked it again. |
 | **failed** | A step could not go on, and no planner could decide. It says which step failed and why. |
 
 What a person may do in each state comes from the server, never from the dashboard.
@@ -376,12 +376,15 @@ They join in one path after M1 (one-question-path).
 - Stop and Resume;
 - confirmed dangerous actions: Replay of a step, Rebase, Skip, Remove.
 
-Each one is a command with an idempotency key that names its event (rule 11) and an expected revision. The server says which actions each state allows. A dangerous action asks through one confirm dialog. A planner sends the same commands.
+A Skip ends the task's started run as skipped and closes each of its open questions, a planner's escalation among them, with the skip as the reason; no planner or person is asked them afterwards.
+
+Each one is a command with an idempotency key that names its event (rule 11) and an expected revision. The server says which actions each state allows. A dangerous action asks through one confirm dialog. A planner sends the same commands; the backlog planner's skip of a started task (`skipBacklogTask`) is the person's Skip.
 
 **Today.**
 - The backlog planner sends Resume, Replay of a step with its instruction, Rebase, an answer, Stop, Skip and a message on every run of its backlog, an epic's parts included, through `PlannerRunCommands.send`, and reads a run's failed step, check output and failed CI jobs (`pipeline/backlog/planner/run-facts.ts`, cut in `event-facts.ts`).
 - There are 11 command types: `start`, `resume`, `replay`, `rebase`, `answer`, `plan-chat`, `stop`, `step`, `remove`, `skip` and `projects`.
 - The resume rule in `scripts/structure-rules.json` fails a resume or a detached start outside the start gate, the API, the CLI, `pipeline.service.ts` and `run-lifecycle.ts`, also when the command type is passed in a variable (`commands.submit(type, …)`). `planner-own-turn.ts` is on its allow list: it sends through `CommandService` and `StartGate` as a person's start (`PERSON_RESUME`).
+- A skip ends a run only through `skipRun` (`pipeline/skip-run.ts`), which closes its questions through `closeSkippedQuestions` (`pipeline/skipped-questions.ts`): the run page lists each open question answered with the skip's reason, and the pending questions and escalations of its plan chat are taken with it. It is reached from a backlog task's skip and the backlog tick, which ends the run of a task saved skipped before (`pipeline/backlog/task-run-skip.ts`), and from a part's Skip and the epic's pass (`pipeline/subtask-end.ts`). The backlog planner's `skipBacklogTask` on a started task saves the task skipped inside its turn and leaves the run to the backlog tick, because the stop command cannot join the turn's transaction.
 - `step` stays as the type through which the local CLI's `swarmloop step` records its run. A reviewer's `Run again` and its route are gone.
 - A run's planner answers a message in a turn of its own when no step drives the run (`pipeline/planner-own-turn.ts`). It sends Resume, which leaves the message for the resumed run, or Replay of a step with its instruction.
 

@@ -128,7 +128,7 @@ export class SubtaskPort extends SubtaskOps {
       (run) => this.mergeRequests(run),
       this.logger,
     );
-    this.end = new SubtaskEnd(runs, this, this.logger, retention);
+    this.end = new SubtaskEnd(runs, documents, planning.chat, this, this.logger, retention);
   }
 
   register(starter: SubtaskStarter): void {

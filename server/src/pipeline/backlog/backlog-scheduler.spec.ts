@@ -1,4 +1,9 @@
 import { storeRun } from '../../testing/store-run.spec-helpers';
+import { SKIPPED_NOTE } from '../../contract/run-state';
+import { DocumentRepository } from '../../history/document.repository';
+import type { RunEntity } from '../../history/entities';
+import { storedState } from '../../history/run-state';
+import { OPEN_ITEM_KINDS, openItems } from '../../steps/shared/open-items';
 import { BacklogChatRepository } from '../../history/backlog-chat.repository';
 import { backlogHarness } from './backlog.spec-helpers';
 
@@ -23,6 +28,29 @@ async function activeBacklog(harness: Harness, name = 'one', owner = 'ada') {
 }
 
 describe('BacklogScheduler', () => {
+  it('a tick ends as skipped the waiting run of a task saved skipped before, and closes its question', () =>
+    withHarness(async (h) => {
+      const { id, milestoneId } = await activeBacklog(h);
+      await h.seedTask(id, 'old', { milestoneId, status: 'skipped', runKey: 'old-1' });
+      const run = await storeRun(h.runs, h.runs.newWaitingRun('old-1', null, 'ada'));
+      await h.runs.change('old-1', (row) => {
+        row.currentStep = 'research';
+      });
+      const documents = h.db.app.get(DocumentRepository);
+      await documents.putDocument(run, 'questions', '- which one?\n');
+
+      await h.tick();
+
+      const ended = (await h.runs.findRun('old-1')) as RunEntity;
+      expect(storedState(ended).state).toBe('skipped');
+      const stored = await documents.latestDocuments([ended.id], [...OPEN_ITEM_KINDS]);
+      expect(openItems(ended, stored, []).map((item) => item.answer)).toEqual([SKIPPED_NOTE]);
+      expect(h.stops).toEqual(['stop old-1']);
+
+      await h.tick();
+      expect(h.stops).toEqual(['stop old-1']);
+    }));
+
   it('starts the ready tasks in plan order and holds a task until its dependency is merged', () =>
     withHarness(async (h) => {
       const { id, milestoneId } = await activeBacklog(h);

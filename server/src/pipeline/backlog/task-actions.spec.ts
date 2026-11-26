@@ -1,5 +1,9 @@
 import { storeRun } from '../../testing/store-run.spec-helpers';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { REASON, SKIPPED_NOTE } from '../../contract/run-state';
+import type { RunEntity } from '../../history/entities';
+import { storedState, writeRunState } from '../../history/run-state';
+import { OPEN_ITEM_KINDS, openItems } from '../../steps/shared/open-items';
 import { actionsHarness, backlogHarness } from './backlog.spec-helpers';
 
 type Harness = Awaited<ReturnType<typeof actionsHarness>>;
@@ -156,6 +160,41 @@ describe('task actions', () => {
       await harness.actions.skipTask('ada', 'shop', 'idle');
       expect(harness.stops).toEqual([`stop ${key}`]);
       await expect(harness.actions.skipTask('ada', 'shop', 'idle')).rejects.toThrow(ConflictException);
+    }));
+
+  it('ends the run of a started task as skipped and closes its open question with the skip as the reason', () =>
+    withActions(async (harness) => {
+      const key = await started(harness, 'live');
+      const run = await storeRun(harness.runs, harness.runs.newWaitingRun(key, null, 'ada'));
+      await harness.runs.change(key, (row) => {
+        row.currentStep = 'research';
+      });
+      const { documents } = harness;
+      await documents.putDocument(run, 'questions', '- which one?\n');
+
+      await harness.actions.skipTask('ada', 'shop', 'live');
+
+      const ended = (await harness.runs.findRun(key)) as RunEntity;
+      expect(storedState(ended)).toMatchObject({
+        state: 'skipped',
+        reason: { code: REASON.skipped, message: SKIPPED_NOTE },
+      });
+      const stored = await documents.latestDocuments([ended.id], [...OPEN_ITEM_KINDS]);
+      expect(openItems(ended, stored, []).map((item) => [item.id, item.answer])).toEqual([
+        ['which one?', SKIPPED_NOTE],
+      ]);
+    }));
+
+  it('leaves the run of a skipped task that has ended as it is', () =>
+    withActions(async (harness) => {
+      const key = await started(harness, 'live');
+      await storeRun(harness.runs, harness.runs.newWaitingRun(key, null, 'ada'));
+      await harness.runs.change(key, (row) => writeRunState(row, { status: 'done' }));
+
+      await harness.actions.skipTask('ada', 'shop', 'live');
+
+      expect(storedState((await harness.runs.findRun(key)) as RunEntity).state).toBe('done');
+      expect(harness.stops).toEqual([]);
     }));
 
   it('sets merge_ok on a started task that waits for the OK, once', () =>

@@ -41,11 +41,11 @@ describe('PlannerRules', () => {
       for (const action of [
         { action: 'changeTask', task: 'going', description: 'new' },
         { action: 'deleteTask', task: 'going' },
-        { action: 'skipBacklogTask', task: 'going' },
         { action: 'moveItem', task: 'going', milestone: 1 },
       ] as BacklogTurnAction[]) {
-        expect(await refusal(harness, action)).toContain('has started: write to its run with planChat');
+        expect(await refusal(harness, action)).toContain('has started: skipBacklogTask skips it');
       }
+      expect(await refusal(harness, { action: 'skipBacklogTask', task: 'going' })).toBeNull();
       expect(await refusal(harness, { action: 'changeTask', task: 'later', description: 'new' })).toBeNull();
     }));
 
