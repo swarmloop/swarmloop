@@ -273,6 +273,25 @@ describe('AgentCallRepository', () => {
       expect(await log.lastRowOfChat('chat-1')).toMatchObject({ id: again });
     }));
 
+  it('keeps the prompt size of the last request on the row', () =>
+    withLog(async (log) => {
+      const id = await log.open(start());
+      expect((await log.lastRowOfChat('chat-1'))?.lastPromptTokens).toBeNull();
+      await log.addRequest(id, request({ input: 10, cacheRead: 100, cacheWrite: 20 }));
+      await log.addRequest(id, request({ input: 1, cacheRead: 300, cacheWrite: 4 }));
+      expect((await log.lastRowOfChat('chat-1'))?.lastPromptTokens).toBe(305);
+    }));
+
+  it('splits the tokens a turn read from the tokens it wrote', () =>
+    withLog(async (log) => {
+      const first = await log.open(start({ runKey: undefined, turnKey: 'turn-1', chatId: 'c-a' }));
+      await log.addRequest(first, request({ input: 10, cacheRead: 100, cacheWrite: 20, output: 5 }));
+      const second = await log.open(start({ runKey: undefined, turnKey: 'turn-1', chatId: 'c-b' }));
+      await log.addRequest(second, request({ input: 1, cacheRead: 2, cacheWrite: 3, output: 4 }));
+      expect(await log.turnTokens('turn-1')).toEqual({ tokensIn: 136, tokensOut: 9 });
+      expect(await log.turnTokens('turn-none')).toEqual({ tokensIn: 0, tokensOut: 0 });
+    }));
+
   it('reads the rows of an attempt that no visit holds yet', () =>
     withLog(async (log) => {
       const linked = await log.open(start({ attemptId: 'a1', chatId: 'c-linked' }));

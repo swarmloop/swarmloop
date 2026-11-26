@@ -69,7 +69,7 @@ describe('env schema', () => {
                 .filter(Boolean),
             ];
           if (value === 'true' || value === 'false') return [key, value === 'true'];
-          return [key, /^\d+$/.test(value) ? Number(value) : value];
+          return [key, /^\d+(\.\d+)?$/.test(value) ? Number(value) : value];
         }),
     );
     expect(config.env).toEqual(expected);
@@ -80,6 +80,13 @@ describe('env schema', () => {
     expect(optionalLimit(undefined)).toBeNull();
     expect(optionalLimit(0)).toBe(0);
     expect(optionalLimit('25')).toBe(25);
+  });
+
+  it('ships the backlog planner turn limit and the chat context share, and refuses a share above 1', async () => {
+    const { env } = await compileWith(complete);
+    expect(env).toMatchObject({ BACKLOG_PLAN_TIMEOUT_MS: 3_600_000, BACKLOG_CHAT_CONTEXT_SHARE: 0.5 });
+    const { error } = validateSettings({ ...complete, BACKLOG_CHAT_CONTEXT_SHARE: 1.5 }, { convert: true });
+    expect(error?.message).toMatch(/BACKLOG_CHAT_CONTEXT_SHARE/);
   });
 
   it('names a missing variable', () => {

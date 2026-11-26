@@ -118,8 +118,8 @@ describe('the backlog tier of the settings', () => {
     try {
       const { levels } = (await own.service.view('alice')).defaults;
       expect(levels.main).toEqual({ plan: 'high', implement: 'high', review: 'high' });
-      expect(levels.backlog).toEqual({ plan: 'xhigh' });
-      expect((await empty.service.view('alice')).defaults.levels.backlog).toEqual({ plan: 'xhigh' });
+      expect(levels.backlog).toEqual({ plan: 'high' });
+      expect((await empty.service.view('alice')).defaults.levels.backlog).toEqual({ plan: 'high' });
     } finally {
       await own.app.close();
       await empty.app.close();
