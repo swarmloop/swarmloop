@@ -162,10 +162,10 @@ describe('a reviewer or the report starts only through the door', () => {
 
     const accept = jest.spyOn(flow.app.app.get(CommandService), 'accept').mockResolvedValue({} as never);
     const resumes = flow.app.app.get(Reconciler);
-    await resumes.resumeHostUnavailable();
+    await resumes.resumeOutsideWaits();
     expect(accept).not.toHaveBeenCalled();
     flow.app.clock.advance(HOST_RETRY_MS);
-    await resumes.resumeHostUnavailable();
+    await resumes.resumeOutsideWaits();
     expect(accept).toHaveBeenCalledWith('resume', KEY, { by: 'machine', level: null }, expect.anything());
 
     const done = await flow.app.pipeline.step('code-review', KEY, { auto: true, startBy: 'machine' });

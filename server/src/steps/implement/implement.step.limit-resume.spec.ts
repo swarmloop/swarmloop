@@ -84,12 +84,12 @@ describe('implement step and a person saying a usage limit is over', () => {
     const app = await world('second', 'codex:m-codex', agent);
     try {
       await app.get(RuntimeCooldownRepository).set(CODEX, Date.now() + 3 * HOUR, true);
-      await app.get(Reconciler).resumeLimited();
+      await app.get(Reconciler).resumeOutsideWaits();
       expect(await agentCallsOf(app)).toEqual([0, 0]);
 
       await app.get(PipelineService).runThrough(FIRST);
       agent.mockClear();
-      await app.get(Reconciler).resumeLimited();
+      await app.get(Reconciler).resumeOutsideWaits();
 
       expect(runtimesOf(agent)[0]).toBe('codex');
       expect((await app.get(RunRepository).findRun(SECOND))!.status).not.toBe('waiting');
@@ -108,7 +108,7 @@ describe('implement step and a person saying a usage limit is over', () => {
 
       await app.get(PipelineService).runThrough(FIRST);
       const before = await agentCallsOf(app);
-      await app.get(Reconciler).resumeLimited();
+      await app.get(Reconciler).resumeOutsideWaits();
 
       expect((await cooldowns.earliest([CODEX])).until).toBe(Date.parse(resetsAt));
       expect(await agentCallsOf(app)).toEqual(before);

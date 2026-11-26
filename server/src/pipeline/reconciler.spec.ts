@@ -144,11 +144,11 @@ describe('reconciler waits and automatic tries', () => {
       const retryAt = new Date(world.clock.now() + 300_000).toISOString();
       await park(world, 'waiting', ERROR_CODES.HOST_UNAVAILABLE, { retryAt });
 
-      await world.app.get(Reconciler).resumeHostUnavailable();
+      await world.app.get(Reconciler).resumeOutsideWaits();
       expect(accepted).toEqual([]);
 
       world.clock.advance(300_000);
-      await world.app.get(Reconciler).resumeHostUnavailable();
+      await world.app.get(Reconciler).resumeOutsideWaits();
       expect(accepted).toEqual([['resume', KEY, MACHINE, { idempotencyKey: `host-none-${retryAt}` }]]);
     });
 
@@ -157,7 +157,7 @@ describe('reconciler waits and automatic tries', () => {
       await park(world, 'blocked', 'STOPPED');
       world.clock.advance(600_000);
 
-      await world.app.get(Reconciler).resumeHostUnavailable();
+      await world.app.get(Reconciler).resumeOutsideWaits();
 
       expect(accepted).toEqual([]);
     });
@@ -172,8 +172,8 @@ describe('reconciler waits and automatic tries', () => {
 
         await expect(world.app.get(PipelineService).stop(KEY)).resolves.toMatchObject({ exitCode: 0 });
         world.clock.advance(600_000);
-        await world.app.get(Reconciler).resumeHostUnavailable();
-        await world.app.get(Reconciler).resumeDocker();
+        await world.app.get(Reconciler).resumeOutsideWaits();
+        await world.app.get(Reconciler).resumeOutsideWaits();
 
         expect(accepted).toEqual([]);
         expect(await reasonOf(world)).toMatchObject({ code: 'STOPPED' });
@@ -223,7 +223,7 @@ describe('reconciler waits and automatic tries', () => {
       const probed = probes.length;
 
       world.clock.advance(60_000);
-      await world.app.get(Reconciler).resumeDocker();
+      await world.app.get(Reconciler).resumeOutsideWaits();
 
       expect(probes).toHaveLength(probed + 1);
       expect(Date.parse((await reasonOf(world))!.retryAt!)).toBeGreaterThan(Date.parse(first));
@@ -238,7 +238,7 @@ describe('reconciler waits and automatic tries', () => {
       await reconcileThroughBackoff(world, run);
       attemptRunning.mockResolvedValue(false);
 
-      await world.app.get(Reconciler).resumeDocker();
+      await world.app.get(Reconciler).resumeOutsideWaits();
 
       const stored = (await world.app.get(RunRepository).findRun(KEY))!;
       expect(stored.status).toBe('waiting');
@@ -253,7 +253,7 @@ describe('reconciler waits and automatic tries', () => {
       await reconcileThroughBackoff(world, run);
       attemptRunning.mockResolvedValue(true);
 
-      await world.app.get(Reconciler).resumeDocker();
+      await world.app.get(Reconciler).resumeOutsideWaits();
 
       expect(await world.app.get(RunRepository).findRun(KEY)).toMatchObject({ status: 'running', state: 'recovering' });
     });
@@ -263,12 +263,12 @@ describe('reconciler waits and automatic tries', () => {
       const world = await boot({ dockerAnswers });
       await park(world, 'waiting', ERROR_CODES.DOCKER_UNAVAILABLE);
 
-      await world.app.get(Reconciler).resumeDocker();
+      await world.app.get(Reconciler).resumeOutsideWaits();
       expect(accepted).toEqual([]);
 
       dockerAnswers.mockResolvedValue(true);
       const waiting = await world.app.get(RunRepository).findRun(KEY);
-      await world.app.get(Reconciler).resumeDocker();
+      await world.app.get(Reconciler).resumeOutsideWaits();
       expect(accepted).toEqual([
         ['resume', KEY, MACHINE, { idempotencyKey: `docker-none-${storedState(waiting!).reason?.retryAt}` }],
       ]);
@@ -278,7 +278,7 @@ describe('reconciler waits and automatic tries', () => {
       const world = await boot({ dockerAnswers: jest.fn().mockResolvedValue(true) });
       await park(world, 'blocked', 'STOPPED');
 
-      await world.app.get(Reconciler).resumeDocker();
+      await world.app.get(Reconciler).resumeOutsideWaits();
 
       expect(accepted).toEqual([]);
     });
@@ -291,7 +291,7 @@ describe('reconciler waits and automatic tries', () => {
 
       await expect(world.app.get(PipelineService).stop(KEY)).resolves.toMatchObject({ exitCode: 0 });
       world.clock.advance(600_000);
-      await world.app.get(Reconciler).resumeLimited();
+      await world.app.get(Reconciler).resumeOutsideWaits();
 
       expect(accepted).toEqual([]);
       expect(await reasonOf(world)).toMatchObject({ code: 'STOPPED' });
@@ -307,11 +307,11 @@ describe('reconciler waits and automatic tries', () => {
       await park(world, 'blocked', ERROR_CODES.DISK_LOW);
 
       guard.useFreeBytes(async () => 5 * GB);
-      await world.app.get(Reconciler).resumeDiskLow();
+      await world.app.get(Reconciler).resumeOutsideWaits();
       expect(accepted).toEqual([]);
 
       guard.useFreeBytes(async () => 20 * GB);
-      await world.app.get(Reconciler).resumeDiskLow();
+      await world.app.get(Reconciler).resumeOutsideWaits();
       expect(accepted).toEqual([['resume', KEY, MACHINE, { idempotencyKey: 'disk-none-reason' }]]);
     });
 
@@ -320,7 +320,7 @@ describe('reconciler waits and automatic tries', () => {
       world.app.get(DiskGuard).useFreeBytes(async () => 500 * GB);
       await park(world, 'blocked', 'STOPPED');
 
-      await world.app.get(Reconciler).resumeDiskLow();
+      await world.app.get(Reconciler).resumeOutsideWaits();
 
       expect(accepted).toEqual([]);
     });
