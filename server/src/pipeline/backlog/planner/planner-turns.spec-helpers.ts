@@ -201,8 +201,12 @@ export async function plannerTurnsHarness(
   );
   // The brief is a stand-in; the follow-up is written by the real prompt over the real state.
   const prompt = {
-    build: async (name: string, key: string) => `plan ${name} in ${key}`,
-    followUp: (...input: Parameters<BacklogTurnPrompt['followUp']>) => new BacklogTurnPrompt(state).followUp(...input),
+    build: async (name: string, key: string) => {
+      const text = `plan ${name} in ${key}`;
+      return { prompt: text, fresh: text, seen: '' };
+    },
+    followUp: (...input: Parameters<BacklogTurnPrompt['followUp']>) =>
+      new BacklogTurnPrompt(state, config).followUp(...input),
   };
   const takes = new TurnTakes(chat);
   const attachments = new AttachmentStore(config, db.clock);
