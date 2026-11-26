@@ -1,16 +1,18 @@
+<<<<<<< HEAD
 import { Injectable, Logger } from '@nestjs/common';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { outsideWaitOf } from '../../contract/outside-waits';
+=======
+import { Injectable } from '@nestjs/common';
+>>>>>>> b887710c (own change)
 import { settled } from '../../contract/subtask';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { RunRepository } from '../../history/run.repository';
 import type { RunEntity } from '../../history/entities';
-import { Clock } from '../../core/clock';
 import { RunRebase } from '../../steps/run-rebase';
 import { RepositoryHost } from '../../steps/shared/repository-host';
-import { CommandService } from '../command.service';
-import { BacklogEvents } from './backlog-events';
 import { MainHeld } from './main-held';
+import { MainRebaseSend } from './main-rebase-send';
 import { readMains } from './main-readings';
 import type { MainReading } from './task-readiness';
 
@@ -28,17 +30,13 @@ interface NewHead {
  */
 @Injectable()
 export class EpicMainMoves {
-  private readonly logger = new Logger(EpicMainMoves.name);
-
   constructor(
     private readonly backlogs: BacklogRepository,
     private readonly runs: RunRepository,
     private readonly rebaser: RunRebase,
     private readonly held: MainHeld,
     private readonly host: RepositoryHost,
-    private readonly commands: CommandService,
-    private readonly events: BacklogEvents,
-    private readonly clock: Clock,
+    private readonly rebases: MainRebaseSend,
   ) {}
 
   /** One pass over the unsettled tasks of the backlogs that are not paused. `mains` is the tick's cache of repository mains. */
@@ -65,13 +63,10 @@ export class EpicMainMoves {
     return heads;
   }
 
-  /**
-   * Sends the epic its main move once per head. The last try is read from the stored command: one that failed for a
-   * reason of its own is written as the rebase-refused event and not sent again; one that failed on a code host outage
-   * is sent again once, after the next try the outage named.
-   */
+  /** Sends the epic its main move once per head. */
   private async move(backlog: Backlog, task: BacklogTaskRecord, epic: RunEntity, heads: NewHead[]): Promise<void> {
     const named = heads.map(({ repository, head }) => `${repository}@${head}`);
+<<<<<<< HEAD
     const key = `epic-main-${epic.key}-${named.join('-')}`;
     const payload = { main: heads.map(({ repository, head }) => `${repository} at ${head}`).join(', ') };
     const last = await this.lastTry(epic, key);
@@ -121,3 +116,15 @@ function failureOf(command: { result: string | null }): { message: string; retry
   const message = error?.message ?? 'the rebase failed';
   return wait?.code === ERROR_CODES.HOST_UNAVAILABLE ? { message, retryAt: wait.retryAt } : { message, retryAt: null };
 }
+=======
+    await this.rebases.send({
+      backlogId: backlog.id as number,
+      task: task.slug,
+      run: epic,
+      key: `epic-main-${epic.key}-${named.join('-')}`,
+      payload: { main: heads.map(({ repository, head }) => `${repository} at ${head}`).join(', ') },
+      head: named.join(','),
+    });
+  }
+}
+>>>>>>> b887710c (own change)

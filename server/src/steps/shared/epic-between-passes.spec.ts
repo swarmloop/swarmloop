@@ -31,6 +31,7 @@ describe('betweenPasses', () => {
 
 describe('takesMain', () => {
   const asksPlanner = { status: 'waiting', currentStep: 'implement', reason: reason('ASKS_PLANNER') } as const;
+  const waitsForMain = { status: 'waiting', currentStep: 'implement', reason: reason('WAITS_FOR_MAIN') } as const;
   const needsAnswers = { status: 'waiting', currentStep: 'implement', facts: { needsAnswers: true } } as const;
 
   /** The documents of the epic by kind: the latest body of each. */
@@ -54,6 +55,7 @@ describe('takesMain', () => {
     ['is blocked by a subtask', { status: 'blocked', currentStep: 'implement', reason: reason('SUBTASK_BLOCKED') }],
     ['waits for the planner on a question', asksPlanner],
     ['waits for answers', needsAnswers],
+    ['waits for a green main', waitsForMain],
   ])('is true for an epic that %s', async (_name, change) => {
     expect(await takes({ subtasks: open }, change)).toBe(true);
   });
@@ -61,6 +63,7 @@ describe('takesMain', () => {
   it.each([
     ['runs', { status: 'running', currentStep: 'implement' }],
     ['waits for the planner at another step', { ...asksPlanner, currentStep: 'checks' }],
+    ['waits for a green main at another step', { ...waitsForMain, currentStep: 'checks' }],
   ])('is false for an epic that %s', async (_name, change) => {
     expect(await takes({ subtasks: open }, change)).toBe(false);
   });
@@ -75,6 +78,10 @@ describe('takesMain', () => {
     ['a resolution round', { epic_round: 'open\n', return: 'fix it', subtasks: open }],
   ])('is false for an epic that waits on a question of its own agent: %s', async (_name, stored) => {
     expect(await takes(stored, asksPlanner)).toBe(false);
+  });
+
+  it('is false for an epic that waits for a green main on a parked conflict of its own agent', async () => {
+    expect(await takes({ rebase_conflict: 'pending\n', subtasks: open }, waitsForMain)).toBe(false);
   });
 
   it('is true for an epic that waits on the question of a gap with every part settled and return notes', async () => {

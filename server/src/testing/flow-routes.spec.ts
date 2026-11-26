@@ -7,11 +7,14 @@ import {
   observeDoor,
   observeStates,
   PERSON,
+  observeWait,
   PLANNERS,
+  REBASE,
   ROUND,
   SETTLE,
   routeGraph,
   TASK,
+  WAIT_MAIN,
   type Observed,
   type RouteGraph,
 } from './flow-routes.spec-helpers';
@@ -28,8 +31,8 @@ describe('the routes of the flow', () => {
       observeDoor(),
       observeChain(),
     ]);
-    single = { states: {}, answers, door, chain };
-    split = { states, answers, door, chain };
+    single = { states: {}, answers, door, chain, wait: observeWait() };
+    split = { states, answers, door, chain, wait: observeWait() };
   });
 
   it('reads the real decisions of every state class', () => {
@@ -106,4 +109,18 @@ describe('the routes of the flow', () => {
       expect(circles(through)).toEqual([]);
     },
   );
+
+  it('has a run answered under a red main wait for a green main and leave it only through Rebase, never as a wait for a person', () => {
+    const leaving = (observed: Observed) =>
+      routeGraph(observed, 'split')
+        .edges.filter((edge) => edge.from === WAIT_MAIN)
+        .map((edge) => edge.to);
+    expect(split.wait.actions).toContain('rebase');
+    expect(leaving(split)).toEqual([REBASE]);
+    expect(routeGraph(split, 'split').changes.has(REBASE)).toBe(true);
+    expect(routeGraph(split, 'split').edges).toContainEqual(
+      expect.objectContaining({ from: PLANNERS[2], to: WAIT_MAIN }),
+    );
+    expect(leaving({ ...split, wait: { actions: ['stop'], phase: 'person' } })).toEqual([PERSON]);
+  });
 });
