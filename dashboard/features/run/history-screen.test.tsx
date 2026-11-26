@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFlow, getHistory } from '../../lib/endpoints';
+import { when } from '../../lib/format';
 import userEvent from '@testing-library/user-event';
 import { receive } from '../../test/fake-socket';
 import { flowView, historyView, runSummary } from '../../test/fixtures';
@@ -107,6 +108,29 @@ describe('HistoryScreen', () => {
     render(<HistoryScreen runKey="run-1" />, { wrapper: LiveBridgeProvider });
 
     expect(await screen.findByText(/pipeline 1: CI job docker failed.*CI only/)).toBeInTheDocument();
+    expect(screen.getByText('checks 1: required checks failed')).toBeInTheDocument();
+  });
+
+  it('lists a relaunch with its time next to the returns, and does not count it as a return', async () => {
+    vi.mocked(getHistory).mockResolvedValue(
+      historyView({
+        loops: [{ counter: 'checks', attempt: 1, reason: 'required checks failed', createdAt: 't' }],
+        relaunches: [
+          {
+            at: '2026-11-22T02:13:57.000Z',
+            reason: 'Rebased onto main',
+            phases: ['checks', 'ci'],
+            steps: ['checks', 'pipeline'],
+            open: false,
+          },
+        ],
+      }),
+    );
+
+    render(<HistoryScreen runKey="run-1" />, { wrapper: LiveBridgeProvider });
+
+    expect(await screen.findByText(/Rebased onto main: checks and CI run again/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`^${when('2026-11-22T02:13:57.000Z')} · `))).toBeInTheDocument();
     expect(screen.getByText('checks 1: required checks failed')).toBeInTheDocument();
   });
 });

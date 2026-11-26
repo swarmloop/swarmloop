@@ -22,6 +22,9 @@ import { RunQueriesService } from './run-queries.service';
 import { save, visit } from '../testing/runs.spec-helpers';
 import { seededBoot } from './runs-boot.spec-helpers';
 
+/** The model an agent's visit names; a visit that names none is no agent visit and the board does not count it. */
+const AGENT_MODEL = 'claude-opus-5-5';
+
 describe('runs api', () => {
   it('does not ask old questions on a later step', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-later-'));
@@ -32,7 +35,7 @@ describe('runs api', () => {
       const visits = app.get(VisitRepository);
       const run = await save(runs, 'proj-6', 'commit', 'waiting');
       await documents.putDocument(run, 'questions', '- which limit\n');
-      await visits.finishVisit(run, visit('requirements', 'waiting'));
+      await visits.finishVisit(run, { ...visit('requirements', 'waiting'), model: AGENT_MODEL });
       const flow = await app.get(RunQueriesService).flow('proj-6');
       expect(flow.items).toEqual([]);
       expect(flow.phases.flatMap((phase) => phase.steps).find((step) => step.name === 'requirements')?.status).toBe(
@@ -138,7 +141,7 @@ describe('runs api', () => {
     const app = await seededBoot(root);
     try {
       const run = await save(app.get(RunRepository), 'proj-rerun', 'implement', 'running');
-      await app.get(VisitRepository).finishVisit(run, visit('implement', 'waiting'));
+      await app.get(VisitRepository).finishVisit(run, { ...visit('implement', 'waiting'), model: AGENT_MODEL });
       await mkdir(join(root, 'data'), { recursive: true });
       await writeFile(join(root, 'data', 'proj-rerun-implement-launches.txt'), '1\n');
       const runs = app.get(RunQueriesService);

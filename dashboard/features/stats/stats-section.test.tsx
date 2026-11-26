@@ -46,7 +46,8 @@ describe('StatsSection', () => {
   it('shows one day of the runs chart under the pointer', async () => {
     renderSection();
     await screen.findByLabelText('Runs: 4');
-    fireEvent.pointerEnter(screen.getByTestId('day-2026-11-10'));
+    const chart = screen.getByRole('region', { name: 'Tasks per day' });
+    fireEvent.pointerEnter(within(chart).getByTestId('day-2026-11-10'));
     const tip = screen.getByRole('tooltip');
     expect(tip).toHaveTextContent('Tue, Nov 10');
     expect(tip).toHaveTextContent('3started');
@@ -151,12 +152,25 @@ describe('StatsSection', () => {
     renderSection();
     const user = userEvent.setup({ delay: null });
     await screen.findByLabelText('Runs: 4');
-    await user.click(screen.getByTestId('day-2026-11-08'));
+    await user.click(within(screen.getByRole('region', { name: 'Epics per day' })).getByTestId('day-2026-11-08'));
     const table = screen.getByRole('region', { name: 'Runs started Sun, Nov 8' });
     expect(within(table).getAllByRole('row')).toHaveLength(2);
     expect(within(table).getByText('Add a stats page')).toBeInTheDocument();
     await user.click(within(table).getByRole('button', { name: 'Show every day' }));
     expect(screen.getByRole('region', { name: 'Runs' })).toBeInTheDocument();
+  });
+
+  it('opens the tasks of a day on the tasks chart, subtasks included, and no epic', async () => {
+    renderSection();
+    const user = userEvent.setup({ delay: null });
+    await screen.findByLabelText('Runs: 4');
+    await user.click(within(screen.getByRole('region', { name: 'Tasks per day' })).getByTestId('day-2026-11-10'));
+    const table = screen.getByRole('region', { name: 'Runs started Tue, Nov 10' });
+
+    expect(within(table).getAllByRole('row')).toHaveLength(4);
+    expect(within(table).getByText('A subtask that failed')).toBeInTheDocument();
+    expect(within(table).getByText('One pass')).toBeInTheDocument();
+    expect(within(table).queryByText('Add a stats page')).not.toBeInTheDocument();
   });
 
   it('says why the statistics are missing', async () => {
@@ -202,6 +216,46 @@ describe('StatsSection', () => {
   });
 });
 
+describe('StatsSection epics and tasks', () => {
+  it('opens with the epics and the tasks side by side, each with its medians and what is in progress', async () => {
+    vi.mocked(getStats).mockResolvedValue(
+      statsView({
+        epics: { finished: 3, active: 2, failed: 0, medianUsd: 12.5, medianMs: 7_200_000, back: 1, medianReturns: 1 },
+        tasks: { finished: 9, active: 4, failed: 1, medianUsd: 1.5, medianMs: 1_800_000, back: 2, medianReturns: 0 },
+      }),
+    );
+    renderSection();
+
+    const epics = await screen.findByRole('group', { name: 'Epics' });
+    const tasks = screen.getByRole('group', { name: 'Tasks' });
+    expect(epics).toHaveTextContent('3 finished');
+    expect(epics).toHaveTextContent('median cost $12.50 · median time 2.0 h · 2 in progress');
+    expect(tasks).toHaveTextContent('9 finished');
+    expect(tasks).toHaveTextContent('median cost $1.50 · median time 30 min · 4 in progress');
+    expect(epics.compareDocumentPosition(tasks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows the tasks per day and the epics per day as two cards, one under the other', async () => {
+    renderSection();
+
+    const tasks = await screen.findByRole('region', { name: 'Tasks per day' });
+    const epics = screen.getByRole('region', { name: 'Epics per day' });
+    expect(tasks.compareDocumentPosition(epics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tasks.parentElement).toBe(epics.parentElement);
+    expect(within(tasks).getByText('4 tasks')).toBeInTheDocument();
+    expect(within(epics).getByText('1 epic')).toBeInTheDocument();
+    expect(screen.queryByText('Runs per day')).not.toBeInTheDocument();
+  });
+
+  it('puts the money and the returns cards in one column', async () => {
+    renderSection();
+
+    const money = await screen.findByRole('region', { name: 'Where the money goes' });
+    const returns = screen.getByRole('region', { name: 'Why work came back' });
+    expect(money.parentElement).toBe(returns.parentElement?.parentElement);
+  });
+});
+
 describe('StatsSection tasks and returns', () => {
   const week = ['05', '06', '07', '08', '09', '10', '11'].map((date) => ({
     ...statsView().days[1],
@@ -216,10 +270,8 @@ describe('StatsSection tasks and returns', () => {
     vi.mocked(getStats).mockResolvedValue(
       statsView({
         days: week,
+        tasks: { ...statsView().tasks, finished: 4, back: 3, medianReturns: 1 },
         totals: totals({
-          tasks: 4,
-          tasksBack: 3,
-          medianReturnsPerTask: 1,
           returnsByKind: [
             { kind: 'checks', returns: 2 },
             { kind: 'review', returns: 2 },
@@ -240,7 +292,7 @@ describe('StatsSection tasks and returns', () => {
     [0, 'most pass first time'],
     [2, 'most come back 2 times'],
   ])('puts a median of %i returns per task in words', async (median, words) => {
-    vi.mocked(getStats).mockResolvedValue(statsView({ totals: totals({ medianReturnsPerTask: median }) }));
+    vi.mocked(getStats).mockResolvedValue(statsView({ tasks: { ...statsView().tasks, medianReturns: median } }));
     renderSection();
 
     expect(await screen.findByLabelText(/^Returns: /)).toHaveTextContent(words);
@@ -250,7 +302,8 @@ describe('StatsSection tasks and returns', () => {
     vi.mocked(getStats).mockResolvedValue(
       statsView({
         days: week.map((day, index) => ({ ...day, usd: [0, 0, 0, 0, 100, 78.41, 71.59][index] })),
-        totals: totals({ usd: 250, usdPerTask: 7.01, medianUsdPerTask: 4 }),
+        totals: totals({ usd: 250 }),
+        tasks: { ...statsView().tasks, medianUsd: 4 },
       }),
     );
     renderSection();
@@ -258,7 +311,7 @@ describe('StatsSection tasks and returns', () => {
     const card = await screen.findByRole('region', { name: 'Spend' });
     expect(within(card).getByText('$250 in 7 days')).toBeInTheDocument();
     expect(
-      within(card).getByText('$83.33 per working day · $7.01 per task (median $4.00) · peak $100 on Nov 9'),
+      within(card).getByText('$83.33 per working day · $4.00 per task (median) · peak $100 on Nov 9'),
     ).toBeInTheDocument();
     expect(within(card).getByText('Nov 11')).toHaveAttribute('text-anchor', 'end');
   });
@@ -277,8 +330,29 @@ describe('StatsSection tasks and returns', () => {
 
     const card = await screen.findByRole('region', { name: 'Why work came back' });
     expect(within(card).getByText('CI only: 2 · CI and checks: 1')).toBeInTheDocument();
+    expect(within(card).queryByRole('list', { name: 'CI-only jobs' })).not.toBeInTheDocument();
+    expect(within(card).queryByText('npm run lint')).not.toBeInTheDocument();
+
+    await userEvent.setup({ delay: null }).click(within(card).getByText('CI only: 2 · CI and checks: 1'));
     expect(within(within(card).getByRole('list', { name: 'CI-only jobs' })).getByText('docker')).toBeInTheDocument();
+
+    await userEvent.setup({ delay: null }).click(within(card).getByLabelText(/^checks: 3/));
     expect(within(card).getByText('npm run lint')).toBeInTheDocument();
+  });
+
+  it('cuts a long command to one line with its whole text on hover', async () => {
+    const command = `npm run lint ${'--max-warnings=0 '.repeat(8)}`.trim();
+    expect(command.length).toBeGreaterThanOrEqual(120);
+    vi.mocked(getStats).mockResolvedValue(
+      statsView({ reasons: [{ name: 'checks', returns: 3, commands: [{ name: command, returns: 2 }] }] }),
+    );
+    renderSection();
+
+    const card = await screen.findByRole('region', { name: 'Why work came back' });
+    await userEvent.setup({ delay: null }).click(within(card).getByLabelText(/^checks: 3/));
+    const name = within(card).getByText(command);
+    expect(name).toHaveAttribute('title', command);
+    expect(name).toHaveStyle({ whiteSpace: 'nowrap', textOverflow: 'ellipsis' });
   });
 });
 

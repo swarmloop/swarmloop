@@ -5,6 +5,11 @@ export function readmeUrl(sourceUrl: string): string {
   return `${sourceUrl}#readme`;
 }
 
+/** A release version reads with a `v` (`v0.4.0`); any other version (`dev`) reads as it is. */
+export function versionLabel(version: string): string {
+  return RELEASE_VERSION.test(version) ? `v${version}` : version;
+}
+
 /** The release notes of a release version; any other version points at the list of releases. */
 export function releaseNotesUrl(sourceUrl: string, version: string): string {
   return RELEASE_VERSION.test(version) ? `${sourceUrl}/releases/tag/v${version}` : `${sourceUrl}/releases`;

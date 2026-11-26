@@ -115,6 +115,26 @@ describe('login and the auth guard', () => {
     expect(await (await fetch(`${app.url}/auth/me`)).json()).toEqual({ user: null, ...build });
   });
 
+  it('adds the first 7 characters of the build revision', async () => {
+    await start('github:ann', { SWARMLOOP_BUILD_REVISION: 'ae0a0691c2d3e4f' });
+    expect(await (await fetch(`${app.url}/auth/me`)).json()).toMatchObject({ revision: 'ae0a069' });
+  });
+
+  it.each(['', 'unknown'])('adds no revision when the build revision is %j', async (revision) => {
+    await start('github:ann', { SWARMLOOP_BUILD_REVISION: revision });
+    expect(await (await fetch(`${app.url}/auth/me`)).json()).not.toHaveProperty('revision');
+  });
+
+  it('keeps the photo of a person after a restart', async () => {
+    await start('github:ann');
+    const cookie = sessionCookie(await login('ann'));
+    app = await app.restart();
+    expect(await (await fetch(`${app.url}/auth/me`, { headers: { cookie } })).json()).toMatchObject({
+      user: 'ann',
+      avatarUrl: 'https://avatars.test/ann.png',
+    });
+  });
+
   it('gives no source URL when the image value is not an http address', async () => {
     await start('github:ann', { SWARMLOOP_BUILD_VERSION: '2.0.0', SWARMLOOP_SOURCE_URL: 'unknown' });
     expect(await (await fetch(`${app.url}/auth/me`)).json()).toEqual({ user: null, version: '2.0.0', sourceUrl: null });

@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 import { useState } from 'react';
 import Box from '@mui/material/Box';
-import type { StatsDay } from '@contract/api';
+import type { StatsDay, StatsUnit } from '@contract/api';
 import { CHART, ChartCard, ChartTip, Legend, LegendItem, OUTCOMES, TipRow, roundedTop, useWidth } from './chart-parts';
 import { dayLabel, longDayLabel, ticks } from './stats-format';
 
@@ -11,15 +11,22 @@ const HEIGHT = 220;
 const PAD = { top: 10, right: 8, bottom: 26, left: 34 };
 const GAP = 2;
 
-/** Runs started each day, stacked by how they ended. */
-export function RunsPerDay({
+const UNITS = {
+  tasks: { title: 'Tasks per day', noun: 'task', nouns: 'tasks' },
+  epics: { title: 'Epics per day', noun: 'epic', nouns: 'epics' },
+};
+
+/** Epics or tasks started each day, stacked by how they ended. */
+export function UnitsPerDay({
+  unit,
   days,
   total,
   selected,
   onSelect,
 }: {
+  unit: keyof typeof UNITS;
   days: StatsDay[];
-  total: Record<'done' | 'active' | 'failed', number>;
+  total: StatsUnit;
   /** The day whose runs the table shows, or null for all. */
   selected: string | null;
   /** Picks a day, or clears it when that day is picked again. */
@@ -29,7 +36,8 @@ export function RunsPerDay({
   const [hover, setHover] = useState<number | null>(null);
   const plotWidth = Math.max(width - PAD.left - PAD.right, 1);
   const plotHeight = HEIGHT - PAD.top - PAD.bottom;
-  const max = Math.max(...days.map((day) => day.done + day.active + day.failed), 1);
+  const counts = (day: StatsDay): Record<'done' | 'active' | 'failed', number> => day[unit];
+  const max = Math.max(...days.map((day) => counts(day).done + counts(day).active + counts(day).failed), 1);
   const axis = ticks(max, { whole: true });
   const top = axis[axis.length - 1];
   const y = (value: number): number => PAD.top + plotHeight - (value / top) * plotHeight;
@@ -40,17 +48,19 @@ export function RunsPerDay({
   /** The hovered bar stands out; without one, the picked day does. */
   const emphasis = (index: number, day: string): boolean =>
     hover !== null ? hover === index : selected === null || selected === day;
-  const runs = total.done + total.active + total.failed;
+  const { title, noun, nouns } = UNITS[unit];
+  const totals = { done: total.finished, active: total.active, failed: total.failed };
+  const count = totals.done + totals.active + totals.failed;
 
   return (
     <ChartCard
-      title="Runs per day"
-      headline={`${runs} ${runs === 1 ? 'run' : 'runs'}`}
+      title={title}
+      headline={`${count} ${count === 1 ? noun : nouns}`}
       note="by the day they started · click a day to see its runs"
       legend={
         <Legend>
           {OUTCOMES.map(({ outcome, label }) => (
-            <LegendItem key={outcome} color={CHART[outcome]} label={label} value={String(total[outcome])} />
+            <LegendItem key={outcome} color={CHART[outcome]} label={label} value={String(totals[outcome])} />
           ))}
         </Legend>
       }
@@ -60,7 +70,7 @@ export function RunsPerDay({
           width={width}
           height={HEIGHT}
           role="img"
-          aria-label={`Runs per day, ${runs} in all`}
+          aria-label={`${title}, ${count} in all`}
           style={{ display: 'block' }}
         >
           {axis.map((value) => (
@@ -80,7 +90,7 @@ export function RunsPerDay({
           ))}
           {days.map((day, index) => {
             const x = PAD.left + index * band + (band - barWidth) / 2;
-            const parts = OUTCOMES.map(({ outcome }) => ({ outcome, value: day[outcome] })).filter(
+            const parts = OUTCOMES.map(({ outcome }) => ({ outcome, value: counts(day)[outcome] })).filter(
               (part) => part.value > 0,
             );
             let base = 0;
@@ -136,7 +146,7 @@ export function RunsPerDay({
               tabIndex={0}
               role="button"
               aria-pressed={selected === day.day}
-              aria-label={`${longDayLabel(day.day)}: ${day.done} done, ${day.active} in progress, ${day.failed} failed`}
+              aria-label={`${longDayLabel(day.day)}: ${counts(day).done} done, ${counts(day).active} in progress, ${counts(day).failed} failed`}
               onPointerEnter={() => setHover(index)}
               onFocus={() => setHover(index)}
               onBlur={() => setHover(null)}
@@ -153,12 +163,15 @@ export function RunsPerDay({
         </svg>
         {hovered && hover !== null ? (
           <ChartTip x={PAD.left + hover * band + band / 2} y={PAD.top} width={width} title={longDayLabel(hovered.day)}>
-            <TipRow value={String(hovered.done + hovered.active + hovered.failed)} label="started" />
+            <TipRow
+              value={String(counts(hovered).done + counts(hovered).active + counts(hovered).failed)}
+              label="started"
+            />
             {OUTCOMES.map(({ outcome, label }) => (
               <TipRow
                 key={outcome}
                 color={CHART[outcome]}
-                value={String(hovered[outcome])}
+                value={String(counts(hovered)[outcome])}
                 label={label.toLowerCase()}
               />
             ))}

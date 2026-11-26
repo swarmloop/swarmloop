@@ -29,8 +29,8 @@ describe('run view eta', () => {
 
   it('gives the header, the list and the Tasks rows one estimate, and a task not started the whole-subtask median', () => {
     const table = emptyTable();
-    table.subtask = { steps: { implement: 20 * MIN }, whole: 50 * MIN };
-    table.epic = { steps: {}, whole: null };
+    table.subtask = { steps: { implement: 20 * MIN }, visits: {}, whole: 50 * MIN };
+    table.epic = { steps: {}, visits: {}, whole: null };
     const own = { state: 'running', stateReason: null } as const;
     const plan = [task('a'), task('b', ['a'])];
     const first = liveRunOf(runEntity({ parentRunId: 1, currentStep: 'implement' }), own, []);
@@ -45,6 +45,18 @@ describe('run view eta', () => {
     const chain = (etas.get('a')?.leftMs ?? 0) + (etas.get('b')?.leftMs ?? 0);
     expect(whole?.leftMs).toBeGreaterThanOrEqual(chain);
     expect(runViewEta(parent, undefined, new Map(), table, 3, now)?.leftMs).toBeGreaterThan(0);
+  });
+
+  it('counts the visits of a relaunched task run only, in the task rows and the epic', () => {
+    const table = emptyTable();
+    table.subtask = { steps: { implement: 90 * MIN }, visits: { checks: 5 * MIN, pipeline: 10 * MIN }, whole: null };
+    const own = { state: 'running', stateReason: null } as const;
+    const run = runEntity({ parentRunId: 1, currentStep: 'checks' });
+    const relaunched = liveRunOf(run, own, [], ['checks', 'pipeline']);
+    expect(relaunched.relaunch).toEqual(['checks', 'pipeline']);
+    expect(liveRunOf(run, own, []).relaunch).toBeUndefined();
+    const plan = [task('a')];
+    expect(taskEtas(plan, new Map([['a', relaunched]]), table, now).get('a')?.leftMs).toBe(15 * MIN);
   });
 
   it('gives a task whose run waits for a person none, and the epic none', () => {

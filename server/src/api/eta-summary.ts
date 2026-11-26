@@ -20,7 +20,7 @@ function inputsOf(runs: FinishedRuns): FinishedRunInput[] {
     mergedAt: run.mergedAt,
     parentRunId: run.kind === 'subtask' ? String(run.id) : null,
     epicAt: run.kind === 'epic' ? run.createdAt : null,
-    entries: run.steps.map((step) => ({ step: step.step, startedAt: step.enteredAt })),
+    entries: run.steps.map((step) => ({ step: step.step, startedAt: step.enteredAt, finishedAt: step.lastFinishedAt })),
     waits: run.waits.map((wait) => ({ from: wait.startedAt, to: wait.endedAt })),
   }));
 }

@@ -23,6 +23,7 @@ import { problemsLabel } from '../../transcript/transcript-feed';
 import type { StepMetricKind } from '../../step-metrics';
 import { stepMetrics } from '../../step-metrics';
 import type { commandSummary } from '../../check-commands';
+import { checksStatusWord } from '../../check-commands';
 import { shownStatus } from '../../step-view';
 import type { StepDescriptor, StepView } from '@contract/api';
 
@@ -60,6 +61,18 @@ function Description({
       {agent && reviewers ? ' · ' : null}
       {reviewers ? `reviewers: ${reviewers.map((item) => item.name).join(', ')}` : null}
     </>
+  );
+}
+
+/** `passed/run passed · n skipped · slowest: <command> <time>`, over the commands that run. */
+function CommandsLine({ summary }: { summary: ReturnType<typeof commandSummary> }): ReactElement {
+  const { passed, total, skipped, slowest } = summary;
+  return (
+    <Box component="span">
+      {passed}/{total} passed
+      {skipped > 0 ? ` · ${skipped} skipped` : ''}
+      {slowest ? ` · slowest: ${slowest.command} ${duration(slowest.ms)}` : ''}
+    </Box>
   );
 }
 
@@ -104,7 +117,7 @@ export function StepHeader({
   problemId: string | null;
   /** How many problems the step recorded: the number the transcript chip shows. */
   problemCount: number;
-  /** The checks step: how many commands passed, and which one took longest. */
+  /** The checks step: how many of the commands that run passed, how many were skipped, and which one took longest. */
   commands?: ReturnType<typeof commandSummary>;
   /** This step is the one the run works on, and it has not recorded a visit yet. */
   preparing?: boolean;
@@ -153,7 +166,6 @@ export function StepHeader({
                 key: item.key,
                 label: String(item.attempt),
                 color: toneColor(state.tone),
-                state,
                 menuText: `${item.attempt} · ${status} · ${duration(item.durationMs)}`,
               };
             })}
@@ -203,15 +215,10 @@ export function StepHeader({
               {slowestPrepared ? ` · slowest: ${slowestPrepared.command} ${duration(slowestPrepared.ms)}` : ''}
             </Box>
           ) : null}
-          {commands ? (
-            <Box component="span">
-              {commands.passed}/{commands.total} passed
-              {commands.slowest ? ` · slowest: ${commands.slowest.command} ${duration(commands.slowest.ms)}` : ''}
-            </Box>
-          ) : null}
+          {commands ? <CommandsLine summary={commands} /> : null}
           {stepMetrics({
             server,
-            status: label,
+            status: checksStatusWord(label, commands),
             attempt: shownAttempt,
             durationMs: shownDuration,
             tokensIn: visit.tokensIn,

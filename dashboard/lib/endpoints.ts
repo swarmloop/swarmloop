@@ -23,16 +23,7 @@ import type {
 } from '@contract/api';
 import type { UploadView } from '@contract/attachments';
 import type { ConnectionCard, IntegrationCardsView, SignInView } from '@contract/connections';
-import type {
-  CreateTokenBody,
-  CreatedTokenView,
-  PeopleView,
-  PersonView,
-  Role,
-  SetRoleBody,
-  TokensView,
-  UseTokenBody,
-} from '@contract/people';
+import type { CreateTokenBody, CreatedTokenView, TokensView, UseTokenBody } from '@contract/people';
 import type { ReadinessView } from '@contract/readiness';
 import type { Part, RunsPage } from '@contract/run-list';
 import type { SettingsView } from '@contract/settings';
@@ -146,12 +137,6 @@ export const createToken = (body: CreateTokenBody): Promise<CreatedTokenView> =>
   api<CreatedTokenView>('/tokens', post(body));
 export const useExistingToken = (body: UseTokenBody): Promise<unknown> => api('/tokens/existing', post(body));
 export const revokeToken = (id: number): Promise<unknown> => api(token(id), { method: 'DELETE' });
-export const listPeople = (): Promise<PeopleView> => api<PeopleView>('/people');
-export const setRole = (login: string, role: Role): Promise<PersonView> =>
-  api<PersonView>(`/people/${encodeURIComponent(login)}/role`, {
-    method: 'PUT',
-    body: JSON.stringify({ role } satisfies SetRoleBody),
-  });
 /** Keeps one file on the server for a message or a new run to take by its id; the body is the raw file. */
 export const uploadFile = (file: Blob, name: string): Promise<UploadView> =>
   api<UploadView>(`/uploads?name=${encodeURIComponent(name)}`, {

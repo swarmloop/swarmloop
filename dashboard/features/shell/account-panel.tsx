@@ -9,6 +9,7 @@ import Divider from '@mui/material/Divider';
 import Fade from '@mui/material/Fade';
 import MenuItem from '@mui/material/MenuItem';
 import Popover from '@mui/material/Popover';
+import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { keyframes } from '@mui/material/styles';
@@ -17,7 +18,8 @@ import MenuBookOutlined from '@mui/icons-material/MenuBookOutlined';
 import PowerOutlined from '@mui/icons-material/PowerOutlined';
 import SettingsOutlined from '@mui/icons-material/SettingsOutlined';
 import { logout } from '../../lib/endpoints';
-import { readmeUrl, releaseNotesUrl } from './account-links';
+import { readmeUrl } from './account-links';
+import { AccountVersion } from './account-version';
 import { AccountTheme } from './account-theme';
 import type { AccountHost } from './account-trigger';
 import { useMenuKeys } from './menu-keys';
@@ -37,6 +39,7 @@ interface AccountPanelProps {
   avatarUrl: string | null | undefined;
   host: AccountHost | null;
   version: string;
+  revision: string | undefined;
   sourceUrl: string | null;
   needsAttention: boolean;
 }
@@ -58,29 +61,38 @@ function Row({ icon, children, hint }: { icon: ReactNode; children: ReactNode; h
 const itemSx = { height: 36, minHeight: 36, gap: 1.5, px: 2, typography: 'body2' } as const;
 
 function AccountMenu(props: AccountPanelProps): ReactElement {
-  const { login, avatarUrl, host, version, sourceUrl, needsAttention, onClose } = props;
+  const { login, avatarUrl, host, version, revision, sourceUrl, needsAttention, onClose } = props;
   const list = useRef<HTMLDivElement>(null);
   const { onKeyDown } = useMenuKeys(list);
   return (
     <>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2 }}>
-        <Avatar
-          src={avatarUrl ?? undefined}
-          alt=""
-          sx={{ width: 40, height: 40, boxShadow: '0 0 0 1px var(--mui-palette-divider)' }}
-        >
-          {login.slice(0, 2).toUpperCase()}
-        </Avatar>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="body2" noWrap>
-            {login || 'Account'}
-          </Typography>
-          {host ? (
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {`${host.label} · signed in`}
-            </Typography>
-          ) : null}
-        </Box>
+        {login ? (
+          <>
+            <Avatar
+              src={avatarUrl ?? undefined}
+              alt=""
+              sx={{ width: 40, height: 40, boxShadow: '0 0 0 1px var(--mui-palette-divider)' }}
+            >
+              {login.slice(0, 2).toUpperCase()}
+            </Avatar>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2" noWrap>
+                {login}
+              </Typography>
+              {host ? (
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {`${host.label} · signed in`}
+                </Typography>
+              ) : null}
+            </Box>
+          </>
+        ) : (
+          <>
+            <Skeleton variant="circular" width={40} height={40} />
+            <Skeleton variant="text" width={96} />
+          </>
+        )}
       </Box>
       <Divider />
       <Box ref={list} role="menu" aria-label="Account" onKeyDown={onKeyDown} sx={{ py: 0.5 }}>
@@ -131,22 +143,7 @@ function AccountMenu(props: AccountPanelProps): ReactElement {
       </Box>
       <Divider />
       <Box sx={{ px: 2, py: 1 }}>
-        {sourceUrl ? (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            component="a"
-            href={releaseNotesUrl(sourceUrl, version)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {`swarmloop ${version}`}
-          </Typography>
-        ) : (
-          <Typography variant="caption" color="text.secondary">
-            {`swarmloop ${version}`}
-          </Typography>
-        )}
+        <AccountVersion version={version} revision={revision} sourceUrl={sourceUrl} />
       </Box>
     </>
   );

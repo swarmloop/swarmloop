@@ -20,6 +20,7 @@ import { etaText } from '../../../../lib/eta-words';
 import { duration, money, tokens, when } from '../../../../lib/format';
 import { runWord } from '../../run-word';
 import { RunStateIcon, toneColor } from '../../run-state-word';
+import { RelaunchNote } from './relaunch-note';
 import type { FlowView } from '@contract/api';
 import { epicFigures } from '@contract/epic-figures';
 import { personLabel } from '@contract/people';
@@ -125,6 +126,7 @@ export function RunHeader({
               {word.word}
             </Typography>
           </Box>
+          <RelaunchNote flow={flow} />
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75 }}>
             <Typography sx={{ fontFamily: 'var(--font-mono)', fontSize: 13 }} color="text.secondary">
               {flow.key}

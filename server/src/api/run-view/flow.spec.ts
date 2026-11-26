@@ -4,9 +4,11 @@ import fs, { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LoopEventEntity } from '../../history/entities';
+import type { CheckCommandView } from '../../contract/api';
 import { actionsFor } from '../../contract/run-state';
 import { storedState } from '../../history/run-state';
 import { parkedConflictIn } from '../../pipeline/parked-conflict';
+import type { RelaunchView } from '../../contract/relaunch';
 import { phases, returns } from './flow';
 import { reason, resumeState, sentence } from './flow-waiting';
 
@@ -57,6 +59,140 @@ describe('return reasons', () => {
   });
 });
 
+describe('return words', () => {
+  const at = '2026-11-25T10:00:00.000Z';
+  const loops = [
+    {
+      counter: 'review',
+      reason: 'review_requirements,review_quality',
+      detail: null,
+      createdAt: '2026-11-25T09:00:00.000Z',
+    },
+    { counter: 'review', reason: 'review_requirements,review_quality,review_regressions', detail: null, createdAt: at },
+    {
+      counter: 'checks',
+      reason: 'required checks failed',
+      detail: '{"commands":["npm test --prefix dashboard"]}',
+      createdAt: at,
+    },
+  ] as LoopEventEntity[];
+  const rows = [{ command: 'npm test --prefix dashboard', name: 'dashboard tests' }] as CheckCommandView[];
+  const run = { attemptsReview: 2, attemptsChecks: 1 } as RunEntity;
+
+  it('says when and why each return happened in words, with its counts as they were', () => {
+    expect(returns(run, loops, rows)).toMatchObject([
+      { from: 'checks', count: 1, at, words: 'Checks sent it back: dashboard tests' },
+      { from: 'code-review', count: 2, at, words: 'Code review sent it back: requirements, quality, regressions' },
+    ]);
+  });
+
+  it('gives neither without a loop event', () => {
+    expect(returns(run)[0]).not.toHaveProperty('words');
+    expect(returns(run)[0]).not.toHaveProperty('at');
+  });
+});
+
+describe('visits of an epic that waits for its tasks', () => {
+  const root = mkdtempSync(join(tmpdir(), 'swarmloop-visits-'));
+  mkdirSync(join(root, 'data'));
+  writeFileSync(join(root, 'data', 'K-1-implement-launches.txt'), '1\n');
+  const run = { key: 'K-1', status: 'waiting', currentStep: 'checks', activeAttempt: null } as RunEntity;
+  const pass = (attempt: number, model: string | null): StepStatEntity =>
+    ({ id: attempt, step: 'implement', attempt, model, status: 'done' }) as StepStatEntity;
+  const countOf = (stats: StepStatEntity[]): number | undefined =>
+    phases(run, stats, [], root)
+      .flatMap((phase) => phase.steps)
+      .find((step) => step.name === 'implement')?.attempts;
+
+  it('counts only the visits in which an agent ran', () => {
+    expect(countOf([pass(1, null), pass(2, null), pass(3, 'claude-opus-5-5')])).toBe(1);
+    expect(countOf([pass(1, null), pass(2, null)])).toBe(0);
+    expect(countOf([pass(1, 'm'), pass(2, null), pass(3, 'm')])).toBe(2);
+  });
+
+  it('counts a provider-limit stop and the launch after it as one visit, and a trailing stop as one', () => {
+    const stop = (attempt: number): StepStatEntity => ({
+      ...pass(attempt, 'm'),
+      status: 'interrupted',
+      killReason: 'RUNTIME_LIMIT',
+    });
+    expect(countOf([stop(1), pass(1, 'm')])).toBe(1);
+    expect(countOf([pass(1, 'm'), stop(2)])).toBe(2);
+    expect(countOf([stop(1)])).toBe(1);
+  });
+});
+
+describe('steps of an open relaunch', () => {
+  const finished = '2026-11-22T01:50:00.000Z';
+  const relaunchAt = '2026-11-22T02:00:00.000Z';
+  const stat = (step: string, finishedAt = finished): StepStatEntity =>
+    ({ id: 1, step, status: 'done', finishedAt }) as StepStatEntity;
+  const steps = ['checks', 'implement', 'code-review', 'commit', 'merge-request', 'pipeline'];
+  const stats = steps.map((step) => stat(step));
+  const relaunch: RelaunchView = {
+    at: relaunchAt,
+    reason: 'Rebased onto the epic after input merged',
+    phases: ['checks', 'ci'],
+    steps: ['checks', 'commit', 'merge-request', 'pipeline'],
+    open: true,
+  };
+  const run = { key: 'r', currentStep: 'checks', status: 'waiting', attemptsReview: 1 } as RunEntity;
+  const statuses = (open?: RelaunchView, own = stats): Record<string, string> =>
+    Object.fromEntries(
+      phases(run, own, [], '/nonexistent', [], undefined, [], open)
+        .flatMap((phase) => phase.steps)
+        .map((step) => [step.name, step.status]),
+    );
+
+  it('shows the steps the relaunch runs again as waiting to run and keeps the others', () => {
+    expect(statuses(relaunch)).toMatchObject({
+      implement: 'done',
+      checks: 'waiting',
+      commit: 'idle',
+      'merge-request': 'idle',
+      pipeline: 'idle',
+    });
+    expect(statuses(undefined)).toMatchObject({ commit: 'done', 'merge-request': 'done', pipeline: 'done' });
+  });
+
+  it('shows a step that ran on the new head as it ran', () => {
+    const own = stats.map((item) => (item.step === 'commit' ? stat('commit', '2026-11-22T02:05:00.000Z') : item));
+    expect(statuses(relaunch, own)).toMatchObject({ commit: 'done', 'merge-request': 'idle' });
+  });
+
+  it('shows the reviewers, the report and the steps after a relaunched code review as waiting to run', () => {
+    const review = {
+      ...relaunch,
+      phases: ['code-review', 'ci'],
+      steps: ['code-review', 'commit', 'merge-request', 'pipeline'],
+    };
+    const inReview = { ...run, currentStep: 'code-review' };
+    const chips = (open?: RelaunchView) =>
+      Object.fromEntries(
+        phases(inReview, stats, [], '/nonexistent', [], undefined, [], open)
+          .flatMap((phase) => phase.steps)
+          .map((step) => [step.name, step.status]),
+      );
+    expect(chips(review)).toMatchObject({
+      'code-review-requirements': 'idle',
+      'code-review-performance': 'idle',
+      'code-review': 'idle',
+      commit: 'idle',
+      'merge-request': 'idle',
+      pipeline: 'idle',
+      implement: 'done',
+    });
+  });
+
+  it('leaves the returns and their counts as they were', () => {
+    const edges = returns({ ...run, attemptsChecks: 2 }).map((edge) => [edge.counter, edge.count]);
+    expect(edges).toEqual([
+      ['checks', 2],
+      ['review', 1],
+    ]);
+  });
+});
+
 describe('returned step note', () => {
   const run = { key: 'r', currentStep: 'implement', status: 'waiting', attemptsChecks: 1 } as RunEntity;
   const stats = [{ id: 5, step: 'checks', status: 'waiting' }] as StepStatEntity[];
@@ -74,7 +210,16 @@ describe('returned step note', () => {
 
   it('names the failed command for checks', () => {
     const loops = [{ counter: 'checks', reason: 'x', detail: '{"commands":["lint"]}' }] as LoopEventEntity[];
-    expect(noteOf(loops)).toEqual(['lint']);
+    expect(noteOf(loops)).toEqual(['Checks sent it back: checks']);
+  });
+
+  it('names the failed command by its short name in words', () => {
+    const loops = [{ counter: 'checks', reason: 'x', detail: '{"commands":["lint --all"]}' }] as LoopEventEntity[];
+    const rows = [{ command: 'lint --all', name: 'lint' }] as CheckCommandView[];
+    const note = phases(run, stats, documents, '/nonexistent', loops, undefined, rows)
+      .flatMap((phase) => phase.steps)
+      .find((step) => step.name === 'checks')?.returnNote;
+    expect(note).toBe('Checks sent it back: lint');
   });
 
   it('gives no note without an issues document', () => {

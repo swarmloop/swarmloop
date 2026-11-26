@@ -2,6 +2,7 @@ import { usageFromLog } from '@contract/readable-log';
 import { reviewChipStatus } from '@contract/readable-log-review';
 import type { LiveUsage } from '@contract/live';
 import type { StepView } from '@contract/api';
+import { stepState } from '@contract/step-state';
 import { liveVisitKey } from '@contract/visit-key';
 
 export function fileView(step: string, body: string): StepView {
@@ -183,6 +184,26 @@ export function shownStatus(
     return 'done';
   }
   return status;
+}
+
+/** The status word of a step's window: a restart wait, a relaunched step that has not run again yet, else the shown status of its visit. */
+export function windowLabel(
+  restartWait: boolean,
+  boardStatus: string | undefined,
+  visit: StepView['visits'][number] | undefined,
+  latest: boolean,
+  runStatus: string | undefined,
+  step: string,
+): string {
+  if (restartWait) {
+    return 'waiting';
+  }
+  if (!visit) {
+    return '';
+  }
+  return boardStatus === 'idle'
+    ? stepState('idle', null).word
+    : shownStatus(visit.status, latest, runStatus, step, visit.decision, visit.killReason);
 }
 
 export function tokenUsage(

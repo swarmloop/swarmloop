@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CheckCommandView, FlowView } from '@contract/api';
 import { restartWaitSentence } from '@contract/restart-wait';
 import { localTime } from '../../../lib/format';
+import { statusColor } from '../../../theme/theme';
 import { FlowBoard } from './flow-board';
 
 const errorColor = createTheme().palette.error.main;
@@ -56,12 +57,20 @@ describe('FlowBoard', () => {
     expect(card).toHaveAttribute('aria-current', 'step');
   });
 
-  it('shows a returned card with the return icon, the place it went to, and neither the error nor the warning color', async () => {
+  it('shows a returned card with the return icon and, on hover, why it came back in words', async () => {
     const user = userEvent.setup({ delay: null });
     const board: FlowView['phases'] = [
       {
         phase: 'checks',
-        steps: [{ name: 'checks', status: 'returned', current: false, attempts: 2, returnNote: '2 notes' }],
+        steps: [
+          {
+            name: 'checks',
+            status: 'returned',
+            current: false,
+            attempts: 2,
+            returnNote: 'Checks sent it back: dashboard tests',
+          },
+        ],
       },
     ];
     const returns: FlowView['returns'] = [{ counter: 'checks', count: 2, from: 'checks', to: 'implement' }];
@@ -69,10 +78,9 @@ describe('FlowBoard', () => {
 
     const card = screen.getByRole('button', { name: /checks/ });
     expect(within(card).getByTestId('UndoIcon')).toBeInTheDocument();
-    expect(within(card).getByText('2')).toHaveStyle({ backgroundColor: errorColor });
     expect(card).toHaveStyle({ borderColor: errorColor });
     await user.hover(card);
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('returned: 2 notes');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Checks sent it back: dashboard tests');
   });
 
   it('shows a failed card in the error color with its own icon', () => {
@@ -87,14 +95,24 @@ describe('FlowBoard', () => {
     expect(card).toHaveStyle({ borderColor: errorColor });
   });
 
-  it('does not use the error color for a step that was not returned, and tells the run count on the badge', async () => {
-    const user = userEvent.setup({ delay: null });
+  it('does not use the error color for a step that was not returned, and shows no count for one visit', () => {
     render(<FlowBoard phases={phases} returns={[]} selected={null} onSelect={vi.fn()} />);
 
-    const card = screen.getByRole('button', { name: /^implement\s*2$/ });
-    expect(card).not.toHaveStyle({ borderColor: errorColor });
-    await user.hover(within(card).getByText('2'));
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('ran 2 times');
+    expect(screen.getByRole('button', { name: /^implement\s*×2$/ })).not.toHaveStyle({ borderColor: errorColor });
+    const once: FlowView['phases'] = [
+      { phase: 'implementation', steps: [{ name: 'implement', status: 'done', current: false, attempts: 1 }] },
+    ];
+    render(<FlowBoard phases={once} returns={[]} selected={null} onSelect={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /^implement$/ })).not.toHaveTextContent('1');
+  });
+
+  it('shows a muted ×3 for a step that ran three times', () => {
+    const board: FlowView['phases'] = [
+      { phase: 'checks', steps: [{ name: 'checks', status: 'done', current: false, attempts: 3 }] },
+    ];
+    render(<FlowBoard phases={board} returns={[]} selected={null} onSelect={vi.fn()} />);
+
+    expect(screen.getByText('×3')).toHaveStyle({ fontSize: '10px' });
   });
 
   it('keeps the done card in its column as a marker that is not a button', () => {
@@ -149,7 +167,7 @@ describe('FlowBoard', () => {
     expect(
       within(screen.getByRole('button', { name: /implement-improve/ })).getByText('each task checked its own work'),
     ).toBeInTheDocument();
-    expect(within(screen.getByRole('button', { name: /^implement\s*1$/ })).queryByText(/checked/)).toBeNull();
+    expect(within(screen.getByRole('button', { name: /^implement$/ })).queryByText(/checked/)).toBeNull();
   });
 
   it('reports the clicked step by name', async () => {
@@ -165,34 +183,39 @@ describe('FlowBoard', () => {
   it('marks the current step and shows its attempt count', () => {
     render(<FlowBoard phases={phases} returns={[]} selected={null} onSelect={vi.fn()} />);
 
-    const current = screen.getByRole('button', { name: /^implement\s*2$/ });
+    const current = screen.getByRole('button', { name: /^implement\s*×2$/ });
     expect(current).toHaveAttribute('aria-current', 'step');
-    expect(within(current).getByText('2')).toBeInTheDocument();
+    expect(within(current).getByText('×2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'implement-improve' })).not.toHaveAttribute('aria-current');
   });
 
-  it('draws the return edge from checks to implement next to the review and pipeline edges', () => {
+  it('draws no return line, and no raw id or command in the board text', () => {
     const board: FlowView['phases'] = [
-      { phase: 'planning', steps: [{ name: 'plan', status: 'done', current: false, attempts: 1 }] },
       { phase: 'implementation', steps: [{ name: 'implement', status: 'waiting', current: true, attempts: 2 }] },
-      { phase: 'checks', steps: [{ name: 'checks', status: 'waiting', current: false, attempts: 1 }] },
+      { phase: 'checks', steps: [{ name: 'checks', status: 'returned', current: false, attempts: 1 }] },
       { phase: 'code-review', steps: [{ name: 'code-review', status: 'idle', current: false, attempts: 0 }] },
     ];
-    render(
+    const { container } = render(
       <FlowBoard
         phases={board}
         returns={[
-          { counter: 'review', count: 1, from: 'code-review', to: 'implement' },
-          { counter: 'checks', count: 2, from: 'checks', to: 'implement', why: 'lint' },
+          {
+            counter: 'review',
+            count: 1,
+            from: 'code-review',
+            to: 'implement',
+            why: 'review_requirements,review_quality',
+            words: 'Code review sent it back: requirements, quality',
+          },
+          { counter: 'checks', count: 2, from: 'checks', to: 'implement', why: 'npm test --prefix dashboard' },
         ]}
         selected={null}
         onSelect={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('checks → implement · 2 times (lint)')).toHaveStyle({ fontSize: '0.875rem' });
-    expect(screen.getByText('code-review → implement · once')).toBeInTheDocument();
-    expect(screen.getByText('code review')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/→|review_|npm test|times|once/);
+    expect(within(screen.getByRole('button', { name: /checks/ })).getByTestId('UndoIcon')).toBeInTheDocument();
   });
 
   describe('the checks card', () => {
@@ -233,6 +256,26 @@ describe('FlowBoard', () => {
       expect(part('passed')).toHaveStyle({ flexGrow: '8' });
       expect(part('running')).toHaveStyle({ flexGrow: '2' });
       expect(part('queued')).toHaveStyle({ flexGrow: '2' });
+    });
+
+    it('reads 0/8 with the skipped part in the skipped colour, and says it waits for a free check slot', () => {
+      const statuses: CheckCommandView['status'][] = [
+        ...Array<CheckCommandView['status']>(4).fill('skipped'),
+        ...Array<CheckCommandView['status']>(8).fill('waiting'),
+      ];
+      const card = draw(statuses);
+
+      expect(within(card).getByText('0/8')).toBeInTheDocument();
+      expect(within(card).getByText('waits for a free check slot')).toBeInTheDocument();
+      const skipped = card.querySelector('[data-part="skipped"]');
+      expect(skipped).toHaveStyle({ flexGrow: '4' });
+      expect(skipped).toHaveStyle({ backgroundColor: statusColor('skipped') });
+    });
+
+    it('does not say it waits while a command runs', () => {
+      const card = draw(['running', 'waiting']);
+
+      expect(within(card).queryByText('waits for a free check slot')).toBeNull();
     });
 
     it('shows N failed in the error color with an icon after a failure', () => {

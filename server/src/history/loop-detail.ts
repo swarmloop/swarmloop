@@ -27,3 +27,11 @@ export function readLoopDetail(detail: string | null | undefined): LoopDetail {
     return {};
   }
 }
+
+/** The reviewers a review return names: `review_quality,review_security` reads `quality, security`. */
+export function reviewersOf(reason: string): string[] {
+  return reason
+    .split(',')
+    .map((id) => id.trim().replace(/^review_/, ''))
+    .filter((name) => name !== '');
+}

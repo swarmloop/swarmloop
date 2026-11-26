@@ -5,6 +5,26 @@ import { pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
 import { resumeLabel, resumeTip } from '../../../../lib/ci-infra';
 import { StepDetail } from '../step-detail';
 
+/**
+ * The status of the step's chip on the board. `idle` is kept only for a step the open relaunch runs again: a chip
+ * that is idle for any other reason (a review that failed before any reviewer decided) says nothing of its visits.
+ */
+function boardStatusOf(flow: FlowView, step: string): string | undefined {
+  const status = flow.phases.flatMap((phase) => phase.steps).find((item) => item.name === step)?.status;
+  if (status !== 'idle') {
+    return status;
+  }
+  const relaunched = (flow.relaunches ?? []).some((item) => item.open && item.steps.includes(pipelineStepOf(step)));
+  return relaunched ? status : undefined;
+}
+
+/** Why the step sent work back, only while its chip reads `returned`: a step that went on is not shown as returned. */
+function returnWordsOf(flow: FlowView, step: string, boardStatus: string | undefined): string | undefined {
+  return boardStatus === 'returned'
+    ? flow.returns.find((edge) => edge.from === pipelineStepOf(step))?.words
+    : undefined;
+}
+
 /** The window of the selected step: its transcript and documents, with the Replay and Resume it offers. */
 export function StepWindow({
   flow,
@@ -26,6 +46,7 @@ export function StepWindow({
   onResume: () => void;
 }): ReactElement {
   const current = pipelineStepOf(step) === flow.currentStep;
+  const boardStatus = boardStatusOf(flow, step);
   return (
     <StepDetail
       key={step}
@@ -35,6 +56,8 @@ export function StepWindow({
       revision={flow.updatedAt}
       planRevision={planRevision}
       attempts={attempts}
+      boardStatus={boardStatus}
+      returnWords={returnWordsOf(flow, step, boardStatus)}
       restartedAt={restartedAt}
       now={now}
       liveCommands={flow.checkCommands}

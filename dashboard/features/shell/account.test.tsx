@@ -1,11 +1,14 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSession, logout } from '../../lib/endpoints';
+import { receive, resetFakeSocket } from '../../test/fake-socket';
 import { Account } from './account';
+import { LiveBridgeProvider } from './use-live-bridge';
 
 vi.mock('../../lib/endpoints', () => ({ getSession: vi.fn(), logout: vi.fn() }));
+vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 
 const assign = vi.fn();
 const theme = createTheme({ cssVariables: true, colorSchemes: { light: true, dark: true } });
@@ -19,7 +22,9 @@ const hostOf = (): { label: string; Mark: () => React.ReactElement } => ({ label
 function renderAccount(needsAttention = false): void {
   render(
     <ThemeProvider theme={theme}>
-      <Account hostOf={hostOf} needsAttention={needsAttention} />
+      <LiveBridgeProvider>
+        <Account hostOf={hostOf} needsAttention={needsAttention} />
+      </LiveBridgeProvider>
     </ThemeProvider>,
   );
 }
@@ -37,6 +42,7 @@ beforeEach(() => {
   vi.mocked(getSession).mockReset();
   vi.mocked(logout).mockReset().mockResolvedValue({ ok: true });
   assign.mockReset();
+  resetFakeSocket();
   vi.stubGlobal('location', { assign });
 });
 
@@ -72,13 +78,101 @@ describe('Account', () => {
     expect(await screen.findByText('OC')).toBeInTheDocument();
   });
 
-  it('still shows the button when the session cannot be read', async () => {
+  it('shows a placeholder, never the word Account, before the first answer', async () => {
+    vi.mocked(getSession).mockReturnValue(new Promise(() => undefined));
+
+    renderAccount();
+
+    const trigger = screen.getByRole('button', { name: 'Account menu' });
+    expect(within(trigger).queryByText('Account')).not.toBeInTheDocument();
+    expect(trigger.querySelectorAll('.MuiSkeleton-circular')).toHaveLength(1);
+    expect(trigger.querySelector('.MuiSkeleton-circular')).toHaveStyle({ width: '32px', height: '32px' });
+  });
+
+  it('shows the placeholder in the panel too, with the version line', async () => {
     vi.mocked(getSession).mockRejectedValue(new Error('offline'));
 
     renderAccount();
     await vi.waitFor(() => expect(getSession).toHaveBeenCalled());
+    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Account menu' }));
 
-    expect(screen.getByRole('button', { name: /Account/ })).toBeInTheDocument();
+    const menu = screen.getByRole('menu', { name: 'Account' });
+    expect(screen.getByRole('presentation').querySelector('.MuiSkeleton-circular')).toHaveStyle({ width: '40px' });
+    expect(within(menu).getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument();
+    expect(screen.getByText('swarmloop dev')).toBeInTheDocument();
+  });
+
+  it('shows the person after the live connect when the first read failed', async () => {
+    vi.mocked(getSession).mockRejectedValueOnce(new Error('offline')).mockResolvedValue(signedIn);
+
+    renderAccount();
+    await vi.waitFor(() => expect(getSession).toHaveBeenCalledTimes(1));
+    await act(async () => Promise.resolve());
+    expect(screen.queryByText('octocat')).not.toBeInTheDocument();
+    expect(screen.queryByText('Account')).not.toBeInTheDocument();
+
+    act(() => receive('connect'));
+
+    expect(await screen.findByRole('button', { name: /octocat/ })).toBeInTheDocument();
+    expect(getSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not read again on the first connect when the first read worked', async () => {
+    vi.mocked(getSession).mockResolvedValue(signedIn);
+
+    renderAccount();
+    await screen.findByRole('button', { name: /octocat/ });
+    act(() => receive('connect'));
+    await act(async () => Promise.resolve());
+
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the person again on a connect that follows an earlier one', async () => {
+    vi.mocked(getSession)
+      .mockResolvedValueOnce(signedIn)
+      .mockResolvedValue({ ...signedIn, user: 'hubot' });
+
+    renderAccount();
+    await screen.findByRole('button', { name: /octocat/ });
+    act(() => receive('connect'));
+    act(() => receive('connect'));
+
+    expect(await screen.findByRole('button', { name: /hubot/ })).toBeInTheDocument();
+  });
+
+  it('keeps the person shown when a later read fails', async () => {
+    vi.mocked(getSession).mockResolvedValueOnce(signedIn).mockRejectedValue(new Error('restarting'));
+
+    renderAccount();
+    await screen.findByRole('button', { name: /octocat/ });
+    act(() => receive('connect'));
+    act(() => receive('connect'));
+    await vi.waitFor(() => expect(getSession).toHaveBeenCalledTimes(2));
+    await act(async () => Promise.resolve());
+
+    expect(screen.getByRole('button', { name: /octocat/ })).toBeInTheDocument();
+    expect(screen.queryByText('Account')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the initials when the photo does not load', async () => {
+    vi.stubGlobal(
+      'Image',
+      class {
+        onerror: (() => void) | null = null;
+        set src(_: string) {
+          queueMicrotask(() => this.onerror?.());
+        }
+      },
+    );
+    vi.mocked(getSession).mockResolvedValue({ ...signedIn, avatarUrl: 'https://avatars.test/octocat.png' });
+
+    renderAccount();
+    const trigger = await screen.findByRole('button', { name: /octocat/ });
+
+    expect(await within(trigger).findByText('OC')).toBeInTheDocument();
+    expect(trigger.querySelector('img')).toBeNull();
+    vi.unstubAllGlobals();
   });
 
   it('the trigger shows the avatar, the login and GitHub with its mark', async () => {
@@ -150,10 +244,41 @@ describe('Account', () => {
     renderAccount();
     await openMenu();
 
-    expect(screen.getByRole('link', { name: 'swarmloop 1.2.3' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'swarmloop v1.2.3' })).toHaveAttribute(
       'href',
       `${SOURCE}/releases/tag/v1.2.3`,
     );
+  });
+
+  it('a source build names its release and its commit, and only the release links to its notes', async () => {
+    vi.mocked(getSession).mockResolvedValue({ ...signedIn, version: '0.3.2', revision: 'ae0a069' });
+
+    renderAccount();
+    await openMenu();
+
+    const notes = screen.getByRole('link', { name: 'v0.3.2' });
+    expect(notes.parentElement).toHaveTextContent('swarmloop v0.3.2 · ae0a069');
+    expect(notes).toHaveAttribute('href', `${SOURCE}/releases/tag/v0.3.2`);
+    expect(screen.queryByRole('link', { name: /ae0a069/ })).not.toBeInTheDocument();
+  });
+
+  it('a source build without a source URL shows the release and the commit as plain text', async () => {
+    vi.mocked(getSession).mockResolvedValue({ ...signedIn, version: '0.3.2', revision: 'ae0a069', sourceUrl: null });
+
+    renderAccount();
+    await openMenu();
+
+    expect(screen.getByText('swarmloop v0.3.2 · ae0a069')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'v0.3.2' })).not.toBeInTheDocument();
+  });
+
+  it('a release reads swarmloop v0.4.0', async () => {
+    vi.mocked(getSession).mockResolvedValue({ ...signedIn, version: '0.4.0' });
+
+    renderAccount();
+    await openMenu();
+
+    expect(screen.getByRole('link', { name: 'swarmloop v0.4.0' })).toBeInTheDocument();
   });
 
   it('a version that is not a release links to the releases page', async () => {
@@ -171,8 +296,8 @@ describe('Account', () => {
     renderAccount();
     await openMenu();
 
-    expect(screen.getByText('swarmloop 1.2.3')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'swarmloop 1.2.3' })).not.toBeInTheDocument();
+    expect(screen.getByText('swarmloop v1.2.3')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'swarmloop v1.2.3' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Documentation' })).not.toBeInTheDocument();
   });
 

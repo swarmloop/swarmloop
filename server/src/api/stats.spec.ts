@@ -97,11 +97,6 @@ describe('buildStats', () => {
         { kind: 'review', returns: 2 },
         { kind: 'pipeline', returns: 1 },
       ],
-      tasks: 2,
-      usdPerTask: 1.63,
-      medianUsdPerTask: 1.63,
-      tasksBack: 1,
-      medianReturnsPerTask: 1,
       firstPass: 1,
       limits: 0,
       agentMs: 5 * 60_000,
@@ -113,6 +108,24 @@ describe('buildStats', () => {
       requirementsTotal: 0,
       caughtAndFixed: 0,
       personMessages: 0,
+    });
+    expect(stats.tasks).toEqual({
+      finished: 2,
+      active: 1,
+      failed: 1,
+      medianUsd: 1.63,
+      medianMs: 2_100_000,
+      back: 1,
+      medianReturns: 1,
+    });
+    expect(stats.epics).toEqual({
+      finished: 0,
+      active: 0,
+      failed: 0,
+      medianUsd: 0,
+      medianMs: null,
+      back: 0,
+      medianReturns: null,
     });
   });
 
@@ -485,9 +498,9 @@ describe('stats range', () => {
       const runs = [run(1), run(2), run(3)];
       const steps = [step(1, 'implement', 2, at), step(2, 'implement', 4, at), step(3, 'implement', 30, at)];
 
-      const { totals } = view([], runs, steps);
+      const { tasks } = view([], runs, steps);
 
-      expect([totals.tasks, totals.usdPerTask, totals.medianUsdPerTask]).toEqual([3, 12, 4]);
+      expect([tasks.finished, tasks.medianUsd]).toEqual([3, 4]);
     });
 
     it('counts a split run with its subtasks as one task', () => {
@@ -495,9 +508,10 @@ describe('stats range', () => {
       const steps = [step(1, 'plan', 1, at), step(2, 'implement', 3, at), step(3, 'implement', 3, at)];
       const loops = [{ runId: 2, counter: 'review', reason: 'review_quality', createdAt: at }];
 
-      const { totals } = view(loops, runs, steps);
+      const { epics, tasks } = view(loops, runs, steps);
 
-      expect([totals.tasks, totals.usdPerTask, totals.tasksBack, totals.medianReturnsPerTask]).toEqual([1, 7, 1, 1]);
+      expect([epics.finished, epics.medianUsd, epics.back, epics.medianReturns]).toEqual([1, 7, 1, 1]);
+      expect([tasks.finished, tasks.failed, tasks.back]).toEqual([1, 1, 1]);
     });
 
     it('counts a split run once, by its parent, with its subtasks in its spend and returns', () => {
@@ -516,6 +530,10 @@ describe('stats range', () => {
 
       expect([stats.totals.runs, stats.totals.done, stats.totals.active, stats.totals.failed]).toEqual([2, 1, 1, 0]);
       expect([day?.done, day?.active, day?.failed]).toEqual([1, 1, 0]);
+      expect([day?.epics, day?.tasks]).toEqual([
+        { done: 1, active: 0, failed: 0 },
+        { done: 1, active: 2, failed: 1 },
+      ]);
       expect(stats.totals.merged).toBe(1);
       expect(stats.runs).toHaveLength(2);
       expect(stats.runs.find((entry) => entry.key === 'run-1')).toMatchObject({ usd: 6, returns: 1 });

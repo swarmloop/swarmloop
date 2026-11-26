@@ -240,7 +240,7 @@ export class RunRebase {
   /** The rebase changed nothing in the branch's own diff: its code review stands, so the checks and CI run again. */
   private async startAtChecks(run: RunEntity): Promise<'start'> {
     const checks = (await this.flows.activePhases(run.id)).includes('checks');
-    await this.flows.noteFlow(run.key, checks ? ['checks', 'ci'] : ['ci'], checks ? 'checks' : 'commit');
+    await this.flows.noteFlow(run.key, checks ? ['checks', 'ci'] : ['ci'], checks ? 'checks' : 'commit', 'rebase');
     await this.runs.change(run.key, (next) => {
       writeRunState(next, { status: 'waiting', currentStep: checks ? 'checks' : 'commit' });
       next.stepStartedAt = null;
@@ -249,7 +249,7 @@ export class RunRebase {
   }
 
   private async startAtReview(key: string): Promise<'start'> {
-    await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review');
+    await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review', 'rebase');
     await this.runs.change(key, (next) => {
       writeRunState(next, { status: 'waiting', currentStep: 'code-review' });
       next.stepStartedAt = null;
@@ -302,7 +302,7 @@ export class RunRebase {
   private async startAtImplement(run: RunEntity): Promise<'start'> {
     const phases = await this.flows.activePhases(run.id);
     if (!phases.includes('implementation')) {
-      await this.flows.noteFlow(run.key, ['implementation', 'checks', 'code-review', 'ci'], 'implement');
+      await this.flows.noteFlow(run.key, ['implementation', 'checks', 'code-review', 'ci'], 'implement', 'rebase');
     }
     await this.runs.change(run.key, (fresh) => {
       writeRunState(fresh, { status: 'waiting', currentStep: 'implement' });

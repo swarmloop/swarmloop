@@ -294,6 +294,20 @@ export class VisitRepository {
     return this.stepStats.find({ where: { runId }, order: { id: 'ASC' } });
   }
 
+  /** When each step of each of the runs finished a visit, by run id, in one read whatever the number of runs. */
+  async finishesOf(runIds: number[]): Promise<Map<number, Pick<StepStatEntity, 'step' | 'finishedAt'>[]>> {
+    const found = runIds.length
+      ? await this.stepStats.find({
+          where: { runId: In(runIds) },
+          select: { runId: true, step: true, finishedAt: true },
+        })
+      : [];
+    const byRun = new Map<number, Pick<StepStatEntity, 'step' | 'finishedAt'>[]>();
+    for (const { runId, step, finishedAt } of found)
+      byRun.set(runId, [...(byRun.get(runId) ?? []), { step, finishedAt }]);
+    return byRun;
+  }
+
   /**
    * The latest visit of each of the runs, with only its id, kill reason, attempt and end time, in two reads whatever
    * the number of runs.

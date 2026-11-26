@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import type { CheckCommandView, StepView } from '@contract/api';
+import { skippedLast, skipKey, skipReasons } from '../../check-commands';
 import { CheckCommandLine } from './check-command-line';
 
 /** The commands of one checks visit, a line each. The repositories are group headings only when the run has more than one. */
@@ -18,6 +19,7 @@ export function CheckCommands({
   visit: StepView['visits'][number] | undefined;
   now: number;
 }): ReactElement | null {
+  const reasons = skipReasons(visit?.documents);
   const repos = [...new Set(commands.map((command) => command.repo))];
   if (commands.length === 0) {
     return visit?.status === 'running' ? null : (
@@ -39,11 +41,16 @@ export function CheckCommands({
               {repo}
             </Typography>
           ) : null}
-          {commands
-            .filter((command) => command.repo === repo)
-            .map((command) => (
-              <CheckCommandLine key={command.index} runKey={runKey} command={command} visit={visit} now={now} />
-            ))}
+          {skippedLast(commands.filter((command) => command.repo === repo)).map((command) => (
+            <CheckCommandLine
+              key={command.index}
+              runKey={runKey}
+              command={command}
+              visit={visit}
+              now={now}
+              skipReason={reasons[skipKey(command)]}
+            />
+          ))}
         </Box>
       ))}
     </Box>

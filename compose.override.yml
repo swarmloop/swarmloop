@@ -31,6 +31,9 @@ services:
     build:
       context: .
       dockerfile: docker/server/Dockerfile
+      args:
+        VERSION: ${SWARMLOOP_BUILD_VERSION:-dev}
+        REVISION: ${SWARMLOOP_BUILD_REVISION:-}
     environment:
       # No registry: the server runs the local images built above.
       SWARMLOOP_REGISTRY: ''

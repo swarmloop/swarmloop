@@ -67,6 +67,51 @@ describe('StepWindow', () => {
     expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
+  it('reads a failed first-round code review as failed, though its chip is idle', async () => {
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        step: 'code-review',
+        descriptor: { name: 'code-review', kind: 'agent' },
+        visits: [visitView({ status: 'failed' })],
+      }),
+    );
+    const flow = flowView({
+      status: 'failed',
+      currentStep: 'code-review',
+      phases: [{ phase: 'code-review', steps: [{ name: 'code-review', status: 'idle', current: true, attempts: 1 }] }],
+    });
+    render(<StepWindow flow={flow} step="code-review" attempts={1} now={0} onReplay={vi.fn()} onResume={vi.fn()} />, {
+      wrapper: Wrapper,
+    });
+
+    expect(await screen.findByLabelText('Step status')).toHaveTextContent('failed');
+    expect(screen.queryByText('Not started')).toBeNull();
+  });
+
+  it('reads a step whose chip is idle as not started, with its old visit kept', async () => {
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        step: 'checks',
+        descriptor: { name: 'checks', kind: 'agent' },
+        visits: [visitView({ status: 'done' })],
+      }),
+    );
+    const flow = flowView({
+      status: 'running',
+      currentStep: 'checks',
+      phases: [{ phase: 'checks', steps: [{ name: 'checks', status: 'idle', current: false, attempts: 1 }] }],
+      relaunches: [
+        { at: '2026-01-01T00:00:00Z', reason: 'Rebased onto main', phases: ['checks'], steps: ['checks'], open: true },
+      ],
+    });
+    render(<StepWindow flow={flow} step="checks" attempts={1} now={0} onReplay={vi.fn()} onResume={vi.fn()} />, {
+      wrapper: Wrapper,
+    });
+
+    expect(await screen.findByText('Not started')).toBeInTheDocument();
+    expect(screen.queryByText('done')).toBeNull();
+  });
+
   it('offers no replay while the run is running', async () => {
     window('implement', 'running', 'done');
 

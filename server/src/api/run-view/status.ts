@@ -1,16 +1,26 @@
 import type { RunEntity, StepStatEntity } from '../../history/entities';
 import { isLoopStep } from '../../core/pipeline-result';
 import { readOutcome } from '../../history/run-state';
+import type { RelaunchView } from '../../contract/relaunch';
+import { awaitsRelaunch } from './relaunch';
 import type { MergeOutcome } from '../../contract/run-state';
 import { STEPS } from '../../contract/steps';
 import type { StepName } from '../../contract/steps';
 
-export function stepStatus(name: string, run: RunEntity, stat: StepStatEntity | undefined): string {
+export function stepStatus(
+  name: string,
+  run: RunEntity,
+  stat: StepStatEntity | undefined,
+  relaunch?: RelaunchView,
+): string {
   if (name === 'done') {
     return run.status === 'done' ? 'done' : 'idle';
   }
   if (name === run.currentStep) {
     return run.status === 'done' ? 'done' : run.status;
+  }
+  if (awaitsRelaunch(name, stat, relaunch)) {
+    return 'idle';
   }
   if (stat?.status === 'skipped') {
     return 'skipped';

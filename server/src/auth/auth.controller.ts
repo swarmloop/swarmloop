@@ -222,16 +222,21 @@ export class AuthController {
       ? {
           user: session.user,
           provider: session.provider,
-          avatarUrl: session.avatarUrl ?? null,
+          avatarUrl: await this.people.avatarOf(session.user),
           role: await this.people.roleOf(session.user),
           ...this.build(),
         }
       : { user: null, ...this.build() };
   }
 
-  private build(): Pick<MeView, 'version' | 'sourceUrl'> {
+  private build(): Pick<MeView, 'version' | 'sourceUrl' | 'revision'> {
     const { SWARMLOOP_BUILD_VERSION: version, SWARMLOOP_SOURCE_URL: source } = this.config.env;
-    return { version: version || 'dev', sourceUrl: /^https?:\/\//.test(source) ? source : null };
+    const revision = this.config.env.SWARMLOOP_BUILD_REVISION;
+    return {
+      version: version || 'dev',
+      sourceUrl: /^https?:\/\//.test(source) ? source : null,
+      ...(revision && revision !== 'unknown' ? { revision: revision.slice(0, 7) } : {}),
+    };
   }
 
   @Get(':provider/login')

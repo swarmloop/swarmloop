@@ -48,7 +48,13 @@ describe('StepHeader', () => {
       visit: view.visits[0],
       attempt: 0,
       attempts: 1,
-      commands: { passed: 8, total: 12, slowest: { command: 'unit tests', ms: 65_000 } },
+      commands: {
+        passed: 8,
+        total: 12,
+        skipped: 0,
+        waitsForSlot: false,
+        slowest: { command: 'unit tests', ms: 65_000 },
+      },
     });
 
     expect(screen.getByText('8/12 passed · slowest: unit tests 1m 5s')).toBeInTheDocument();
@@ -56,6 +62,28 @@ describe('StepHeader', () => {
     expect(screen.queryByText(/ in$| out$/)).toBeNull();
     expect(screen.queryByText(/cpu|mem /)).toBeNull();
     expect(screen.queryByText('server')).toBeNull();
+  });
+
+  it('reads skipped commands apart from the passed ones, over the commands that run', () => {
+    header({
+      label: 'running',
+      commands: { passed: 0, total: 8, skipped: 4, waitsForSlot: false, slowest: null },
+    });
+
+    expect(screen.getByText('0/8 passed · 4 skipped')).toBeInTheDocument();
+  });
+
+  it('reads waits for a free check slot in place of running, and running when a command runs', () => {
+    header({ label: 'running', commands: { passed: 0, total: 8, skipped: 4, waitsForSlot: true, slowest: null } });
+
+    expect(screen.getByText('waits for a free check slot')).toBeInTheDocument();
+    expect(screen.queryByText('running')).toBeNull();
+  });
+
+  it('keeps running when a command runs', () => {
+    header({ label: 'running', commands: { passed: 0, total: 8, skipped: 0, waitsForSlot: false, slowest: null } });
+
+    expect(screen.getByText('running')).toBeInTheDocument();
   });
 
   it('says the step has not run when there is no visit', () => {
@@ -257,7 +285,7 @@ describe('StepHeader', () => {
     expect(screen.queryByRole('button', { name: /Retry|Run again/ })).toBeNull();
   });
 
-  it('shows a returned attempt number in the error color with the undo icon', () => {
+  it('shows a returned attempt number in the error color, with no state icon', () => {
     const view = stepView({
       visits: [visitView({ id: 1, attempt: 1, status: 'waiting' }), visitView({ id: 2, attempt: 2, status: 'done' })],
     });
@@ -265,7 +293,7 @@ describe('StepHeader', () => {
 
     const first = screen.getByRole('button', { name: '1' });
     expect(first).toHaveStyle({ color: createTheme().palette.error.main });
-    expect(first.querySelector('[data-testid="UndoIcon"]')).not.toBeNull();
+    expect(first.querySelector('svg')).toBeNull();
   });
 
   it('keeps the model id in mono and the rest of the line in the UI font', () => {

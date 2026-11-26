@@ -23,41 +23,31 @@ export function cookieValue(cookieHeader: string | undefined, name: string): str
   return null;
 }
 
-type Session = SessionEntity & { avatarUrl?: string };
-
 /** Login sessions: a random id, the person, and 14 days. */
 @Injectable()
 export class SessionService {
-  /** The avatar of each live session: no session column holds it, so it is gone after a restart. */
-  private readonly avatars = new Map<string, string>();
-
   constructor(
     private readonly clock: Clock,
     @InjectRepository(SessionEntity) private readonly sessions: Repository<SessionEntity>,
   ) {}
 
-  async create(user: string, provider: string, avatarUrl?: string): Promise<Session> {
+  async create(user: string, provider: string): Promise<SessionEntity> {
     await this.sessions.delete({ expiresAt: LessThanOrEqual(this.clock.iso()) });
     const expiresAt = new Date(this.clock.now() + SESSION_DAYS * 24 * 3600 * 1000).toISOString();
-    const session = await this.sessions.save({ id: randomBytes(32).toString('hex'), user, provider, expiresAt });
-    if (avatarUrl) {
-      this.avatars.set(session.id, avatarUrl);
-    }
-    return { ...session, avatarUrl };
+    return this.sessions.save({ id: randomBytes(32).toString('hex'), user, provider, expiresAt });
   }
 
   /** The live session, or null. An expired one is deleted here. */
-  async find(id: string | null): Promise<Session | null> {
+  async find(id: string | null): Promise<SessionEntity | null> {
     const session = id ? await this.sessions.findOneBy({ id }) : null;
     if (session && session.expiresAt <= this.clock.iso()) {
       await this.delete(session.id);
       return null;
     }
-    return session && { ...session, avatarUrl: this.avatars.get(session.id) };
+    return session;
   }
 
   async delete(id: string): Promise<void> {
-    this.avatars.delete(id);
     await this.sessions.delete({ id });
   }
 }

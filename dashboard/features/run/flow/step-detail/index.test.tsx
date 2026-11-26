@@ -63,6 +63,86 @@ beforeEach(() => {
 });
 
 describe('StepDetail', () => {
+  it('says in plain words why the step sent work back', async () => {
+    detail({ step: 'checks', returnWords: 'Checks sent it back: dashboard tests' });
+
+    expect(await screen.findByText('Checks sent it back: dashboard tests')).toBeInTheDocument();
+  });
+
+  it('keeps the interruption sentence beside the words of a return', async () => {
+    const at = '2026-01-01T10:00:00.000Z';
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        visits: [
+          visitView({ id: 1, attempt: 1, status: 'failed', attemptId: 'a', interruption: { at, relaunched: true } }),
+        ],
+      }),
+    );
+    detail({ step: 'checks', returnWords: 'Checks sent it back: lint' });
+
+    expect(await screen.findByText('Checks sent it back: lint')).toBeInTheDocument();
+    expect(await screen.findByText(/Interrupted at .* by a server restart/)).toBeInTheDocument();
+  });
+
+  it('keeps the restart wait sentence beside the words of a return', async () => {
+    const restartedAt = '2026-01-01T10:00:00.000Z';
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [visitView({ status: 'running', samples: [] })] }));
+    detail({ step: 'checks', runStatus: 'running', restartedAt, returnWords: 'Checks sent it back: lint' });
+
+    expect(await screen.findByText(restartWaitSentence(restartedAt, localTime))).toBeInTheDocument();
+    expect(screen.getByText('Checks sent it back: lint')).toBeInTheDocument();
+  });
+
+  it('reads a relaunched step as not started and keeps its old visit as an earlier attempt', async () => {
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [visitView({ id: 1, attempt: 1, status: 'done' })] }));
+    detail({ boardStatus: 'idle', attempts: 1 });
+
+    expect(await screen.findByText('Not started')).toBeInTheDocument();
+    expect(screen.queryByText('done')).toBeNull();
+    expect(screen.getByRole('button', { name: /1/ })).toBeInTheDocument();
+  });
+
+  it('reads a relaunched checks step with commands as not started, not as its counts', async () => {
+    vi.mocked(getStep).mockResolvedValue(
+      stepView({
+        step: 'checks',
+        commands: [
+          {
+            attempt: 'a',
+            index: 0,
+            repo: 'r',
+            command: 'lint',
+            name: 'lint',
+            status: 'passed',
+            startedAt: null,
+            endedAt: null,
+            exitCode: 0,
+          },
+        ],
+        visits: [visitView({ id: 1, attempt: 1, status: 'done' })],
+      }),
+    );
+    detail({ step: 'checks', boardStatus: 'idle', attempts: 1 });
+
+    expect(await screen.findByText('Not started')).toBeInTheDocument();
+    expect(screen.queryByText('done')).toBeNull();
+  });
+
+  it('shows the status of its visit when the board does not say idle', async () => {
+    vi.mocked(getStep).mockResolvedValue(stepView({ visits: [visitView({ id: 1, attempt: 1, status: 'done' })] }));
+    detail({ boardStatus: 'done', attempts: 1 });
+
+    expect(await screen.findByText('done')).toBeInTheDocument();
+    expect(screen.queryByText('Not started')).toBeNull();
+  });
+
+  it('says nothing about a return for a step that sent none', async () => {
+    detail();
+
+    await screen.findByText('This step started no container.');
+    expect(screen.queryByText(/sent it back/)).toBeNull();
+  });
+
   it('shows a cut attempt as interrupted in the neutral color with its sentence', async () => {
     const at = '2026-01-01T10:00:00.000Z';
     vi.mocked(getStep).mockResolvedValue(
@@ -508,10 +588,14 @@ describe('StepDetail', () => {
 
       await screen.findByRole('button', { name: /npm run lint/ });
       const lines = screen.getAllByRole('listitem').filter((line) => within(line).queryByRole('button'));
-      expect(lines).toHaveLength(5);
-      expect(
-        lines.map((line) => within(line).getByText(/^(queued|running|passed|failed|skipped)$/).textContent),
-      ).toEqual(['passed', 'failed', 'running', 'queued', 'skipped']);
+      expect(lines).toHaveLength(4);
+      expect(lines.map((line) => within(line).getByText(/^(queued|running|passed|failed)$/).textContent)).toEqual([
+        'passed',
+        'failed',
+        'running',
+        'queued',
+      ]);
+      expect(screen.getByText('skipped')).toBeInTheDocument();
       expect(lines[1]).toHaveTextContent('2m 3s');
       expect(lines[1]).toHaveTextContent('exit 2');
     });
@@ -537,10 +621,10 @@ describe('StepDetail', () => {
       expect(screen.getByText('npm test')).toBeInTheDocument();
     });
 
-    it('shows passed/total and the slowest command in the header', async () => {
+    it('shows passed/run, the skipped count and the slowest command in the header', async () => {
       detail({ step: 'checks' });
 
-      expect(await screen.findByText(/^2\/5 passed · slowest: npm run lint 2m 3s$/)).toBeInTheDocument();
+      expect(await screen.findByText(/^1\/4 passed · 1 skipped · slowest: npm run lint 2m 3s$/)).toBeInTheDocument();
     });
 
     it('opens the full output of a finished command from its stored file', async () => {

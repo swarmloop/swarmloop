@@ -52,6 +52,7 @@ export async function taskRuns(
   pipeline: PipelineService,
   sources: StateSources & { documents: Pick<DocumentRepository, 'latestDocuments'> },
   waits: ReadonlyMap<number, RunWaitEntity[]>,
+  relaunches: ReadonlyMap<number, string[]>,
   live?: LiveHub,
 ): Promise<TaskRunViews> {
   const children: TaskRuns = new Map();
@@ -75,7 +76,7 @@ export async function taskRuns(
       const childDocuments = stored.filter((document) => document.runId === child.id);
       const note = last?.killReason === 'process died' ? interruptionOf(childDocuments, last.id) : null;
       const result = resultOf(childDocuments, own.state);
-      lives.set(child.taskId, liveRunOf(child, own, waits.get(child.id) ?? []));
+      lives.set(child.taskId, liveRunOf(child, own, waits.get(child.id) ?? [], relaunches.get(child.id)));
       children.set(child.taskId, {
         key: child.key,
         state: own.state,

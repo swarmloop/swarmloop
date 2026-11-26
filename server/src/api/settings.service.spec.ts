@@ -4,6 +4,7 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { AppConfig } from '../config/env';
+import { DefaultsLayout, parseDefaultsLayout } from '../config/defaults-layout';
 import { testEnv } from '../config/env.spec-helpers';
 import { SettingSources } from '../config/setting-sources';
 import { SystemClock } from '../core/clock';
@@ -13,6 +14,23 @@ import { IntegrationSecretRepository } from '../history/integration-secret.repos
 import { UserSettingRepository } from '../history/user-setting.repository';
 import { seededBoot } from './runs-boot.spec-helpers';
 import { SettingsService } from './settings.service';
+
+/** A defaults.env in the file's form: a blank-line block per group, headed by its first comment line. */
+const DEFAULTS_ENV = [
+  '# Limits.',
+  '# Maximum returns per step.',
+  'MAX_RETURNS=10',
+  'MAX_LAUNCHES=3',
+  '',
+  '# Authentication.',
+  '# Personal API token.',
+  'SWARMLOOP_TOKEN=',
+  '# Encryption secret.',
+  'SWARMLOOP_SECRET=',
+  'NOT_A_SERVER_SETTING=1',
+  '',
+  'SWARMLOOP_API_PORT=3920',
+].join('\n');
 
 async function world(backlog = 'claude:opus') {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-settings-service-'));
@@ -35,9 +53,46 @@ async function world(backlog = 'claude:opus') {
     clock,
     credentials,
     new SettingSources({}),
+    new DefaultsLayout(parseDefaultsLayout(DEFAULTS_ENV)),
   );
   return { app, service };
 }
+
+describe('the server list of the settings', () => {
+  beforeEach(() => {
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('offline'));
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('follows defaults.env: its order, the group of each block and the comment above each name', async () => {
+    const { app, service } = await world();
+    try {
+      const { server } = await service.view('alice');
+      expect(server.map(({ name, group, description }) => ({ name, group, description }))).toEqual([
+        { name: 'MAX_RETURNS', group: 'Limits.', description: 'Maximum returns per step.' },
+        { name: 'MAX_LAUNCHES', group: 'Limits.', description: undefined },
+        { name: 'SWARMLOOP_TOKEN', group: 'Authentication.', description: 'Personal API token.' },
+        { name: 'SWARMLOOP_SECRET', group: 'Authentication.', description: 'Encryption secret.' },
+        { name: 'SWARMLOOP_API_PORT', group: '', description: undefined },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows a secret as set or not set, never its value', async () => {
+    const { app, service } = await world();
+    try {
+      const found = (await service.view('alice')).server.filter(({ secret }) => secret);
+      expect(found.map(({ name, value }) => [name, value])).toEqual([
+        ['SWARMLOOP_TOKEN', expect.stringMatching(/^(set|not set)$/)],
+        ['SWARMLOOP_SECRET', expect.stringMatching(/^(set|not set)$/)],
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+});
 
 describe('the backlog tier of the settings', () => {
   beforeEach(() => {
@@ -51,6 +106,20 @@ describe('the backlog tier of the settings', () => {
     try {
       expect((await own.service.view('alice')).defaults.agents.backlog).toEqual({ plan: ['claude:opus:xhigh'] });
       expect((await empty.service.view('alice')).defaults.agents.backlog).toEqual({ plan: ['claude:opus'] });
+    } finally {
+      await own.app.close();
+      await empty.app.close();
+    }
+  });
+
+  it('gives the level of each list from defaults.env, also where a list falls back to the main one', async () => {
+    const own = await world('claude:opus:xhigh');
+    const empty = await world('');
+    try {
+      const { levels } = (await own.service.view('alice')).defaults;
+      expect(levels.main).toEqual({ plan: 'high', implement: 'high', review: 'high' });
+      expect(levels.backlog).toEqual({ plan: 'xhigh' });
+      expect((await empty.service.view('alice')).defaults.levels.backlog).toEqual({ plan: 'xhigh' });
     } finally {
       await own.app.close();
       await empty.app.close();

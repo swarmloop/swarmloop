@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { SystemClock, Clock } from '../core/clock';
 import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { AppConfig, readEnv, type HostEnvKeys } from './env';
+import { DefaultsLayout } from './defaults-layout';
 import { envSchema } from './env.schema';
 import { applySettings, envFilePath, readSettings } from './load-env';
 import { resolveRepoRoot } from './repo-root';
@@ -35,6 +36,7 @@ export class SwarmloopConfigModule {
       ],
       providers: [
         { provide: SettingSources, useValue: new SettingSources(settings.sources) },
+        { provide: DefaultsLayout, useValue: DefaultsLayout.fromDefaultsFile() },
         {
           provide: AppConfig,
           useFactory: (config: ConfigService) => new AppConfig(readEnv(config, hostEnvKeys())),
@@ -42,7 +44,7 @@ export class SwarmloopConfigModule {
         },
         { provide: Clock, useClass: SystemClock },
       ],
-      exports: [AppConfig, Clock, SettingSources],
+      exports: [AppConfig, Clock, SettingSources, DefaultsLayout],
     };
   }
 }

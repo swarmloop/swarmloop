@@ -12,25 +12,23 @@ import Typography from '@mui/material/Typography';
 import type { SettingsBody } from '@contract/api';
 import type { SettingsView } from '@contract/settings';
 import { ConnectionsPage } from '../connections';
-import { ThemeModeSwitch } from '../shell';
-import { getSession, getSettings, saveSettings } from '../../lib/endpoints';
+import { getSettings, saveSettings } from '../../lib/endpoints';
 import { AgentsSection } from './agents-section';
 import { ApiTokensSection } from './api-tokens-section';
-import { PeopleSection } from './people-section';
+import { ServerSection } from './server-section';
 
-const SECTIONS = ['Agents', 'Connections', 'API tokens', 'People', 'Appearance', 'Server'] as const;
+const SECTIONS = ['Agents', 'Connections', 'API tokens', 'Server'] as const;
 type Section = (typeof SECTIONS)[number];
 
 const reason = (cause: unknown, fallback: string): string => (cause instanceof Error ? cause.message : fallback);
 
-/** Sections in a left list: the person's agents, Connections, Appearance and the env-only Server settings. */
+/** Sections in a left list: the person's agents, Connections, API tokens and the env-only Server settings. */
 export function SettingsPage(): ReactElement {
   const [section, setSection] = useState<Section>('Agents');
   const [view, setView] = useState<SettingsView | null>(null);
   const [draft, setDraft] = useState<SettingsBody>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
     getSettings().then(
@@ -39,11 +37,6 @@ export function SettingsPage(): ReactElement {
         setDraft(loaded.settings);
       },
       (cause: unknown) => setError(reason(cause, 'settings could not be read')),
-    );
-    // A failed call counts as a non-admin: the People section stays hidden.
-    getSession().then(
-      (me) => setAdmin(me.role === 'admin'),
-      () => setAdmin(false),
     );
   }, []);
 
@@ -72,7 +65,7 @@ export function SettingsPage(): ReactElement {
       </Typography>
       <Box sx={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
         <List component="nav" aria-label="settings sections" sx={{ width: 200, flexShrink: 0 }}>
-          {SECTIONS.filter((name) => name !== 'People' || admin).map((name) => (
+          {SECTIONS.map((name) => (
             <ListItemButton key={name} selected={name === section} onClick={() => setSection(name)}>
               <ListItemText primary={name} />
             </ListItemButton>
@@ -81,33 +74,7 @@ export function SettingsPage(): ReactElement {
         <Box sx={{ flex: 1, minWidth: 0 }}>
           {section === 'Connections' ? <ConnectionsPage /> : null}
           {section === 'API tokens' ? <ApiTokensSection /> : null}
-          {section === 'People' && admin ? <PeopleSection /> : null}
-          {section === 'Appearance' ? <ThemeModeSwitch /> : null}
-          {section === 'Server' && view ? (
-            <Box
-              component="dl"
-              sx={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: 1, columnGap: 3, m: 0 }}
-            >
-              {view.server.map(({ name, value, source, description }) => (
-                <Box key={name} sx={{ display: 'contents' }}>
-                  <Typography component="dt" variant="body2" sx={{ fontFamily: 'monospace' }}>
-                    {name}
-                  </Typography>
-                  <Typography component="dd" variant="body2" color="text.secondary" sx={{ m: 0 }}>
-                    {value || '—'}
-                    <Typography component="span" variant="caption" sx={{ display: 'block' }}>
-                      {source}
-                    </Typography>
-                    {description ? (
-                      <Typography component="span" variant="caption" sx={{ display: 'block' }}>
-                        {description}
-                      </Typography>
-                    ) : null}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          ) : null}
+          {section === 'Server' && view ? <ServerSection settings={view.server} /> : null}
           {section === 'Agents' && view ? (
             <>
               <AgentsSection view={view} draft={draft} onChange={edit} />

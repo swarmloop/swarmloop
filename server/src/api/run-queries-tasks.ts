@@ -3,6 +3,7 @@ import type { Clock } from '../core/clock';
 import type { FlowView } from '../contract/api';
 import type { DocumentEntity, RunEntity } from '../history/entities';
 import type { CommandRepository } from '../history/command.repository';
+import type { FlowRepository } from '../history/flow.repository';
 import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
 import type { RunWaitLog } from '../history/run-wait.log';
@@ -14,12 +15,14 @@ import type { EtaSummary } from './eta-summary';
 import { taskView } from './run-view/documents';
 import { latest } from './run-view/flow';
 import { liveRunOf, runViewEta, taskEtas } from './run-view/run-eta';
+import { relaunchSteps } from './run-view/relaunch';
 import { taskRuns } from './run-view/task-runs';
 
 export interface TaskSources {
   runs: RunRepository;
   visits: VisitRepository;
   documents: DocumentRepository;
+  flows: FlowRepository;
   commands: CommandRepository;
   pipeline: PipelineService;
   live?: LiveHub;
@@ -45,6 +48,10 @@ export async function tasksAndEta(
   await sources.waitLog.settled();
   const table = await sources.etaSummary.table();
   const waits = await sources.waitLog.waitsOf([run.id, ...children.map((child) => child.id)]);
+  const relaunches = await relaunchSteps(sources.flows, sources.visits, [
+    run.id,
+    ...children.filter((child) => child.status !== 'done').map((child) => child.id),
+  ]);
   const { runs, lives } = await taskRuns(
     sources.runs,
     sources.visits,
@@ -53,12 +60,20 @@ export async function tasksAndEta(
     sources.pipeline,
     { documents: sources.documents, commands: sources.commands },
     waits,
+    relaunches,
     sources.live,
   );
   const plan = parseSubtasks(latest(documents, SUBTASKS_KIND));
   const now = sources.clock.now();
   const parallel = sources.config.env.SUBTASKS_PARALLEL;
-  const eta = runViewEta(liveRunOf(run, own, waits.get(run.id) ?? []), plan, lives, table, parallel, now);
+  const eta = runViewEta(
+    liveRunOf(run, own, waits.get(run.id) ?? [], relaunches.get(run.id)),
+    plan,
+    lives,
+    table,
+    parallel,
+    now,
+  );
   return {
     ...taskView(documents, run.currentStep, runs, taskEtas(plan, lives, table, now)),
     ...(eta ? { eta } : {}),

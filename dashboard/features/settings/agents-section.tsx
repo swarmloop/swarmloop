@@ -80,6 +80,8 @@ export function AgentsSection({
                 ) : (
                   <AgentList
                     label={label}
+                    role={role}
+                    base={view.defaults.levels[tier][role as 'plan']}
                     value={own}
                     runtimes={view.runtimes}
                     onChange={(list) => setList(tier, role, list)}

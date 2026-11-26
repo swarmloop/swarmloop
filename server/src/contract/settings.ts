@@ -1,3 +1,5 @@
+import type { Effort } from './effort';
+
 /** One runtime, model and optional effort, as stored for a person and on a run. */
 interface StoredAgent {
   runtime: string;
@@ -24,6 +26,8 @@ export type SettingSource = 'default' | '.env' | 'environment';
 
 export interface ServerSetting {
   name: string;
+  /** The heading of the block of defaults.env the setting is in. */
+  group: string;
   secret: boolean;
   /** Where the value comes from. */
   source: SettingSource;
@@ -41,6 +45,10 @@ export interface SettingsView {
     /** Each agent as `runtime:model[:effort]`. */
     agents: Record<'main' | 'subtask', Record<'plan' | 'implement' | 'review', string[]>> & {
       backlog: { plan: string[] };
+    };
+    /** The level a first entry without an effort runs at, per tier and role: that of the first entry in defaults.env. */
+    levels: Record<'main' | 'subtask', Record<'plan' | 'implement' | 'review', Effort>> & {
+      backlog: { plan: Effort };
     };
   };
   /** The runtimes with a credential, each with env's models, then its priced models, and the levels per model. */

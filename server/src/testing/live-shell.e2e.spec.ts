@@ -5,6 +5,7 @@ import type { RunSummary } from '../contract/api';
 import type { LiveBacklog } from '../contract/backlog-chat';
 import type { PartCounts, RunChange, RunsPage } from '../contract/run-list';
 import type { ServerState } from '../contract/server-pause';
+import { PeopleService } from '../auth/people.service';
 import { BacklogRepository, type BacklogTaskRecord } from '../history/backlog.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
@@ -70,6 +71,35 @@ class HeldShell {
 
   private bump(names: string[]): void {
     for (const name of names) this.backlogStamps[name] = (this.backlogStamps[name] ?? 0) + 1;
+  }
+}
+
+/** The account button of the dashboard: it reads `/auth/me` on a connect that follows an earlier one, as account.tsx does. */
+class HeldAccount {
+  me: { user: string | null; avatarUrl?: string | null } | null = null;
+  /** The latest read the client started on a connect. */
+  reading: Promise<void> = Promise.resolve();
+  private connects = 0;
+
+  constructor(
+    private readonly app: TestApp,
+    private readonly cookie: string,
+  ) {}
+
+  async open(sockets: Socket[]): Promise<Socket> {
+    const socket = await newSocket(this.app, sockets);
+    socket.on('connect', () => {
+      this.connects += 1;
+      if (this.connects > 1) this.reading = this.read();
+    });
+    await connect(socket);
+    await pass();
+    return socket;
+  }
+
+  async read(): Promise<void> {
+    const response = await fetch(`${this.app.url}/auth/me`, { headers: { cookie: this.cookie } });
+    this.me = (await response.json()) as typeof this.me;
   }
 }
 
@@ -263,5 +293,18 @@ describe('the shell follows the server', () => {
     const health = await fetch(`${app.url}/health`);
     expect(shell.paused).toBe(((await health.json()) as { paused: boolean }).paused);
     expect(shell.paused).toBe(true);
+  });
+
+  it('reads the person again after a reconnect, with the photo stored at the latest login', async () => {
+    const people = app.app.get(PeopleService);
+    await people.seen('ann', 'https://avatars.test/ann.png');
+    const account = new HeldAccount(app, (await app.sessionCookie('ann')).cookie);
+    const socket = await account.open(sockets);
+    await account.read();
+    expect(account.me).toMatchObject({ user: 'ann', avatarUrl: 'https://avatars.test/ann.png' });
+
+    await awayDuring(socket, () => people.seen('ann', 'https://avatars.test/ann-2.png'));
+    await account.reading;
+    expect(account.me).toMatchObject({ user: 'ann', avatarUrl: 'https://avatars.test/ann-2.png' });
   });
 });

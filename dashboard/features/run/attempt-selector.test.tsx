@@ -103,11 +103,11 @@ describe('AttemptSelector in the step header', () => {
     expect(screen.getByRole('button', { name: '2' })).toHaveClass('MuiButton-text');
   });
 
-  it('reads Attempt followed by the numbers separated by dots and still selects one', async () => {
+  it('reads `Attempt 3 of 3` with a gap before the buttons and no trailing space, and still selects one', async () => {
     const user = userEvent.setup({ delay: null });
     const onSelect = vi.fn();
     const view = stepView({ visits: visits(3) });
-    const { container } = render(
+    render(
       <StepHeader
         step="implement"
         view={view}
@@ -124,7 +124,12 @@ describe('AttemptSelector in the step header', () => {
       />,
     );
 
-    expect(container.textContent).toContain('Attempt 1 · 2 · 3');
+    const caption = screen.getByText('Attempt 3 of 3');
+    expect(caption.textContent).toBe('Attempt 3 of 3');
+    expect(caption.parentElement).toHaveStyle({ display: 'flex', gap: '4px' });
+    for (const name of ['1', '2', '3']) {
+      expect(screen.getByRole('button', { name }).querySelector('svg')).toBeNull();
+    }
     await user.click(screen.getByRole('button', { name: '2' }));
     expect(onSelect).toHaveBeenCalledWith(1);
   });
@@ -136,7 +141,7 @@ describe('AttemptSelector in the step header', () => {
     ];
     const { container } = render(<AttemptSelector caption="" items={items} selected="a" onSelect={vi.fn()} />);
 
-    expect(container.textContent).toBe('implement 1 · implement 2');
+    expect(container.textContent).toBe('implement 1implement 2');
   });
 
   it('keeps a selected earlier attempt visible as a button', () => {

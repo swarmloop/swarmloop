@@ -1,7 +1,8 @@
 import type { StoredAgents } from '../contract/api';
 import type { CODE_REVIEWERS, StepName } from '../contract/steps';
 import type { Effort } from '../contract/effort';
-import { highestOf, isEffort, raisesEffort } from '../contract/effort';
+import { effortsOfList, highestOf, isEffort, raisesEffort } from '../contract/effort';
+import { defaultLevelOf } from './default-levels';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
@@ -177,27 +178,43 @@ function storedAgents(run: AgentRun | null | undefined, role: Role, tier: ListTi
 }
 
 /**
- * The level an agent runs at: its own, raised to `EPIC_EFFORT` only for the plan role of the parent of a split run
- * (never lowered), then held to the highest level its runtime declares for the model.
+ * The level every agent of one list runs at: its own, else that of the entry before it, else `base` (the level of
+ * the list's first entry in defaults.env). It is raised to `EPIC_EFFORT` only for the plan role of the parent of a
+ * split run (never lowered), then held to the highest level its runtime declares for the model. A runtime that
+ * declares none keeps no effort.
  */
-function resolveEffort(agent: Agent, run: AgentRun | null | undefined, env: AgentEnv, role: Role): Agent {
-  const { effort: own, ...base } = agent;
-  let wanted = own;
-  let note: string | undefined;
+function resolveEfforts(
+  agents: readonly Agent[],
+  base: Effort,
+  run: AgentRun | null | undefined,
+  env: AgentEnv,
+  role: Role,
+): Agent[] {
+  const levelsOf = (index: number) => runtimeFor(agents[index].runtime).efforts(agents[index].model);
+  const listed = effortsOfList(
+    agents.map(({ effort }) => ({ own: effort })),
+    base,
+    levelsOf,
+  );
   const epic = env.EPIC_EFFORT;
-  if (isEffort(epic) && role === 'plan' && run && !run.parentRunId && run.epicAt && raisesEffort(epic, own)) {
-    wanted = epic;
-    note = 'epic';
-  }
-  const levels = runtimeFor(agent.runtime).efforts(agent.model);
-  if (!wanted || levels.length === 0) {
-    return base;
-  }
-  const level = highestOf(levels, wanted);
-  if (level !== wanted) {
-    note = `capped:${wanted}`;
-  }
-  return { ...base, ...(level ? { effort: level } : {}), ...(note ? { effortNote: note } : {}) };
+  const epicRuns = isEffort(epic) && role === 'plan' && run && !run.parentRunId && run.epicAt;
+  return agents.map(({ effort: _own, effortNote: _note, ...agent }, index) => {
+    const levels = levelsOf(index);
+    if (levels.length === 0) {
+      return agent;
+    }
+    let { wanted, effort: level } = listed[index];
+    let note: string | undefined;
+    if (epicRuns && raisesEffort(epic, wanted)) {
+      wanted = epic;
+      level = highestOf(levels, wanted);
+      note = 'epic';
+    }
+    if (level !== wanted) {
+      note = `capped:${wanted}`;
+    }
+    return { ...agent, ...(level ? { effort: level } : {}), ...(note ? { effortNote: note } : {}) };
+  });
 }
 
 /** The env name of the list a role and tier read: an unset subtask or backlog list falls back to the main role. */
@@ -206,17 +223,20 @@ function listName(env: AgentEnv, role: Role, tier: ListTier): keyof AgentEnv {
   return env[own] === '' ? LISTS.main[role] : own;
 }
 
+/** The level a first entry without an effort runs at in one role and tier: that of the tier's own list in defaults.env. */
+export function baseLevelOf(role: Role, tier: ListTier): Effort {
+  return defaultLevelOf(tier === 'backlog' ? 'AGENTS_BACKLOG_PLAN' : LISTS[tier][role]);
+}
+
 /**
  * The agents of one role in one tier, in fallback order. The run's stored choice comes first; else an unset list
  * falls back to the main role, whose list is required.
  */
 function agentsOf(env: AgentEnv, role: Role, tier: ListTier = 'main', run?: AgentRun | null): Agent[] {
-  const stored = storedAgents(run, role, tier);
-  if (stored.length > 0) {
-    return stored.map((agent) => resolveEffort(agent, run, env, role));
-  }
   const name = listName(env, role, tier);
-  return parseAgentList(name, env[name]).map((agent) => resolveEffort(agent, run, env, role));
+  const stored = storedAgents(run, role, tier);
+  const agents = stored.length > 0 ? stored : parseAgentList(name, env[name]);
+  return resolveEfforts(agents, baseLevelOf(role, tier), run, env, role);
 }
 
 /**
@@ -285,9 +305,8 @@ export function backlogReadAgents(env: AgentEnv): Agent[] {
   if (env.AGENTS_BACKLOG_READ === '') {
     return [];
   }
-  return parseAgentList('AGENTS_BACKLOG_READ', env.AGENTS_BACKLOG_READ).map((agent) =>
-    resolveEffort(agent, null, env, 'plan'),
-  );
+  const agents = parseAgentList('AGENTS_BACKLOG_READ', env.AGENTS_BACKLOG_READ);
+  return resolveEfforts(agents, defaultLevelOf('AGENTS_BACKLOG_READ'), null, env, 'plan');
 }
 
 /** The first helper of the runtime that runs, or none when the list has none or the runtime has no helpers. */
@@ -314,7 +333,7 @@ export function runtimesInUse(env: AgentEnv): RuntimeName[] {
   return [...new Set(all.map((agent) => agent.runtime))];
 }
 
-/** The runtimes whose env agents name an effort. Their model lists must be read before the levels can be checked. */
+/** Every runtime the env lists name: each entry runs at a level, so every model list must be read before the levels can be applied. */
 export function runtimesNamingEffort(env: AgentEnv): RuntimeName[] {
   const names = [
     ...TIERS.flatMap((tier) => ROLES.map((role) => LISTS[tier][role])),
@@ -322,7 +341,7 @@ export function runtimesNamingEffort(env: AgentEnv): RuntimeName[] {
     'AGENTS_BACKLOG_READ' as const,
   ].filter((name) => env[name] !== '');
   const agents = names.flatMap((name) => env[name].split(',').map((item) => splitAgent(name, item)));
-  return [...new Set(agents.filter((agent) => agent.effort).map((agent) => agent.runtime))];
+  return [...new Set(agents.map((agent) => agent.runtime))];
 }
 
 /** The models env names for each runtime, once each, in env order: the role lists. */

@@ -9,6 +9,7 @@ import IconButton from '@mui/material/IconButton';
 import ListItemText from '@mui/material/ListItemText';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
+import { effortsOfList, isEffort, type Effort, type EffortOrigin } from '@contract/effort';
 import type { SettingsView } from '@contract/settings';
 import { agentOf, entryOf } from './agent-entry';
 
@@ -19,14 +20,29 @@ const keyOf = (entry: string): string => {
   return `${runtime}:${model}`;
 };
 
-/** `runtime:model[:effort]` entries; the first is used and the next ones are the fallback. */
+const levelsOf = (runtimes: Runtimes, entry: string): Effort[] => {
+  const { runtime, model } = agentOf(entry);
+  return (runtimes.find((item) => item.runtime === runtime)?.efforts[model] ?? []).filter(isEffort);
+};
+
+const originText = (level: Effort, from: EffortOrigin, role: string): string =>
+  ({ own: level, above: `${level} · as above`, default: `${level} · default for ${role}` })[from];
+
+/**
+ * `runtime:model[:effort]` entries; the first is used and the next ones are the fallback. An entry without an effort
+ * shows the level it runs at: that of the entry before it, else `base`, the level of the role in defaults.env.
+ */
 export function AgentList({
   label,
+  role,
+  base,
   value,
   runtimes,
   onChange,
 }: {
   label: string;
+  role: string;
+  base: Effort;
   value: string[];
   runtimes: Runtimes;
   onChange: (value: string[]) => void;
@@ -36,6 +52,15 @@ export function AgentList({
   const addable = runtimes
     .flatMap(({ runtime, models }) => models.map((model) => `${runtime}:${model}`))
     .filter((choice) => !used.has(choice));
+
+  const listed = effortsOfList(
+    value.map((entry) => {
+      const { effort } = agentOf(entry);
+      return effort && isEffort(effort) ? { own: effort } : {};
+    }),
+    base,
+    (index) => levelsOf(runtimes, value[index]),
+  );
 
   function change(index: number, next: { model?: string; effort?: string }): void {
     const agent = { ...agentOf(value[index]), ...next };
@@ -73,7 +98,8 @@ export function AgentList({
     <Box>
       <Box component="ol" aria-label={label} sx={{ listStyle: 'none', m: 0, p: 0 }}>
         {value.map((entry, index) => {
-          const { runtime, model, effort } = agentOf(entry);
+          const { runtime, model } = agentOf(entry);
+          const { effort: level, wanted, from } = listed[index];
           const info = runtimes.find((item) => item.runtime === runtime);
           const levels = info?.efforts[model] ?? [];
           const models = (info?.models ?? []).filter((name) => name === model || !used.has(`${runtime}:${name}`));
@@ -123,12 +149,13 @@ export function AgentList({
               {levels.length > 0 ? (
                 <Select
                   size="small"
-                  value={effort ?? ''}
+                  value={from === 'own' ? (level ?? '') : ''}
+                  displayEmpty
+                  renderValue={() => originText(level ?? wanted, from, role)}
                   onChange={(event) => change(index, { effort: event.target.value })}
                   inputProps={{ 'aria-label': `Effort of ${entry}` }}
                   sx={{ minWidth: 140 }}
                 >
-                  <MenuItem value="">Runtime default</MenuItem>
                   {levels.map((level) => (
                     <MenuItem key={level} value={level}>
                       {level}
