@@ -26,6 +26,7 @@ import { RunReport } from '../shared/run-report';
 import { OpenReviewRounds } from '../shared/open-review-rounds';
 import { CheckoutService } from '../shared/checkout.service';
 import { requiredDocument } from '../step';
+import { MergeMarks } from '../shared/merge-marks';
 import { writeReviewDiff } from './review-diff';
 import { approvedPlan, foreignReviewOf, storedCheckout } from './review-input';
 import { closeReview, failed } from './review-report';
@@ -255,6 +256,11 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       subtasks,
       keep,
       round,
+      outside: await new MergeMarks(this.documents).outsideOwn(
+        key,
+        { files: await this.briefing.ownFiles(opened.run) },
+        diff.files,
+      ),
       auto: options.auto,
       fresh,
       retry,

@@ -71,8 +71,7 @@ describe('review against the input', () => {
   ];
   const authority =
     "the input says what must be true, the plan says how, implement's account says why it was done this way";
-  const loosened =
-    'loosens or removes an assertion, skips or deletes a test, or widens a tolerance. That is a return unless';
+  const loosened = 'loosens or removes an assertion, skips or deletes a test, or widens a tolerance is a return unless';
 
   it('requirements lists the input, checks each item and returns every unmet one at once', () => {
     const text = skill('code-review/requirements');

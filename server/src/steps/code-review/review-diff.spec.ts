@@ -185,6 +185,32 @@ describe('review diff', () => {
     expect(section.patch).toContain('// extra');
   });
 
+  it('names the changed files: committed, uncommitted and untracked against the base', async () => {
+    const repo = featureRepo('swarmloop-review-diff-files-');
+    writeFileSync(join(repo, 'security.ts'), 'export const SECURITY = 1;\n');
+    commit(repo, 'security');
+    writeFileSync(join(repo, 'README'), 'changed\n');
+    writeFileSync(join(repo, 'Extra.php'), '<?php // extra\n');
+
+    const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
+
+    expect([...section.files].sort()).toEqual(['Extra.php', 'README', 'security.ts']);
+  });
+
+  it('prefixes each file with its repository when there are several, and names none for a non-checkout', async () => {
+    const one = featureRepo('swarmloop-review-diff-files-one-');
+    writeFileSync(join(one, 'One.php'), '<?php\n');
+    commit(one, 'one');
+    const plain = mkdtempSync(join(tmpdir(), 'swarmloop-review-diff-plain-'));
+
+    const section = await reviewDiffSection([
+      { hostPath: one, containerPath: '/work/app', readonly: true },
+      { hostPath: plain, containerPath: '/work/docs', readonly: true },
+    ]);
+
+    expect(section.files).toEqual(['app/One.php']);
+  });
+
   it('reviews an epic parent with its merged subtasks and its own edit', async () => {
     const repo = featureRepo('swarmloop-review-diff-epic-', 'feature/epic');
     for (const [branch, file] of [
