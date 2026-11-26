@@ -14,6 +14,7 @@ import { AgentCallRepository } from '../../../history/agent-call.repository';
 import { DataSource } from 'typeorm';
 import { AgentExchangeEntity } from '../../../history/agent-exchange.entity';
 import { AttachmentStore } from '../../../history/attachment-store';
+import { DocumentRepository } from '../../../history/document.repository';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import { VisitStartRepository } from '../../../history/visit-start.repository';
 import { RuntimeCooldownRepository } from '../../../history/runtime-cooldown.repository';
@@ -34,7 +35,11 @@ import { PlannerTurnActions } from './planner-actions';
 import { PlannerBacklogCalls } from './planner-backlog-calls';
 import { PlannerRules } from './planner-rules';
 import { PlannerRunPort, type PlannerRunCommand } from './planner-run-port';
+import { eventFactsOf } from './planner-facts.spec-helpers';
+import { BacklogTurnPrompt } from './turn-prompt';
 import { BacklogTurnRunner } from './turn-runner';
+import { BacklogTurnState } from './turn-state';
+import { TurnTakes } from './turn-takes';
 import { TurnTies } from './turn-ties';
 
 /** One answer of the scripted planner agent: a turn result, a usage limit, a model host that did not answer, or a launch that fails. */
@@ -187,7 +192,19 @@ export async function plannerTurnsHarness(
       workspace.closed.push(key);
     },
   };
-  const prompt = { build: async (name: string, key: string) => `plan ${name} in ${key}` };
+  const state = new BacklogTurnState(
+    h.backlogs,
+    chat,
+    h.runs,
+    db.app.get(DocumentRepository),
+    eventFactsOf(db.app, h.host),
+  );
+  // The brief is a stand-in; the follow-up is written by the real prompt over the real state.
+  const prompt = {
+    build: async (name: string, key: string) => `plan ${name} in ${key}`,
+    followUp: (...input: Parameters<BacklogTurnPrompt['followUp']>) => new BacklogTurnPrompt(state).followUp(...input),
+  };
+  const takes = new TurnTakes(chat);
   const attachments = new AttachmentStore(config, db.clock);
   const live = new LiveHub();
   const runner = new BacklogTurnRunner(
@@ -203,11 +220,12 @@ export async function plannerTurnsHarness(
     attachments,
     calls,
     new TurnTies(h.backlogs, chat, h.runs),
+    takes,
     live,
   );
   const shown: LiveBacklog[] = [];
   live.onBacklog((entry) => shown.push(entry));
-  const planner = () => new BacklogPlanner(h.backlogs, chat, runner, turns, h.scheduler(), db.clock, live);
+  const planner = () => new BacklogPlanner(h.backlogs, chat, runner, turns, h.scheduler(), db.clock, takes, live);
   const started = planner();
   await started.start();
   const harness = {
@@ -216,6 +234,7 @@ export async function plannerTurnsHarness(
     calls,
     launcher,
     runner,
+    takes,
     attachments,
     planner: started,
     agent,

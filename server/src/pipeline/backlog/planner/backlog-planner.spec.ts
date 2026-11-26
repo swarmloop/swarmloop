@@ -76,27 +76,96 @@ describe('BacklogPlanner', () => {
       expect(h.workspace.opened).toEqual([]);
     }));
 
-  it('takes everything that came during a turn together in one next turn', () =>
+  it('takes a message and an event that come while a turn runs into that turn, and gets one follow-up before its answer is applied', () =>
     withTurns(async (h) => {
       const id = await backlogOf(h);
+      h.agent.script = [turnResult('First answer.'), turnResult('Second answer, with both.')];
       let release = (): void => undefined;
       h.agent.gate = new Promise<void>((resolve) => (release = resolve));
       await h.say(id, 'first');
       await launched(h, 1);
       await h.say(id, 'second');
       await h.backlogs.recordEvent(id, 'main-red:web:abc', 'main-red', { repository: 'web', head: 'abc' });
-      await h.say(id, 'third');
+      h.planner.wake(id);
       h.agent.gate = null;
       release();
       await h.planner.whenIdle();
 
-      const [first, next] = await h.turnsOf(id);
+      const [only] = await h.turnsOf(id);
+      expect(await h.turnsOf(id)).toHaveLength(1);
+      expect(only.status).toBe('done');
       expect(h.agent.launches).toHaveLength(2);
-      expect((await h.chat.itemsOfTurn(first.turnKey)).messages.map((message) => message.text)).toEqual(['first']);
-      const taken = await h.chat.itemsOfTurn(next.turnKey);
-      expect(taken.messages.map((message) => message.text)).toEqual(['second', 'third']);
+      expect(h.agent.launches[1].prompt).toContain('second');
+      expect(h.agent.launches[1].prompt).toContain('main red');
+      const taken = await h.chat.itemsOfTurn(only.turnKey);
+      expect(taken.messages.map((message) => message.text)).toEqual(['first', 'second']);
       expect(taken.events.map((event) => event.kind)).toEqual(['main-red']);
+      expect(await h.lines(id)).toEqual(['person: first', 'person: second', 'planner: Second answer, with both.']);
+    }));
+
+  it('starts a next turn for a message that comes after the follow-up was sent', () =>
+    withTurns(async (h) => {
+      const id = await backlogOf(h);
+      h.agent.script = [turnResult('One.'), turnResult('Two.'), turnResult('Three.')];
+      h.agent.started = async () => {
+        // The first launch gets a message while it works; the follow-up gets one after it is sent.
+        const launch = h.agent.launches.length;
+        if (launch <= 2) await h.say(id, launch === 1 ? 'during' : 'late');
+      };
+      await h.say(id, 'first');
+      await h.planner.whenIdle();
+
       expect((await h.turnsOf(id)).map((turn) => turn.status)).toEqual(['done', 'done']);
+      expect(h.agent.launches).toHaveLength(3);
+      expect(h.agent.launches[1].prompt).toContain('during');
+      expect(await h.lines(id)).toEqual([
+        'person: first',
+        'person: during',
+        'person: late',
+        'planner: Two.',
+        'planner: Three.',
+      ]);
+    }));
+
+  it('keeps what a turn took while it ran when the turn fails, and runs it with that on Resume', () =>
+    withTurns(async (h) => {
+      const id = await backlogOf(h);
+      let release = (): void => undefined;
+      h.agent.gate = new Promise<void>((resolve) => (release = resolve));
+      h.agent.script = ['crash', turnResult('Back.')];
+      await h.say(id, 'first');
+      await launched(h, 1);
+      await h.say(id, 'during');
+      h.agent.gate = null;
+      release();
+      await h.planner.whenIdle();
+
+      const [failed] = await h.turnsOf(id);
+      expect(failed.status).toBe('failed');
+      expect((await h.chat.itemsOfTurn(failed.turnKey)).messages.map((message) => message.text)).toEqual([
+        'first',
+        'during',
+      ]);
+      await h.planner.resume('one');
+      await h.planner.whenIdle();
+      expect(h.agent.launches[1].prompt).toContain('plan one in');
+      expect((await h.turnsOf(id)).map((turn) => turn.status)).toEqual(['done']);
+    }));
+
+  it('shows the status of the turn again after it took an item', () =>
+    withTurns(async (h) => {
+      const id = await backlogOf(h);
+      let release = (): void => undefined;
+      h.agent.gate = new Promise<void>((resolve) => (release = resolve));
+      await h.say(id, 'first');
+      await launched(h, 1);
+      const before = h.shown.filter((entry) => entry.turn?.status === 'running').length;
+      await h.say(id, 'second');
+      await h.takes.idle();
+      expect(h.shown.filter((entry) => entry.turn?.status === 'running').length).toBe(before + 1);
+      h.agent.gate = null;
+      release();
+      await h.planner.whenIdle();
     }));
 
   it('applies the actions of a turn once when the server restarts while its commands go out', () =>

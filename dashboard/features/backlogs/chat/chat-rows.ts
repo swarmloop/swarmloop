@@ -3,8 +3,6 @@ import type { BacklogChatView, BacklogMessageView } from '@contract/backlog-chat
 import { localTime } from '../../../lib/format';
 import { actionSentence } from './action-words';
 
-export const WORKING_LINE = 'The planner is working on your messages…';
-
 type Milestone = BacklogView['milestones'][number];
 
 export type ChatRow =
@@ -13,7 +11,7 @@ export type ChatRow =
   | { type: 'proposal'; key: string; message: BacklogMessageView; milestone: Milestone; first: boolean }
   | { type: 'info'; key: string; sentence: string }
   | { type: 'problem'; key: string; sentence: string; reason: string; resume: boolean }
-  | { type: 'working'; key: string };
+  | { type: 'working'; key: string; startedAt: string | null };
 
 interface Dated {
   at: string;
@@ -43,6 +41,10 @@ function waitingSentence(turn: Turn): string {
   return turn.nextTryAt ? `${turn.reason} The planner tries again at ${localTime(turn.nextTryAt)}.` : turn.reason;
 }
 
+function workingRow(turn: Turn): ChatRow {
+  return { type: 'working', key: 'turn', startedAt: turn.startedAt ?? null };
+}
+
 function turnRow(chat: BacklogChatView, owner: boolean): ChatRow | null {
   const turn = chat.turns.at(-1);
   if (turn?.status === 'applied' && turn.nextTryAt)
@@ -59,9 +61,9 @@ function turnRow(chat: BacklogChatView, owner: boolean): ChatRow | null {
     case 'waiting':
       return { type: 'info', key: 'turn', sentence: waitingSentence(turn) };
     case 'running':
-      return turn.reason ? { type: 'info', key: 'turn', sentence: turn.reason } : { type: 'working', key: 'turn' };
+      return turn.reason ? { type: 'info', key: 'turn', sentence: turn.reason } : workingRow(turn);
     case 'applied':
-      return { type: 'working', key: 'turn' };
+      return workingRow(turn);
     case 'done':
     case undefined:
       return null;

@@ -89,6 +89,7 @@ import { PlannerTurnActions } from './backlog/planner/planner-actions';
 import { LeftQuestions } from './backlog/planner/left-questions';
 import { BacklogTurnPrompt } from './backlog/planner/turn-prompt';
 import { BacklogTurnRunner } from './backlog/planner/turn-runner';
+import { TurnTakes } from './backlog/planner/turn-takes';
 import { TurnTies } from './backlog/planner/turn-ties';
 import { BacklogTurnState } from './backlog/planner/turn-state';
 import { BacklogTurnWorkspace } from './backlog/planner/turn-workspace';
@@ -206,6 +207,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BacklogTurnWorkspace,
     BacklogTurnRunner,
     TurnTies,
+    TurnTakes,
     BacklogPlanner,
     RunSettler,
     AttemptStream,

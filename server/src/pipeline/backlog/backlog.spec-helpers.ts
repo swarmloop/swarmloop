@@ -194,6 +194,8 @@ export async function backlogHarness(parallel = 3) {
     backlogs,
     runs,
     fake,
+    /** The repository host over the fake code host, for the facts of events. */
+    host,
     starts,
     /** The action service over the same database. */
     actions,

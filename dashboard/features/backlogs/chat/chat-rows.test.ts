@@ -87,15 +87,16 @@ describe('chatRows', () => {
       { type: 'problem', reason: 'It broke', resume: true },
     ]);
     expect(chatRows(failed, backlogView(), 'bob')).toMatchObject([{ type: 'problem', resume: false }]);
-    expect(chatRows(running, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn' }]);
+    expect(chatRows(running, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn', startedAt: null }]);
   });
 
   it('shows what the start of a running turn waits for, and the working row once it does not', () => {
     const place = 'Waiting for a free agent place (4 of 4 busy)';
     const waiting = backlogChatView({ messages: [], turns: [{ status: 'running', reason: place, nextTryAt: null }] });
     expect(chatRows(waiting, backlogView(), 'ada')).toEqual([{ type: 'info', key: 'turn', sentence: place }]);
+    expect(chatRows(waiting, backlogView(), 'ada').some((row) => row.type === 'working')).toBe(false);
     const started = backlogChatView({ messages: [], turns: [{ status: 'running', reason: '', nextTryAt: null }] });
-    expect(chatRows(started, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn' }]);
+    expect(chatRows(started, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn', startedAt: null }]);
   });
 
   it('shows a waiting turn and an applied turn that waits for a host with their next try, not the working row', () => {
@@ -107,6 +108,17 @@ describe('chatRows', () => {
       expect(chatRows(view, backlogView(), 'ada')).toEqual(info);
     }
     const applied = backlogChatView({ messages: [], turns: [{ status: 'applied', reason: '', nextTryAt: null }] });
-    expect(chatRows(applied, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn' }]);
+    expect(chatRows(applied, backlogView(), 'ada')).toEqual([{ type: 'working', key: 'turn', startedAt: null }]);
+  });
+
+  it('ends the rows with the working row of a running turn, with the time it started', () => {
+    const startedAt = '2026-01-01T10:00:00.000Z';
+    const chat = backlogChatView({
+      messages: [chatMessage({ id: 1, text: 'Hi', createdAt: '2026-01-01T09:00:00.000Z' })],
+      turns: [{ status: 'running', reason: '', nextTryAt: null, startedAt }],
+    });
+
+    expect(chatRows(chat, backlogView(), 'ada').map((row) => row.type)).toEqual(['message', 'working']);
+    expect(chatRows(chat, backlogView(), 'ada').at(-1)).toEqual({ type: 'working', key: 'turn', startedAt });
   });
 });

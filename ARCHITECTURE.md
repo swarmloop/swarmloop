@@ -338,7 +338,7 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 **Target.**
 - **A run's planner** is the plan chat of that run. It writes the plan, answers a person's messages (a question gets a reply, a change gets a plan revision), and answers the questions of its steps. After implement has started, a change amends the plan: done items stay done and the work goes on, and a done run reopens when its plan changes.
 - **An epic's planner** also answers its child runs, looks at each merge, and turns gaps into tasks.
-- **The backlog planner** works in turns, woken by events: a person's message, a run's state, a merge, `main` going red or green. It acts only through the actions and commands a person has: tasks, milestones, requirements, decisions, starting runs, messages to a run's planner. A turn that fails holds the backlog only while it is the latest. One planner of a level runs at a time. A turn hands heavy reading (code, long briefs, logs, diffs) to read-only helpers and decides itself: it reads code only through its read-only helpers, which its launch enforces, and checks a fact it acts on by its quote with one search.
+- **The backlog planner** works in turns, woken by events: a person's message, a run's state, a merge, `main` going red or green. It acts only through the actions and commands a person has: tasks, milestones, requirements, decisions, starting runs, messages to a run's planner. A turn that fails holds the backlog only while it is the latest. One planner of a level runs at a time. A turn takes the messages and events that arrive while it runs and gets them in one follow-up in the same chat before its answer is applied; only what comes after starts the next turn. A turn hands heavy reading (code, long briefs, logs, diffs) to read-only helpers and decides itself: it reads code only through its read-only helpers, which its launch enforces, and checks a fact it acts on by its quote with one search.
 - **The three planners read one core text**: questions go up one chain (decide what you hold, pass up what you do not), the look after a merge, what a new task or a plan change carries, and a fact checked by its quote. Each level keeps only its own: the run planner how it plans and escalates, the epic planner its parts, contract and answer fields, the backlog planner its turns, actions, milestones and helpers.
 
 **Today.**
@@ -346,6 +346,7 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 - The core text is `skills/plan/planner-core.md`. `skillText` (`steps/shared/skill-prompt.ts`, `steps/shared/planner-core.ts`) expands its marker in both skills; the run's and the epic's plan chats read its parts through `skillSection` (`steps/plan/plan.prompts.ts`); the epic's merge look reads its merge part (`steps/implement/merge-look.prompts.ts`); the backlog turn reads the whole skill.
 - Gaps:
   - a planner's change can overwrite one it did not see (f130).
+- A backlog planner turn takes what arrives while it runs: `TurnTakes` (`pipeline/backlog/planner/turn-takes.ts`) holds the window of the running turn, each take goes through the one `takeInto` (`history/backlog-chat.repository.ts`), and `turn-runner.ts` closes the window after the first valid answer and sends what the turn took since its brief as one follow-up through `AgentLauncher` on the turn's key (`followUp` in `turn-prompt.ts`, facts from the same `BacklogTurnState` reading as the brief's events); the answer to it is the one applied, and what comes after waits for the next turn.
 - A backlog planner turn hands heavy reading to the helpers of `AGENTS_BACKLOG_READ` (`pipeline/backlog/planner/turn-runner.ts`, `skills/backlog-plan/SKILL.md`); the turn stays read-only and its row counts the helpers' tokens and dollars. `AgentLauncher` asks for the code-only-by-helper rights with the helper on every launch that gets one, Claude Code's adapter denies the turn's agent its own Read and Glob of the code and Bash, and a settled task shows in the turn's brief as one line. Only Claude Code turns get a helper today (3.21).
 
 ## 3.13 Questions to a person
@@ -524,12 +525,12 @@ Adapters are found by folder. A fake of each kind serves the tests.
 - **Overview:** now, what needs you, done lately, numbers;
 - **Runs:** epics grouped with their tasks;
 - **Run page:** the flow board by phase, the conversation with the planner, the history of visits, documents and logs;
-- **Backlogs:** board, chat, progress;
+- **Backlogs:** board, chat, progress; the chat shows a turn at work and where each of the person's messages stands;
 - **Stats, Settings, Connections:** Settings' Server section is read only; its groups, order and descriptions are those of `defaults.env`, read once through `DefaultsLayout`.
 
 The text is plain words for a person: no raw JSON and no internal ids. A cut text says how much is left out and where the whole is.
 
-**Today.** Holds in the main. The board shows no return lines, a muted ×N of agent visits, and plain names. Settings' Server section follows `defaults.env` through `DefaultsLayout`; People and Appearance are not in Settings. Short lines come from the server, decisions read in words, long texts and path lists fold, and Connections say what a run uses (the server's key or the person's own) and fold a host's repositories; the report heading on the run page is in 3.7. Gaps:
+**Today.** Holds in the main. The board shows no return lines, a muted ×N of agent visits, and plain names. Settings' Server section follows `defaults.env` through `DefaultsLayout`; People and Appearance are not in Settings. Short lines come from the server, decisions read in words, long texts and path lists fold, and Connections say what a run uses (the server's key or the person's own) and fold a host's repositories; the report heading on the run page is in 3.7. The backlog chat ends with a thinking row while a turn works (`chat-rows.ts`, `thinking-row.tsx`, the state icon map's working icon), and each of the person's messages says `Waiting`, `Read` or `Answered` (`messageState` in `pipeline/backlog/planner/planner-views.ts`). Gaps:
 - held runs read as failures (held-run-says-so);
 - several screens are still being reworked in M1 (f131, f132, done-lately, b04, f26).
 

@@ -61,6 +61,21 @@ describe('BacklogChatRepository', () => {
       expect((await db.chat.itemsOfTurn('turn-1')).events).toHaveLength(1);
     }));
 
+  it('takes what came after a first take into the same turn and keeps what it took before', () =>
+    withPlanner(async (db) => {
+      const id = await db.addBacklog();
+      await db.addMessage(id, 'first');
+      await db.chat.takeInto(id, 'turn-1');
+      await db.addMessage(id, 'second');
+      await db.addEvent(id, 'task-merged:a');
+
+      const taken = await db.chat.takeInto(id, 'turn-1');
+
+      expect(taken.messages.map((message) => message.text)).toEqual(['first', 'second']);
+      expect(taken.events.map((event) => event.eventKey)).toEqual(['task-merged:a']);
+      expect(await db.chat.backlogsWithWaitingWork()).toEqual([]);
+    }));
+
   it('does not wake a backlog for the record of an action, and gives it to no turn', () =>
     withPlanner(async (db) => {
       const id = await db.addBacklog();

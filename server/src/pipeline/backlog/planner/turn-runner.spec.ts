@@ -272,4 +272,81 @@ describe('BacklogTurnRunner', () => {
       },
       { AGENTS_BACKLOG_READ: 'claude:h-claude' },
     ));
+
+  it('sends what the turn took while the agent worked in one follow-up and applies the answer to it', () =>
+    withTurn(async (h, id) => {
+      h.agent.script = [turnResult('First.'), turnResult('Second, with it.')];
+      h.agent.started = async () => {
+        if (h.agent.launches.length !== 1) return;
+        await h.chat.addPersonMessage(id, 'one more thing', 'm2', []);
+        await h.chat.takeInto(id, 'turn-a');
+      };
+      expect(await h.runner.run('one', 'turn-a')).toEqual({ status: 'done' });
+
+      expect(h.agent.launches).toHaveLength(2);
+      expect(h.agent.launches[1].prompt).toContain('one more thing');
+      expect(h.agent.launches[1].prompt).toContain('Give your whole answer again');
+      expect(h.agent.launches[1].prompt).not.toContain('plan it');
+      expect(await h.lines(id)).toEqual(['person: plan it', 'person: one more thing', 'planner: Second, with it.']);
+    }));
+
+  it('sends an event that came mid-turn with its facts', () =>
+    withTurn(async (h, id) => {
+      h.agent.script = [turnResult('First.'), turnResult('Second.')];
+      h.agent.started = async () => {
+        if (h.agent.launches.length !== 1) return;
+        await h.backlogs.recordEvent(id, 'main-red:web:abc', 'main-red', { repository: 'web', head: 'abc' });
+        await h.chat.takeInto(id, 'turn-a');
+      };
+      await h.runner.run('one', 'turn-a');
+
+      expect(h.agent.launches).toHaveLength(2);
+      expect(h.agent.launches[1].prompt).toContain('- main red at ');
+      expect(h.agent.launches[1].prompt).toContain('repository: web');
+    }));
+
+  it('carries the helper of the turn on the follow-up too', () =>
+    withTurn(
+      async (h, id) => {
+        h.agent.script = [turnResult('First.'), turnResult('Second.')];
+        h.agent.started = async () => {
+          if (h.agent.launches.length !== 1) return;
+          await h.chat.addPersonMessage(id, 'more', 'm2', []);
+          await h.chat.takeInto(id, 'turn-a');
+        };
+        await h.runner.run('one', 'turn-a');
+
+        expect(h.agent.launches.map((launch) => launch.helper)).toEqual([
+          { model: 'h-claude', effort: 'low', codeOnlyByHelper: true },
+          { model: 'h-claude', effort: 'low', codeOnlyByHelper: true },
+        ]);
+      },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'claude:h-claude:low' },
+    ));
+
+  it('launches once and applies the answer when the turn took nothing while it worked', () =>
+    withTurn(async (h, id) => {
+      h.agent.script = [turnResult('Only.')];
+      await h.runner.run('one', 'turn-a');
+      expect(h.agent.launches).toHaveLength(1);
+      expect(await h.lines(id)).toEqual(['person: plan it', 'planner: Only.']);
+    }));
+
+  it("records the follow-up as a row of the turn's log, tied as the first one is, and counts its cost", () =>
+    withTurn(async (h, id) => {
+      await h.seedTask(id, 'going', { runKey: 'going-1', status: 'running' });
+      h.agent.script = [turnResult('First.'), turnResult('Second.')];
+      h.agent.started = async () => {
+        if (h.agent.launches.length !== 1) return;
+        await h.chat.addPersonMessage(id, 'more', 'm2', []);
+        await h.chat.takeInto(id, 'turn-a');
+      };
+      await h.runner.run('one', 'turn-a');
+
+      const rows = await h.logOf('turn-a');
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row) => row.ties)).toEqual([rows[0].ties, rows[0].ties]);
+      expect(JSON.parse(rows[1].ties ?? '[]')).toEqual([{ task: 'going', run: 'going-1', general: true }]);
+      expect(await h.chat.findTurn('turn-a')).toMatchObject({ usd: 1, tokensIn: 30 });
+    }));
 });

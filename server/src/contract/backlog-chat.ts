@@ -8,6 +8,9 @@ export type MessageKind = 'message' | 'info' | 'refused' | 'failed';
 /** A turn is `running`, then `applied` (its actions are written) and `done`, or `failed` and waiting for Resume, or `waiting` for a usage limit. */
 export type TurnStatus = 'running' | 'applied' | 'done' | 'failed' | 'waiting';
 
+/** Where a person's message stands: no running turn has it, the running turn has it, or the turn that took it was applied. */
+export type MessageState = 'waiting' | 'read' | 'answered';
+
 /** A message of the conversation between a person and the planner of a backlog. */
 export interface BacklogMessageView {
   id: number;
@@ -17,6 +20,8 @@ export interface BacklogMessageView {
   /** The number of the milestone the planner offers to run right under this message; empty for any other message. */
   proposes: number | null;
   createdAt: string;
+  /** Where a person's message stands; a planner's message has none. */
+  state?: MessageState;
   /** The files sent with the message. */
   attachments?: AttachmentRef[];
 }
