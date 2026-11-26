@@ -123,4 +123,39 @@ describe('Composer', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('A file can be at most 25 MB');
     await waitFor(() => expect(screen.queryByText('big.bin')).toBeNull());
   });
+
+  it('puts the send button into a send target, disabled while the text is empty', () => {
+    const target = document.createElement('div');
+    document.body.append(target);
+    render(
+      <Composer value="" onChange={vi.fn()} onSend={vi.fn()} label="Message" sendLabel="Send" sendTarget={target} />,
+    );
+
+    const send = screen.getByRole('button', { name: 'Send' });
+    expect(target).toContainElement(send);
+    expect(send).toBeDisabled();
+    target.remove();
+  });
+
+  it('sends the text from a button in a send target', async () => {
+    const user = userEvent.setup({ delay: null });
+    const onSend = vi.fn();
+    const target = document.createElement('div');
+    document.body.append(target);
+    render(
+      <Composer
+        value="hello"
+        onChange={vi.fn()}
+        onSend={onSend}
+        label="Message"
+        sendLabel="Send"
+        sendTarget={target}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(onSend).toHaveBeenCalledWith('hello', []);
+    target.remove();
+  });
 });

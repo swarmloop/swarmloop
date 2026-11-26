@@ -1,6 +1,7 @@
 'use client';
 
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactElement, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
@@ -21,6 +22,7 @@ export function Composer({
   sendLabel,
   disabled = false,
   minRows = 3,
+  sendTarget,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -30,6 +32,8 @@ export function Composer({
   sendLabel: string;
   disabled?: boolean;
   minRows?: number;
+  /** An element to hold the send button instead of the hint row, for a dialog that keeps it in its action row. */
+  sendTarget?: HTMLElement | null;
 }): ReactElement {
   const attachments = useAttachments();
   const input = useRef<HTMLInputElement>(null);
@@ -65,6 +69,12 @@ export function Composer({
       attachments.add(files);
     }
   };
+
+  const sendButton = (
+    <Button variant="contained" disabled={!canSend} onClick={send}>
+      {sendLabel}
+    </Button>
+  );
 
   return (
     <Box
@@ -121,9 +131,7 @@ export function Composer({
         <IconButton aria-label="Attach files" onClick={() => input.current?.click()} disabled={disabled}>
           <AttachFileIcon />
         </IconButton>
-        <Button variant="contained" disabled={!canSend} onClick={send}>
-          {sendLabel}
-        </Button>
+        {sendTarget ? createPortal(sendButton, sendTarget) : sendButton}
       </Box>
     </Box>
   );

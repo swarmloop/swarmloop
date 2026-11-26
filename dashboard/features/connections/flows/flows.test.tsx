@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSignIn, saveIntegration, sendSignInCode, startSignIn } from '../../../lib/endpoints';
 import { connectionCard, signInView } from '../../../test/fixtures';
+import { mediaWidth } from '../../../test/viewport';
 import { ConnectionCard } from '../connection-card';
 import { FlowDialog } from './flow-dialog';
 import { RedirectFlow } from './redirect-flow';
@@ -169,5 +170,38 @@ describe('flow dialogs', () => {
     expect(screen.getByRole('button', { name: 'Connect' })).toHaveFocus();
     await userEvent.setup({ delay: null }).keyboard('{Enter}');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+});
+
+const paperOf = (): Element => screen.getByRole('dialog').closest('.MuiDialog-paper')!;
+
+describe('flow dialogs at 375 px', () => {
+  mediaWidth(375);
+
+  it('the fields flow is full screen with Save in its actions row', () => {
+    open(formFlow);
+
+    expect(paperOf()).toHaveClass('MuiDialog-paperFullScreen');
+    expect(screen.getByRole('button', { name: 'Save' }).closest('.MuiDialogActions-root')).not.toBeNull();
+  });
+
+  it('the sign-in flow is full screen', () => {
+    vi.mocked(startSignIn).mockResolvedValue(signInView({ state: 'code', link: 'https://claude.test/auth' }));
+    open(cliFlow);
+
+    expect(paperOf()).toHaveClass('MuiDialog-paperFullScreen');
+  });
+});
+
+describe('flow dialogs at 1280 px', () => {
+  mediaWidth(1280);
+
+  it('neither flow is full screen', () => {
+    vi.mocked(startSignIn).mockResolvedValue(signInView({ state: 'code', link: 'https://claude.test/auth' }));
+    open(formFlow);
+    expect(paperOf()).not.toHaveClass('MuiDialog-paperFullScreen');
+    cleanup();
+    open(cliFlow);
+    expect(paperOf()).not.toHaveClass('MuiDialog-paperFullScreen');
   });
 });
