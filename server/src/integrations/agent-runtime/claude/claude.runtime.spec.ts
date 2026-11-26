@@ -67,6 +67,37 @@ describe('ClaudeRuntime', () => {
     ]);
   });
 
+  describe('prompt cache', () => {
+    it('knows the 1-hour cache prices of Opus 5.5 and Sonnet 5.5', () => {
+      const opus = runtime.promptCache('claude-opus-5-5');
+      expect(opus).toEqual({ ttlMinutes: 60, cacheReadPerMillion: 0.2, cacheWritePerMillion: 8 });
+      expect(opus!.cacheWritePerMillion / opus!.cacheReadPerMillion).toBe(40);
+      const sonnet = runtime.promptCache('claude-sonnet-5-5');
+      expect(sonnet).toEqual({ ttlMinutes: 60, cacheReadPerMillion: 0.2, cacheWritePerMillion: 4 });
+      expect(sonnet!.cacheWritePerMillion / sonnet!.cacheReadPerMillion).toBe(20);
+    });
+
+    it('gives null for an unknown model', () => {
+      expect(runtime.promptCache('claude-unknown')).toBeNull();
+      expect(runtime.promptCache('constructor')).toBeNull();
+      expect(runtime.promptCache('__proto__')).toBeNull();
+    });
+  });
+
+  it('forks the chat next to --resume only when asked', () => {
+    const input = { model: 'm', prompt: 'p', mounts, resumeChatId: 'chat-1', tools: 'none' as const };
+    const plain = runtime.printArgs(input);
+    const forked = runtime.printArgs({ ...input, fork: true });
+    expect(plain).not.toContain('--fork-session');
+    expect(forked.slice(forked.indexOf('--resume'), forked.indexOf('--resume') + 4)).toEqual([
+      '--resume',
+      'chat-1',
+      '--fork-session',
+      '--no-session-persistence',
+    ]);
+    expect(forked.filter((arg) => arg !== '--fork-session' && arg !== '--no-session-persistence')).toEqual(plain);
+  });
+
   describe('tools', () => {
     const L00K = ['Monitor', 'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger'];
     const READ_ONLY = [
