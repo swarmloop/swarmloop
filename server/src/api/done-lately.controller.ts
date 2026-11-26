@@ -9,6 +9,6 @@ export class DoneLatelyController {
   /** The latest finished items, newest finish first. */
   @Get('done')
   list(): Promise<DoneLatelyItem[]> {
-    return this.done.items();
+    return this.done.latest();
   }
 }

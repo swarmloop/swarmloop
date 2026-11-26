@@ -24,7 +24,7 @@ async function withApp(body: (app: App) => Promise<void>): Promise<void> {
 async function itemsOf(app: App) {
   const { service, close } = doneLately(app);
   try {
-    return await service.items();
+    return await service.latest();
   } finally {
     close();
   }
@@ -119,7 +119,7 @@ describe('DoneLatelyService', () => {
       await seedFinishedList(app, 12);
       const { service, close } = doneLately(app);
       try {
-        expect(await new DoneLatelyController(service).list()).toEqual(await service.items());
+        expect(await new DoneLatelyController(service).list()).toEqual(await service.latest());
       } finally {
         close();
       }
@@ -133,8 +133,8 @@ describe('DoneLatelyService', () => {
         await seedFinishedList(app, total);
         const { service, close } = doneLately(app);
         try {
-          await service.items();
-          const read = await meter.measure(() => service.items());
+          await service.latest();
+          const read = await meter.measure(() => service.latest());
           expect(read.result.length).toBeLessThanOrEqual(DONE_SHOWN);
           counts.push(read.statements);
         } finally {

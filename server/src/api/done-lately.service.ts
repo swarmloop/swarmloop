@@ -15,7 +15,7 @@ export class DoneLatelyService {
     private readonly calls: AgentCallRepository,
   ) {}
 
-  async items(): Promise<DoneLatelyItem[]> {
+  async latest(): Promise<DoneLatelyItem[]> {
     return this.fromView((await this.rows.read()).view);
   }
 
