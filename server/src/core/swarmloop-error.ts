@@ -1,5 +1,6 @@
 import { ERROR_CODES } from '../contract/error-codes';
 import type { ErrorCode } from '../contract/error-codes';
+import { outsideWaitOf } from '../contract/outside-waits';
 
 export type ErrorCategory = 'user' | 'project' | 'model' | 'environment' | 'provider' | 'internal';
 
@@ -67,6 +68,16 @@ export class HostUnavailable extends SwarmloopError {
     });
     this.name = 'HostUnavailable';
   }
+}
+
+/** Whether an error is a host's outage, read through the outside-wait table. */
+export function isHostOutage(error: unknown): error is HostUnavailable {
+  return error instanceof SwarmloopError && outsideWaitOf(error)?.code === ERROR_CODES.HOST_UNAVAILABLE;
+}
+
+/** Whether an error is a provider's usage limit, read through the outside-wait table. */
+export function isUsageLimit(error: unknown): error is RuntimeLimit {
+  return error instanceof SwarmloopError && outsideWaitOf(error)?.code === ERROR_CODES.RUNTIME_LIMIT;
 }
 
 export class FetchFailed extends SwarmloopError {

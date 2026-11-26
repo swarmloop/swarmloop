@@ -596,3 +596,22 @@ test('only history writes a run row', () => {
   assert.deepEqual(check({ 'server/src/history/run.repository.ts': text }), []);
   assert.deepEqual(check({ 'server/src/pipeline/run-writer.spec.ts': text }), []);
 });
+
+test('forbidOutside reports an outside-wait test outside the table and lets model-host-unavailable.ts and a spec keep it', () => {
+  const lines = [
+    'if (!(error instanceof ModelHostUnavailable)) {',
+    'if (error instanceof HostUnavailable) throw error;',
+    'if (error instanceof RuntimeLimit) return null;',
+  ];
+  const files = {
+    'server/src/pipeline/x.ts': lines.join('\n') + '\n',
+    'server/src/steps/shared/model-host-unavailable.ts': lines[0] + '\n',
+    'server/src/pipeline/x.spec.ts': lines.join('\n') + '\n',
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 3);
+  for (const line of violations) assert.match(line, /^server\/src\/pipeline\/x\.ts:\d:/);
+});

@@ -1,8 +1,10 @@
 import 'reflect-metadata';
-import { mkdtemp } from 'fs/promises';
+import { mkdir, mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
+import { AppConfig } from '../../config/env';
+import { root } from '../../history/run-paths';
 import { seededBoot } from '../../api/runs-boot.spec-helpers';
 import { RunStop } from '../../agent/run-stop';
 import { StepStopped } from '../../agent/step-stopped';
@@ -191,6 +193,72 @@ describe('AgentDoor', () => {
     } finally {
       await app.close();
     }
+  });
+
+  describe('a hop on the input of its last finished visit, while the run waits for the host', () => {
+    /** A run whose last plan visit finished on the input the next hop starts on; the run then waits as given. */
+    async function hopAfterVisit(refusedStart: boolean) {
+      const ctx = await setup();
+      const { app, run, runs } = ctx;
+      await mkdir(join(root(app.get(AppConfig)), 'worktrees', run.key), { recursive: true });
+      const options = { startBy: 'machine' } as const;
+      const first = await ctx.door.admitStep(run.key, 'plan', options, true);
+      if (first.kind !== 'admitted') throw new Error('the first hop was not admitted');
+      const now = new Date().toISOString();
+      const stat = Object.assign(new StepStatEntity(), {
+        runId: run.id,
+        step: 'plan',
+        attempt: 1,
+        attemptId: 'attempt-1',
+        startedAt: now,
+        finishedAt: now,
+        durationMs: 0,
+        status: 'done',
+      });
+      await app.get(VisitRepository).saveStat(stat);
+      await app.get(VisitStartRepository).note({
+        runId: run.id,
+        step: 'plan',
+        attemptId: 'attempt-1',
+        startedBy: 'machine',
+        level: null,
+        inputDigest: first.start.digest,
+        startReason: null,
+        rerunUnfinished: false,
+        statId: stat.id,
+        createdAt: now,
+      });
+      writeRunState(run, {
+        status: 'waiting',
+        currentStep: 'plan',
+        reason: {
+          code: ERROR_CODES.HOST_UNAVAILABLE,
+          message: 'down',
+          retryAt: '2026-11-26T12:00:00.000Z',
+          ...(refusedStart ? { refusedStart: true as const } : {}),
+        },
+      });
+      await storeRun(runs, run);
+      return { ...ctx, again: () => ctx.door.admitStep(run.key, 'plan', options, true) };
+    }
+
+    it('refuses the hop again when the host wait carries a refused start', async () => {
+      const { app, again } = await hopAfterVisit(true);
+      try {
+        expect(await again()).toMatchObject({ kind: 'refused' });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('runs the unfinished visit again when the host wait carries no refused start', async () => {
+      const { app, again } = await hopAfterVisit(false);
+      try {
+        expect(await again()).toMatchObject({ kind: 'admitted', start: { rerunUnfinished: true } });
+      } finally {
+        await app.close();
+      }
+    });
   });
 
   it('refuses an outside start when the limit is reached on the launch run while a step holds the run', async () => {

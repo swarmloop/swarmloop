@@ -1,9 +1,18 @@
 import { ERROR_CODES } from '../../contract/error-codes';
 import { REASON, TIMED_RETRY_CODES } from '../../contract/run-state';
+import type { StateReason } from '../../contract/reason-words';
 import type { StepStatEntity } from '../../history/entities';
 import type { VisitStartEntity } from '../../history/visit-start.entity';
 import { KILL_REASONS } from '../../core/kill-reason';
 import { visitKillReason } from './model-visit';
+
+/**
+ * The code the same-input check reads for a run's reason: a host wait that the chain's ask after a refusal left
+ * (`refusedStart`) reads as the same-input wait, so the resumed start is refused again and the chain is asked again.
+ */
+export function sameInputCode(reason: StateReason | null): string | null {
+  return reason?.refusedStart ? REASON.sameInput : (reason?.code ?? null);
+}
 
 /** What the same-input check reads of a step's past: its visits, how each was started, and why the run waits now. */
 interface SameInputFacts {

@@ -1,6 +1,7 @@
 import type { PipelineResult, StepOptions } from '../core/pipeline-result';
 import { ERROR_CODES } from '../contract/error-codes';
-import { HostUnavailable } from '../core/swarmloop-error';
+import type { HostUnavailable } from '../core/swarmloop-error';
+import { isHostOutage } from '../core/swarmloop-error';
 import { REASON } from '../contract/run-state';
 import type { StepName } from '../contract/steps';
 import type { RunRepository } from '../history/run.repository';
@@ -40,7 +41,7 @@ export class PlannerTurnPass {
           if (next === 'question') await turns.answer(key, declined);
           else await turns.settle(key, declined);
         } catch (error) {
-          if (error instanceof HostUnavailable) return this.hostDown(key, error);
+          if (isHostOutage(error)) return this.hostDown(key, error);
           throw error;
         }
         const refusal = this.door.takeRefusal(key);

@@ -19,6 +19,7 @@ import { RunStop } from '../agent/run-stop';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { missingCredential } from '../config/agents';
 import type { StoredAgents } from '../contract/api';
+import { HostUnavailable } from '../core/swarmloop-error';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { FAKE_MODEL_KEY } from '../testing/env.spec-helpers';
 import { fakeConnection } from '../testing/fake-connection';
@@ -73,6 +74,31 @@ describe('CommandService', () => {
       expect(again.value).toEqual(started);
       const stored = testApp.get<Repository<CommandEntity>>(getRepositoryToken(CommandEntity));
       expect(await stored.count()).toBe(1);
+    } finally {
+      await testApp.close();
+    }
+  });
+
+  it.each([
+    [
+      'a code host outage stores its message, code and retryAt',
+      new HostUnavailable('GitLab', 'timeout', '2026-11-26T10:00:00.000Z'),
+    ],
+    ['any other failure stores only its message', new Error('boom')],
+  ])('a failed command: %s', async (_name, error) => {
+    const testApp = await app('failed-store');
+    try {
+      await save(testApp.get(RunRepository), 'proj-1', 'implement', 'waiting');
+      const commands = testApp.get(CommandService);
+      commands.register('resume', jest.fn().mockRejectedValue(error));
+      const submitted = commands.submit('resume', 'proj-1', {}, { idempotencyKey: 'failing' });
+      await expect(submitted).rejects.toBe(error);
+      await commands.idle();
+      const stored = await testApp
+        .get(CommandRepository)
+        .latestByKeyPrefix((await testApp.get(RunRepository).findRun('proj-1'))?.id as number, 'failing');
+      const expected = error instanceof HostUnavailable ? { code: error.code, retryAt: error.retryAt } : {};
+      expect(JSON.parse(stored?.result ?? 'null')).toEqual({ error: { message: error.message, ...expected } });
     } finally {
       await testApp.close();
     }

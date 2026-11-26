@@ -22,7 +22,7 @@ import type { AgentLaunchRequest, PingCall } from './agent-launch-request';
 import { AgentLauncher } from './agent-launcher';
 import type { LaunchResult } from './result-exchange';
 import { answerErrorsByVisit } from './stored-answer-errors';
-import { refusalLine, refusalQuestion, sameInput } from './same-input';
+import { refusalLine, refusalQuestion, sameInput, sameInputCode } from './same-input';
 import { SpendLimit } from './spend-limit';
 import { StartRefused } from './start-refused';
 import type { ChainRefusal } from './start-refused';
@@ -116,7 +116,7 @@ export class AgentDoor {
       return { kind: 'admitted', start: { agent: false, digest: null, rerunUnfinished: false, reason } };
     }
     const digest = await this.inputOf(run, step, options);
-    const decision = await this.hopDecision(run, step, digest, reason);
+    const decision = await this.hopDecision(run, step, digest, sameInputCode(storedState(run).reason));
     if (decision.kind === 'new' || by === 'person') {
       const rerunUnfinished = decision.kind === 'new' && decision.rerunUnfinished;
       return { kind: 'admitted', start: { agent: true, digest, rerunUnfinished, reason } };

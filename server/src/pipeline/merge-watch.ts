@@ -3,7 +3,7 @@ import { IsNull, Not } from 'typeorm';
 import type { MergeOutcome, MergedFact } from '../contract/run-state';
 import { REASON } from '../contract/run-state';
 import { Clock } from '../core/clock';
-import { HostUnavailable } from '../core/swarmloop-error';
+import { isHostOutage } from '../core/swarmloop-error';
 import type { RunEntity } from '../history/entities';
 import { DocumentRepository } from '../history/document.repository';
 import { EventRepository } from '../history/event.repository';
@@ -75,7 +75,7 @@ export class MergeWatch {
         code: REASON.mergeWatchUnavailable,
         message: `The code host cannot be read, so the merge request is not watched: ${error instanceof Error ? error.message : String(error)}`,
       });
-      return error instanceof HostUnavailable;
+      return isHostOutage(error);
     }
     if (merge) {
       await this.runs.release(run, { status: 'done', doneAt, merge });
@@ -98,7 +98,7 @@ export class MergeWatch {
     try {
       merge = await this.read(run, parseMergeRequests(body), false);
     } catch (error) {
-      return error instanceof HostUnavailable;
+      return isHostOutage(error);
     }
     if (!merge) return false;
     const before = run.state;

@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { HostUnavailable } from '../core/swarmloop-error';
+import { isHostOutage } from '../core/swarmloop-error';
 import { RunRef } from '../contract/api';
 import type { RunEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
@@ -65,7 +65,7 @@ export class RunRebaseService {
     try {
       return await this.action.rebase(key, false, byParent, byMain, keepsWait);
     } catch (error) {
-      if (error instanceof HostUnavailable && !byMain) throw new ConflictException(error.message);
+      if (isHostOutage(error) && !byMain) throw new ConflictException(error.message);
       throw error;
     }
   }
