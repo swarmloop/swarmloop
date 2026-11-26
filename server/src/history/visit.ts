@@ -1,5 +1,5 @@
 import type { HttpCallDraft } from '../core/swarmloop-error';
-import type { Effort, EffortFields } from '../contract/effort';
+import type { Effort } from '../contract/effort';
 
 export interface SampleDraft {
   sampledAt: string;
@@ -16,22 +16,6 @@ export function sampleSelf(sampledAt: string): SampleDraft {
     rssBytes: process.memoryUsage().rss,
     source: 'server',
   };
-}
-
-export interface ExchangeDraft extends EffortFields {
-  /** The runtime of the agent. Only the visit records it; the exchange row keeps the model. */
-  runtime?: string;
-  model: string;
-  startedAt: string;
-  finishedAt: string;
-  durationMs: number;
-  requestText: string;
-  responseText: string;
-  chatId: string | null;
-  resumed: boolean;
-  killReason: string | null;
-  /** The session totals the launch's last result line reported. Null or absent when it reported none. */
-  reported?: { usd: number; tokensIn: number; tokensOut: number } | null;
 }
 
 export interface DocumentDraft {
@@ -62,8 +46,8 @@ export interface VisitDraft {
   tokensOut: number;
   usd: number;
   samples: SampleDraft[];
-  exchange: ExchangeDraft | null;
-  exchanges?: ExchangeDraft[];
+  /** The rows of the call log this visit links: every call its launches wrote. */
+  callIds?: number[];
   httpCalls: HttpCallDraft[];
   document: DocumentDraft | null;
   documents?: DocumentDraft[];

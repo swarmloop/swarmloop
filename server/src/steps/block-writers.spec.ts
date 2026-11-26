@@ -203,6 +203,7 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
         { ensure: jest.fn().mockRejectedValue(disk) } as never,
         nothing,
         nothing,
+        nothing,
       );
       await settler.settleRebase(run);
       expect(run.status).toBe('blocked');

@@ -460,6 +460,38 @@ describe('reconciler waits and automatic tries', () => {
       });
     });
 
+    it('closes the rows a dead attempt left open and links them, with the rows of other attempts left alone', async () => {
+      const world = await boot();
+      const begun = await world.app.get(RunRepository).begin(KEY, 'implement');
+      const calls = world.app.get(AgentCallRepository);
+      const attemptId = begun.activeAttempt!;
+      const open = await calls.open({
+        kind: 'call',
+        startedAt: '2026-11-26T10:00:00.000Z',
+        runKey: KEY,
+        step: 'implement',
+        attemptId,
+        resumed: false,
+        runtime: 'claude',
+        model: 'claude-opus-5-5',
+        requestText: 'ask',
+      });
+      const finished = await seedCall(calls, { runKey: KEY, attemptId, usd: 0.5 });
+      const other = await seedCall(calls, { runKey: KEY, attemptId: 'attempt-left-alone', usd: 1 });
+
+      await world.app.get(Reconciler).reconcile(begun);
+
+      const run = (await world.app.get(RunRepository).findRun(KEY))!;
+      const [visit] = await world.app.get(VisitRepository).listStats(run.id);
+      const linked = await world.app.get(VisitRepository).listExchanges([visit.id]);
+      expect(linked.map((row) => row.id)).toEqual([open, finished]);
+      expect(linked.map((row) => row.endKind)).toEqual(['failed', 'done']);
+      expect(linked[0].errorText).toBe('process died');
+      expect(
+        (await world.app.get(AgentCallRepository).rowsOfAttempt('attempt-left-alone')).map((row) => row.id),
+      ).toEqual([other]);
+    });
+
     it('stays failed at MAX_LAUNCHES', async () => {
       const world = await boot();
       world.app.get(AppConfig).env.MAX_LAUNCHES = 1;

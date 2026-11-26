@@ -21,7 +21,7 @@ import { LiveHub } from '../live/live.hub';
 
 import { RunQueriesService } from './run-queries.service';
 
-import { save, visit } from '../testing/runs.spec-helpers';
+import { loggedCall, save, visit } from '../testing/runs.spec-helpers';
 import { seededBoot } from './runs-boot.spec-helpers';
 
 /** The model an agent's visit names; a visit that names none is no agent visit and the board does not count it. */
@@ -225,17 +225,17 @@ describe('runs api', () => {
         tokensOut: 3,
         samples: [{ sampledAt: now, cpuPercent: 40, rssBytes: 2048, source: 'agent' }],
         documents: [{ kind: 'review_quality', fileName: '', body: 'cleared\ndecision: ok\n' }],
-        exchange: {
-          model: 'grok-4.7-high',
-          startedAt: now,
-          finishedAt: now,
-          durationMs: 10,
-          requestText: 'review',
-          responseText: 'cleared\ndecision: ok\n',
-          chatId: 'q',
-          resumed: false,
-          killReason: null,
-        },
+        callIds: [
+          await loggedCall(app.get(AgentCallRepository), {
+            model: 'grok-4.7-high',
+            startedAt: now,
+            finishedAt: now,
+            durationMs: 10,
+            requestText: 'review',
+            responseText: 'cleared\ndecision: ok\n',
+            chatId: 'q',
+          }),
+        ],
       });
       const runs = app.get(RunQueriesService);
       const detail = await runs.step('proj-28', 'code-review-quality');

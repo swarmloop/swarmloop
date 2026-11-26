@@ -1,18 +1,19 @@
 import { effortFields } from '../../contract/effort';
+import type { EffortFields } from '../../contract/effort';
 import { agentFor } from '../../config/agents';
 import { mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
 import type { AgentRunResult } from '../../agent/agent-result';
 import type { SwarmloopEnv } from '../../config/env';
 import type { DocumentRepository } from '../../history/document.repository';
-import type { DocumentDraft, ExchangeDraft } from '../../history/visit';
+import type { DocumentDraft } from '../../history/visit';
 import type { OpenedStep } from '../../steps/step-run';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import type { PipelineResult } from '../../core/pipeline-result';
 import { runFileName } from '../../core/run-files';
 import { visitStatus } from '../../core/pipeline-result';
 import { reportFailure } from '../shared/step-failure';
-import { HostUnavailable, RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
+import { HostUnavailable, RuntimeLimit } from '../../core/swarmloop-error';
 import { HOST_VISIT } from '../shared/model-host-unavailable';
 import type { StepContext } from '../base-step';
 import { assertRoute } from '../contract/returns';
@@ -22,7 +23,7 @@ import { agentFailure } from '../shared/agent-result';
 import { projectRules } from '../shared/project-rules';
 import { appendImpact, mergeHandoff, textDocument, withImpact } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
-import { agentExchange, visitKillReason } from '../shared/model-visit';
+import { visitKillReason } from '../shared/model-visit';
 import { REPORT_CONTINUE, reportFollowUp } from './code-review.prompts';
 import { reportDocuments, reviewDocuments, summaryNote } from './code-review-record';
 import type { Opinion } from './code-review-record';
@@ -40,6 +41,14 @@ import { ResultInvalid } from '../shared/answer-errors';
 import { StartRefused } from '../shared/start-refused';
 import { StepStopped } from '../../agent/step-stopped';
 import { answerErrorsDocument } from '../shared/stored-answer-errors';
+
+/** The agent that wrote the report, as the code-review visit stores it, with the rows of its calls. */
+export interface ReportCall extends EffortFields {
+  runtime: string;
+  model: string;
+  killReason: string | null;
+  callIds: number[];
+}
 
 export function usageOf(result: AgentRunResult): Usage {
   return { tokensIn: result.tokensIn, tokensOut: result.tokensOut, usd: result.usd, samples: result.samples };
@@ -80,8 +89,8 @@ export async function writeReport(
   answerErrors?: string[],
   exchanges?: ReadonlyMap<string, Exchange>,
 ): Promise<
-  | { documents: DocumentDraft[]; exchange: ExchangeDraft; usage: Usage; startId?: string }
-  | { error: string; exchange: ExchangeDraft | null; usage: Usage; documents: DocumentDraft[]; startId?: string }
+  | { documents: DocumentDraft[]; call: ReportCall; usage: Usage; startId?: string }
+  | { error: string; call: ReportCall | null; usage: Usage; documents: DocumentDraft[]; startId?: string }
 > {
   const names = mounts.map((mount) => basename(mount.hostPath));
   const brief = reviewBrief(opinions, exchanges);
@@ -140,14 +149,20 @@ export async function writeReport(
       },
     );
     const { runtime, model, ...effort } = result.agent ?? asked;
-    const exchange: ExchangeDraft = { runtime, ...effortFields(effort), ...agentExchange(result, model, prompt) };
+    const call: ReportCall = {
+      runtime,
+      model,
+      ...effortFields(effort),
+      killReason: result.killReason,
+      callIds: result.callIds ?? [],
+    };
     const spent = usageOf(result);
     const failure = agentFailure(result, 'code-review', 'ask');
     if (failure) {
-      return { error: failure, exchange, usage: spent, documents: [], startId };
+      return { error: failure, call, usage: spent, documents: [], startId };
     }
     if (!result.resultValue) {
-      return { error: 'code-review report is empty', exchange, usage: spent, documents: [], startId };
+      return { error: 'code-review report is empty', call, usage: spent, documents: [], startId };
     }
     const parts = result.resultValue as ReviewReportResult;
     const round = opinions.map((opinion) => ({
@@ -155,7 +170,7 @@ export async function writeReport(
       result: opinion.result,
     }));
     const text = await deps.runReport.renderParts(opened.run, parts, round);
-    return { documents: reportDocuments(text, parts), exchange, usage: spent, startId };
+    return { documents: reportDocuments(text, parts), call, usage: spent, startId };
   } catch (error) {
     if (
       error instanceof RuntimeLimit ||
@@ -168,7 +183,7 @@ export async function writeReport(
     const message = reportFailure('code-review', error).message;
     return {
       error: message,
-      exchange: null,
+      call: null,
       usage: empty,
       documents: error instanceof ResultInvalid ? [answerErrorsDocument(error.errors)] : [],
       startId,
@@ -176,7 +191,7 @@ export async function writeReport(
   }
 }
 
-/** One reviewer visit, with its own chart and exchange, the same shape as any other step. */
+/** One reviewer visit, with its own chart and calls, the same shape as any other step. */
 export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Finished): Promise<void> {
   const result = item.result;
   if (!result) {
@@ -193,7 +208,6 @@ export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Fi
           ? 'done'
           : 'failed';
   const broken = item.error !== undefined && !item.outage;
-  const exchange = exchangeOf(item);
   const stat = await deps.visits.finishVisit(opened.run, {
     step: `code-review-${item.reviewer.name}`,
     runtime: item.runtime,
@@ -210,7 +224,7 @@ export async function recordAngle(deps: ReviewDeps, opened: OpenedStep, item: Fi
     tokensOut: result.tokensOut,
     usd: result.usd,
     samples: result.samples,
-    exchange,
+    callIds: result.callIds,
     httpCalls: [],
     document: null,
     documents: [
@@ -245,13 +259,13 @@ export function failed(message: string): Route {
   return { to: 'fail', error: { code: 'code-review', message } };
 }
 
-/** Closes the code-review visit with its documents, exchanges and usage. */
+/** Closes the code-review visit with its documents, report call and usage. */
 export function closeReview(
   ctx: StepContext,
   route: Route,
   line: string,
   documents: DocumentDraft[],
-  exchanges: ExchangeDraft[],
+  call: ReportCall | null,
   usage: Usage = { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] },
 ): Promise<PipelineResult> {
   const { opened } = ctx;
@@ -273,34 +287,25 @@ export function closeReview(
     ...(route.to === 'block' ? { code: route.code } : {}),
     visit: {
       step: 'code-review',
-      runtime: exchanges.find((exchange) => exchange.runtime)?.runtime ?? null,
-      model: exchanges.find((exchange) => exchange.model)?.model ?? null,
-      ...effortFields(exchanges.find((exchange) => exchange.effort) ?? {}),
+      runtime: call?.runtime ?? null,
+      model: call?.model ?? null,
+      ...effortFields(call ?? {}),
       mode: 'ask',
       startedAt: opened.startedAt,
       finishedAt: ctx.clock.iso(),
       durationMs: ctx.clock.now() - opened.started,
       status: visitStatus(outcome),
       exitCode,
-      killReason: exchanges.find((exchange) => exchange.killReason)?.killReason ?? null,
+      killReason: call?.killReason ?? null,
       tokensIn: usage.tokensIn,
       tokensOut: usage.tokensOut,
       usd: usage.usd,
       samples: usage.samples,
-      exchange: null,
-      exchanges,
+      callIds: call?.callIds,
       httpCalls: [],
       document: null,
       documents,
       resumed: false,
     },
   });
-}
-
-function exchangeOf(item: Finished): ExchangeDraft {
-  const result = item.result;
-  if (!result) {
-    throw new SwarmloopError('code-review failed');
-  }
-  return { runtime: item.runtime, ...effortFields(item), ...agentExchange(result, item.model, item.prompt) };
 }

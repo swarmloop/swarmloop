@@ -7,7 +7,7 @@ import { testEnv } from '../../config/env.spec-helpers';
 import type { StepEvent } from '../../contract/step-events';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../../core/step-event-scope';
-import type { AgentRunResult } from '../../agent/agent-result';
+import type { LaunchResult } from './result-exchange';
 import type { RunEntity } from '../../history/entities';
 import { AgentCallRepository } from '../../history/agent-call.repository';
 import { BacklogChatRepository } from '../../history/backlog-chat.repository';
@@ -21,7 +21,6 @@ import { AgentLauncher } from './agent-launcher';
 import { controlled, type Child, until } from './agent-launcher.spec-helpers';
 import { AgentCallRecorder } from './agent-call-recorder';
 import { CallContexts } from './call-context';
-import { agentExchange } from './model-visit';
 
 const CHAT = JSON.stringify({ session_id: 'chat-9' });
 
@@ -104,7 +103,7 @@ async function visitsOfOneChat(lines: Reported[]): Promise<{ usd: number[]; toke
     const usd: number[] = [];
     const tokensIn: number[] = [];
     let attempt = -1;
-    let stored: AgentRunResult[] = [];
+    let stored: LaunchResult[] = [];
     const store = async (): Promise<void> => {
       const last = stored[stored.length - 1];
       if (last) {
@@ -113,7 +112,7 @@ async function visitsOfOneChat(lines: Reported[]): Promise<{ usd: number[]; toke
           usd: stored.reduce((sum, result) => sum + result.usd, 0),
           tokensIn: stored.reduce((sum, result) => sum + result.tokensIn, 0),
           tokensOut: stored.reduce((sum, result) => sum + result.tokensOut, 0),
-          exchange: agentExchange(last, 'm', 'go'),
+          callIds: stored.flatMap((result) => result.callIds ?? []),
         });
       }
       stored = [];

@@ -7,11 +7,12 @@ import { ERROR_CODES } from '../contract/error-codes';
 import type { InterruptionNote } from '../contract/interruption';
 import { LiveHub } from '../live/live.hub';
 import { insertAcceptedCommand } from './accepted-command';
+import { AgentCallRepository } from './agent-call.repository';
 import { adoptRow, changedColumns } from './run-read';
 import { releasedColumns } from './run-state';
 import { transaction } from './transaction';
 import { summarizeSamples } from './visit';
-import type { ExchangeDraft, VisitDraft } from './visit';
+import type { VisitDraft } from './visit';
 import {
   StepStatEntity,
   ResourceSampleEntity,
@@ -24,7 +25,6 @@ import {
 interface VisitTables {
   stepStats: Repository<StepStatEntity>;
   samples: Repository<ResourceSampleEntity>;
-  exchanges: Repository<AgentExchangeEntity>;
   httpCalls: Repository<HttpCallEntity>;
   documents: Repository<DocumentEntity>;
 }
@@ -33,7 +33,6 @@ function tablesOf(manager: EntityManager): VisitTables {
   return {
     stepStats: manager.getRepository(StepStatEntity),
     samples: manager.getRepository(ResourceSampleEntity),
-    exchanges: manager.getRepository(AgentExchangeEntity),
     httpCalls: manager.getRepository(HttpCallEntity),
     documents: manager.getRepository(DocumentEntity),
   };
@@ -52,25 +51,6 @@ interface FinalizeCommand {
 
 const DUPLICATE_ATTEMPT = 'UNIQUE constraint failed: step_stats.attempt_id';
 
-/** The columns of one exchange of a visit, with the session totals its launch reported. */
-function exchangeRow(stepStatId: number, exchange: ExchangeDraft): Partial<AgentExchangeEntity> {
-  return {
-    stepStatId,
-    model: exchange.model,
-    startedAt: exchange.startedAt,
-    finishedAt: exchange.finishedAt,
-    durationMs: exchange.durationMs,
-    requestText: exchange.requestText,
-    responseText: exchange.responseText,
-    chatId: exchange.chatId,
-    resumed: exchange.resumed ? 1 : 0,
-    killReason: exchange.killReason,
-    reportedUsd: exchange.reported?.usd ?? null,
-    reportedTokensIn: exchange.reported?.tokensIn ?? null,
-    reportedTokensOut: exchange.reported?.tokensOut ?? null,
-  };
-}
-
 @Injectable()
 export class VisitRepository {
   private readonly logger = new Logger(VisitRepository.name);
@@ -82,6 +62,7 @@ export class VisitRepository {
     @InjectRepository(HttpCallEntity) private readonly httpCalls: Repository<HttpCallEntity>,
     @InjectRepository(DocumentEntity) private readonly documents: Repository<DocumentEntity>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly calls: AgentCallRepository,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -177,7 +158,7 @@ export class VisitRepository {
   }
 
   private async insertVisit(
-    { stepStats, samples, exchanges, httpCalls, documents }: VisitTables,
+    { stepStats, samples, httpCalls, documents }: VisitTables,
     run: RunEntity,
     visit: VisitDraft,
     attemptId: string | null,
@@ -230,9 +211,7 @@ export class VisitRepository {
         }),
       );
     }
-    for (const exchange of visit.exchanges ?? (visit.exchange ? [visit.exchange] : [])) {
-      await exchanges.save(exchanges.create(exchangeRow(stat.id, exchange)));
-    }
+    await this.calls.linkVisit(visit.callIds ?? [], stat.id);
     for (const call of visit.httpCalls) {
       await httpCalls.save(
         httpCalls.create({
@@ -274,7 +253,6 @@ export class VisitRepository {
     return {
       stepStats: this.stepStats,
       samples: this.samples,
-      exchanges: this.exchanges,
       httpCalls: this.httpCalls,
       documents: this.documents,
     };
@@ -378,7 +356,7 @@ export class VisitRepository {
       `SELECT e.step_stat_id AS stepStatId, SUM(e.duration_ms) AS durationMs
        FROM agent_exchanges e
        INNER JOIN step_stats s ON s.id = e.step_stat_id
-       WHERE s.step = 'code-review'${runIds.length === 0 ? '' : ` AND s.run_id IN (${runIds.map(() => '?').join(', ')})`}
+       WHERE s.step = 'code-review' AND e.kind <> 'helper'${runIds.length === 0 ? '' : ` AND s.run_id IN (${runIds.map(() => '?').join(', ')})`}
        GROUP BY e.step_stat_id`,
       runIds,
     );

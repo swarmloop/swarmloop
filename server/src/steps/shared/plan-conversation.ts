@@ -198,7 +198,7 @@ export class PlanConversation {
     const value = failure ? undefined : result?.resultValue;
     const ok = value !== undefined;
     const ended = { result, ok, hostWait, answerErrors };
-    await this.storeVisit(opened, { runtime, model, ...effort }, text, ended, started.id);
+    await this.storeVisit(opened, { runtime, model, ...effort }, ended, started.id);
     if (hostWait) throw hostWait;
     return ok ? { value } : null;
   }
@@ -207,7 +207,6 @@ export class PlanConversation {
   private async storeVisit(
     opened: OpenedStep,
     agent: { runtime: string; model: string },
-    prompt: string,
     ended: {
       result: LaunchResult | null;
       ok: boolean;
@@ -224,7 +223,7 @@ export class PlanConversation {
       mode: 'plan',
       ...agent,
       agent: result,
-      prompt,
+      callIds: result?.callIds,
       status: hostWait ? HOST_VISIT.status : visitStatus(ok ? 'ok' : 'failed'),
       exitCode: ok ? 0 : 1,
       documents: answerErrors ? [answerErrorsDocument(answerErrors)] : undefined,

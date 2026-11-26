@@ -667,7 +667,6 @@ describe('merge-request step', () => {
             tokensOut: 0,
             usd: 0,
             samples: [],
-            exchange: null,
             httpCalls: [],
             document,
             resumed: false,

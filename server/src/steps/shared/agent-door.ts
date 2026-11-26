@@ -294,7 +294,9 @@ export class AgentDoor {
   ): Promise<ChainRefusal> {
     const startLevel = plannerLevel !== undefined ? plannerLevel + 1 : by === 'planner' ? (level ?? 0) + 1 : 0;
     const who = startLevel === 0 ? 'the planner of this run' : "the epic's planner";
-    const [last] = (await this.visits.listExchanges([decision.statId])).slice(-1);
+    const [last] = (await this.visits.listExchanges([decision.statId]))
+      .filter((row) => row.kind !== 'helper' && row.requestText !== '')
+      .slice(-1);
     return {
       message: refusalLine(decision.visit, who),
       question: refusalQuestion(

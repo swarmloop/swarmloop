@@ -1,9 +1,11 @@
 import { writeRunState } from './run-state';
 import { DocumentRepository } from './document.repository';
-import { repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
+import { repositoryCall, repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
 import { VisitStartRepository } from './visit-start.repository';
-import { VisitRepository } from './visit.repository';
+import { AgentCallRepository } from './agent-call.repository';
+import { LIMIT_VISIT, VisitRepository } from './visit.repository';
+import { DataSource } from 'typeorm';
 
 describe('VisitRepository', () => {
   it('keeps a per-visit record on each visit when their contents are identical', async () => {
@@ -113,7 +115,7 @@ describe('VisitRepository', () => {
       const visits = db.app.get(VisitRepository);
       const runs = db.app.get(RunRepository);
       const run = await runs.begin('run-1', 'code-review');
-      const stat = await visits.finishVisit(run, repositoryVisit());
+      const stat = await visits.finishVisit(run, { ...repositoryVisit(), callIds: [await repositoryCall(db.app)] });
       expect(await visits.listStats(run.id)).toEqual([stat]);
       expect(await visits.listSamples([stat.id])).toEqual([
         expect.objectContaining({ stepStatId: stat.id, cpuPercent: 10, rssBytes: 100 }),
@@ -145,7 +147,11 @@ describe('VisitRepository', () => {
       const visits = db.app.get(VisitRepository);
       const starts = db.app.get(VisitStartRepository);
       const run = await db.app.get(RunRepository).begin('run-outside', 'plan');
-      const turn = await visits.finishVisit(run, { ...repositoryVisit(), step: 'plan' });
+      const turn = await visits.finishVisit(run, {
+        ...repositoryVisit(),
+        step: 'plan',
+        callIds: [await repositoryCall(db.app)],
+      });
       await starts.note({
         runId: run.id,
         step: 'plan',
@@ -161,8 +167,104 @@ describe('VisitRepository', () => {
       });
       expect(await visits.hasAgentVisit(run.id, 'plan')).toBe(true);
       expect(await visits.hasStepVisit(run.id, 'plan')).toBe(false);
-      await visits.finishVisit(run, { ...repositoryVisit(), step: 'plan' });
+      await visits.finishVisit(run, { ...repositoryVisit(), step: 'plan', callIds: [await repositoryCall(db.app)] });
       expect(await visits.hasStepVisit(run.id, 'plan')).toBe(true);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('links exactly the rows of its callIds and writes no exchange row of its own', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const run = await db.app.get(RunRepository).begin('run-links', 'plan');
+      const linked = [await repositoryCall(db.app), await repositoryCall(db.app)];
+      const other = await repositoryCall(db.app);
+      const stat = await visits.finishVisit(run, { ...repositoryVisit(), callIds: linked });
+      expect((await visits.listExchanges([stat.id])).map((row) => row.id)).toEqual(linked);
+      const all = await db.app
+        .get(DataSource)
+        .query('SELECT id, step_stat_id AS statId FROM agent_exchanges ORDER BY id');
+      expect(all).toEqual([
+        { id: linked[0], statId: stat.id },
+        { id: linked[1], statId: stat.id },
+        { id: other, statId: 0 },
+      ]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('keeps the rows of a limited visit with it and gives the visit after it its own', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const run = await db.app.get(RunRepository).begin('run-limited', 'plan');
+      const limitedRows = [await repositoryCall(db.app)];
+      const nextRows = [await repositoryCall(db.app), await repositoryCall(db.app)];
+      const limited = await visits.finishVisit(run, { ...repositoryVisit(), ...LIMIT_VISIT, callIds: limitedRows });
+      const next = await visits.finishVisit(run, { ...repositoryVisit(), callIds: nextRows });
+      expect((await visits.listExchanges([limited.id])).map((row) => row.id)).toEqual(limitedRows);
+      expect((await visits.listExchanges([next.id])).map((row) => row.id)).toEqual(nextRows);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('keeps the rows a limited visit holds when the next visit lists them again', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const run = await db.app.get(RunRepository).begin('run-chain', 'plan');
+      const limitedRow = await repositoryCall(db.app);
+      const nextRow = await repositoryCall(db.app);
+      const limited = await visits.finishVisit(run, { ...repositoryVisit(), ...LIMIT_VISIT, callIds: [limitedRow] });
+      const next = await visits.finishVisit(run, { ...repositoryVisit(), callIds: [limitedRow, nextRow] });
+      expect((await visits.listExchanges([limited.id])).map((row) => row.id)).toEqual([limitedRow]);
+      expect((await visits.listExchanges([next.id])).map((row) => row.id)).toEqual([nextRow]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('sums the report time of the calls of a code-review visit and not of its helpers', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const calls = db.app.get(AgentCallRepository);
+      const run = await db.app.get(RunRepository).begin('run-helper-time', 'code-review');
+      const call = await repositoryCall(db.app);
+      const helper = await calls.open({
+        kind: 'helper',
+        parentId: call,
+        startedAt: '2026-01-01T00:00:00.000Z',
+        resumed: false,
+        runtime: 'claude',
+        model: 'test-model',
+        requestText: '',
+      });
+      await calls.finish(helper, {
+        endKind: 'done',
+        finishedAt: '2026-01-01T00:00:01.000Z',
+        durationMs: 1000,
+        responseText: '',
+      });
+      const stat = await visits.finishVisit(run, { ...repositoryVisit(), callIds: [call, helper] });
+      expect(await visits.codeReviewReportMs(run.id)).toEqual(new Map([[stat.id, 1000]]));
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('links nothing for a visit that ran no agent', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const visits = db.app.get(VisitRepository);
+      const run = await db.app.get(RunRepository).begin('run-no-agent', 'plan');
+      const stat = await visits.finishVisit(run, repositoryVisit());
+      expect(await visits.listExchanges([stat.id])).toEqual([]);
+      expect(await visits.hasAgentVisit(run.id, 'code-review')).toBe(false);
     } finally {
       await db.close();
     }

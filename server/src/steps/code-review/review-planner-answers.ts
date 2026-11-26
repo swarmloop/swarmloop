@@ -88,7 +88,7 @@ export class ReviewPlannerAnswers {
             startedAt: opened.startedAt,
             question: open.question.text,
           });
-      return { closed: await closeReview(ctx, wait.route, wait.summary, [], []) };
+      return { closed: await closeReview(ctx, wait.route, wait.summary, [], null) };
     }
     const taken = asked.flatMap((item) => (item.answer ? [item.answer.key] : []));
     const issues = REVIEWERS.flatMap((reviewer) => {
@@ -104,7 +104,7 @@ export class ReviewPlannerAnswers {
         kinds: issues.map((issue) => REVIEWS.of(issue.source)),
         line: `${opened.startedAt} code-review waiting\n${opinionSummary(opinions)}`,
         documents: [],
-        exchanges: [],
+        call: null,
       });
       await this.take(opened.run.key, taken);
       return { closed };

@@ -27,6 +27,7 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { fingerprintOf, parseJournal, unfinished, REBASE_JOURNAL } from '../git/rebase';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { RunRebase } from '../steps/run-rebase';
+import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { dockerWait } from '../steps/step-error-end';
 import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 
@@ -60,6 +61,7 @@ export class RunSettler {
     private readonly workspace: WorkspaceGuard,
     private readonly checkCommands: CheckCommandRepository,
     private readonly calls: AgentCallRepository,
+    private readonly launcher: AgentLauncher,
   ) {}
 
   /**
@@ -276,7 +278,11 @@ export class RunSettler {
     const now = this.clock.iso();
     const agent = agentFor(this.config.env, run, run.currentStep);
     const model = agent?.model ?? null;
-    const charge = await this.chargeOf(run);
+    if (run.activeAttempt !== null) {
+      await this.launcher.closeLeftOpen({ attemptId: run.activeAttempt });
+    }
+    const rows = run.activeAttempt === null ? [] : await this.calls.rowsOfAttempt(run.activeAttempt);
+    const charge = figuresOf(rows);
     run.spentUsd += charge.usd;
     const decision = await decide();
     writeRunState(
@@ -299,7 +305,7 @@ export class RunSettler {
       tokensOut: charge.tokensOut,
       usd: charge.usd,
       samples: [],
-      exchange: null,
+      callIds: rows.map((row) => row.id),
       httpCalls: [],
       document: null,
       documents: [
@@ -325,11 +331,6 @@ export class RunSettler {
       return { at, relaunched: false, cause: 'limit', limit: this.config.env.MAX_LAUNCHES };
     }
     return decision.cause === 'stop' ? { at, relaunched: false, cause: 'stop' } : null;
-  }
-
-  /** What the attempt cost, from the rows of its calls that no stored visit holds yet. */
-  private async chargeOf(run: RunEntity): Promise<ReturnType<typeof figuresOf>> {
-    return figuresOf(run.activeAttempt === null ? [] : await this.calls.rowsOfAttempt(run.activeAttempt));
   }
 
   private get root(): string {

@@ -13,6 +13,7 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { LiveModule } from '../live/live.module';
 import type { VisitDraft } from '../history/visit';
+import type { AgentCallRepository } from '../history/agent-call.repository';
 import { CommandService } from '../pipeline/command.service';
 import { StartGate } from '../pipeline/start-gate';
 import { RunGuards } from '../pipeline/run-guards';
@@ -158,11 +159,41 @@ export function visit(step: string, status: string): VisitDraft {
     tokensOut: 0,
     usd: 0,
     samples: [],
-    exchange: null,
     httpCalls: [],
     document: null,
     resumed: false,
   };
+}
+
+/** One finished call of the log, as the launcher writes it, for a visit's `callIds`. */
+export async function loggedCall(
+  calls: AgentCallRepository,
+  call: {
+    model: string;
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    requestText: string;
+    responseText: string;
+    chatId?: string;
+  },
+): Promise<number> {
+  const id = await calls.open({
+    kind: 'call',
+    startedAt: call.startedAt,
+    ...(call.chatId ? { chatId: call.chatId } : {}),
+    resumed: false,
+    runtime: 'claude',
+    model: call.model,
+    requestText: call.requestText,
+  });
+  await calls.finish(id, {
+    endKind: 'done',
+    finishedAt: call.finishedAt,
+    durationMs: call.durationMs,
+    responseText: call.responseText,
+  });
+  return id;
 }
 
 export async function remember(

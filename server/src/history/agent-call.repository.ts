@@ -140,13 +140,13 @@ export class AgentCallRepository {
     });
   }
 
-  /** Links exactly the given rows to a stored visit. */
+  /** Links the given rows to a stored visit. A row a visit already holds stays with it: a failover's last result lists the rows of the limited visit before it. */
   async linkVisit(ids: number[], statId: number): Promise<void> {
     if (ids.length === 0) {
       return;
     }
     await this.dataSource.query(
-      `UPDATE agent_exchanges SET step_stat_id = ? WHERE id IN (${ids.map(() => '?').join(', ')})`,
+      `UPDATE agent_exchanges SET step_stat_id = ? WHERE step_stat_id = 0 AND id IN (${ids.map(() => '?').join(', ')})`,
       [statId, ...ids],
     );
   }

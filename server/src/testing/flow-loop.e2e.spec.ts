@@ -6,6 +6,7 @@ import { RunQueriesService } from '../api/run-queries.service';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/run-state';
 import type { Subtask } from '../contract/subtask';
+import { AgentCallRepository } from '../history/agent-call.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { StepStatEntity } from '../history/entities';
 import { RunRepository } from '../history/run.repository';
@@ -28,7 +29,7 @@ import { StepRegistry } from '../steps/step.registry';
 import type { StepName } from '../contract/steps';
 import { createFlowHarness } from './flow-harness';
 import { assertInvariants } from './flow-invariants';
-import { save } from './runs.spec-helpers';
+import { loggedCall, save } from './runs.spec-helpers';
 
 const KEY = 'PROJ-480';
 const TASK = `${KEY}-a`;
@@ -89,18 +90,15 @@ describe('a subtask that keeps writing the same need on a merged sibling', () =>
         implement: async (_visit, ctx) => {
           await ctx.write(ARTIFACTS.needs, renderNeeds([{ id: 'b', what: 'which retry policy wins' }]));
           const now = ctx.clock.iso();
-          const exchange = {
+          const call = await loggedCall(flow.app.app.get(AgentCallRepository), {
             model: 'fake',
             startedAt: now,
             finishedAt: now,
             durationMs: 0,
-            requestText: '',
+            requestText: 'implement',
             responseText: WORDS,
-            chatId: null,
-            resumed: false,
-            killReason: null,
-          };
-          return { outcome: 'waiting', exitCode: 0, code: ERROR_CODES.SUBTASK_WAITING, visit: { exchange } };
+          });
+          return { outcome: 'waiting', exitCode: 0, code: ERROR_CODES.SUBTASK_WAITING, visit: { callIds: [call] } };
         },
       },
       ['implement'],

@@ -535,40 +535,10 @@ async function planOutcome(answer: AgentRunResult) {
   }
 }
 
-/** One finished plan visit with an agent exchange, as an earlier plan visit of the run leaves it. */
+/** One finished plan visit with an agent call, as an earlier plan visit of the run leaves it. */
 async function storePlanVisit(app: Awaited<ReturnType<typeof boot>>, key: string): Promise<void> {
   const run = (await app.get(RunRepository).findRun(key))!;
   const at = new Date().toISOString();
-  await app.get(VisitRepository).finishVisit(run, {
-    step: 'plan',
-    runtime: 'cursor',
-    model: 'opus-5.5-extra-high',
-    mode: 'plan',
-    startedAt: at,
-    finishedAt: at,
-    durationMs: 5,
-    status: 'done',
-    exitCode: 0,
-    killReason: null,
-    tokensIn: 10,
-    tokensOut: 4,
-    usd: 0.01,
-    samples: [],
-    exchange: {
-      model: 'opus-5.5-extra-high',
-      startedAt: at,
-      finishedAt: at,
-      durationMs: 5,
-      requestText: 'plan',
-      responseText: planBlock(['add the field']),
-      chatId: 'chat-1',
-      resumed: false,
-      killReason: null,
-    },
-    httpCalls: [],
-    document: null,
-    resumed: false,
-  });
   // What a chat has cost is read from the log: the visit's call is a row of it.
   const calls = app.get(AgentCallRepository);
   const row = await calls.open({
@@ -591,7 +561,32 @@ async function storePlanVisit(app: Awaited<ReturnType<typeof boot>>, key: string
     usd: 0.01,
     price: {},
   });
-  await calls.finish(row, { endKind: 'done', finishedAt: at, durationMs: 5, responseText: '' });
+  await calls.finish(row, {
+    endKind: 'done',
+    finishedAt: at,
+    durationMs: 5,
+    responseText: planBlock(['add the field']),
+  });
+  await app.get(VisitRepository).finishVisit(run, {
+    step: 'plan',
+    runtime: 'cursor',
+    model: 'opus-5.5-extra-high',
+    mode: 'plan',
+    startedAt: at,
+    finishedAt: at,
+    durationMs: 5,
+    status: 'done',
+    exitCode: 0,
+    killReason: null,
+    tokensIn: 10,
+    tokensOut: 4,
+    usd: 0.01,
+    samples: [],
+    callIds: [row],
+    httpCalls: [],
+    document: null,
+    resumed: false,
+  });
 }
 
 async function putImpact(app: Awaited<ReturnType<typeof boot>>, key: string, body: string): Promise<void> {
