@@ -118,7 +118,7 @@ describe('PlannerOwnTurn', () => {
     expect(submit).not.toHaveBeenCalled();
     const args = visit.mock.calls[0] as unknown[];
     expect(args[4]).toEqual(['a', 'b']);
-    expect(args.slice(5)).toEqual([{ by: 'person' }, true]);
+    expect(args.slice(5)).toEqual([{ by: 'person' }, true, 'answer-person']);
   });
 
   it('says in the reply that a stopped run stays stopped', async () => {

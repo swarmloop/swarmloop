@@ -3,7 +3,6 @@ import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/en
 import type { CheckCommandView, FlowView } from '../../contract/api';
 import type { RelaunchView } from '../../contract/relaunch';
 import { returnWords } from './return-words';
-import type { LiveUsage } from '../../contract/live';
 import {
   IMPROVE_SKIPPED_NOTE,
   isReviewStep,
@@ -23,16 +22,21 @@ import { awaitsRelaunch } from './relaunch';
 export { latest } from './status';
 import { PHASES } from './run-view.types';
 
-/** The token, cost and peak totals of a run: its stored visits plus what the open visits have used so far. */
+/** What the log holds of a run: the cost and the tokens of all its rows. */
+interface LoggedUsage {
+  usd: number;
+  tokens: number;
+}
+
+/** The token and cost totals of a run from the log, and the peaks of its visits and of the visits open now. */
 export function usageFigures(
-  run: RunEntity,
   stats: StepStatEntity[],
-  live: LiveUsage,
+  logged: LoggedUsage,
   peaks: { cpuPeak: number; memPeak: number },
 ): Pick<FlowView['metrics'], 'tokens' | 'usd' | 'cpuPeak' | 'memPeak'> {
   return {
-    tokens: stats.reduce((sum, stat) => sum + stat.tokensIn + stat.tokensOut, 0) + live.tokensIn + live.tokensOut,
-    usd: run.spentUsd + live.usd,
+    tokens: logged.tokens,
+    usd: logged.usd,
     cpuPeak: Math.max(
       stats.reduce((peak, stat) => Math.max(peak, stat.cpuPeak), 0),
       peaks.cpuPeak,
@@ -47,7 +51,7 @@ export function usageFigures(
 export function metrics(
   run: RunEntity,
   stats: StepStatEntity[],
-  live: LiveUsage,
+  logged: LoggedUsage,
   peaks: { cpuPeak: number; memPeak: number },
   reportMs: Map<number, number>,
 ): FlowView['metrics'] {
@@ -59,7 +63,7 @@ export function metrics(
     attemptsReview: run.attemptsReview,
     attemptsPipeline: run.attemptsPipeline,
     attemptsChecks: run.attemptsChecks,
-    ...usageFigures(run, stats, live, peaks),
+    ...usageFigures(stats, logged, peaks),
   };
 }
 

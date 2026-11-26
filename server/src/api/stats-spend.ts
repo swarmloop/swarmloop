@@ -45,13 +45,15 @@ export function spendOf(
       agents.set(runtime, { usd: agent.usd + step.usd, tokens: agent.tokens + tokens });
       byAgent.set(step.runId, agents);
     }
+    // A limited launch and a ping add their spend to the shares but are no visit of the step.
+    const visits = limited(step) || step.ping ? 0 : 1;
     if (agentStep(step)) {
-      totals.agentMs += step.durationMs;
-      share(bySteps, step.step, step.usd, tokens, limited(step) ? 0 : 1);
-      share(byEfforts, step.effort ?? RUNTIME_DEFAULT, step.usd, tokens, limited(step) ? 0 : 1);
+      totals.agentMs += step.ping ? 0 : step.durationMs;
+      share(bySteps, step.step, step.usd, tokens, visits);
+      share(byEfforts, step.effort ?? RUNTIME_DEFAULT, step.usd, tokens, visits);
     }
     if (step.model) {
-      share(byModels, step.model, step.usd, tokens, limited(step) ? 0 : 1);
+      share(byModels, step.model, step.usd, tokens, visits);
     }
     const day = days.get(localDay(step.finishedAt, tzOffset));
     if (day) {

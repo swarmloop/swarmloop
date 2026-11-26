@@ -98,7 +98,7 @@ export class ReviewSettle {
     const stopped = await this.refusedOrLimited(input, stored);
     if (stopped) return stopped;
     if (errors.length > 0) {
-      const closed = await closeReview(ctx, failed(errors[0]), `${opened.startedAt} ${errors[0]}`, stored, []);
+      const closed = await closeReview(ctx, failed(errors[0]), `${opened.startedAt} ${errors[0]}`, stored, null);
       await this.stamp(opened.run, stored, fingerprint);
       return closed;
     }
@@ -135,20 +135,20 @@ export class ReviewSettle {
         route,
         `${opened.startedAt} ${(error as Error).message}`,
         noted,
-        [],
+        null,
         usage,
       );
       await this.stamp(opened.run, stored, fingerprint);
       return waiting;
     }
-    const reportExchanges = written.exchange ? [written.exchange] : [];
+    const reportCall = written.call;
     if ('error' in written) {
       const closed = await closeReview(
         ctx,
         failed(written.error),
         `${opened.startedAt} ${written.error}`,
         [...noted, ...written.documents],
-        reportExchanges,
+        reportCall,
         written.usage,
       );
       await this.linkReport(deps, opened, written.startId);
@@ -160,7 +160,7 @@ export class ReviewSettle {
     }
     const asks = toPlanner ? [] : disagreed;
     if (asks.length > 0) {
-      const asked = await askPerson(ctx, asks, recorded, reportExchanges, written.usage);
+      const asked = await askPerson(ctx, asks, recorded, reportCall, written.usage);
       await this.linkReport(deps, opened, written.startId);
       await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
       return asked;
@@ -171,7 +171,7 @@ export class ReviewSettle {
       ctx,
       opinions,
       ended.documents,
-      written.exchange ? [written.exchange] : [],
+      reportCall,
       thirdParty,
       written.usage,
       ended.pass,
@@ -228,7 +228,7 @@ export class ReviewSettle {
         refusedRoute(refused),
         `${opened.startedAt} ${refused.message}`,
         stored,
-        [],
+        null,
       );
       await this.stamp(opened.run, stored, fingerprint);
       return waiting;
@@ -236,14 +236,20 @@ export class ReviewSettle {
     const limited = finished.find((item) => item.limit)?.limit;
     if (limited) {
       // The reviewers that answered keep their answers; the ones the limit stopped run again when the run goes on.
-      const waiting = await closeReview(ctx, limitRoute(limited), `${opened.startedAt} ${limited.message}`, stored, []);
+      const waiting = await closeReview(
+        ctx,
+        limitRoute(limited),
+        `${opened.startedAt} ${limited.message}`,
+        stored,
+        null,
+      );
       await this.stamp(opened.run, stored, fingerprint);
       return waiting;
     }
     const outage = finished.find((item) => item.outage)?.outage;
     if (outage) {
       // The reviewers that answered keep their answers; the ones whose model host did not answer run again at the next try.
-      const waiting = await closeReview(ctx, hostRoute(outage), `${opened.startedAt} ${outage.message}`, stored, []);
+      const waiting = await closeReview(ctx, hostRoute(outage), `${opened.startedAt} ${outage.message}`, stored, null);
       await this.stamp(opened.run, stored, fingerprint);
       return waiting;
     }
@@ -273,7 +279,7 @@ export class ReviewSettle {
     for (const { reviewer, question } of questions) {
       waits.push(await waitForPlanner(opened.run, { ...ask, step: `code-review-${reviewer}`, question }));
     }
-    const closed = await closeReview(ctx, waits[0].route, waits[0].summary, stored, []);
+    const closed = await closeReview(ctx, waits[0].route, waits[0].summary, stored, null);
     await this.stamp(opened.run, stored, fingerprint);
     return closed;
   }

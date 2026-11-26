@@ -9,6 +9,8 @@ import { StepStopped } from '../../agent/step-stopped';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { REASON } from '../../contract/run-state';
 import { ARTIFACTS } from '../contract/artifacts';
+import { AgentCallRepository } from '../../history/agent-call.repository';
+import { seedCall } from '../../history/agent-call.spec-helpers';
 import { AgentExchangeEntity, DocumentEntity, StepStatEntity } from '../../history/entities';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -31,15 +33,26 @@ async function setup(env: Record<string, string> = {}) {
   const run = await save(runs, 'proj-1', 'implement', 'waiting');
   const launched: AgentLaunchRequest[] = [];
   const events: string[] = [];
+  const refusals: string[] = [];
+  const pinged: AgentLaunchRequest[] = [];
+  const closed: unknown[] = [];
   const door: AgentDoor = doorAround(app, {
     launch: async (request) => {
       launched.push(request);
       events.push('launch');
       return {} as LaunchResult;
     },
+    refused: async (_request, reason) => void refusals.push(reason),
+    ping: async (request) => void pinged.push(request),
+    closeLeftOpen: async (scope) => void closed.push(scope),
   });
-  const request = (tools: AgentLaunchRequest['tools'] = 'read', spentUsd = 0): AgentLaunchRequest =>
-    ({ key: run.key, step: 'plan', tools, run: { id: run.id, spentUsd, agentCalls: 0, activeAttempt: null } }) as never;
+  const request = (tools: AgentLaunchRequest['tools'] = 'read'): AgentLaunchRequest =>
+    ({
+      key: run.key,
+      step: 'plan',
+      tools,
+      run: { id: run.id, spentUsd: 0, agentCalls: 0, activeAttempt: null },
+    }) as never;
   const start = (by: OutsideStart['by'], texts: string[] = ['same']): OutsideStart => ({
     step: 'plan',
     by,
@@ -86,18 +99,19 @@ async function setup(env: Record<string, string> = {}) {
     await door.linkVisit(startId, stat.id);
   };
   const rows = () => app.get(VisitStartRepository).forRun(run.id);
-  return { app, run, runs, door, launched, events, request, start, store, rows };
+  return { app, run, runs, door, launched, events, refusals, pinged, closed, request, start, store, rows };
 }
 
 describe('AgentDoor', () => {
   it('refuses write tools to a start that is no step visit, with its reason, and launches nothing', async () => {
-    const { app, door, launched, request, start, rows } = await setup();
+    const { app, door, launched, refusals, request, start, rows } = await setup();
     try {
       const refused = await door.outside(start('machine'), request('write')).catch((error: unknown) => error);
 
       expect(refused).toBeInstanceOf(StartRefused);
       expect((refused as StartRefused).kind).toBe('write');
       expect((refused as StartRefused).message).toBe(WRITE_REFUSAL);
+      expect(refusals).toEqual([WRITE_REFUSAL]);
       expect(launched).toEqual([]);
       expect(await rows()).toEqual([]);
     } finally {
@@ -120,7 +134,7 @@ describe('AgentDoor', () => {
   });
 
   it('refuses an outside start on the input of a finished linked visit, one level above the planner, and keeps the refusal', async () => {
-    const { app, door, launched, request, start, store, rows } = await setup();
+    const { app, door, launched, refusals, request, start, store, rows } = await setup();
     try {
       let startId = '';
       await door.outside({ ...start('machine'), admitted: (id) => void (startId = id) }, request());
@@ -131,6 +145,7 @@ describe('AgentDoor', () => {
       expect(refused).toBeInstanceOf(StartRefused);
       const error = refused as StartRefused;
       expect(error.kind).toBe('same-input');
+      expect(refusals).toEqual([error.message]);
       expect(error.reasonCode).toBe(REASON.sameInput);
       expect(error.startLevel).toBe(1);
       expect(error.question?.text).toContain('Which retry policy?');
@@ -179,15 +194,17 @@ describe('AgentDoor', () => {
   });
 
   it('refuses an outside start when the limit is reached on the launch run while a step holds the run', async () => {
-    const { app, run, runs, door, launched, request, start } = await setup({ MAX_RUN_USD: '25' });
+    const { app, run, runs, door, launched, refusals, request, start } = await setup({ MAX_RUN_USD: '25' });
     try {
       writeRunState(run, { status: 'running', currentStep: 'implement' });
       await storeRun(runs, run);
+      await seedCall(app.get(AgentCallRepository), { runKey: run.key, step: 'implement', usd: 30 });
 
-      const refused = await door.outside(start('machine'), request('read', 30)).catch((error: unknown) => error);
+      const refused = await door.outside(start('machine'), request('read')).catch((error: unknown) => error);
 
       expect(refused).toBeInstanceOf(StartRefused);
       expect((refused as StartRefused).kind).toBe('limit');
+      expect(refusals).toEqual([(refused as StartRefused).message]);
       expect((refused as StartRefused).reasonCode).toBe(ERROR_CODES.SPEND_LIMIT);
       expect(refusedRoute(refused as StartRefused)).toMatchObject({ to: 'block', code: ERROR_CODES.SPEND_LIMIT });
       expect(launched).toEqual([]);
@@ -229,6 +246,101 @@ describe('AgentDoor', () => {
 
       expect(events).toEqual(['admitted', 'launch']);
       expect(await rows()).toMatchObject([{ attemptId: startId, outside: true, step: 'plan' }]);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('AgentDoor ping', () => {
+  const chat = { chatId: 'chat-1', dueAt: '2026-11-26T10:50:00.000Z', previousId: 4 };
+
+  it('sends the ping with its chat, records no visit start, takes no agent place and writes no refusal', async () => {
+    const { app, door, launched, pinged, refusals, request, rows } = await setup();
+    try {
+      expect(await door.ping(chat, request('none'))).toBe('sent');
+
+      expect(pinged).toHaveLength(1);
+      expect(pinged[0].call?.ping).toEqual(chat);
+      expect(launched).toEqual([]);
+      expect(refusals).toEqual([]);
+      expect(await rows()).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("is not held back by the input of the step's last visit, which holds back a start of the machine", async () => {
+    const { app, door, pinged, request, start, store } = await setup();
+    try {
+      let startId = '';
+      await door.outside({ ...start('machine'), admitted: (id) => void (startId = id) }, request());
+      await store(startId, 'Which retry policy?');
+      await expect(door.outside(start('machine'), request())).rejects.toBeInstanceOf(StartRefused);
+
+      expect(await door.ping(chat, request('none'))).toBe('sent');
+      expect(pinged).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    ['a run a person stopped', { status: 'blocked', reason: { code: REASON.stopped, message: 'stopped' } }],
+    ['a merged run', { status: 'done', merge: { merged: {} } }],
+    ['a closed run', { status: 'done', merge: { closed: { repo: 'web', by: null, at: '2026-11-26T10:00:00.000Z' } } }],
+  ])('refuses %s, with no row and nothing sent', async (_name, change) => {
+    const { app, run, runs, door, pinged, refusals, request } = await setup();
+    try {
+      writeRunState(run, change);
+      await storeRun(runs, run);
+
+      expect(await door.ping(chat, request('none'))).toBe('refused');
+      expect(pinged).toEqual([]);
+      expect(refusals).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses a halted run', async () => {
+    const { app, door, pinged, request } = await setup();
+    try {
+      app.get(RunStop).halt('proj-1');
+      expect(await door.ping(chat, request('none'))).toBe('refused');
+      expect(pinged).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses a run over its spend limit', async () => {
+    const { app, run, door, pinged, request } = await setup({ MAX_RUN_USD: '25' });
+    try {
+      await seedCall(app.get(AgentCallRepository), { runKey: run.key, usd: 30 });
+      expect(await door.ping(chat, request('none'))).toBe('refused');
+      expect(pinged).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses a run over its token limit', async () => {
+    const { app, run, door, pinged, request } = await setup({ MAX_RUN_USD: '25', MAX_RUN_TOKENS: '1000' });
+    try {
+      await seedCall(app.get(AgentCallRepository), { runKey: run.key, input: 600, output: 600 });
+      expect(await door.ping(chat, request('none'))).toBe('refused');
+      expect(pinged).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('closes the pings a dead process left open through the launcher', async () => {
+    const { app, door, closed } = await setup();
+    try {
+      await door.closeOpenPings();
+      expect(closed).toEqual([{ pings: true }]);
     } finally {
       await app.close();
     }

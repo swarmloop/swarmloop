@@ -36,13 +36,18 @@ export function backgroundKilledContinue(ending: string | undefined): string {
   return withEnding(AGENT_BACKGROUND_KILLED_CONTINUE, ending);
 }
 
-export async function readSession(path: string, runtime: string): Promise<SessionState | null> {
+/** The session a file holds, whatever runtime opened its chat. */
+export async function readStoredSession(path: string): Promise<SessionState | null> {
   try {
-    const session = JSON.parse(await readFile(path, 'utf8')) as SessionState;
-    return session.runtime === runtime ? session : null;
+    return JSON.parse(await readFile(path, 'utf8')) as SessionState;
   } catch {
     return null;
   }
+}
+
+export async function readSession(path: string, runtime: string): Promise<SessionState | null> {
+  const session = await readStoredSession(path);
+  return session?.runtime === runtime ? session : null;
 }
 
 export async function writeSession(path: string, runtime: string, session: SessionState): Promise<void> {

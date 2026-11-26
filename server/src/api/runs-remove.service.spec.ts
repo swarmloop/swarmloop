@@ -6,13 +6,14 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
+import { AgentCallRepository } from '../history/agent-call.repository';
 import { VisitRepository } from '../history/visit.repository';
 import { FlowRepository } from '../history/flow.repository';
 import { EventRepository } from '../history/event.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { LiveHub } from '../live/live.hub';
 import { RunCommandsService } from './run-commands.service';
-import { save, visit } from '../testing/runs.spec-helpers';
+import { loggedCall, save, visit } from '../testing/runs.spec-helpers';
 import { seededBoot } from './runs-boot.spec-helpers';
 
 describe('runs api', () => {
@@ -31,17 +32,16 @@ describe('runs api', () => {
       await visits.finishVisit(run, {
         ...visit('plan', 'done'),
         samples: [{ sampledAt: now, cpuPercent: 1, rssBytes: 2, source: 'agent' }],
-        exchange: {
-          model: 'grok',
-          startedAt: now,
-          finishedAt: now,
-          durationMs: 1,
-          requestText: 'req',
-          responseText: 'res',
-          chatId: null,
-          resumed: false,
-          killReason: null,
-        },
+        callIds: [
+          await loggedCall(app.get(AgentCallRepository), {
+            model: 'grok',
+            startedAt: now,
+            finishedAt: now,
+            durationMs: 1,
+            requestText: 'req',
+            responseText: 'res',
+          }),
+        ],
         httpCalls: [
           { provider: 'jira', method: 'GET', url: 'http://jira', statusCode: 200, durationMs: 1, error: null },
         ],

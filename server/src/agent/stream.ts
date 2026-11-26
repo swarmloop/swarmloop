@@ -1,6 +1,17 @@
-import type { ChatUsage } from '../history/chat-usage.repository';
 import { guessLineTokens } from './stream-guess';
-import { NO_USAGE, sinceRecorded } from './since-recorded';
+import { NO_USAGE, sinceRecorded, type ChatUsage } from './since-recorded';
+import {
+  cacheReadOf,
+  type ModelUsage,
+  modelUsageOf,
+  numberFrom,
+  type OwnUsage,
+  type RawRequest,
+  readRawRequest,
+  ownUsageOf,
+  uncachedInput,
+  usageOf,
+} from './stream-usage';
 
 export interface StreamPiece {
   tokensIn: number | null;
@@ -29,21 +40,8 @@ export interface StreamPiece {
   backgroundEvent: 'ended' | 'other' | null;
   text: string | null;
   replaceText: boolean;
-}
-
-export interface OwnUsage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  /** Null when no model entry reports a cost. */
-  usd: number | null;
-}
-
-/** One model's part of a visit's own usage. `usd` is null when the line reports no cost for it. */
-export interface ModelUsage extends Omit<OwnUsage, 'usd'> {
-  model: string;
-  usd: number | null;
+  /** One model request of a Claude assistant message or a Codex turn, as the line states it. */
+  request: RawRequest | null;
 }
 
 interface CountedUsage {
@@ -93,6 +91,7 @@ export function readStreamLine(line: string): StreamPiece | null {
     backgroundEvent: backgroundEventOf(record),
     text: record.type === 'item.completed' ? (agentMessage(record) ?? text) : (failureText(record) ?? text),
     replaceText: (record.type === 'result' && text !== null) || agentMessage(record) !== null,
+    request: readRawRequest(record),
   };
 }
 
@@ -123,22 +122,6 @@ function taskStatuses(record: Record<string, unknown>): unknown[] {
 
 function isTaskNotification(record: Record<string, unknown>): boolean {
   return record.type === 'system' && record.subtype === 'task_notification';
-}
-
-function uncachedInput(record: Record<string, unknown>, usage: Record<string, unknown>): number | null {
-  const input = numberFrom(usage, ['input_tokens', 'inputTokens', 'prompt_tokens']);
-  if (record.type !== 'turn.completed' || input === null) {
-    return input;
-  }
-  const cached = numberFrom(usage, ['cached_input_tokens']);
-  return cached === null ? input : Math.max(0, input - cached);
-}
-
-function cacheReadOf(record: Record<string, unknown>, usage: Record<string, unknown>): number | null {
-  if (record.type === 'turn.completed') {
-    return numberFrom(usage, ['cached_input_tokens']);
-  }
-  return numberFrom(usage, ['cacheReadTokens', 'cache_read_tokens', 'cache_read_input_tokens']);
 }
 
 function agentMessage(record: Record<string, unknown>): string | null {
@@ -240,7 +223,7 @@ function resultRow(piece: StreamPiece, recorded: ChatUsage): CountedUsage {
   return row;
 }
 
-function partOfTotal(total: CountedUsage, prompt: number, recorded: ChatUsage): CountedUsage {
+export function partOfTotal(total: CountedUsage, prompt: number, recorded: ChatUsage): CountedUsage {
   const promptOwn = sinceRecorded(prompt, recorded.tokensIn);
   const share = prompt > 0 ? promptOwn / prompt : 0;
   const cacheRead = Math.round(total.cacheRead * share);
@@ -263,67 +246,6 @@ function counted(piece: StreamPiece): boolean {
     piece.reportedUsd !== null ||
     piece.own !== null
   );
-}
-
-/** `model_usage_since_last_result` holds one entry per model. The piece's own usage is their sum. */
-function ownUsageOf(record: Record<string, unknown>): OwnUsage | null {
-  const models = modelUsageOf(record);
-  if (models.length === 0) {
-    return null;
-  }
-  const sum = (key: 'input' | 'output' | 'cacheRead' | 'cacheWrite'): number =>
-    models.reduce((total, entry) => total + entry[key], 0);
-  const costs = models.map((entry) => entry.usd);
-  return {
-    input: sum('input'),
-    output: sum('output'),
-    cacheRead: sum('cacheRead'),
-    cacheWrite: sum('cacheWrite'),
-    usd: costs.every((cost) => cost === null) ? null : costs.reduce<number>((total, cost) => total + (cost ?? 0), 0),
-  };
-}
-
-/** One entry per model of `model_usage_since_last_result`, so that each model can be priced at its own price. */
-function modelUsageOf(record: Record<string, unknown>): ModelUsage[] {
-  const byModel = record.model_usage_since_last_result;
-  if (!byModel || typeof byModel !== 'object') {
-    return [];
-  }
-  return Object.entries(byModel as Record<string, unknown>).flatMap(([model, value]) => {
-    if (!value || typeof value !== 'object') {
-      return [];
-    }
-    const entry = value as Record<string, unknown>;
-    return [
-      {
-        model,
-        input: numberFrom(entry, ['inputTokens', 'input_tokens']) ?? 0,
-        output: numberFrom(entry, ['outputTokens', 'output_tokens']) ?? 0,
-        cacheRead: numberFrom(entry, ['cacheReadInputTokens', 'cache_read_input_tokens']) ?? 0,
-        cacheWrite: numberFrom(entry, ['cacheCreationInputTokens', 'cache_creation_input_tokens']) ?? 0,
-        usd: numberFrom(entry, ['costUSD', 'cost_usd']),
-      },
-    ];
-  });
-}
-
-function usageOf(record: Record<string, unknown>): Record<string, unknown> {
-  const message = record.message;
-  const nested = message && typeof message === 'object' ? (message as { usage?: unknown }).usage : undefined;
-  return {
-    ...(nested && typeof nested === 'object' ? (nested as Record<string, unknown>) : {}),
-    ...(record.usage && typeof record.usage === 'object' ? (record.usage as Record<string, unknown>) : {}),
-  };
-}
-
-function numberFrom(record: Record<string, unknown>, keys: string[]): number | null {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-  }
-  return null;
 }
 
 function stringFrom(record: Record<string, unknown>, keys: string[]): string | null {

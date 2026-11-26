@@ -8,6 +8,7 @@ import type { VisitRepository } from '../history/visit.repository';
 import { documentView, filesOf, withoutServerRecords } from './run-view/documents';
 import { launchView, loopView } from './run-view/live';
 import { relaunchViews } from './run-view/relaunch';
+import { exchangesOf } from './run-view/visit-parts';
 import { requireRun } from './run-queries-run';
 import { outputsOf, visitLogSize } from './run-queries-log';
 
@@ -46,13 +47,9 @@ export async function readHistory(
     launches: launches.map(launchView),
     documents: documents.filter((document) => document.kind !== 'log').map(documentView),
     files: filesOf(documents),
-    exchanges: exchanges.map((exchange) => ({
-      stepStatId: exchange.stepStatId,
-      model: exchange.model,
-      durationMs: exchange.durationMs,
-      request: exchange.requestText,
-      response: exchange.responseText,
-    })),
+    exchanges: stats.flatMap((stat) =>
+      exchangesOf(exchanges, stat.id).map((exchange) => ({ stepStatId: stat.id, ...exchange })),
+    ),
     loops: loops.map(loopView),
     calls: calls.map((call) => ({
       method: call.method,

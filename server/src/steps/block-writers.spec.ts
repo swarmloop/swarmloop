@@ -200,8 +200,10 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
         nothing,
         nothing,
         nothing,
-        nothing,
         { ensure: jest.fn().mockRejectedValue(disk) } as never,
+        nothing,
+        nothing,
+        nothing,
         nothing,
       );
       await settler.settleRebase(run);

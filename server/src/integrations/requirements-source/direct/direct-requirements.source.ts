@@ -9,7 +9,7 @@ export function writeRecord(input: RequirementsInput): RequirementsWrite {
     usd: 0,
     tokensIn: 0,
     tokensOut: 0,
-    exchange: null,
+    callIds: [],
     killReason: null,
     samples: [],
     resumed: false,

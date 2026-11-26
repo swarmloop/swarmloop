@@ -4,18 +4,25 @@ import { join } from 'path';
 import type { BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
 import { emptyResult } from '../../../agent/agent-result';
 import type { AgentRunResult } from '../../../agent/agent-result';
+import type { PricedRequest } from '../../../agent/request-usage';
 import { RunStop } from '../../../agent/run-stop';
 import { AppConfig } from '../../../config/env';
 import { testEnv } from '../../../config/env.spec-helpers';
 import type { LiveBacklog } from '../../../contract/backlog-chat';
 import type { StateReason } from '../../../contract/run-state';
+import { AgentCallRepository } from '../../../history/agent-call.repository';
+import { DataSource } from 'typeorm';
+import { AgentExchangeEntity } from '../../../history/agent-exchange.entity';
 import { AttachmentStore } from '../../../history/attachment-store';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
+import { VisitStartRepository } from '../../../history/visit-start.repository';
 import { RuntimeCooldownRepository } from '../../../history/runtime-cooldown.repository';
 import { VisitRepository } from '../../../history/visit.repository';
 import type { Clock } from '../../../core/clock';
 import { LiveHub } from '../../../live/live.hub';
+import { AgentCallRecorder } from '../../../steps/shared/agent-call-recorder';
 import { AgentLauncher } from '../../../steps/shared/agent-launcher';
+import { CallContexts } from '../../../steps/shared/call-context';
 import { LimitFailover } from '../../../steps/shared/limit-failover';
 import { resultAnswer } from '../../../testing/result-answer';
 import { BacklogActionSupport } from '../backlog-action-support';
@@ -28,6 +35,7 @@ import { PlannerBacklogCalls } from './planner-backlog-calls';
 import { PlannerRules } from './planner-rules';
 import { PlannerRunPort, type PlannerRunCommand } from './planner-run-port';
 import { BacklogTurnRunner } from './turn-runner';
+import { TurnTies } from './turn-ties';
 
 /** One answer of the scripted planner agent: a turn result, a usage limit, a model host that did not answer, or a launch that fails. */
 export type TurnAnswer = BacklogTurnResult | 'limit' | 'crash' | 'outage';
@@ -43,6 +51,7 @@ export class ScriptedTurnAgent {
   started: ((told?: () => Promise<void>) => Promise<void>) | null = null;
 
   async run(input: {
+    onRequest?: (request: PricedRequest) => void;
     onStartWait?: () => Promise<void>;
     runtime: string;
     prompt: string;
@@ -59,11 +68,28 @@ export class ScriptedTurnAgent {
       tokensIn: 10,
       tokensOut: 5,
     };
+    const answer = this.answerOf(next, base);
+    // Every launch streams its one model request, as a real agent does, so the log holds what it spent even when it dies.
+    input.onRequest?.({
+      messageId: `request-${this.launches.length}`,
+      model: 'opus',
+      parentToolUseId: null,
+      input: 10,
+      cacheRead: 0,
+      cacheWrite: 0,
+      output: 5,
+      usd: answer.usd,
+      price: null,
+    });
+    return answer;
+  }
+
+  private answerOf(next: TurnAnswer, base: AgentRunResult): AgentRunResult {
     if (next === 'limit') return { ...base, usd: 0.25, responseText: 'limit', limit: { window: '5-hour' } };
     if (next === 'outage') {
       return { ...base, usd: 0.25, responseText: '', outage: { host: 'api.anthropic.com', detail: 'API Error: 502' } };
     }
-    if (next === 'crash') return { ...base, exitCode: 1, responseText: '' };
+    if (next === 'crash') return { ...base, usd: 0.1, exitCode: 1, responseText: '' };
     return { ...base, usd: 0.5, responseText: resultAnswer('Done.', next) };
   }
 }
@@ -99,13 +125,13 @@ export async function plannerTurnsHarness(
     sent.push({ command, key });
   });
   const chat = db.app.get(BacklogChatRepository);
-  const calls = new PlannerBacklogCalls(h.actions, support, h.backlogs);
+  const backlogCalls = new PlannerBacklogCalls(h.actions, support, h.backlogs);
   const { holds, passOn } = holdServices(db.app, db.clock);
   const turns = new PlannerTurnActions(
     h.backlogs,
     chat,
     new PlannerRules(h.backlogs, h.runs),
-    calls,
+    backlogCalls,
     port,
     db.clock,
     new LeftQuestions(chat, holds, passOn, h.runs, h.backlogs, db.clock),
@@ -122,6 +148,12 @@ export async function plannerTurnsHarness(
   const startWaits = {
     changed: (_key: string, store?: (wait: StateReason | null) => Promise<void>) => store?.(startWait.now),
   };
+  const calls = db.app.get(AgentCallRepository);
+  const recorder = new AgentCallRecorder(
+    calls,
+    new CallContexts(h.runs, h.backlogs, chat, db.app.get(VisitStartRepository)),
+    db.clock,
+  );
   const launcher = new AgentLauncher(
     agent as never,
     db.app.get(VisitRepository),
@@ -129,8 +161,7 @@ export async function plannerTurnsHarness(
     failover,
     config,
     undefined,
-    undefined,
-    undefined,
+    recorder,
     startWaits as never,
   );
   const failingOpen = { next: null as Error | null };
@@ -170,6 +201,8 @@ export async function plannerTurnsHarness(
     config,
     runStop,
     attachments,
+    calls,
+    new TurnTies(h.backlogs, chat, h.runs),
     live,
   );
   const shown: LiveBacklog[] = [];
@@ -180,6 +213,8 @@ export async function plannerTurnsHarness(
   const harness = {
     ...h,
     chat,
+    calls,
+    launcher,
     runner,
     attachments,
     planner: started,
@@ -223,6 +258,28 @@ export async function plannerTurnsHarness(
         createdAt: db.clock.iso(),
       });
       await chat.takeInto(backlogId, turnKey);
+    },
+    /** The rows the log holds for the turn's key, oldest first. */
+    async logOf(turnKey: string) {
+      return db.app
+        .get(DataSource)
+        .getRepository(AgentExchangeEntity)
+        .find({ where: { turnKey }, order: { id: 'ASC' } });
+    },
+    /** A launch the server died in: an open row of the turn that already streamed a request costing `usd`. */
+    async leaveOpen(turnKey: string, usd: number): Promise<number> {
+      const id = await calls.open({
+        kind: 'call',
+        startedAt: db.clock.iso(),
+        turnKey,
+        step: 'backlog-plan',
+        resumed: false,
+        runtime: 'claude',
+        model: 'opus',
+        requestText: '',
+      });
+      await calls.addRequest(id, { model: 'opus', input: 10, cacheRead: 0, cacheWrite: 0, output: 5, usd, price: {} });
+      return id;
     },
     /** The turns of the backlog, oldest first. */
     async turnsOf(backlogId: number) {

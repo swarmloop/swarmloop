@@ -8,6 +8,7 @@ import type {
   EffortLaunch,
   EgressCredential,
   HomeFile,
+  PromptCache,
   RuntimeKeys,
 } from '../agent-runtime';
 import { ClaudeConnection } from './claude-connection';
@@ -95,6 +96,12 @@ function helperAgents(helper: AgentHelper): string {
   return JSON.stringify({ reader });
 }
 
+/** The 1-hour cache prices in USD per million tokens of the models Claude is known for; https://platform.claude.com/docs/en/build-with-claude/prompt-caching */
+const CLAUDE_PROMPT_CACHES: ReadonlyMap<string, PromptCache> = new Map([
+  ['claude-opus-5-5', { ttlMinutes: 60, cacheReadPerMillion: 0.2, cacheWritePerMillion: 8 }],
+  ['claude-sonnet-5-5', { ttlMinutes: 60, cacheReadPerMillion: 0.2, cacheWritePerMillion: 4 }],
+]);
+
 const HOOK_DIR = '.claude';
 
 /**
@@ -159,6 +166,10 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
     };
   }
 
+  promptCache(model: string): PromptCache | null {
+    return CLAUDE_PROMPT_CACHES.get(model) ?? null;
+  }
+
   // Claude Code 2.1.319 loads CLAUDE.md only: https://code.claude.com/docs/en/memory
   ownRuleFiles(): readonly string[] {
     return ['CLAUDE.md'];
@@ -206,6 +217,9 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   }
 
   protected override appendPrintFlags(args: string[], input: AgentPrintInput): void {
+    if (input.fork) {
+      args.push('--fork-session', '--no-session-persistence');
+    }
     const denied = input.helper ? helperDisallowedTools(input.tools) : claudeDisallowedTools(input.tools);
     args.push('--verbose', '--disallowedTools', denied);
     if (input.helper) {

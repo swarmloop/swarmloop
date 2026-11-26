@@ -1,4 +1,5 @@
-import type { ChatUsage } from '../history/chat-usage.repository';
+import type { PricedRequest } from './request-usage';
+import type { ChatUsage } from './since-recorded';
 import type { SandboxMount } from '../core/sandbox-mount';
 import type { Effort } from '../contract/effort';
 import type { AgentHelper } from '../integrations/agent-runtime/agent-runtime';
@@ -20,6 +21,11 @@ export interface AgentRunInput {
   spentUsd: number;
   tokensInRun: number;
   resumeChatId: string | null;
+  /**
+   * Resumes the chat on a copy that is not saved, to read its prompt cache and change nothing. A fork takes no agent
+   * place, writes no session file, never starts a second launch, and keeps its output in `outputFile` only.
+   */
+  fork?: boolean;
   runKey: string;
   /** The login whose credential the launch uses. Without it the run's starter is looked up. */
   login?: string | null;
@@ -63,6 +69,8 @@ export interface AgentRunInput {
   onStartWait?: () => Promise<void>;
   /** `onLaunchEnd` runs when a launch ends, whatever the reason. */
   onLaunchEnd?: () => void;
+  /** Called with each model request as it streams, priced at the launch's table. A repeated message id comes again with its latest usage. */
+  onRequest?: (request: PricedRequest) => void;
   /** Run in the project image with the CLI mounted into it, instead of the agent image. */
   project?: ProjectLaunch;
 }

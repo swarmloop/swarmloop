@@ -7,6 +7,11 @@ import { BacklogMessageEntity } from './backlog-planner.entities';
 import { CommandEntity, DocumentEntity, LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 import { ServerStallEntity } from './server-stall.entities';
 
+/** The placeholders of a list of values for a raw query. */
+function marks(values: unknown[]): string {
+  return values.map(() => '?').join(', ');
+}
+
 /** How much of a prompt is read for the name and the title: both use only its first lines. */
 const PROMPT_PREFIX = 4096;
 
@@ -23,9 +28,6 @@ const STEP_COLUMNS = [
   'effort',
   'status',
   'killReason',
-  'usd',
-  'tokensIn',
-  'tokensOut',
   'durationMs',
   'finishedAt',
   'shellEdits',
@@ -48,7 +50,17 @@ export type StatsStepRow = Pick<
   | 'durationMs'
   | 'finishedAt'
   | 'shellEdits'
->;
+> & {
+  /** A keep-warm ping of the run: its cost counts, it is no visit and has no agent time. */
+  ping?: true;
+};
+
+/** What the log holds of one visit or one ping: the dollars and the two token sums Stats count. */
+interface LoggedSpend {
+  usd: number;
+  tokensIn: number;
+  tokensOut: number;
+}
 export type StatsLoopRow = Pick<LoopEventEntity, 'runId' | 'counter' | 'reason' | 'createdAt'> &
   Partial<Pick<LoopEventEntity, 'detail'>>;
 
@@ -195,15 +207,54 @@ export class StatsRepository {
     }
   }
 
-  /** The step rows of the runs with these ids (of every run for null), as plain rows: no entity is built for each of thousands. */
+  /**
+   * The step rows of the runs with these ids (of every run for null), as plain rows: no entity is built for each of
+   * thousands. A visit's cost and tokens are the sums of the log rows linked to it; the run's pings follow, one row each.
+   */
   private async stepRows(runIds: number[] | null): Promise<StatsStepRow[]> {
-    const query = this.steps.createQueryBuilder('step');
+    const query = this.steps.createQueryBuilder('step').addSelect('step.id', 'statId');
     for (const column of STEP_COLUMNS) {
       query.addSelect(`step.${column}`, column);
     }
     if (runIds !== null) {
       query.where('step.runId IN (:...runIds)', { runIds });
     }
-    return query.getRawMany();
+    const visits: (Omit<StatsStepRow, 'usd' | 'tokensIn' | 'tokensOut' | 'ping'> & { statId: number })[] =
+      await query.getRawMany();
+    const logged = await this.loggedByVisit(runIds);
+    const rows = visits.map(({ statId, ...row }) => ({
+      ...row,
+      ...(logged.get(statId) ?? { usd: 0, tokensIn: 0, tokensOut: 0 }),
+    }));
+    return [...rows, ...(await this.pingRows(runIds))];
+  }
+
+  /** The log's sums of the rows linked to each visit. Tokens in are input, cache read and cache write. */
+  private async loggedByVisit(runIds: number[] | null): Promise<Map<number, LoggedSpend>> {
+    const scope =
+      runIds === null ? '' : ` AND step_stat_id IN (SELECT id FROM step_stats WHERE run_id IN (${marks(runIds)}))`;
+    const sums: (LoggedSpend & { statId: number })[] = await this.steps.manager.query(
+      `SELECT step_stat_id AS statId, SUM(own_usd) AS usd,
+         SUM(input_tokens + cache_read_tokens + cache_write_tokens) AS tokensIn, SUM(output_tokens) AS tokensOut
+       FROM agent_exchanges WHERE step_stat_id > 0${scope} GROUP BY step_stat_id`,
+      runIds ?? [],
+    );
+    return new Map(sums.map(({ statId, ...sum }) => [statId, sum]));
+  }
+
+  /** The keep-warm pings of the runs, each as a step row of the step its chat last ran. */
+  private async pingRows(runIds: number[] | null): Promise<StatsStepRow[]> {
+    const scope = runIds === null ? '' : ` AND run.id IN (${marks(runIds)})`;
+    const pings: Omit<StatsStepRow, 'ping'>[] = await this.steps.manager.query(
+      `SELECT run.id AS runId, COALESCE(call.step, '') AS step, call.runtime AS runtime, call.model AS model,
+         call.effort AS effort, 'done' AS status, NULL AS killReason, call.own_usd AS usd,
+         call.input_tokens + call.cache_read_tokens + call.cache_write_tokens AS tokensIn,
+         call.output_tokens AS tokensOut, 0 AS durationMs,
+         CASE WHEN call.finished_at = '' THEN call.started_at ELSE call.finished_at END AS finishedAt, 0 AS shellEdits
+       FROM agent_exchanges call JOIN runs run ON run.key = call.run_key
+       WHERE call.kind = 'ping'${scope}`,
+      runIds ?? [],
+    );
+    return pings.map((row) => ({ ...row, ping: true as const }));
   }
 }

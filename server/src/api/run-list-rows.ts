@@ -7,6 +7,7 @@ import type { EtaTable, LiveRun } from '../eta/eta.types';
 import type { RunBacklog } from '../contract/backlog';
 import type { RunsView } from '../contract/api';
 import type { Subtask } from '../contract/subtask';
+import { AgentCallRepository } from '../history/agent-call.repository';
 import { BacklogRepository } from '../history/backlog.repository';
 import { CommandRepository } from '../history/command.repository';
 import { DocumentRepository } from '../history/document.repository';
@@ -17,6 +18,7 @@ import { VisitRepository } from '../history/visit.repository';
 import type { RunWaitEntity } from '../history/run-wait.entity';
 import { RunWaitLog } from '../history/run-wait.log';
 import { LiveHub } from '../live/live.hub';
+import { overOf } from '../pipeline/keep-warm/ping-candidates';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { epicTotal } from '../steps/shared/epic-total';
 import { runName } from './run-view/flow';
@@ -25,7 +27,6 @@ import { mergeWaits } from './run-view/merge-wait';
 import { ownStates, type OwnState } from './run-view/own-state';
 import { requirementBodies, viewTitle } from './run-view/run-title';
 import { childrenByParent, listExtras } from './run-view/status';
-import { spentUsd } from './run-queries-spend';
 import { EtaSummary } from './eta-summary';
 import { relaunchSteps } from './run-view/relaunch';
 import { liveRunOf, runViewEta } from './run-view/run-eta';
@@ -43,6 +44,8 @@ interface KeptRun {
   /** The steps the run's open relaunch still has to run; read only while the run has not ended. */
   relaunch: string[] | undefined;
   label: RunBacklog | undefined;
+  /** What the run's rows in the log cost; read again on each list read only while the run can still gain rows. */
+  usd: number;
   claimed: boolean;
 }
 
@@ -77,6 +80,7 @@ export class RunListRows implements OnModuleDestroy {
     private readonly flows: FlowRepository,
     private readonly visits: VisitRepository,
     private readonly config: AppConfig,
+    private readonly calls: AgentCallRepository,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -90,6 +94,7 @@ export class RunListRows implements OnModuleDestroy {
       await this.waitLog.settled();
       const table = await this.etaSummary.table();
       const recomputed = await this.refresh();
+      await this.refreshSpend();
       return { view: this.assemble(table), recomputed };
     });
     this.tail = next.catch(() => undefined);
@@ -117,6 +122,16 @@ export class RunListRows implements OnModuleDestroy {
       for (const key of taken) this.dirty.add(key);
       throw error;
     }
+  }
+
+  /**
+   * A run whose chats can still be pinged or that can still run gains rows without a change of the run, so its cost is
+   * read again here. The cost of an ended run was read with the run, by the change that ended it.
+   */
+  private async refreshSpend(): Promise<void> {
+    const open = [...this.kept.values()].filter((entry) => overOf(entry.run) === null);
+    const sums = await this.calls.spendOfRuns(open.map((entry) => entry.run.key));
+    for (const entry of open) entry.usd = sums.get(entry.run.key) ?? 0;
   }
 
   /** A run the pipeline now holds is not the run its state was read for. */
@@ -159,6 +174,7 @@ export class RunListRows implements OnModuleDestroy {
     const unended = runs.filter((run) => run.status !== 'done').map((run) => run.id);
     const waits = await this.waitLog.waitsOf(unended);
     const relaunches = await relaunchSteps(this.flows, this.visits, unended);
+    const costs = await this.calls.spendOfRuns(runs.map((run) => run.key));
     for (const run of runs) {
       this.kept.set(run.key, {
         run,
@@ -169,6 +185,7 @@ export class RunListRows implements OnModuleDestroy {
         waits: waits.get(run.id) ?? [],
         relaunch: relaunches.get(run.id),
         label: labels.get(run.key),
+        usd: costs.get(run.key) ?? 0,
         claimed: claimed.get(run.key) ?? false,
       });
     }
@@ -185,8 +202,8 @@ export class RunListRows implements OnModuleDestroy {
       if (entry.plan) plans.set(entry.run.key, entry.plan);
     }
     const waits = mergeWaits(plans, runs, keys);
+    const usdOf = (run: RunEntity): number => this.kept.get(run.key)?.usd ?? 0;
     const states = listStates(runs, { keys, childrenOf, plans }, new Map(entries.map((e) => [e.run.key, e.own])));
-    const usdOf = (run: RunEntity): number => spentUsd(run, this.pipeline, this.live);
     return {
       runs: entries.map((entry) => {
         const { run, durationMs, requirements, label } = entry;

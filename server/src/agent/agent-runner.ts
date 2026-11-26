@@ -12,8 +12,7 @@ import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
 import { emptyResult, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
 import { callsExceeded } from './limits';
-import type { ChatUsage } from '../history/chat-usage.repository';
-import { NO_USAGE } from './since-recorded';
+import { NO_USAGE, type ChatUsage } from './since-recorded';
 import { RunStop } from './run-stop';
 import { AgentLaunch } from './agent-launch';
 import { AgentLaunchEnv } from './agent-launch-env';
@@ -119,6 +118,10 @@ export class AgentProcessRunner {
         merged = foldAttempt(merged, attempt);
         calls += attempt.calls;
         chat = chatSpendAfter(chat, attempt);
+        if (input.fork) {
+          // A fork changes nothing: no second launch, no dropped chat, no resent prompt.
+          return merged;
+        }
         if (attempt.limit) {
           // A limit is no attempt: relaunching into it only burns launches. The caller picks another agent or waits.
           return merged;
@@ -175,7 +178,12 @@ export class AgentProcessRunner {
         prompt = relaunch.prompt ?? prompt;
       }
     } finally {
-      this.live?.dropSpend(input.runKey, input.liveStep ?? input.step);
+      this.dropLiveSpend(input);
     }
+  }
+
+  /** A launch that is a visit shows its spend live until it ends; a fork shows none. */
+  private dropLiveSpend(input: AgentRunInput): void {
+    if (!input.fork) this.live?.dropSpend(input.runKey, input.liveStep ?? input.step);
   }
 }

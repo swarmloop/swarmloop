@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { storeRun } from './store-run.spec-helpers';
 import type { Socket } from 'socket.io-client';
 import type { StepView } from '../contract/api';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -53,8 +55,11 @@ describe('the run page follows its run', () => {
     await storeRun(runs(), run);
   }
 
-  const spend = (usd: number) =>
+  /** One more model request of the open visit: its row is saved first, then the stream tells the page. */
+  const spend = async (usd: number) => {
+    await seedCall(app.app.get(AgentCallRepository), { runKey: KEY, step: 'implement', usd, input: 100, output: 50 });
     hub().log({ key: KEY, step: 'implement', body: 'working\n', usage: { tokensIn: 100, tokensOut: 50, usd } });
+  };
 
   it('shows the header status after a step change, and after a reconnect as a fresh read does', async () => {
     const { page, socket } = await start();
@@ -73,13 +78,13 @@ describe('the run page follows its run', () => {
   it('shows tokens and usd after a log with usage, and after a reconnect as a fresh read does', async () => {
     const { page, socket } = await start();
 
-    spend(0.5);
+    await spend(0.5);
     await pass();
     expect(page.flow?.metrics).toMatchObject({ tokens: 150, usd: 0.5 });
 
-    await awayDuring(socket, async () => spend(1.25));
+    await awayDuring(socket, () => spend(0.75));
     const fresh = await page.read();
-    expect(fresh.metrics.usd).toBe(1.25);
+    expect(fresh.metrics).toMatchObject({ tokens: 300, usd: 1.25 });
     expect(page.flow?.metrics).toMatchObject({ tokens: fresh.metrics.tokens, usd: fresh.metrics.usd });
   });
 

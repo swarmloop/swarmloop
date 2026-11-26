@@ -4,7 +4,7 @@ import { effortFields } from '../../contract/effort';
 import type { EffortFields } from '../../contract/effort';
 import { agentsFor, firstAvailable } from '../../config/agents';
 import type { Agent } from '../../config/agents';
-import type { AgentRunResult } from '../../agent/agent-result';
+import type { LaunchResult } from './result-exchange';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { Clock } from '../../core/clock';
 import { RuntimeLimit } from '../../core/swarmloop-error';
@@ -110,7 +110,7 @@ export class LimitFailover {
   }
 
   /** Records a limited launch. Returns the request moved to the next agent, or throws `RuntimeLimit` when none is left. */
-  async limited<T extends FailoverTarget>(request: T, result: AgentRunResult): Promise<T> {
+  async limited<T extends FailoverTarget>(request: T, result: LaunchResult): Promise<T> {
     const { window } = result.limit ?? {};
     const now = this.clock.now();
     // A reset far in the future is not a provider's window: the default cooldown applies, and no time is shown.
@@ -194,7 +194,7 @@ export class LimitFailover {
     return request.liveStep ?? request.step;
   }
 
-  private visit(request: FailoverTarget, result: AgentRunResult): VisitDraft {
+  private visit(request: FailoverTarget, result: LaunchResult): VisitDraft {
     return {
       step: this.use(request),
       runtime: request.runtime,
@@ -211,7 +211,7 @@ export class LimitFailover {
       tokensOut: result.tokensOut,
       usd: result.usd,
       samples: result.samples,
-      exchange: null,
+      callIds: result.callIds,
       httpCalls: [],
       document: null,
       documents: [],

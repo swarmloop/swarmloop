@@ -33,11 +33,40 @@ describe('BacklogTurnRunner', () => {
       expect(h.agent.launches[0].mounts.every((mount) => mount.readonly)).toBe(true);
       expect(await h.lines(id)).toEqual(['person: plan it', 'planner: Here is the plan.']);
       const turn = await h.chat.findTurn('turn-a');
-      expect(turn).toMatchObject({ status: 'done', runtime: 'cursor', tokensIn: 10, tokensOut: 5, usd: 0.5 });
+      expect(turn).toMatchObject({ status: 'done', runtime: 'cursor', tokensIn: 15, tokensOut: 0, usd: 0.5 });
       expect(turn?.model).not.toBe('');
       expect(turn?.transcript).toMatch(/turn-a-backlog-plan-output\.txt$/);
       expect(h.workspace.opened).toEqual(['turn-a']);
       expect(h.workspace.closed).toEqual(['turn-a']);
+    }));
+
+  it("writes the turn's cost and tokens from the sums of its log rows, and ties the row to what its events and actions name", () =>
+    withTurn(async (h, id) => {
+      await h.seedTask(id, 'a', { status: 'waiting' });
+      await h.seedTask(id, 'b', { status: 'waiting' });
+      await h.backlogs.recordEvent(id, 'merged-b', 'task-merged', { slug: 'b' });
+      await h.chat.takeInto(id, 'turn-a');
+      h.agent.script = [turnResult('Done.', { action: 'deleteTask', task: 'a' })];
+      await h.runner.run('one', 'turn-a');
+
+      const rows = await h.logOf('turn-a');
+      expect(rows).toHaveLength(1);
+      expect(JSON.parse(rows[0].ties ?? '[]')).toEqual([
+        { task: 'b', general: false },
+        { task: 'a', general: false },
+      ]);
+      expect(await h.chat.findTurn('turn-a')).toMatchObject({
+        usd: await h.calls.spendOfTurn('turn-a'),
+        tokensIn: await h.calls.tokensOfTurn('turn-a'),
+      });
+    }));
+
+  it('ties a turn that names nothing to the first running task, marked general', () =>
+    withTurn(async (h, id) => {
+      await h.seedTask(id, 'going', { runKey: 'going-1', status: 'running' });
+      await h.runner.run('one', 'turn-a');
+      const [row] = await h.logOf('turn-a');
+      expect(JSON.parse(row.ties ?? '[]')).toEqual([{ task: 'going', run: 'going-1', general: true }]);
     }));
 
   it('stores what the start of a running turn waits for on its row, shows it, and clears it when the wait ends', () =>
@@ -105,7 +134,7 @@ describe('BacklogTurnRunner', () => {
       h.agent.script = ['crash'];
       await expect(h.runner.run('one', 'turn-a')).rejects.toThrow("The planner's agent did not finish");
       expect(h.workspace.closed).toEqual(['turn-a']);
-      expect((await h.chat.findTurn('turn-a'))?.tokensIn).toBe(10);
+      expect(await h.chat.findTurn('turn-a')).toMatchObject({ tokensIn: 15, usd: 0.1 });
     }));
 
   it('ends with the next try of the host when the worktrees of a turn cannot be fetched', () =>
@@ -130,7 +159,7 @@ describe('BacklogTurnRunner', () => {
 
       expect(outcome).toMatchObject({ status: 'waiting', reason: expect.stringContaining('api.anthropic.com') });
       expect(h.agent.launches).toHaveLength(1);
-      expect((await h.chat.findTurn('turn-a'))?.tokensIn).toBe(10);
+      expect((await h.chat.findTurn('turn-a'))?.tokensIn).toBe(15);
     }));
 
   it('runs again on Resume after a launch halted its key', () =>
@@ -155,6 +184,31 @@ describe('BacklogTurnRunner', () => {
         expect(h.agent.launches.map((launch) => launch.runtime)).toEqual(['claude', 'codex']);
         expect(h.workspace.closed).toEqual(['turn-a']);
         expect(await h.lines(1)).toEqual(['person: plan it']);
+      },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude,codex:m-codex' },
+    ));
+
+  it("ties each row of a turn that every agent's usage limit stopped to what its events name, or to the general tie", () =>
+    withTurn(
+      async (h, id) => {
+        await h.seedTask(id, 'a', { status: 'waiting' });
+        await h.seedTask(id, 'going', { runKey: 'going-1', status: 'running' });
+        h.agent.script = ['limit', 'limit'];
+        await h.runner.run('one', 'turn-a');
+        const rows = await h.logOf('turn-a');
+        expect(rows.map((row) => row.endKind)).toEqual(['limit', 'limit']);
+        for (const row of rows) {
+          expect(JSON.parse(row.ties ?? '[]')).toEqual([{ task: 'going', run: 'going-1', general: true }]);
+        }
+
+        await h.openTurn(id, 'turn-b');
+        await h.backlogs.recordEvent(id, 'merged-a', 'task-merged', { slug: 'a' });
+        await h.chat.takeInto(id, 'turn-b');
+        h.agent.script = ['limit', 'limit'];
+        await h.runner.run('one', 'turn-b');
+        for (const row of await h.logOf('turn-b')) {
+          expect(JSON.parse(row.ties ?? '[]')).toEqual([{ task: 'a', general: false }]);
+        }
       },
       { AGENTS_BACKLOG_PLAN: 'claude:m-claude,codex:m-codex' },
     ));

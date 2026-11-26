@@ -6,6 +6,7 @@ import type {
   EffortLaunch,
   EgressCredential,
   HomeFile,
+  PromptCache,
   RuntimeKeys,
   RuntimeName,
 } from './agent-runtime';
@@ -48,6 +49,8 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
 
   abstract credential(keys: RuntimeKeys): { name: string; value: string };
   abstract secrets(keys: RuntimeKeys): string[];
+
+  abstract promptCache(model: string): PromptCache | null;
 
   abstract ownRuleFiles(): readonly string[];
 

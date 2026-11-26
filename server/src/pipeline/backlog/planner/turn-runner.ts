@@ -11,6 +11,7 @@ import { LiveHub } from '../../../live/live.hub';
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { AttachmentStore } from '../../../history/attachment-store';
 import { backlogMessageKey } from '../../../history/backlog-message-key';
+import { AgentCallRepository } from '../../../history/agent-call.repository';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import type { BacklogRecord, BacklogTurnRecord } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
@@ -24,6 +25,7 @@ import type { LaunchOwner } from '../../../steps/shared/agent-launch-request';
 import { agentFailure } from '../../../steps/shared/agent-result';
 import { PlannerTurnActions } from './planner-actions';
 import { BacklogTurnPrompt } from './turn-prompt';
+import { TurnTies } from './turn-ties';
 import { turnView } from './planner-views';
 import { waitOf } from './turn-wait';
 import type { TurnOutcome } from './turn-wait';
@@ -32,18 +34,9 @@ import { BacklogTurnWorkspace } from './turn-workspace';
 /** The step name of a planner turn's launch, for its chat, output file and agent role. */
 const TURN_STEP = 'backlog-plan';
 
-/** Adds what a launch used to the turn's row. The agent that ran is the last one that took over. */
-function withSpend(
-  row: BacklogTurnRecord,
-  used: Pick<AgentRunResult, 'tokensIn' | 'tokensOut' | 'usd' | 'durationMs'>,
-): BacklogTurnRecord {
-  return {
-    ...row,
-    tokensIn: (row.tokensIn ?? 0) + used.tokensIn,
-    tokensOut: (row.tokensOut ?? 0) + used.tokensOut,
-    usd: (row.usd ?? 0) + used.usd,
-    durationMs: (row.durationMs ?? 0) + used.durationMs,
-  };
+/** Adds the time a launch took to the turn's row. Its cost and tokens come from the log, not from the launch. */
+function withDuration(row: BacklogTurnRecord, used: Pick<AgentRunResult, 'durationMs'>): BacklogTurnRecord {
+  return { ...row, durationMs: (row.durationMs ?? 0) + used.durationMs };
 }
 
 /**
@@ -78,6 +71,8 @@ export class BacklogTurnRunner {
     private readonly config: AppConfig,
     private readonly runStop: RunStop,
     private readonly attachments: AttachmentStore,
+    private readonly calls: AgentCallRepository,
+    private readonly ties: TurnTies,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -108,11 +103,26 @@ export class BacklogTurnRunner {
     }
   }
 
+  /** Ends the log rows a dead process left open under the turn's key, keeping their cost, before the turn launches again. */
+  closeLeftOpen(turnKey: string): Promise<void> {
+    return this.launcher.closeLeftOpen({ turnKey });
+  }
+
   /** The files of the person's messages this turn took, copied into the turn's own folder so the planner finds them read only. */
   private async copyFiles(backlogId: number, turnKey: string): Promise<void> {
     const { messages } = await this.chat.itemsOfTurn(turnKey);
     const names = new Set(messages.flatMap((message) => message.attachments.map((file) => file.name)));
     if (names.size > 0) await this.attachments.copy(backlogMessageKey(backlogId), turnKey, [...names]);
+  }
+
+  /** Saves the turn's row with its cost and tokens as the log sums them for the turn's key. */
+  private async withLogCost(row: BacklogTurnRecord): Promise<BacklogTurnRecord> {
+    return this.chat.saveTurn({
+      ...row,
+      usd: await this.calls.spendOfTurn(row.turnKey),
+      tokensIn: await this.calls.tokensOfTurn(row.turnKey),
+      tokensOut: 0,
+    });
   }
 
   private async launch(
@@ -137,7 +147,7 @@ export class BacklogTurnRunner {
         return (row.tokensIn ?? 0) + (row.tokensOut ?? 0);
       },
       recordLimit: async (visit) => {
-        row = await this.chat.saveTurn(withSpend(row, visit));
+        row = await this.withLogCost(withDuration(row, visit));
       },
       // What the turn's start waits for shows in the chat while the turn runs; none clears it.
       recordStartWait: async (wait) => {
@@ -148,8 +158,8 @@ export class BacklogTurnRunner {
       },
     };
     const record = async (used: AgentRunResult, ran: { runtime: string; model: string; effort?: string }) => {
-      row = await this.chat.saveTurn({
-        ...withSpend(row, used),
+      row = await this.withLogCost({
+        ...withDuration(row, used),
         runtime: ran.runtime,
         model: ran.model,
         effort: ran.effort ?? null,
@@ -176,6 +186,7 @@ export class BacklogTurnRunner {
         failover: true,
         result: backlogTurn,
         check: nameRefusalsOnce((value) => this.actions.check(backlog.name, value)),
+        call: { ties: await this.ties.of(backlog.id as number, turnKey) },
       });
       const ran = result.agent ?? { runtime, model, ...effortFields(agents[0]) };
       await record(result, ran);

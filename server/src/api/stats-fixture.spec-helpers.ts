@@ -126,6 +126,12 @@ export async function seedStatsFixture(data: DataSource, now: number, runCount: 
     })),
     8,
   );
+  // The log holds each visit's cost, as the migration backfills it: the prompt side in input tokens. Its rows take no time, so the exchange time of a code review stays that of the exchanges above.
+  await data.query(
+    `INSERT INTO agent_exchanges (step_stat_id, model, started_at, finished_at, duration_ms, request_text, response_text,
+       own_usd, input_tokens, output_tokens)
+     SELECT id, 'model-a', started_at, finished_at, 0, '', '', usd, tokens_in, tokens_out FROM step_stats`,
+  );
   const firstStep = new Map<number, number>();
   for (const step of stored) {
     if (!firstStep.has(step.runId)) {

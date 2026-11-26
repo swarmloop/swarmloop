@@ -27,7 +27,8 @@
         "server/src/steps/shared/agent-door.ts",
         "server/src/pipeline/backlog/planner/turn-runner.ts",
         "server/src/steps/shared/agent-launcher.ts",
-        "server/src/pipeline/pipeline.module.ts"
+        "server/src/pipeline/pipeline.module.ts",
+        "server/src/pipeline/run-settler.ts"
       ],
       "pattern": "\\bAgentLauncher\\b"
     },
@@ -188,6 +189,7 @@
       "allowFiles": [
         "server/src/steps/shared/agent-launcher.ts",
         "server/src/steps/shared/model-visit.ts",
+        "server/src/steps/shared/call-end.ts",
         "server/src/steps/shared/agent-result.ts",
         "server/src/steps/shared/result-exchange.ts",
         "server/src/steps/code-review/review-select.ts",

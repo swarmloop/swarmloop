@@ -9,6 +9,8 @@ import { tmpdir } from 'os';
 
 import { join } from 'path';
 
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 
 import { RunRepository } from '../history/run.repository';
@@ -81,8 +83,8 @@ describe('runs api', () => {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
       const parent = await runs.begin('proj-split', 'implement');
-      parent.spentUsd = 1;
       await storeRun(runs, parent);
+      await seedCall(app.get(AgentCallRepository), { runKey: parent.key, usd: 1 });
       await documents.putDocument(
         parent,
         'requirements',
@@ -100,9 +102,9 @@ describe('runs api', () => {
       await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a', 'green'), task('b', 'merged')]));
       await documents.putDocument(parent, 'contract', 'decisions:\n- subtask a: store UTC\n');
       const child = await runs.openSubtask('proj-split-a', parent.id, 'a');
-      child.spentUsd = 2.5;
       writeRunState(child, { status: 'done', currentStep: 'ci' });
       await storeRun(runs, child);
+      await seedCall(app.get(AgentCallRepository), { runKey: child.key, usd: 2.5 });
 
       const flow = await app.get(RunQueriesService).flow('proj-split');
 
@@ -345,8 +347,8 @@ describe('runs api', () => {
       const runs = app.get(RunRepository);
       const documents = app.get(DocumentRepository);
       const parent = await runs.begin('proj-epic', 'implement');
-      parent.spentUsd = 1;
       await storeRun(runs, parent);
+      await seedCall(app.get(AgentCallRepository), { runKey: parent.key, usd: 1 });
       await documents.putDocument(
         parent,
         'requirements',
@@ -363,11 +365,11 @@ describe('runs api', () => {
       });
       await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a', []), task('b', ['a'])]));
       const child = await runs.openSubtask('proj-epic-a', parent.id, 'a');
-      child.spentUsd = 2.5;
       await storeRun(runs, child);
+      await seedCall(app.get(AgentCallRepository), { runKey: child.key, usd: 2.5 });
       const alone = await runs.begin('proj-alone', 'implement');
-      alone.spentUsd = 4;
       await storeRun(runs, alone);
+      await seedCall(app.get(AgentCallRepository), { runKey: alone.key, usd: 4 });
 
       const queries = app.get(RunQueriesService);
       const flow = await queries.flow('proj-epic');

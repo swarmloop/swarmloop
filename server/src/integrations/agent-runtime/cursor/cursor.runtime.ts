@@ -1,7 +1,7 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import type { Effort } from '../../../contract/effort';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
-import type { AgentPrintInput, EffortLaunch, RuntimeKeys } from '../agent-runtime';
+import type { AgentPrintInput, EffortLaunch, PromptCache, RuntimeKeys } from '../agent-runtime';
 import { CursorConnection } from './cursor-connection';
 import { CURSOR_LIMITS } from './cursor-limit';
 import { CURSOR_OUTAGES } from './cursor-outage';
@@ -18,6 +18,10 @@ export class CursorRuntime extends AbstractAgentRuntime {
   readonly apiHosts = ['*.cursor.sh', '*.cursor.com'];
   readonly connection = new CursorConnection();
   readonly credentialNames = ['CURSOR_API_KEY'];
+  promptCache(_model: string): PromptCache | null {
+    return null;
+  }
+
   protected readonly limits = CURSOR_LIMITS;
   protected readonly outages = CURSOR_OUTAGES;
   protected readonly modelHost = 'api2.cursor.sh';

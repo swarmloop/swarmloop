@@ -12,7 +12,7 @@ import { tmpdir } from 'os';
 
 import { join } from 'path';
 
-import type { Repository } from 'typeorm';
+import { MoreThan, type Repository } from 'typeorm';
 
 import { AgentExchangeEntity, DocumentEntity, LoopEventEntity } from '../../history/entities';
 
@@ -86,7 +86,8 @@ describe('code-review step', () => {
     );
     useAgent(agent);
     const exchanges = app.get<Repository<AgentExchangeEntity>>(getRepositoryToken(AgentExchangeEntity));
-    const exchangesBefore = await exchanges.count();
+    const stored = { where: { stepStatId: MoreThan(0) } };
+    const exchangesBefore = await exchanges.count(stored);
     await seed(app, 'PROJ-80');
     const done = await app.get(PipelineService).step('code-review', 'PROJ-80');
     expect(done.exitCode).toBe(0);
@@ -143,7 +144,7 @@ describe('code-review step', () => {
     expect(report?.body).toContain('| Requirements | Checks | CI | Review | Returns | Time |');
     expect(report?.body).toContain('- changed the field');
     expect(report?.body).toContain('<details><summary>Reviewer notes (5)</summary>');
-    expect((await exchanges.count()) - exchangesBefore).toBe(6);
+    expect((await exchanges.count(stored)) - exchangesBefore).toBe(6);
     const run = await app.get(RunRepository).findRun('PROJ-80');
     expect(run?.currentStep).toBe('commit');
     expect(run?.status).toBe('waiting');
@@ -413,7 +414,6 @@ describe('code-review step', () => {
       tokensOut: 0,
       usd: 0,
       samples: [],
-      exchange: null,
       httpCalls: [],
       document: { kind: 'error', fileName: '', body: 'code-review does not fit\n' },
       resumed: false,

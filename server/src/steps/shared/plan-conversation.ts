@@ -128,7 +128,8 @@ export class PlanConversation {
    * A follow-up visit of the plan step in the plan chat of the run, in plan mode with the read-only plan tools and the
    * plan step's mounts, recorded like any visit of that step. Null when the run has no plan chat yet (unless
    * `startSession` starts one, as the plan step's first visit does, with the requirements brief ahead of the prompt)
-   * or the planner gave no usable answer. `prompt` gets the name of the result the chat last received.
+   * or the planner gave no usable answer. `prompt` gets the name of the result the chat last received. `purpose` is
+   * what the log records the call for.
    */
   async visit(
     opened: OpenedStep,
@@ -138,6 +139,7 @@ export class PlanConversation {
     entries: string[] = [],
     start?: LookStart,
     startSession = false,
+    purpose?: string,
   ): Promise<{ value: unknown } | { refused: StartRefused } | null> {
     const run = opened.run;
     const env = this.config.env;
@@ -180,6 +182,7 @@ export class PlanConversation {
           prompt: text,
           result: definition,
           check,
+          call: { purpose },
           workspace: join(dir, 'worktrees', run.key),
           mounts: mountsForStep(dir, run.key, names, run.targetPath),
         },
@@ -195,7 +198,7 @@ export class PlanConversation {
     const value = failure ? undefined : result?.resultValue;
     const ok = value !== undefined;
     const ended = { result, ok, hostWait, answerErrors };
-    await this.storeVisit(opened, { runtime, model, ...effort }, text, ended, started.id);
+    await this.storeVisit(opened, { runtime, model, ...effort }, ended, started.id);
     if (hostWait) throw hostWait;
     return ok ? { value } : null;
   }
@@ -204,7 +207,6 @@ export class PlanConversation {
   private async storeVisit(
     opened: OpenedStep,
     agent: { runtime: string; model: string },
-    prompt: string,
     ended: {
       result: LaunchResult | null;
       ok: boolean;
@@ -221,7 +223,7 @@ export class PlanConversation {
       mode: 'plan',
       ...agent,
       agent: result,
-      prompt,
+      callIds: result?.callIds,
       status: hostWait ? HOST_VISIT.status : visitStatus(ok ? 'ok' : 'failed'),
       exitCode: ok ? 0 : 1,
       documents: answerErrors ? [answerErrorsDocument(answerErrors)] : undefined,

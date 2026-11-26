@@ -10,6 +10,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { PassThrough } from 'stream';
 import type { Repository } from 'typeorm';
+import { AgentCallRepository } from '../../history/agent-call.repository';
 import { DocumentEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 import { DocumentRepository } from '../../history/document.repository';
@@ -534,10 +535,38 @@ async function planOutcome(answer: AgentRunResult) {
   }
 }
 
-/** One finished plan visit with an agent exchange, as an earlier plan visit of the run leaves it. */
+/** One finished plan visit with an agent call, as an earlier plan visit of the run leaves it. */
 async function storePlanVisit(app: Awaited<ReturnType<typeof boot>>, key: string): Promise<void> {
   const run = (await app.get(RunRepository).findRun(key))!;
   const at = new Date().toISOString();
+  // What a chat has cost is read from the log: the visit's call is a row of it.
+  const calls = app.get(AgentCallRepository);
+  const row = await calls.open({
+    kind: 'call',
+    startedAt: at,
+    runKey: key,
+    step: 'plan',
+    chatId: 'chat-1',
+    resumed: false,
+    runtime: 'cursor',
+    model: 'opus-5.5-extra-high',
+    requestText: 'plan',
+  });
+  await calls.addRequest(row, {
+    model: 'opus-5.5-extra-high',
+    input: 10,
+    cacheRead: 0,
+    cacheWrite: 0,
+    output: 4,
+    usd: 0.01,
+    price: {},
+  });
+  await calls.finish(row, {
+    endKind: 'done',
+    finishedAt: at,
+    durationMs: 5,
+    responseText: planBlock(['add the field']),
+  });
   await app.get(VisitRepository).finishVisit(run, {
     step: 'plan',
     runtime: 'cursor',
@@ -553,17 +582,7 @@ async function storePlanVisit(app: Awaited<ReturnType<typeof boot>>, key: string
     tokensOut: 4,
     usd: 0.01,
     samples: [],
-    exchange: {
-      model: 'opus-5.5-extra-high',
-      startedAt: at,
-      finishedAt: at,
-      durationMs: 5,
-      requestText: 'plan',
-      responseText: planBlock(['add the field']),
-      chatId: 'chat-1',
-      resumed: false,
-      killReason: null,
-    },
+    callIds: [row],
     httpCalls: [],
     document: null,
     resumed: false,

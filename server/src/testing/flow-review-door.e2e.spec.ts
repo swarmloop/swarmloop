@@ -4,6 +4,8 @@ import type { AgentRunResult } from '../agent/agent-result';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/run-state';
 import { CODE_REVIEWERS } from '../contract/steps';
+import { AgentCallRepository } from '../history/agent-call.repository';
+import { seedCall } from '../history/agent-call.spec-helpers';
 import { RunRepository } from '../history/run.repository';
 import { storedState } from '../history/run-state';
 import { Reconciler } from '../pipeline/reconciler';
@@ -17,10 +19,14 @@ import { BlockAgentRunner } from './result-answer';
 const KEY = 'PROJ-521';
 const FIRST = `code-review-${CODE_REVIEWERS[0]}`;
 
-/** Every launch costs two dollars, so one reviewer takes a run past a limit of one. */
+/** Every launch costs two dollars, so one reviewer takes a run past a limit of one. The cost is written to the log as the launcher writes it. */
 class CostlyRunner extends BlockAgentRunner {
+  calls: AgentCallRepository | null = null;
+
   override async run(input: Parameters<BlockAgentRunner['run']>[0]): Promise<AgentRunResult> {
-    return { ...(await super.run(input)), usd: 2 };
+    const result = await super.run(input);
+    if (this.calls && input.runKey) await seedCall(this.calls, { runKey: input.runKey, step: input.step, usd: 2 });
+    return { ...result, usd: 2 };
   }
 }
 
@@ -107,7 +113,9 @@ describe('a reviewer or the report starts only through the door', () => {
   });
 
   it('a limit reached between two reviewers starts no further reviewer', async () => {
-    await boot({ MAX_RUN_USD: '1' }, new CostlyRunner());
+    const costly = new CostlyRunner();
+    await boot({ MAX_RUN_USD: '1' }, costly);
+    costly.calls = flow.app.app.get(AgentCallRepository);
     orderReviewers(() => undefined);
 
     await review();
@@ -123,7 +131,9 @@ describe('a reviewer or the report starts only through the door', () => {
     const door = flow.app.app.get(AgentDoor);
     const outside = door.outside.bind(door);
     jest.spyOn(door, 'outside').mockImplementation(async (start, request) => {
-      if (start.step === 'code-review-report') request.run.spentUsd = 2;
+      if (start.step === 'code-review-report') {
+        await seedCall(flow.app.app.get(AgentCallRepository), { runKey: KEY, step: start.step, usd: 2 });
+      }
       return outside(start, request);
     });
 

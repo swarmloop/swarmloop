@@ -1,7 +1,7 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import type { Effort } from '../../../contract/effort';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
-import type { AgentPrintInput, EffortLaunch, EgressCredential, RuntimeKeys } from '../agent-runtime';
+import type { AgentPrintInput, EffortLaunch, PromptCache, EgressCredential, RuntimeKeys } from '../agent-runtime';
 import { CodexConnection } from './codex-connection';
 import { CODEX_LIMITS } from './codex-limit';
 import { CODEX_OUTAGES } from './codex-outage';
@@ -21,6 +21,10 @@ export class CodexRuntime extends AbstractAgentRuntime {
   readonly apiHosts = ['api.openai.com', 'auth.openai.com', '*.chatgpt.com'];
   readonly connection = new CodexConnection();
   readonly credentialNames = ['CODEX_AUTH', 'CODEX_API_KEY'];
+  promptCache(_model: string): PromptCache | null {
+    return null;
+  }
+
   protected readonly limits = CODEX_LIMITS;
   protected readonly outages = CODEX_OUTAGES;
   protected readonly modelHost = 'api.openai.com';

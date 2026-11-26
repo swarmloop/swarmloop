@@ -162,7 +162,8 @@ export async function readReportFacts(
   const ci = ciFact(documents, reviewVisit, phases, round.length > 0);
   const path = reportPath(stats, documents);
   const children = await deps.runs.children(run);
-  const epic = epicTotal(run, children, (item) => item.spentUsd, deps.clock.now()).epic;
+  // The report shows only the epic's time, so no cost is read.
+  const epic = epicTotal(run, children, () => 0, deps.clock.now()).epic;
   const end = run.doneAt ? Date.parse(run.doneAt) : deps.clock.now();
   const start = Date.parse(run.createdAt);
   return {

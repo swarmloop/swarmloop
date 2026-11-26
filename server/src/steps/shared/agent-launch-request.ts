@@ -7,6 +7,7 @@ import type { StateReason } from '../../contract/run-state';
 import type { VisitDraft } from '../../history/visit';
 import type { ResultDefinition } from '../../agent-result/result-definition';
 import type { ManifestHosts, ProjectLaunch } from '../../sandbox/sandbox-launch';
+import type { Tie } from '../../history/agent-call';
 
 /**
  * Whose spend and visits a launch counts: a run, or any other owner with the same facts (the backlog planner's turn).
@@ -27,6 +28,23 @@ export interface LaunchOwner {
   recordLimit?: (visit: VisitDraft) => Promise<void>;
   /** Stores what an agent start of this owner waits for (null: nothing), instead of the state of a run. */
   recordStartWait?: (wait: StateReason | null) => Promise<void>;
+}
+
+/** A keep-warm ping: it continues `chatId` on a fork that is saved nowhere, and is due at `dueAt`, after the chat's row `previousId`. */
+export interface PingCall {
+  chatId: string;
+  dueAt: string;
+  previousId: number;
+}
+
+/** What a caller says of its call. Everything else the log records comes from the run key. */
+export interface CallContextHints {
+  /** Why the call is made, when the step's name does not say: an answer to a part, a person or a reviewer, a merge look. */
+  purpose?: string;
+  /** The tasks, runs and epics the call is tied to. It gives the ties its events name when the call's row opens (no value), and adds the ones its validated result names. */
+  ties?: (resultValue: unknown) => Promise<Tie[]>;
+  /** Set only on a keep-warm ping, which the launcher's ping path runs. */
+  ping?: PingCall;
 }
 
 export interface AgentLaunchRequest extends EffortFields {
@@ -71,4 +89,6 @@ export interface AgentLaunchRequest extends EffortFields {
   brief?: string;
   /** The full prompt for a new chat on the given runtime. Defaults to `brief`. */
   briefFor?: (runtime: RuntimeName) => string;
+  /** What the log records of the call beyond what the request already says. */
+  call?: CallContextHints;
 }

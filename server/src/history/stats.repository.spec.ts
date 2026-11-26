@@ -1,4 +1,6 @@
 import { DataSource } from 'typeorm';
+import { AgentCallRepository } from './agent-call.repository';
+import { seedCall } from './agent-call.spec-helpers';
 import { BacklogMessageEntity } from './backlog-planner.entities';
 import { CommandEntity, DocumentEntity, LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 import { ServerStallEntity } from './server-stall.entities';
@@ -25,7 +27,7 @@ describe('StatsRepository', () => {
       const [old, recent] = await data
         .getRepository(RunEntity)
         .save([run('old', '2026-10-01T00:00:00.000Z'), run('recent', '2026-11-05T00:00:00.000Z')]);
-      const stat = (runId: number, usd: number): Partial<StepStatEntity> => ({
+      const stat = (runId: number): Partial<StepStatEntity> => ({
         runId,
         step: 'implement',
         attempt: 1,
@@ -34,9 +36,11 @@ describe('StatsRepository', () => {
         finishedAt: '2026-11-05T00:01:00.000Z',
         durationMs: 60_000,
         status: 'done',
-        usd,
       });
-      await data.getRepository(StepStatEntity).save([stat(old.id, 1), stat(recent.id, 2)]);
+      const stored = await data.getRepository(StepStatEntity).save([stat(old.id), stat(recent.id)]);
+      const calls = db.app.get(AgentCallRepository);
+      await seedCall(calls, { runKey: 'old', statId: stored[0]?.id, usd: 1 });
+      await seedCall(calls, { runKey: 'recent', statId: stored[1]?.id, usd: 2 });
       await data.getRepository(LoopEventEntity).save([
         {
           runId: old.id,
@@ -66,6 +70,68 @@ describe('StatsRepository', () => {
         loops: [],
         stalls: [],
         person: { answers: [], planChats: [], backlogMessages: [] },
+      });
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('takes the cost and tokens of a visit from the log rows linked to it, and the pings of a run as rows of their own', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const data = db.app.get(DataSource);
+      const calls = db.app.get(AgentCallRepository);
+      const [one] = await data.getRepository(RunEntity).save([run('one', '2026-11-05T00:00:00.000Z')]);
+      const visit = await data.getRepository(StepStatEntity).save({
+        runId: one?.id,
+        step: 'implement',
+        attempt: 1,
+        model: 'm',
+        startedAt: '2026-11-05T00:00:00.000Z',
+        finishedAt: '2026-11-05T00:01:00.000Z',
+        durationMs: 60_000,
+        status: 'done',
+        usd: 99,
+        tokensIn: 99,
+        tokensOut: 99,
+      });
+      await seedCall(calls, {
+        runKey: 'one',
+        statId: visit.id,
+        usd: 0.5,
+        input: 10,
+        cacheRead: 100,
+        cacheWrite: 20,
+        output: 5,
+      });
+      await seedCall(calls, { runKey: 'one', statId: visit.id, usd: 0.25, input: 1, output: 4 });
+      // Left out: an unlinked row, a ping of a run nobody stored, and a turn of the backlog planner.
+      await seedCall(calls, { runKey: 'one', usd: 7, output: 1000 });
+      await seedCall(calls, { runKey: 'gone', ping: true, usd: 3 });
+      const turn = await calls.open({
+        kind: 'call',
+        startedAt: '2026-11-05T00:00:00.000Z',
+        resumed: false,
+        runtime: 'claude',
+        model: 'm',
+        requestText: 'turn',
+        turnKey: 'turn-1',
+      });
+      await calls.addRequest(turn, { model: 'm', input: 1, cacheRead: 0, cacheWrite: 0, output: 1, usd: 5, price: {} });
+      await seedCall(calls, { runKey: 'one', ping: true, step: 'implement', usd: 0.125, cacheRead: 300, output: 2 });
+
+      const { steps } = await db.app.get(StatsRepository).rows(null);
+
+      expect(steps).toHaveLength(2);
+      expect(steps[0]).toMatchObject({ step: 'implement', usd: 0.75, tokensIn: 131, tokensOut: 9, durationMs: 60_000 });
+      expect(steps[0]?.ping).toBeUndefined();
+      expect(steps[1]).toMatchObject({
+        runId: one?.id,
+        step: 'implement',
+        usd: 0.125,
+        tokensIn: 300,
+        tokensOut: 2,
+        ping: true,
       });
     } finally {
       await db.close();

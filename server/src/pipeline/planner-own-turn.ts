@@ -113,6 +113,7 @@ export class PlannerOwnTurn {
         messages.map((message) => message.text),
         { by: 'person' },
         true,
+        'answer-person',
       );
     } catch (error) {
       if (!(error instanceof ModelHostUnavailable)) {

@@ -40,9 +40,10 @@ import { RemoteRepositories } from '../steps/prepare/remote-repositories.service
 import { RequirementsStep } from '../steps/requirements/requirements.step';
 import { ResearchStep } from '../steps/research/research.step';
 import { AgentDoor } from '../steps/shared/agent-door';
+import { AgentCallRecorder } from '../steps/shared/agent-call-recorder';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
+import { CallContexts } from '../steps/shared/call-context';
 import { SpendLimit } from '../steps/shared/spend-limit';
-import { AttemptChatUsage } from '../steps/shared/attempt-chat-usage';
 import { RunReport } from '../steps/shared/run-report';
 import { OpenReviewRounds } from '../steps/shared/open-review-rounds';
 import { StaleReview } from '../steps/shared/stale-review';
@@ -60,6 +61,8 @@ import { RunRetention } from './run-retention';
 import { WorkspaceGuard } from './workspace-guard';
 import { CommandService } from './command.service';
 import { MergeWatch } from './merge-watch';
+import { KeepWarm } from './keep-warm/keep-warm.service';
+import { PingCandidates } from './keep-warm/ping-candidates';
 import { Reconciler } from './reconciler';
 import { StartGate } from './start-gate';
 import { RunGuards } from './run-guards';
@@ -86,6 +89,7 @@ import { PlannerTurnActions } from './backlog/planner/planner-actions';
 import { LeftQuestions } from './backlog/planner/left-questions';
 import { BacklogTurnPrompt } from './backlog/planner/turn-prompt';
 import { BacklogTurnRunner } from './backlog/planner/turn-runner';
+import { TurnTies } from './backlog/planner/turn-ties';
 import { BacklogTurnState } from './backlog/planner/turn-state';
 import { BacklogTurnWorkspace } from './backlog/planner/turn-workspace';
 import { EventFacts } from './backlog/planner/event-facts';
@@ -95,6 +99,7 @@ import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { StartWaits } from '../steps/shared/start-waits';
 import { QuestionHolds } from '../steps/shared/question-holds';
 import { QuestionPassOn } from './question-pass-on';
+import { AttemptStream } from './attempt-stream';
 import { RunSettler } from './run-settler';
 import { MessageTurnEntry } from './message-turn-entry';
 import { PipelineService } from './pipeline.service';
@@ -147,10 +152,11 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     ImplementImproveStep,
     ChecksStep,
     CodeReviewStep,
+    AgentCallRecorder,
+    CallContexts,
     AgentLauncher,
     AgentDoor,
     SpendLimit,
-    AttemptChatUsage,
     LimitFailover,
     LimitRelease,
     RunReport,
@@ -166,6 +172,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     RunGuards,
     MergeWatch,
     Reconciler,
+    PingCandidates,
+    KeepWarm,
     StallWatch,
     RunStateRefresh,
     StartWaits,
@@ -197,8 +205,10 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BacklogTurnPrompt,
     BacklogTurnWorkspace,
     BacklogTurnRunner,
+    TurnTies,
     BacklogPlanner,
     RunSettler,
+    AttemptStream,
     RunRebase,
     MergeRequestDrafts,
     RunReopen,
@@ -212,6 +222,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommandService,
     StartGate,
     Reconciler,
+    KeepWarm,
     PlannerTurns,
     QuestionHolds,
     QuestionPassOn,

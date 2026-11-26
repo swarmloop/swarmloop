@@ -1,5 +1,5 @@
 import type { EffortFields } from '../contract/effort';
-import type { ChatUsage } from '../history/chat-usage.repository';
+import type { ChatUsage } from './since-recorded';
 import type { SampleDraft } from '../history/visit';
 import type { LimitHit } from '../integrations/agent-runtime/runtime-limit';
 import type { ModelHostOutage } from '../integrations/agent-runtime/runtime-outage';

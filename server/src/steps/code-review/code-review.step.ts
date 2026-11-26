@@ -1,4 +1,3 @@
-import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import { agentFor } from '../../config/agents';
 import { Injectable, Optional } from '@nestjs/common';
 import type {
@@ -16,8 +15,6 @@ import { EventRepository } from '../../history/event.repository';
 import { assertInsideWork, workRoots } from '../../sandbox/allowed-path';
 import { root } from '../../history/run-paths';
 import { VisitDraft } from '../../history/visit';
-import { Charge, chargeReview } from '../../agent/spend';
-import { ModelPrice } from '../../agent/limits';
 import { PipelineResult, StepOptions } from '../../core/pipeline-result';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
@@ -147,26 +144,8 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     return requiredDocument(this.documents, key, ARTIFACTS.implementation.kind);
   }
 
-  async charge(
-    key: string,
-    env: SwarmloopEnv,
-    prices: (runtime: RuntimeName) => Promise<Record<string, ModelPrice>>,
-    attemptId: string | null,
-  ): Promise<Charge | null> {
-    const run = await this.runs.findRun(key);
-    const visits = run ? await this.visits.listStats(run.id) : [];
-    return chargeReview(
-      root(this.config),
-      key,
-      visits,
-      prices,
-      attemptId,
-      (step) => agentFor(env, run, step) ?? agentFor(env, run, 'code-review'),
-    );
-  }
-
   protected override failureVisit(): Partial<VisitDraft> {
-    return { mode: 'ask', exchanges: [], samples: [], httpCalls: [] };
+    return { mode: 'ask', samples: [], httpCalls: [] };
   }
 
   /** The review ends its own visit, so `work` hands the closed result back through `VisitLeftOpen`. */
@@ -250,7 +229,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
         failed('code-review does not fit'),
         `${opened.startedAt} code-review does not fit`,
         [],
-        [],
+        null,
       );
     }
     writeReviewDiff(root(this.config), key, diff.patch);
