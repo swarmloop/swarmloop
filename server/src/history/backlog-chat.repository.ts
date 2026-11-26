@@ -136,6 +136,15 @@ export class BacklogChatRepository {
     return rows.map(toTurn);
   }
 
+  /** The seen state of the backlog's newest turn that has one, else null. */
+  async lastSeenState(backlogId: number): Promise<string | null> {
+    const row = await this.dataSource.manager.findOne(BacklogTurnEntity, {
+      where: { backlogId, seenState: Not(IsNull()) },
+      order: { id: 'DESC' },
+    });
+    return row?.seenState ?? null;
+  }
+
   /** The turns of one backlog, oldest first. */
   async turnsOf(backlogId: number): Promise<BacklogTurnRecord[]> {
     const rows = await this.dataSource.manager.find(BacklogTurnEntity, { where: { backlogId }, order: { id: 'ASC' } });

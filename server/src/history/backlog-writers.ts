@@ -128,6 +128,8 @@ export interface BacklogTurnRecord {
   usd?: number;
   durationMs?: number;
   transcript?: string;
+  /** The state the planner chat has seen once this turn is answered; null on a turn that never set it. */
+  seenState?: string | null;
 }
 
 /** The writes of a backlog, and the reads its actions use; the same ones run alone or inside one transaction. */

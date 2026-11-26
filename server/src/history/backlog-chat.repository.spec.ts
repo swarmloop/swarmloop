@@ -159,6 +159,18 @@ describe('BacklogChatRepository', () => {
       expect((await db.chat.turnsOf(id)).map((row) => row.turnKey)).toEqual(['a', 'b']);
     }));
 
+  it('gives the seen state of the newest turn that has one', () =>
+    withPlanner(async (db) => {
+      const id = await db.addBacklog();
+      expect(await db.chat.lastSeenState(id)).toBeNull();
+      await db.chat.saveTurn({ ...turn(id, 'a', 'done'), seenState: 'first' });
+      await db.chat.saveTurn({ ...turn(id, 'b', 'done'), seenState: 'second' });
+      await db.chat.saveTurn({ ...turn(id + 1, 'other', 'done'), seenState: 'other backlog' });
+      await db.chat.saveTurn(turn(id, 'c', 'failed'));
+      expect((await db.chat.turnsOf(id)).map((row) => row.seenState)).toEqual(['first', 'second', null]);
+      expect(await db.chat.lastSeenState(id)).toBe('second');
+    }));
+
   it('keeps a merged task unhandled until its turn is done', () =>
     withPlanner(async (db) => {
       const id = await db.addBacklog();
