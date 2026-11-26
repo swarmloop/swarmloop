@@ -186,7 +186,7 @@ describe('a person writes to the planner of a run no step drives', () => {
 
   it('keeps a stopped run stopped when the model host does not answer, and takes the message once at the next try', async () => {
     await start({ 'plan-turn': [OUTAGE, block({ reply: 'Going on.', resume: true })] });
-    const wake = () => flow.app.app.get(Reconciler).resumeMessageHostWait();
+    const wake = () => flow.app.app.get(Reconciler).resumeOutsideWaits();
     const idle = async () => {
       await flow.app.app.get(PlannerTurns).idle();
       await flow.app.pipeline.whenIdle(KEY);
@@ -212,13 +212,35 @@ describe('a person writes to the planner of a run no step drives', () => {
     await assertInvariants(flow.app);
   });
 
+  it('takes the message of a stopped run once in the reconciler pass after the outage next try', async () => {
+    await start({ 'plan-turn': [OUTAGE, block({ reply: 'Going on.', resume: true })] });
+    const pass = async () => {
+      await flow.app.app.get(Reconciler).reconcileAll();
+      await flow.app.app.get(PlannerTurns).idle();
+      await flow.app.pipeline.whenIdle(KEY);
+    };
+
+    const wait = await stoppedByOutage();
+    await pass();
+    expect(planTurns()).toBe(1);
+
+    flow.app.clock.advance(Date.parse(wait.retryAt) - flow.app.clock.now() + 1);
+    await pass();
+    expect(planTurns()).toBe(2);
+    expect(await store().pending(KEY)).toEqual([]);
+
+    await pass();
+    expect(planTurns()).toBe(2);
+    await assertInvariants(flow.app);
+  });
+
   it('clears the wait when the retried reply fails for another reason, and the next pass does not launch it again', async () => {
     await start({ 'plan-turn': [OUTAGE, { text: 'no result block here' }] });
     const wait = await stoppedByOutage();
     flow.app.clock.advance(Date.parse(wait.retryAt) - flow.app.clock.now() + 1);
 
     for (let pass = 0; pass < 2; pass++) {
-      await flow.app.app.get(Reconciler).resumeMessageHostWait();
+      await flow.app.app.get(Reconciler).resumeOutsideWaits();
       await flow.app.app.get(PlannerTurns).idle();
     }
 

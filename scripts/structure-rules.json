@@ -11,6 +11,15 @@
       "pattern": "\\bderiveState\\b"
     },
     {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/steps/shared/model-host-unavailable.ts"],
+      "reasons": {
+        "server/src/steps/shared/model-host-unavailable.ts": "raises ModelHostUnavailable and tells a model host outage from a code host outage (isModelOutage)"
+      },
+      "pattern": "\\binstanceof\\s+(HostUnavailable|RuntimeLimit|ModelHostUnavailable)\\b"
+    },
+    {
       "include": [
         "server/src/history/run-state.ts",
         "server/src/api/run-view/flow-waiting.ts",

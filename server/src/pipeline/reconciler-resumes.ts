@@ -4,6 +4,8 @@ import type { PersonalCredentials } from '../auth/personal-credentials.service';
 import { agentsFor } from '../config/agents';
 import type { AppConfig } from '../config/env';
 import { ERROR_CODES } from '../contract/error-codes';
+import { outsideWaitOfRun } from '../contract/outside-waits';
+import { DONE_STATES } from '../contract/run-list';
 import { REASON } from '../contract/run-state';
 import type { Clock } from '../core/clock';
 import type { RunEntity } from '../history/entities';
@@ -19,9 +21,6 @@ import type { DiskGuard } from './disk-guard';
 import type { StallWatch } from './stall-watch';
 import type { StartGate } from './start-gate';
 import type { SubtaskPort } from './subtask-port';
-
-/** The states of a run that is over: none can carry a message waiting for the model host, so its chat is not read. */
-const ENDED_STATES: ReadonlySet<string> = new Set(['done', 'merged', 'closed', 'skipped']);
 
 function stillWaitingOnDocker(run: RunEntity): boolean {
   return run.status === 'waiting' && storedState(run).reason?.code === ERROR_CODES.DOCKER_UNAVAILABLE;
@@ -54,60 +53,42 @@ export class ReconcilerResumes {
   ) {}
 
   /**
-   * A run that waits for a provider limit goes on by itself, once, when an agent of its role is free again: at the
-   * earliest end of the cooldowns of its runtimes, a minute after a reset the provider named.
+   * Every run whose wait on something outside swarmloop is over goes on by itself, once. The table of outside waits
+   * says how each wait ends; a stopped run's message waiting for the model host is taken in the same pass.
    */
-  async resumeLimited(): Promise<void> {
+  async resumeOutsideWaits(): Promise<void> {
     for (const run of await this.runs.listRuns()) {
-      if (run.status !== 'waiting' || storedState(run).reason?.code !== ERROR_CODES.RUNTIME_LIMIT) continue;
-      try {
-        const runtimes = agentsFor(this.config.env, run, run.currentStep).map((agent) => agent.runtime);
-        const keys = await cooldownKeys(run, runtimes, this.runs, this.credentials);
-        if (this.clock.now() < (await this.cooldowns.earliest(keys)).resumeAt) continue;
-        await this.gate.resume(run, { by: 'machine', event: `limit-${run.revision}` });
-      } catch (error) {
-        this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      const wait = outsideWaitOfRun(run.status, storedState(run).reason?.code);
+      if (wait?.end === 'cooldown') await this.resumeOnCooldown(run);
+      else if (wait?.end === 'time') await this.resumeOnTime(run);
+      else if (wait?.end === 'docker') await this.resumeOnDocker(run);
+      else if (wait?.end === 'disk') await this.resumeOnDisk(run);
+      else if (wait?.end === 'connection') await this.resumeOnConnection(run);
+      await this.takeMessageAfterHostWait(run);
     }
   }
 
-  /** A run that waits for a host goes on by itself, once, when the next try its reason names has come. */
-  async resumeHostUnavailable(): Promise<void> {
-    await this.resumeTimed(ERROR_CODES.HOST_UNAVAILABLE, 'host');
-  }
-
-  /**
-   * A run no step of this process holds, and that is not running, takes its pending message again once the next try
-   * of the model host wait the message carries has come. The key names the message and that try, so one outage is
-   * taken once.
-   */
-  async resumeMessageHostWait(): Promise<void> {
-    if (!this.planChat || !this.takeMessages) return;
-    for (const run of await this.runs.listRuns()) {
-      if (run.status === 'running' || ENDED_STATES.has(storedState(run).state) || this.claimed()(run.key)) continue;
-      try {
-        const [first] = await this.planChat.pending(run.key);
-        const wait = first?.wait;
-        if (!first || wait?.on !== 'model-host' || this.clock.now() < Date.parse(wait.retryAt)) continue;
-        await this.takeMessages(run.key, `host-${first.key}-${wait.retryAt}`);
-      } catch (error) {
-        this.logger.warn(
-          `message turn of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+  /** A usage limit ends at the earliest end of the cooldowns of the run's runtimes, a minute after a reset the provider named. */
+  private async resumeOnCooldown(run: RunEntity): Promise<void> {
+    try {
+      const runtimes = agentsFor(this.config.env, run, run.currentStep).map((agent) => agent.runtime);
+      const keys = await cooldownKeys(run, runtimes, this.runs, this.credentials);
+      if (this.clock.now() < (await this.cooldowns.earliest(keys)).resumeAt) return;
+      await this.gate.resume(run, { by: 'machine', event: `limit-${run.revision}` });
+    } catch (error) {
+      this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  /** A run whose CI did not start looks again, once, when the next look its reason names has come. */
-  async resumeCiNotStarted(): Promise<void> {
-    await this.resumeTimed(ERROR_CODES.CI_NOT_STARTED, 'ci');
-  }
-
-  private async resumeTimed(code: string, prefix: 'host' | 'ci'): Promise<void> {
-    for (const run of await this.withReason('waiting', code)) {
+  /** A host's outage and a CI that did not start end at the next try the reason names. */
+  private async resumeOnTime(run: RunEntity): Promise<void> {
+    try {
       const retryAt = Date.parse(storedState(run).reason?.retryAt ?? '');
-      if (Number.isFinite(retryAt) && this.clock.now() < retryAt) continue;
+      if (Number.isFinite(retryAt) && this.clock.now() < retryAt) return;
+      const prefix = storedState(run).reason?.code === ERROR_CODES.HOST_UNAVAILABLE ? 'host' : 'ci';
       await this.resumeOnce(run, await this.outageKey(prefix, run), () => Promise.resolve(true));
+    } catch (error) {
+      this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -115,30 +96,56 @@ export class ReconcilerResumes {
    * A run that waits for docker is probed on every tick and starts nothing while docker is silent. A run with its
    * attempt goes back to settling once docker answers; a run with none gets a resume.
    */
-  async resumeDocker(): Promise<void> {
-    for (const seen of await this.withReason('waiting', ERROR_CODES.DOCKER_UNAVAILABLE)) {
-      try {
-        if (seen.activeAttempt === null) {
-          const answers = await this.sandbox.dockerAnswers();
-          if (!answers) await this.refreshDockerWait(seen.key);
-          else await this.resumeOnce(seen, await this.outageKey('docker', seen), () => Promise.resolve(true));
-          continue;
-        }
-        const running = await this.sandbox.attemptRunning(seen.activeAttempt);
-        if (running === null) await this.refreshDockerWait(seen.key);
-        else await this.settleAnswered(seen.key);
-      } catch (error) {
-        this.logger.warn(
-          `docker wait of ${seen.key} failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+  private async resumeOnDocker(seen: RunEntity): Promise<void> {
+    try {
+      if (seen.activeAttempt === null) {
+        const answers = await this.sandbox.dockerAnswers();
+        if (!answers) await this.refreshDockerWait(seen.key);
+        else await this.resumeOnce(seen, await this.outageKey('docker', seen), () => Promise.resolve(true));
+        return;
       }
+      const running = await this.sandbox.attemptRunning(seen.activeAttempt);
+      if (running === null) await this.refreshDockerWait(seen.key);
+      else await this.settleAnswered(seen.key);
+    } catch (error) {
+      this.logger.warn(`docker wait of ${seen.key} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  /** A run blocked for lack of disk goes on by itself, once, when the free space is above `MIN_FREE_GB`. Nothing is cleaned. */
-  async resumeDiskLow(): Promise<void> {
-    for (const run of await this.withReason('blocked', ERROR_CODES.DISK_LOW)) {
+  /** A run blocked for lack of disk goes on when the free space is above `MIN_FREE_GB`. Nothing is cleaned. */
+  private async resumeOnDisk(run: RunEntity): Promise<void> {
+    try {
       await this.resumeOnce(run, await this.outageKey('disk', run), () => this.disk.hasFreeSpace());
+    } catch (error) {
+      this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** A run that waits for a person to reconnect goes on when their connection is ok again. */
+  private async resumeOnConnection(run: RunEntity): Promise<void> {
+    try {
+      if (!run.startedBy || !(await this.connections?.isHealthy(run.startedBy))) return;
+      await this.gate.resume(run, { by: 'machine', event: `git-auth-${run.revision}` });
+    } catch (error) {
+      this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * A run no step of this process holds, and that is not running, takes its pending message again once the next try
+   * of the model host wait the message carries has come. The key names the message and that try, so one outage is
+   * taken once.
+   */
+  private async takeMessageAfterHostWait(run: RunEntity): Promise<void> {
+    if (!this.planChat || !this.takeMessages) return;
+    if (run.status === 'running' || DONE_STATES.includes(storedState(run).state) || this.claimed()(run.key)) return;
+    try {
+      const [first] = await this.planChat.pending(run.key);
+      const wait = first?.wait;
+      if (!first || wait?.on !== 'model-host' || this.clock.now() < Date.parse(wait.retryAt)) return;
+      await this.takeMessages(run.key, `host-${first.key}-${wait.retryAt}`);
+    } catch (error) {
+      this.logger.warn(`message turn of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -216,19 +223,6 @@ export class ReconcilerResumes {
       if (settled) writeRunState(row, { status: 'running', ownerPid: null });
     });
     if (settled) await this.reconcile(written);
-  }
-
-  /** A run that waits for a person to reconnect goes on by itself, once, when their connection is ok again. */
-  async resumeGitAuth(): Promise<void> {
-    for (const run of await this.runs.listRuns()) {
-      if (run.status !== 'waiting' || storedState(run).reason?.code !== ERROR_CODES.GIT_AUTH) continue;
-      try {
-        if (!run.startedBy || !(await this.connections?.isHealthy(run.startedBy))) continue;
-        await this.gate.resume(run, { by: 'machine', event: `git-auth-${run.revision}` });
-      } catch (error) {
-        this.logger.warn(`resume of ${run.key} failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
   }
 
   /**

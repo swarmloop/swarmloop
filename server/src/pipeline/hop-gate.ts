@@ -1,6 +1,7 @@
 import type { StepName } from '../contract/steps';
 import type { StepOptions } from '../core/pipeline-result';
-import { HostUnavailable } from '../core/swarmloop-error';
+import { ERROR_CODES } from '../contract/error-codes';
+import { isHostOutage } from '../core/swarmloop-error';
 import type { RunRepository } from '../history/run.repository';
 import type { AdmittedStart, AgentDoor } from '../steps/shared/agent-door';
 import type { ChainRefusal } from '../steps/shared/start-refused';
@@ -47,9 +48,23 @@ export class HopGate {
     try {
       asked = run ? await this.subtasks?.askUp(run, refusal.question, refusal.startLevel) : undefined;
     } catch (error) {
-      // A model host that does not answer is no reply: the refusal keeps its wait, and the resume asks again.
-      if (error instanceof HostUnavailable) return { message: error.message };
-      throw error;
+      // A model host that does not answer is no reply: the run waits for the host with its next try, and the resume
+      // asks the chain again.
+      if (!isHostOutage(error)) throw error;
+      const waiting = await this.runs.findRun(key);
+      if (waiting?.status === 'waiting') {
+        await this.runs.release(waiting, {
+          status: 'waiting',
+          reason: {
+            code: ERROR_CODES.HOST_UNAVAILABLE,
+            message: error.message,
+            retryAt: error.retryAt,
+            refusedStart: true,
+          },
+          stepStartedAt: null,
+        });
+      }
+      return { message: error.message };
     }
     return asked && asked.answer !== null
       ? { again: { auto: true, startBy: 'planner', level: asked.level } }

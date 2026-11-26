@@ -10,7 +10,7 @@ import { hasFinalResult, knownAttempts, stepOutput } from '../core/attempt-outpu
 import { barrier } from '../core/barrier';
 import { Clock } from '../core/clock';
 import { delay } from '../core/delay';
-import { HostUnavailable } from '../core/swarmloop-error';
+import { isHostOutage } from '../core/swarmloop-error';
 import { isStep } from '../core/pipeline-result';
 import { recordStepEvent, runInStepScope } from '../core/step-event-scope';
 import type { CommandEntity, RunEntity, StepStatEntity } from '../history/entities';
@@ -95,7 +95,7 @@ export class RunSettler {
     try {
       await this.rebases.rebase(run.key, true);
     } catch (error) {
-      if (error instanceof HostUnavailable) {
+      if (isHostOutage(error)) {
         this.logger.warn(`rebase of ${run.key} waits for the host: ${error.message}`);
         await this.runs.release(released, {
           status: before.status,

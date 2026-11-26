@@ -126,6 +126,23 @@ describe('EpicMainMoves', () => {
       expect(events).toHaveLength(1);
     }));
 
+  it('writes the rebase-refused event for another wait that stored a retryAt', () =>
+    withHarness(async (h) => {
+      const { backlogId } = await epicBetweenPasses(h);
+      const error = {
+        message: 'limit',
+        code: 'RUNTIME_LIMIT',
+        retryAt: new Date(h.db.clock.now() + 60_000).toISOString(),
+      };
+      h.endCommandsAs('failed', JSON.stringify({ error }));
+      await h.tick();
+      h.db.clock.advance(120_000);
+      await h.tick();
+      expect(rebases(h)).toHaveLength(1);
+      const events = (await h.backlogs.events(backlogId, 50)).filter((event) => event.kind === 'rebase-refused');
+      expect(events).toHaveLength(1);
+    }));
+
   it('writes one event for a move the rebase refused, and sends that head no more', () =>
     withHarness(async (h) => {
       const { backlogId } = await epicBetweenPasses(h);
@@ -138,7 +155,8 @@ describe('EpicMainMoves', () => {
       expect(events).toHaveLength(1);
     }));
 
-  it('tries a code host outage again once, after its next try, from the stored command alone', () =>
+  /** A code host outage's stored failure, ended by `endCommandsAs`, and the one move sent again after its next try. */
+  const triesOutageAgainOnce = (stored: Record<string, string>) =>
     withHarness(async (h) => {
       const { key } = await epicBetweenPasses(h);
       const head = h.fake.headOf('acme/web');
@@ -146,6 +164,7 @@ describe('EpicMainMoves', () => {
         JSON.stringify({
           error: {
             message: 'host did not answer',
+            ...stored,
             retryAt: new Date(h.db.clock.now() + minutes * 60_000).toISOString(),
           },
         });
@@ -163,5 +182,11 @@ describe('EpicMainMoves', () => {
       await h.tick();
       expect(rebases(h)).toHaveLength(2);
       expect((await h.backlogs.events(1, 50)).filter((event) => event.kind === 'rebase-refused')).toEqual([]);
-    }));
+    });
+
+  it('tries a code host outage again once, after its next try, from the stored command alone', () =>
+    triesOutageAgainOnce({}));
+
+  it('tries a code host outage again once, after its next try, from a stored code and retryAt', () =>
+    triesOutageAgainOnce({ code: 'HOST_UNAVAILABLE' }));
 });

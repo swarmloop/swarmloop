@@ -478,7 +478,7 @@ describe('connect GitHub: the app from a manifest, and the tokens of each person
     });
 
     failing = false;
-    await app.app.get(Reconciler).resumeGitAuth();
+    await app.app.get(Reconciler).resumeOutsideWaits();
     await app.app.get(CommandService).idle();
     await app.pipeline.whenIdle('proj-9');
     expect((await stateOf()).state).not.toBe('waiting');

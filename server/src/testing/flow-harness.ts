@@ -204,12 +204,7 @@ export async function createFlowHarness(
       const reconciler = harness.app.app.get(Reconciler);
       await reconciler.reconcileRuns();
       await reconciler.settleEndedRelaunches();
-      await reconciler.resumeLimited();
-      await reconciler.resumeHostUnavailable();
-      await reconciler.resumeCiNotStarted();
-      await reconciler.resumeDocker();
-      await reconciler.resumeDiskLow();
-      await reconciler.resumeGitAuth();
+      await reconciler.resumeOutsideWaits();
       await reconciler.resumeSubtaskParents();
       await reconciler.watchMerges();
       await reconciler.reconcileCommands();

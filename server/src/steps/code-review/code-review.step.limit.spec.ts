@@ -209,10 +209,10 @@ describe('code-review step and a provider limit', () => {
 
       const accept = jest.spyOn(app.get(CommandService), 'accept').mockResolvedValue({} as never);
       const reconciler = app.get(Reconciler);
-      await reconciler.resumeLimited();
+      await reconciler.resumeOutsideWaits();
       expect(accept).not.toHaveBeenCalled();
       clock.advance(Date.parse('2026-11-08T21:51:00Z') - START);
-      await reconciler.resumeLimited();
+      await reconciler.resumeOutsideWaits();
       expect(accept).toHaveBeenCalledWith('resume', 'PROJ-302', { by: 'machine', level: null }, expect.anything());
     } finally {
       await app.close();

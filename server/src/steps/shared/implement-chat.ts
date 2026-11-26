@@ -5,7 +5,7 @@ import { StepStopped } from '../../agent/step-stopped';
 import type { ResultDefinition } from '../../agent-result/result-definition';
 import { agentFor } from '../../config/agents';
 import { AppConfig } from '../../config/env';
-import { HostUnavailable, SwarmloopError } from '../../core/swarmloop-error';
+import { isHostOutage, SwarmloopError } from '../../core/swarmloop-error';
 import { mountsForStep } from '../../git/repo-names';
 import type { RunEntity } from '../../history/entities';
 import { root } from '../../history/run-paths';
@@ -60,7 +60,7 @@ export class ImplementChat {
         ? { error: `the implement agent gave no ${definition.name}` }
         : { value: result.resultValue };
     } catch (error) {
-      if (error instanceof StepStopped || error instanceof HostUnavailable) throw error;
+      if (error instanceof StepStopped || isHostOutage(error)) throw error;
       return { error: error instanceof SwarmloopError ? error.message : `${definition.name} failed` };
     }
   }

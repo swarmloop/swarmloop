@@ -12,7 +12,7 @@ import type {
   RepositoryOwner,
 } from '../../contract/api';
 import { Clock } from '../../core/clock';
-import { HostUnavailable, SwarmloopError } from '../../core/swarmloop-error';
+import { isHostOutage, SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { withGitHostRetries } from '../../git/host-retry';
 import { CheckoutRepository } from '../../history/checkout.repository';
@@ -156,7 +156,7 @@ export class RemoteRepositories {
         host.selected().token,
       );
     } catch (error) {
-      if (error instanceof HostUnavailable) {
+      if (isHostOutage(error)) {
         throw error;
       }
       throw new SwarmloopError(`clone of ${project} failed: ${gitDetail(error)}`);

@@ -195,7 +195,7 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 **Today.**
 - Steps one to seven hold for run agents through `steps/shared/agent-door.ts` (launch-door).
 - A visit that ended by its own answer (still invalid after its follow-ups) or by its own limit counts as finished in `steps/shared/same-input.ts`, so the next start of the machine or a planner on that input is refused as the same input and asked up the planners' chain once, with its answer errors. A visit cut by something outside the agent (an outage, a usage limit, an outside wait, a process that died, a person's Stop) runs again on its input.
-- A model host that does not answer is a wait. Each runtime adapter reads it (`classifyOutage`), `AgentLauncher` ends such a launch as `HostUnavailable` with its next try, and this holds for a step's agent, a plan visit, a reviewer, the report, the implement chat, the planner's question turns and the backlog planner's turn. The chain asked after a same-input refusal keeps that refusal's wait.
+- A model host that does not answer is a wait. Each runtime adapter reads it (`classifyOutage`), `AgentLauncher` ends such a launch as `HostUnavailable` with its next try, and this holds for a step's agent, a plan visit, a reviewer, the report, the implement chat, the planner's question turns and the backlog planner's turn. A model host outage of the chain asked after a same-input refusal is the host's wait of the table, resumed once per outage; the start stays refused.
 - `resultFollowUp` in `agent-result/result-follow-up.ts` builds the follow-up from the step's definition; `exchangeResult` and `withAnswerErrors` in `steps/shared/result-exchange.ts` and `correctCoverage` in `steps/shared/coverage-correction.ts` send it. The backlog turn's required fields per action live in its definition (`agent-result/required-by.ts`), where the check and the follow-up both read them.
 - The backlog planner's turns start through their own `turn-runner.ts` and are not admitted by the door. Their rows are recorded at the launcher, with their ties from the moment each row opens, until planner-turn-door puts the turns through the door.
 - Only the backlog planner's turn gives helpers: `AGENTS_BACKLOG_READ` lists them, and `AgentLauncher` picks the first entry of the runtime that runs, on a new turn, a Resume, a follow-up and a failover alike. It sets the code-only-by-helper rights on each helper it gives, so the runtime's adapter holds the agent to its helper for every one of those launches. A helper's requests are a row of their own, linked to the call that started it, and a visit's cost is the sum of its linked rows, helpers included.
@@ -416,9 +416,9 @@ Each one is a command with an idempotency key that names its event (rule 11) and
   - backlog turn waits and holds;
   - child-run waits;
   - a stopped run's pending message in its plan chat, which waits for the model host (`wait` of the entry).
-- The reconciler has eight separate timed resumes: limits, host, CI not started, docker, disk, stalled, git auth and a stopped run's message turn.
+- Outside waits (usage limit, code or model host, CI not started, docker, disk, git auth) end by one table (`contract/outside-waits.ts`) and one reconciler pass (`ReconcilerResumes.resumeOutsideWaits`), which also takes a stopped run's pending message at its next try. The backlog's turn wait, merges, main readings and an epic's main move read the same table. A structure rule fails an outside-wait test outside that table and `model-host-unavailable.ts`. The stall watch's tries stay with 3.16.
 - An agent start that waits before its first output, for a free agent place (with how many are busy) or for the server's pause, stores that wait with its run's state (on its turn row for a backlog planner turn) through `steps/shared/start-waits.ts` (a structure rule fails any other file that calls `recordStartWait`), and the run page, the run list and the backlog chat show it. A place comes back when its launch ends, because the launch ends its container in every ending (`agent/agent-launch.ts`).
-- c04 closes this in M1; wait-frees-place and held-run-says-so come after.
+- wait-frees-place and held-run-says-so come after.
 
 ## 3.16 Recovery after a crash or restart
 
@@ -432,7 +432,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 - **A planned restart** pauses the server: running visits end, no new ones start, and the dashboard says so.
 - **Server stalls**, when the main loop was blocked or the machine slept, are recorded.
 
-**Today.** Holds (`pipeline/reconciler*.ts`, `run-settler.ts`, `stall-watch.ts`, `stall-decision.ts`, `contract/interruption.ts`, `server-stalls/`). The gap is that waits after a restart follow the many wait paths of 3.15.
+**Today.** Holds (`pipeline/reconciler*.ts`, `run-settler.ts`, `stall-watch.ts`, `stall-decision.ts`, `contract/interruption.ts`, `server-stalls/`). Waits after a restart end by the one table and pass of 3.15.
 
 ## 3.17 Backlog
 

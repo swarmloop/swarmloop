@@ -47,7 +47,7 @@ describe('ReconcilerResumes.resumeMessageHostWait', () => {
       async (key, outage) => void taken.push(`${key}:${outage}`),
     );
 
-    await resumes.resumeMessageHostWait();
+    await resumes.resumeOutsideWaits();
 
     expect(read).toEqual(['open']);
     expect(taken).toEqual([`open:host-m1-${WAIT.retryAt}`]);

@@ -15,6 +15,8 @@ export interface StateReason {
   limit?: LimitState;
   /** Set with `HOST_UNAVAILABLE`, `CI_NOT_STARTED` and `DOCKER_UNAVAILABLE`: when the next automatic try happens, UTC, ISO 8601. */
   retryAt?: string;
+  /** Set with `HOST_UNAVAILABLE` when the chain's ask after a same-input refusal met a model host outage. */
+  refusedStart?: true;
 }
 
 /** The codes of a state reason. */

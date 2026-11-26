@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ERROR_CODES } from '../../contract/error-codes';
+import { outsideWaitOf } from '../../contract/outside-waits';
 import { settled } from '../../contract/subtask';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -77,7 +79,7 @@ export class EpicMainMoves {
     if (last) {
       if (last.state !== 'failed') return;
       const { message, retryAt } = failureOf(last);
-      if (retryAt === undefined) {
+      if (retryAt === null) {
         await this.events.rebaseRefused(backlog.id as number, { task: task.slug, head: named.join(','), message });
         return;
       }
@@ -102,8 +104,20 @@ export class EpicMainMoves {
   }
 }
 
-/** Why a command failed, and when the next try of a code host outage is; no time for any other reason. */
-function failureOf(command: { result: string | null }): { message: string; retryAt?: string } {
-  const stored = JSON.parse(command.result ?? 'null') as { error?: { message?: string; retryAt?: string } } | null;
-  return { message: stored?.error?.message ?? 'the rebase failed', retryAt: stored?.error?.retryAt };
+/**
+ * Why a command failed, and when the next try of a code host outage is; no time for any other reason. A stored error
+ * with a retryAt and no code was written before the code was stored: a code host outage was the only failure that
+ * ever stored a retryAt.
+ */
+function failureOf(command: { result: string | null }): { message: string; retryAt: string | null } {
+  const stored = JSON.parse(command.result ?? 'null') as {
+    error?: { message?: string; code?: string; retryAt?: string };
+  } | null;
+  const error = stored?.error;
+  const wait = outsideWaitOf({
+    ...error,
+    code: error?.code ?? (error?.retryAt === undefined ? undefined : ERROR_CODES.HOST_UNAVAILABLE),
+  });
+  const message = error?.message ?? 'the rebase failed';
+  return wait?.code === ERROR_CODES.HOST_UNAVAILABLE ? { message, retryAt: wait.retryAt } : { message, retryAt: null };
 }

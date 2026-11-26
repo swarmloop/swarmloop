@@ -13,8 +13,9 @@ import type { OpenedStep } from '../../steps/step-run';
 import type { RuntimeName } from '../../integrations/agent-runtime/runtime-name';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { reportFailure } from '../shared/step-failure';
-import { HostUnavailable, RuntimeLimit, SwarmloopError } from '../../core/swarmloop-error';
-import { ModelHostUnavailable } from '../shared/model-host-unavailable';
+import type { HostUnavailable, RuntimeLimit } from '../../core/swarmloop-error';
+import { isHostOutage, isUsageLimit, SwarmloopError } from '../../core/swarmloop-error';
+import { isModelOutage } from '../shared/model-host-unavailable';
 import { reviewContinue, reviewResume } from './code-review.prompts';
 import type { AgentDoor } from '../shared/agent-door';
 import { StartRefused } from '../shared/start-refused';
@@ -220,11 +221,11 @@ async function one(
       runtime: job.runtime,
       model: job.model,
       ...effortFields(job),
-      result: error instanceof ResultInvalid || error instanceof ModelHostUnavailable ? (error.result ?? null) : null,
+      result: error instanceof ResultInvalid || isModelOutage(error) ? (error.result ?? null) : null,
       error: message,
       ...(error instanceof ResultInvalid ? { answerErrors: error.errors } : {}),
-      ...(error instanceof RuntimeLimit ? { limit: error } : {}),
-      ...(error instanceof HostUnavailable ? { outage: error } : {}),
+      ...(isUsageLimit(error) ? { limit: error } : {}),
+      ...(isHostOutage(error) ? { outage: error } : {}),
       ...(error instanceof StartRefused || error instanceof StepStopped ? { refused: error } : {}),
       startId,
     };

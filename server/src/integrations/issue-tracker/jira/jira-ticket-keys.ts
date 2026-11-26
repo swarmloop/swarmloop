@@ -1,7 +1,7 @@
 import type { AppConfig, SwarmloopEnv } from '../../../config/env';
 import type { Clock } from '../../../core/clock';
 import { request } from '../../http';
-import { HostUnavailable } from '../../../core/swarmloop-error';
+import { isHostOutage } from '../../../core/swarmloop-error';
 
 const KEY_IN_TEXT = /[A-Z][A-Z0-9]+-\d+/g;
 
@@ -76,7 +76,7 @@ export class JiraTicketKeys {
       );
       status = response.status;
     } catch (error) {
-      if (error instanceof HostUnavailable) {
+      if (isHostOutage(error)) {
         throw error;
       }
     }

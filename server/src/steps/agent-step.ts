@@ -10,7 +10,8 @@ import { visitStatus } from '../core/pipeline-result';
 import type { StepOptions } from '../core/pipeline-result';
 import type { OpenedStep } from '../steps/step-run';
 import type { SandboxService } from '../sandbox/sandbox.service';
-import { GitAuthError, RuntimeLimit, SwarmloopError } from '../core/swarmloop-error';
+import type { RuntimeLimit } from '../core/swarmloop-error';
+import { GitAuthError, isUsageLimit, SwarmloopError } from '../core/swarmloop-error';
 import type { StepKernel } from './step-kernel';
 import { BaseStep } from './base-step';
 import type { StepContext } from './base-step';
@@ -24,7 +25,7 @@ import { agentFailure, combineAgentResults, refusedWrite, withRefusal } from './
 import type { AgentDoor } from './shared/agent-door';
 import { StartRefused, refusedRoute } from './shared/start-refused';
 import { limitRoute } from './shared/limit-failover';
-import { HOST_VISIT, ModelHostUnavailable } from './shared/model-host-unavailable';
+import { HOST_VISIT, isModelOutage } from './shared/model-host-unavailable';
 import { recordHandoff } from './shared/handoff';
 import { modelVisit } from './shared/model-visit';
 import { StarterBriefing } from './shared/starter-briefing';
@@ -151,7 +152,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     try {
       return await this.finish(run, await this.produce(input, ctx, options));
     } catch (error) {
-      if (error instanceof RuntimeLimit) {
+      if (isUsageLimit(error)) {
         return this.limited(run, error);
       }
       if (error instanceof StartRefused) {
@@ -171,10 +172,9 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
           route: { to: 'wait', reason: waiting.message, code: waiting.code as ErrorCode, retryAt: waiting.retryAt },
           summary: `${run.opened.startedAt} ${waiting.message}`,
           outputs: [],
-          visit:
-            error instanceof ModelHostUnavailable
-              ? { ...this.modelVisitOf(run, HOST_VISIT.status, 0), killReason: HOST_VISIT.killReason }
-              : this.modelVisitOf(run, 'waiting', 0),
+          visit: isModelOutage(error)
+            ? { ...this.modelVisitOf(run, HOST_VISIT.status, 0), killReason: HOST_VISIT.killReason }
+            : this.modelVisitOf(run, 'waiting', 0),
         };
       }
       const refusal = error === run.launchError ? null : run.refusal;
@@ -332,7 +332,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
       )
       .catch((error: unknown) => {
         if (error instanceof ResultInvalid) run.refusal = refusedWrite(error.output) ?? run.refusal;
-        if (error instanceof ModelHostUnavailable) {
+        if (isModelOutage(error)) {
           run.callIds.push(...(error.result.callIds ?? []));
           run.launched.push(error.result);
           run.agentResult = combineAgentResults(run.launched);

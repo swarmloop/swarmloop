@@ -63,10 +63,10 @@ describe('reconciler and the limits of a credential', () => {
       await cooldowns.set({ runtime: 'codex', credential: 'env' }, now + 90 * MINUTE, false);
       const run = await waiting('A-1', 'ann');
       db.clock.advance(30 * MINUTE);
-      await reconciler.resumeLimited();
+      await reconciler.resumeOutsideWaits();
       expect(accepted).toEqual([]);
       db.clock.advance(30 * MINUTE);
-      await reconciler.resumeLimited();
+      await reconciler.resumeOutsideWaits();
       expect(accepted).toEqual([['resume', run.key, MACHINE, { idempotencyKey: `limit-${run.revision}` }]]);
     } finally {
       await db.close();
@@ -82,10 +82,10 @@ describe('reconciler and the limits of a credential', () => {
       const parent = await run('A-1', 'ann');
       const subtask = await waiting('A-1-a', null, parent.id);
       db.clock.advance(30 * MINUTE);
-      await reconciler.resumeLimited();
+      await reconciler.resumeOutsideWaits();
       expect(accepted).toEqual([]);
       db.clock.advance(30 * MINUTE);
-      await reconciler.resumeLimited();
+      await reconciler.resumeOutsideWaits();
       expect(accepted).toEqual([['resume', subtask.key, MACHINE, expect.anything()]]);
     } finally {
       await db.close();
@@ -100,10 +100,10 @@ describe('reconciler and the limits of a credential', () => {
       await cooldowns.set({ runtime: 'codex', credential: 'env' }, now + 120 * MINUTE, false);
       await waiting('C-1', null);
       db.clock.advance(60 * MINUTE);
-      await reconciler.resumeLimited();
+      await reconciler.resumeOutsideWaits();
       expect(accepted).toEqual([]);
       db.clock.advance(RESUME_AFTER_RESET_MS);
-      await reconciler.resumeLimited();
+      await reconciler.resumeOutsideWaits();
       expect(accepted).toHaveLength(1);
     } finally {
       await db.close();

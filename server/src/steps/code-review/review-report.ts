@@ -13,7 +13,7 @@ import type { PipelineResult } from '../../core/pipeline-result';
 import { runFileName } from '../../core/run-files';
 import { visitStatus } from '../../core/pipeline-result';
 import { reportFailure } from '../shared/step-failure';
-import { HostUnavailable, RuntimeLimit } from '../../core/swarmloop-error';
+import { isHostOutage, isUsageLimit } from '../../core/swarmloop-error';
 import { HOST_VISIT } from '../shared/model-host-unavailable';
 import type { StepContext } from '../base-step';
 import { assertRoute } from '../contract/returns';
@@ -172,12 +172,7 @@ export async function writeReport(
     const text = await deps.runReport.renderParts(opened.run, parts, round);
     return { documents: reportDocuments(text, parts), call, usage: spent, startId };
   } catch (error) {
-    if (
-      error instanceof RuntimeLimit ||
-      error instanceof HostUnavailable ||
-      error instanceof StartRefused ||
-      error instanceof StepStopped
-    ) {
+    if (isUsageLimit(error) || isHostOutage(error) || error instanceof StartRefused || error instanceof StepStopped) {
       throw error;
     }
     const message = reportFailure('code-review', error).message;

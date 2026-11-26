@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { MergeOutcome } from '../../contract/run-state';
-import { FetchFailed, HostUnavailable, MergeConflict } from '../../core/swarmloop-error';
+import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
 import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
@@ -13,6 +13,7 @@ import { parsePipelineRefs } from '../../steps/pipeline/pipeline-report';
 import { CommandService } from '../command.service';
 import { BacklogEvents } from './backlog-events';
 import { readMains } from './main-readings';
+import { tryNote } from './try-note';
 import { CLOSED_NOTE, decideMerge, stillBehind, type MergeFacts } from './merge-rules';
 import type { MainReading } from './task-readiness';
 
@@ -67,8 +68,7 @@ export class BacklogMerge {
       else if (state !== 'done') await this.save(task, { note: '' });
       else await this.merge(backlog, task, run, mains);
     } catch (error) {
-      const note = error instanceof HostUnavailable ? error.message : `${reasonOf(error)}; next try on the next tick`;
-      await this.save(task, { note });
+      await this.save(task, { note: tryNote(error) });
     }
   }
 
@@ -114,7 +114,7 @@ export class BacklogMerge {
         current = step.task;
         if (!(repository in current.merged)) notes.push(step.note);
       } catch (error) {
-        notes.push(error instanceof HostUnavailable ? error.message : `${reasonOf(error)}; next try on the next tick`);
+        notes.push(tryNote(error));
       }
     }
     if (!task.repositories.every((repo) => repo in current.merged)) {

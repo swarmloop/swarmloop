@@ -9,7 +9,7 @@ export interface PartCounts {
 }
 
 const PARTS: readonly string[] = ['active', 'done', 'all'];
-const DONE_STATES: readonly string[] = ['done', 'merged', 'closed', 'skipped'];
+export const DONE_STATES: readonly string[] = ['done', 'merged', 'closed', 'skipped'];
 
 export function parsePart(value: string | null): Part {
   return PARTS.includes(value ?? '') ? (value as Part) : 'active';

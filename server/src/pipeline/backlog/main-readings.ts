@@ -1,12 +1,10 @@
-import { HostUnavailable } from '../../core/swarmloop-error';
 import type { RepositoryHost } from '../../steps/shared/repository-host';
 import type { MainReading } from './task-readiness';
+import { tryNote } from './try-note';
 
 /** What a failed read of a main says: a host outage names its next try, any other reason names the next tick. */
 function unreadable(error: unknown): MainReading {
-  if (error instanceof HostUnavailable) return { state: 'unreadable', note: error.message };
-  const reason = error instanceof Error ? error.message : String(error);
-  return { state: 'unreadable', note: `${reason}; next try on the next tick` };
+  return { state: 'unreadable', note: tryNote(error) };
 }
 
 /** Reads the main of each repository that `cache` does not hold yet, as `person`, and keeps the readings in `cache`. */
