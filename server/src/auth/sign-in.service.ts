@@ -1,6 +1,6 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
 import { AppConfig } from '../config/env';
-import type { Identity, LoginProvider } from '../integrations/code-host/login-provider';
+import type { Grant, Identity, LoginProvider } from '../integrations/code-host/login-provider';
 import { decide, parseAllow } from './allow-list';
 import { AuthService, type Credentials } from './auth.service';
 import { CheckoutRepos } from './checkout-repos';
@@ -70,9 +70,7 @@ export class SignInService {
       if (app && takesOverApp(app.madeBy) && (await this.connections.noneOn(provider.name))) {
         await this.apps.save({ ...app, madeBy: identity.user });
       }
-      await this.connections.connect(provider.name, identity.user, identity.grant).catch((error: unknown) => {
-        throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} connect failed`);
-      });
+      await this.connect(provider, identity.user, identity.grant);
     }
     const session = await this.sessions.create(identity.user, provider.name);
     response.cookie(SESSION_COOKIE, session.id, {
@@ -81,5 +79,24 @@ export class SignInService {
       maxAge: SESSION_DAYS * 24 * 3600 * 1000,
     });
     return safeNext(next);
+  }
+
+  /** Connects the token the host accepted to the signed-in person. It creates no session. Returns where the browser goes. */
+  async connectToken(
+    provider: LoginProvider,
+    login: string,
+    identity: Identity,
+    next: string | undefined,
+  ): Promise<string> {
+    if (identity.grant) {
+      await this.connect(provider, login, identity.grant);
+    }
+    return safeNext(next);
+  }
+
+  private async connect(provider: LoginProvider, login: string, grant: Grant): Promise<void> {
+    await this.connections.connect(provider.name, login, grant).catch((error: unknown) => {
+      throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} connect failed`);
+    });
   }
 }

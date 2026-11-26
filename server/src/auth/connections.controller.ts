@@ -125,15 +125,18 @@ export class ConnectionsController {
       : null;
   }
 
-  /** The owners of the checkouts, when the installation covers none of them. */
-  private async missingOwners(host: ProviderName, installed: string[]): Promise<string[]> {
+  /** `owner/name` of the checkouts that neither the installation nor the server token of the host reaches. */
+  private async unreachable(host: ProviderName, installed: string[]): Promise<string[]> {
     const have = new Set(installed.map((name) => name.toLowerCase()));
-    const checkouts = (await this.repos.list().catch(() => [])).filter((repo) => repo.host === host);
-    if (checkouts.some((repo) => have.has(`${repo.owner}/${repo.name}`.toLowerCase()))) {
+    const missing = (await this.repos.list().catch(() => [])).filter(
+      (repo) => repo.host === host && !have.has(`${repo.owner}/${repo.name}`.toLowerCase()),
+    );
+    const provider = this.auth.all().find((candidate) => candidate.name === host);
+    if (!provider || missing.length === 0) {
       return [];
     }
-    const owners = new Map(checkouts.map((repo) => [repo.owner.toLowerCase(), repo.owner]));
-    return [...owners.values()];
+    const misses = await provider.serverTokenMisses(missing).catch(() => []);
+    return misses.map((repo) => `${repo.owner}/${repo.name}`);
   }
 
   private async view(host: ProviderName, actor: string | null): Promise<ConnectionView> {
@@ -157,7 +160,7 @@ export class ConnectionsController {
         : null,
       account: health?.login ?? null,
       repositories,
-      missingOwners: installs && health ? await this.missingOwners(host, repositories) : [],
+      unreachable: installs && health ? await this.unreachable(host, repositories) : [],
       selection: health?.selection === 'selected' ? 'selected' : health?.selection === 'all' ? 'all' : null,
       health: health && { status: health.status, expiresAt: health.expiresAt, refreshedAt: health.refreshedAt },
       mayReplace,

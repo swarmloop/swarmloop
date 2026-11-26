@@ -43,7 +43,7 @@ const connected: ConnectionsView = {
         madeBy: 'alice',
         settingsUrl: 'https://github.com/settings/apps/swarmloop-app',
       },
-      missingOwners: [],
+      unreachable: [],
       mayReplace: true,
       account: 'alice',
       repositories: ['alice/site', 'acme/api'],
@@ -202,12 +202,12 @@ describe('ConnectionsPage', () => {
   it('warns about the owners the installation misses, and only then', async () => {
     const withMissing = {
       connections: connected.connections.map((item) =>
-        item.host === 'github' ? { ...item, missingOwners: ['acme', 'zed'] } : item,
+        item.host === 'github' ? { ...item, unreachable: ['acme/site', 'zed/api'] } : item,
       ),
     };
     vi.mocked(getConnections).mockResolvedValueOnce(withMissing);
     const { unmount } = render(<ConnectionsPage />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('acme, zed');
+    expect(await screen.findByRole('alert')).toHaveTextContent('acme/site, zed/api');
     unmount();
 
     vi.mocked(getConnections).mockResolvedValue(connected);
