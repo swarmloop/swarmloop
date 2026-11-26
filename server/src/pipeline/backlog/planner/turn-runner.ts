@@ -109,7 +109,7 @@ export class BacklogTurnRunner {
       const space = await this.workspace.open(backlog, turnKey);
       const held = await this.chat.itemsOfTurn(turnKey);
       await this.copyFiles(backlog.id as number, turnKey, held.messages);
-      const brief = await this.prompt.build(backlogName, turnKey, space.mounts, space.names);
+      const { fresh: brief } = await this.prompt.build(backlogName, turnKey, space.mounts, space.names);
       const send = await this.sender(backlog, turnKey, space);
       let answer = await send({ prompt: brief });
       const added = await this.cameWhileWorking(backlog, turnKey, held);

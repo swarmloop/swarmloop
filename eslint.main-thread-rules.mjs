@@ -79,6 +79,8 @@ export const SYNC_DIRECTORY_ALLOWLIST = {
   'server/src/history/run-paths.ts': 'removes a run folder in a sync function',
   'server/src/history/stored-files.ts': 'lists the stored files of one run in a sync function',
   'server/src/integrations/code-host/code-host-adapters.ts': 'lists the adapters at start-up',
+  'server/src/pipeline/backlog/planner/turn-brief-files.ts':
+    'replaces the small task brief folder of a turn in a sync function',
   'server/src/pipeline/backlog/planner/turn-workspace.ts': 'prepares a small turn folder in a sync function',
   'server/src/pipeline/workspace-guard.ts': 'checks a workspace folder in a sync function',
   'server/src/sandbox/egress.ts': 'writes the proxy files at container start in a sync function',

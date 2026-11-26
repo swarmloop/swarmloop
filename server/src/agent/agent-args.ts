@@ -6,9 +6,9 @@ import type { SandboxMount } from '../core/sandbox-mount';
 import type { AgentTools } from '../integrations/agent-runtime/agent-runtime';
 import { sessionGroup } from '../history/session-group';
 
-/** Brief files for a chat. A code reviewer mounts its own directory. */
+/** Brief files for a chat. A code reviewer mounts its own directory, and so does the backlog planner, whose turns read its task and decision files. */
 export function reviewBriefMount(statePath: string, step: string): SandboxMount | null {
-  if (!sessionGroup(step) && !step.startsWith('code-review-')) {
+  if (!sessionGroup(step) && !step.startsWith('code-review-') && step !== 'backlog-plan') {
     return null;
   }
   return { hostPath: briefDir(statePath), containerPath: '/work/brief', readonly: true };

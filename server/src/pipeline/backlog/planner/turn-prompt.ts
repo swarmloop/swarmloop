@@ -1,70 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import type { BacklogEventRecord, BacklogMessageRecord } from '../../../history/backlog-writers';
 import type { SandboxMount } from '../../../core/sandbox-mount';
-import { settled } from '../../../contract/subtask';
+import { AppConfig } from '../../../config/env';
+import { root } from '../../../history/run-paths';
 import { skillPrompt } from '../../../steps/shared/skill-prompt';
-import { BacklogTurnState, type TaskState, type TurnState } from './turn-state';
+import { writeTurnBriefFiles } from './turn-brief-files';
+import { decodeSeen, diffSeen, encodeSeen, type StateChanges } from './turn-changes';
+import { NONE, backlogText, briefPath, eventText, messageText, milestoneText, tasksText } from './turn-lines';
+import { BacklogTurnState, type TurnState } from './turn-state';
 
 type Section = { heading: string; body: string };
-
-const NONE = 'none';
-
-function indent(text: string): string {
-  return text
-    .split('\n')
-    .map((line) => `    ${line}`)
-    .join('\n');
-}
-
-function list(values: string[]): string {
-  return values.length > 0 ? values.join(', ') : NONE;
-}
-
-/** One task: its status and run, what it waits for, and its subtasks. A task that has not started also shows its brief, since only that kind may change. A settled task is its head line alone. */
-function taskText(task: TaskState): string {
-  const head = `- ${task.slug} [${task.status}]${task.runKey === null ? '' : ` run ${task.runKey}`}: ${task.title}`;
-  if (settled(task)) return head;
-  const lines = [
-    head,
-    `    repositories: ${list(task.repositories)}; covers: ${list(task.covers)}; depends: ${list(task.depends)}`,
-    `    files: ${list(task.files)}`,
-  ];
-  if (task.fixesMain !== null) lines.push(`    fixes the main of ${task.fixesMain}`);
-  if (task.wait) lines.push(`    waits: ${task.wait}`);
-  for (const subtask of task.subtasks) {
-    lines.push(
-      `    subtask ${subtask.id} [${subtask.status}]: ${subtask.title}; depends: ${list(subtask.depends)}; files: ${list(subtask.files)}`,
-    );
-  }
-  if (task.runKey === null) lines.push('    brief:', indent(indent(task.description)));
-  return lines.join('\n');
-}
-
-function tasksText(tasks: TaskState[]): string {
-  return tasks.length > 0 ? tasks.map(taskText).join('\n') : NONE;
-}
-
-function milestoneText(milestone: NonNullable<TurnState['active']>): string {
-  const requirements = milestone.requirements.map((item) => `- ${item.ref} [${item.status}]: ${item.text}`);
-  return [
-    `M${milestone.number} ${milestone.title} (${milestone.status}): ${milestone.goal}`,
-    'Requirements:',
-    requirements.length > 0 ? requirements.join('\n') : NONE,
-    'Tasks:',
-    tasksText(milestone.tasks),
-  ].join('\n');
-}
-
-function messageText(message: { author: string; at: string; text: string }): string {
-  return `${message.author} (${message.at}): ${message.text}`;
-}
-
-function eventText(event: TurnState['events'][number]): string {
-  const facts = Object.entries(event.facts).map(
-    ([name, value]) => `    ${name}: ${value.replaceAll('\n', '\n      ')}`,
-  );
-  return [`- ${event.kind.replaceAll('-', ' ')} at ${event.at}`, ...facts].join('\n');
-}
 
 /** What the planner reads at a turn, as plain sections. Run keys, slugs and refs are the only names it shows. */
 function sectionsOf(state: TurnState): Section[] {
@@ -74,20 +19,22 @@ function sectionsOf(state: TurnState): Section[] {
   return [
     {
       heading: 'Backlog',
-      body: [
-        `name: ${backlog.name}`,
-        `repositories: ${list(backlog.repositories)}`,
-        `merge mode: ${backlog.mergeMode === 'green' ? 'a task merges when its checks are green' : 'a task waits for the owner to say it may merge'}`,
-        backlog.paused ? 'the backlog is paused' : 'the backlog is running',
-      ].join('\n'),
+      body: backlogText(backlog),
     },
     { heading: 'Active milestone', body: state.active ? milestoneText(state.active) : NONE },
     { heading: 'Planned milestones', body: planned.length > 0 ? planned.join('\n\n') : NONE },
     { heading: 'Backlog items', body: tasksText(state.items) },
     {
       heading: 'Decisions',
-      body:
-        state.decisions.length > 0 ? state.decisions.map((item) => `- ${item.text} (${item.who})`).join('\n') : NONE,
+      body: [
+        ...(state.decisions.length > 0 ? state.decisions.map((item) => `- ${item.text} (${item.who})`) : [NONE]),
+        ...(state.olderDecisions > 0
+          ? [
+              '',
+              `${state.olderDecisions} older decisions are left out; all of them, newest first, are in /work/brief/decisions.md.`,
+            ]
+          : []),
+      ].join('\n'),
     },
     {
       heading: 'Messages, oldest first',
@@ -101,6 +48,30 @@ function sectionsOf(state: TurnState): Section[] {
   ];
 }
 
+/** What a resumed chat reads: only what changed in the database since it last saw the state, and the items of this turn. */
+function changesSections(changes: StateChanges, state: TurnState): Section[] {
+  const changed = [
+    ...changes.changed.map((item) => item.text),
+    ...changes.gone.map((key) => `no longer in the backlog: ${key}`),
+    ...changes.briefs.map((slug) => `its brief changed: ${briefPath(slug)}`),
+  ];
+  return [
+    { heading: 'Changed tasks, milestones and requirements', body: changed.length > 0 ? changed.join('\n') : NONE },
+    {
+      heading: 'New decisions',
+      body:
+        changes.decisions.length > 0
+          ? changes.decisions.map((item) => `- ${item.text} (${item.who})`).join('\n')
+          : NONE,
+    },
+    {
+      heading: 'Messages of this turn, oldest first',
+      body: state.messagesOfTurn.length > 0 ? state.messagesOfTurn.map(messageText).join('\n') : NONE,
+    },
+    { heading: 'Events of this turn', body: state.events.length > 0 ? state.events.map(eventText).join('\n') : NONE },
+  ];
+}
+
 /** What the follow-up of a turn tells the agent first. */
 const FOLLOW_UP_HEAD =
   'These messages and events came while you worked. Give your whole answer again, with its result block, taking them in.';
@@ -108,17 +79,34 @@ const FOLLOW_UP_HEAD =
 /** Builds the prompt of a planner turn from the state the database gives, never from a run's chat. */
 @Injectable()
 export class BacklogTurnPrompt {
-  constructor(private readonly state: BacklogTurnState) {}
+  constructor(
+    private readonly state: BacklogTurnState,
+    private readonly config: AppConfig,
+  ) {}
 
-  async build(backlogName: string, turnKey: string, mounts: SandboxMount[], names: string[]): Promise<string> {
+  /**
+   * `fresh` starts a chat with the short state brief; `prompt` is what a chat that has seen the state before reads, and
+   * equals `fresh` when the stored state is missing or unreadable; `seen` is what to store once the chat has answered.
+   */
+  async build(
+    backlogName: string,
+    turnKey: string,
+    mounts: SandboxMount[],
+    names: string[],
+  ): Promise<{ prompt: string; fresh: string; seen: string }> {
     const state = await this.state.read(backlogName, turnKey);
-    return skillPrompt(
-      'backlog-plan',
-      `Plan the backlog ${backlogName}: answer the messages and the events of this turn.`,
-      names,
-      sectionsOf(state),
-      mounts,
-    );
+    writeTurnBriefFiles(root(this.config), state.backlog.id, state);
+    const requirements = `Plan the backlog ${backlogName}: answer the messages and the events of this turn.`;
+    const fresh = skillPrompt('backlog-plan', requirements, names, sectionsOf(state), mounts);
+    const seen = decodeSeen(state.lastSeen);
+    const prompt =
+      seen === null
+        ? fresh
+        : [
+            `${requirements} What changed since your last turn:`,
+            ...changesSections(diffSeen(seen, state), state).flatMap(({ heading, body }) => ['', `${heading}:`, body]),
+          ].join('\n');
+    return { prompt, fresh, seen: encodeSeen(state) };
   }
 
   /** The follow-up of a turn: the messages and events that came after its brief, written as the brief writes them. */

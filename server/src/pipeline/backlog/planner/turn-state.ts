@@ -15,6 +15,16 @@ import { EventFacts } from './event-facts';
 /** How many of the newest messages a turn reads. */
 const TURN_MESSAGES = 20;
 
+/** How many of the newest decisions a turn's brief shows. */
+const TURN_DECISIONS = 20;
+
+export interface DecisionState {
+  id: number;
+  text: string;
+  who: string;
+  at: string;
+}
+
 interface RequirementState {
   ref: string;
   text: string;
@@ -63,15 +73,24 @@ interface TurnEvent {
 
 /** Everything a planner turn knows, read from the database at the start of the turn. */
 export interface TurnState {
-  backlog: { name: string; repositories: string[]; mergeMode: MergeMode; paused: boolean };
+  backlog: { id: number; name: string; repositories: string[]; mergeMode: MergeMode; paused: boolean };
   active: MilestoneState | null;
   planned: MilestoneState[];
   /** The tasks that belong to no milestone. */
   items: TaskState[];
-  decisions: { text: string; who: string; at: string }[];
+  /** The newest decisions the brief shows, oldest first. */
+  decisions: DecisionState[];
+  /** How many decisions come before the ones shown. */
+  olderDecisions: number;
+  /** Every decision, newest first, for the file. */
+  allDecisions: DecisionState[];
   messages: { author: MessageAuthor; text: string; at: string }[];
   /** How many messages come before the ones shown. */
   olderMessages: number;
+  /** The messages this turn holds, oldest first. */
+  messagesOfTurn: { author: MessageAuthor; text: string; at: string }[];
+  /** The state the chat saw at its last turn, as stored, or null. */
+  lastSeen: string | null;
   events: TurnEvent[];
 }
 
@@ -98,6 +117,10 @@ export class BacklogTurnState {
     ]);
     const tasks = await this.taskStates(milestones, records);
     const recent = await this.chat.lastMessages(id, TURN_MESSAGES);
+    const held = await this.chat.itemsOfTurn(turnKey);
+    const allDecisions = decisions
+      .map(({ id: decisionId, text, who, createdAt }) => ({ id: decisionId as number, text, who, at: createdAt }))
+      .reverse();
     const milestoneState = (milestone: MilestoneRecord): MilestoneState => ({
       number: milestone.number,
       title: milestone.title,
@@ -110,6 +133,7 @@ export class BacklogTurnState {
     });
     return {
       backlog: {
+        id,
         name: backlog.name,
         repositories: backlog.repositories,
         mergeMode: backlog.mergeMode,
@@ -120,10 +144,14 @@ export class BacklogTurnState {
         .filter((milestone) => milestone.status === 'proposed' || milestone.status === 'queued')
         .map(milestoneState),
       items: tasks.filter((task) => task.milestoneId === null).map((task) => task.state),
-      decisions: decisions.map(({ text, who, createdAt }) => ({ text, who, at: createdAt })),
+      decisions: allDecisions.slice(0, TURN_DECISIONS).reverse(),
+      olderDecisions: Math.max(0, allDecisions.length - TURN_DECISIONS),
+      allDecisions,
       messages: recent.messages.map(({ author, text, createdAt }) => ({ author, text, at: createdAt })),
       olderMessages: recent.older,
-      events: await this.factsOf(backlog.owner, (await this.chat.itemsOfTurn(turnKey)).events, turnKey),
+      messagesOfTurn: held.messages.map(({ author, text, createdAt }) => ({ author, text, at: createdAt })),
+      lastSeen: await this.chat.lastSeenState(id),
+      events: await this.factsOf(backlog.owner, held.events, turnKey),
     };
   }
 
