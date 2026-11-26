@@ -37,6 +37,11 @@ export function answered(body: string): Map<string, string> {
   return stored;
 }
 
+/** The `answers` document body for these `[question, answer]` pairs, one block per pair. */
+export function renderAnswers(pairs: readonly (readonly [string, string])[]): string {
+  return `${pairs.map(([question, answer]) => `question: ${question}\nanswer: ${answer}`).join('\n\n')}\n`;
+}
+
 /**
  * The open questions of a stored `questions` document. Research and plan both write it, so the object of a stored
  * result counts only while the stored body is what it rendered; it keeps a multi-line question whole.

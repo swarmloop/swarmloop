@@ -7,6 +7,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { PlannerTurns } from '../pipeline/planner-turns';
 import { AnswersBody, FlowView } from '../contract/api';
 import { requireRun, RunQueriesService } from './run-queries.service';
+import { renderAnswers } from '../steps/shared/answers';
 import { RunCommandsService } from './run-commands.service';
 
 @Injectable()
@@ -71,8 +72,11 @@ export class RunAnswersService {
   /** The `answers` document: one `question`/`answer` pair per answered question. */
   private async saveQuestions(run: RunEntity, pairs: string[][]): Promise<void> {
     if (pairs.length > 0) {
-      const text = pairs.map(([question, answer]) => `question: ${question}\nanswer: ${answer}`).join('\n\n');
-      await this.documents.putDocument(run, 'answers', `${text}\n`);
+      await this.documents.putDocument(
+        run,
+        'answers',
+        renderAnswers(pairs.map(([question, answer]) => [question, answer])),
+      );
     }
   }
 

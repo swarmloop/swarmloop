@@ -69,6 +69,7 @@ import { RunReopen } from './run-reopen';
 import { BacklogActions } from './backlog/backlog-actions';
 import { BacklogActionSupport } from './backlog/backlog-action-support';
 import { BacklogTaskActions } from './backlog/backlog-task-actions';
+import { TaskRunSkip } from './backlog/task-run-skip';
 import { BacklogQueries } from './backlog/backlog-queries';
 import { BacklogEvents } from './backlog/backlog-events';
 import { BacklogMerge } from './backlog/backlog-merge';
@@ -175,6 +176,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PlanConversation,
     BacklogActionSupport,
     BacklogTaskActions,
+    TaskRunSkip,
     BacklogActions,
     BacklogQueries,
     BacklogEvents,

@@ -26,6 +26,8 @@ export interface PlanChatEntry {
   at: string;
   /** `pending` waits for the planner; `taken` was read by whoever it was for. */
   state: 'pending' | 'taken';
+  /** Set when a skip took the entry without an answer: the skip's reason. */
+  closed?: string;
   /** The plan version this entry produced. Missing when the plan did not change. */
   version?: number;
   /** The files sent with the message. */

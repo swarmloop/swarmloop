@@ -8,6 +8,7 @@ import { FlowRepository } from '../history/flow.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { parseSubtasks, SUBTASKS_KIND, type Subtask } from '../contract/subtask';
 import { ARTIFACTS } from '../steps/contract/artifacts';
+import { PlanChatStore } from '../history/plan-chat.store';
 import { skipRun } from '../pipeline/skip-run';
 import { SubtaskPort } from '../pipeline/subtask-port';
 import { storedProjects } from '../config/checkout-path';
@@ -27,6 +28,7 @@ export class RunSubtaskCommandsService {
     private readonly pipeline: PipelineService,
     private readonly subtasks: SubtaskPort,
     private readonly commands: RunCommandsService,
+    private readonly chat: PlanChatStore,
   ) {}
 
   private async subtaskPlan(parent: RunEntity, task: Subtask): Promise<StartPlan> {
@@ -82,9 +84,14 @@ export class RunSubtaskCommandsService {
     }
   }
 
-  /** Stops the run of a skipped task and closes it for good. `blocked` keeps a restart from relaunching it. */
+  /** Stops the run of a skipped task, closes its questions and ends it for good. `blocked` keeps a restart from relaunching it. */
   private async close(child: RunEntity): Promise<void> {
-    await skipRun(this.runs, (run) => this.subtasks.stop(run), child, SKIPPED_NOTE);
+    await skipRun(
+      { runs: this.runs, documents: this.documents, chat: this.chat },
+      (run) => this.subtasks.stop(run),
+      child,
+      SKIPPED_NOTE,
+    );
   }
 
   /** Marks a task skipped: its dependents treat it as merged. A running subtask of the task is stopped. */

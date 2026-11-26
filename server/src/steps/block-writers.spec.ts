@@ -102,6 +102,14 @@ function releasing(run: RunEntity): {
   };
 }
 
+/** Nothing is open on a skipped run: the documents and the plan chat hold no question. */
+const noDocuments = { latestDocuments: async () => [] } as never;
+const noChat = {
+  pendingQuestions: async () => [],
+  pendingEscalations: async () => [],
+  markTaken: async () => undefined,
+} as never;
+
 const OPENED = { startedAt: '10:00' } as OpenedStep;
 
 const WRITERS: [string, () => Promise<string | undefined>, string][] = [
@@ -273,7 +281,11 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
       const runs = { ...releasing(child), held: () => false, findSubtask: async () => child };
       const nothing = null as never;
       const subtasks = { stop: jest.fn(), closeMergeRequests: jest.fn(), passDue: () => false };
-      const documents = { latestBody: async () => `${JSON.stringify([task])}\n`, putDocument: jest.fn() };
+      const documents = {
+        latestBody: async () => `${JSON.stringify([task])}\n`,
+        putDocument: jest.fn(),
+        latestDocuments: async () => [],
+      };
       const commands = new RunSubtaskCommandsService(
         runs as never,
         documents as never,
@@ -281,6 +293,7 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
         nothing,
         subtasks as never,
         nothing,
+        noChat,
       );
       await commands.skipTask(parent.key, 'a');
       expect(child.status).toBe('blocked');
@@ -294,7 +307,7 @@ const WRITERS: [string, () => Promise<string | undefined>, string][] = [
       const child = storedRun('waiting', ERROR_CODES.SUBTASK_WAITING);
       const logger = { warn: jest.fn() } as never;
       const port = { stop: jest.fn(), closeMergeRequests: jest.fn() };
-      const end = new SubtaskEnd(releasing(child) as never, port, logger);
+      const end = new SubtaskEnd(releasing(child) as never, noDocuments, noChat, port, logger);
       await end.close({} as RunEntity, child, 'skipped by its epic: x');
       expect(child.status).toBe('blocked');
       return storedCode(child);

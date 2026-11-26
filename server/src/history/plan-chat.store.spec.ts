@@ -99,6 +99,28 @@ describe('PlanChatStore', () => {
       await db.close();
     }
   });
+
+  it('marks pending entries taken with the reason they were closed for, and leaves taken ones alone', async () => {
+    const db = await repositoryDatabase();
+    try {
+      await db.app.get(RunRepository).openWaiting('run-1', '/target');
+      const store = db.app.get(PlanChatStore);
+      await store.appendEntry('run-1', entry('message-a', '2026-01-01T00:00:01.000Z'));
+      await store.appendEntry('run-1', entry('message-b', '2026-01-01T00:00:02.000Z'));
+      await store.markTaken('run-1', ['message-a']);
+
+      await store.markTaken('run-1', ['message-a', 'message-b'], 'skipped');
+
+      const { entries } = await store.read('run-1');
+      expect(entries.map((item) => [item.state, item.closed])).toEqual([
+        ['taken', undefined],
+        ['taken', 'skipped'],
+      ]);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('keeps a step question and its answer apart from the person messages, and gives an answer once', async () => {
     const db = await repositoryDatabase();
     try {

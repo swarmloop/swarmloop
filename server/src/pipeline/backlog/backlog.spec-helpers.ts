@@ -28,6 +28,7 @@ import { holdServices } from '../../steps/shared/question-holds.spec-helpers';
 import { BacklogEvents } from './backlog-events';
 import { BacklogQueries } from './backlog-queries';
 import { BacklogTaskActions } from './backlog-task-actions';
+import { TaskRunSkip } from './task-run-skip';
 import { BacklogMerge } from './backlog-merge';
 import { EpicMainMoves } from './epic-main-moves';
 import type { MainHeld } from './main-held';
@@ -70,8 +71,20 @@ function actionParts(db: Awaited<ReturnType<typeof repositoryDatabase>>, config:
       return { value: undefined, receipt: {} };
     },
   } as unknown as CommandService;
-  const taskActions = new BacklogTaskActions(backlogs, queries, db.app.get(RunRepository), commands, db.clock, support);
-  return { queries, stops, actions: new BacklogActions(backlogs, queries, db.clock, config, support, taskActions) };
+  const taskRun = new TaskRunSkip(
+    backlogs,
+    db.app.get(RunRepository),
+    db.app.get(DocumentRepository),
+    db.app.get(PlanChatStore),
+    commands,
+  );
+  const taskActions = new BacklogTaskActions(backlogs, queries, taskRun, db.clock, support);
+  return {
+    queries,
+    stops,
+    taskRun,
+    actions: new BacklogActions(backlogs, queries, db.clock, config, support, taskActions),
+  };
 }
 
 /** A real database with the backlog tables, the fake backlog host and a recording start port; tick() drives the scheduler under the db's fake clock. */
@@ -158,7 +171,7 @@ export async function backlogHarness(parallel = 3) {
     return key;
   });
   let position = 0;
-  const { actions, stops } = actionParts(db, config);
+  const { actions, stops, taskRun } = actionParts(db, config);
 
   const make = () =>
     new BacklogScheduler(
@@ -172,6 +185,7 @@ export async function backlogHarness(parallel = 3) {
       db.clock,
       db.app.get(BacklogChatRepository),
       epicMoves,
+      taskRun,
     );
   let current = make();
 
@@ -336,6 +350,7 @@ export async function actionsHarness(projects: string[] = ['web', 'server']) {
     /** The stop commands the actions asked for, as `stop <run key>`. */
     stops,
     runs: db.app.get(RunRepository),
+    documents: db.app.get(DocumentRepository),
     /** The recorded actions of a backlog, oldest first. */
     async actionEvents(name: string): Promise<{ facts: Record<string, string>; createdAt: string }[]> {
       const backlog = (await backlogs.findBacklog(name)) as NonNullable<

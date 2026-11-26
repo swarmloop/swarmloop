@@ -5,10 +5,7 @@ import type { Subtask } from '../../contract/subtask';
 import { Clock } from '../../core/clock';
 import type { BacklogWriters } from '../../history/backlog-writers';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
-import { RunRepository } from '../../history/run.repository';
-import { storedState } from '../../history/run-state';
 import { chainSharedFiles } from '../../steps/plan/plan-tasks';
-import { CommandService } from '../command.service';
 import {
   BacklogActionSupport,
   outcome,
@@ -19,6 +16,7 @@ import {
 } from './backlog-action-support';
 import { BacklogQueries } from './backlog-queries';
 import { checkText } from './backlog-rules';
+import { TaskRunSkip } from './task-run-skip';
 import {
   checkNewSlugs,
   checkNotSettled,
@@ -30,17 +28,13 @@ import {
   type TaskScope,
 } from './task-rules';
 
-/** A run in one of these states has nothing left to stop. */
-const ENDED = ['done', 'merged', 'skipped', 'closed'];
-
 /** The actions on the tasks and the backlog items of a backlog; BacklogActions is the door to them. */
 @Injectable()
 export class BacklogTaskActions {
   constructor(
     private readonly backlogs: BacklogRepository,
     private readonly queries: BacklogQueries,
-    private readonly runs: RunRepository,
-    private readonly commands: CommandService,
+    private readonly taskRun: TaskRunSkip,
     private readonly clock: Clock,
     private readonly support: BacklogActionSupport,
   ) {}
@@ -128,7 +122,7 @@ export class BacklogTaskActions {
     return this.remove(actor, name, slug, 'delete task', context);
   }
 
-  /** A task with a run that has not ended is stopped first; then it is skipped. */
+  /** The run of a task that has not ended is skipped first; then the task is. In a planner's turn the run is left to the tick. */
   async skipTask<Context extends PlannerContext | undefined = undefined>(
     actor: string | null,
     name: string,
@@ -139,10 +133,9 @@ export class BacklogTaskActions {
     const backlog = await this.support.load(name, context);
     const task = this.find(await this.support.reads(context).tasks(backlog.id as number), slug);
     checkNotSettled(task);
-    const run = task.runKey === null ? null : await this.runs.findRun(task.runKey);
-    if (task.runKey !== null && run !== null && !ENDED.includes(storedState(run).state)) {
-      await this.commands.submit('stop', task.runKey, {});
-    }
+    // A planner's turn runs this inside its transaction, which the stop command cannot join: the task is saved
+    // skipped and the backlog tick ends its run (TaskRunSkip.endSkipped).
+    if (task.runKey !== null && context === undefined) await this.taskRun.end(task.runKey);
     await this.support.write(context, async (writers) => {
       await writers.saveTask({ ...task, status: 'skipped', note: '' });
       await this.support.record(writers, backlog.id as number, who, 'skip task', { task: slug }, context);
