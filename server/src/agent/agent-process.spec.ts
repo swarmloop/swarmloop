@@ -26,6 +26,14 @@ describe('AgentProcess', () => {
     await expect(waiting).resolves.toBe(0);
   });
 
+  it('gives the exit code of a child closed by a signal, as a shell reads it', async () => {
+    const child = fakeChild();
+    const process = new AgentProcess(child as unknown as SandboxChild, sandbox());
+    const waiting = process.wait(handlers(), () => false);
+    child.emit('close', null, 'SIGTERM');
+    await expect(waiting).resolves.toBe(143);
+  });
+
   it('kills the child when the lifecycle reports an idle timeout', async () => {
     jest.useFakeTimers();
     try {

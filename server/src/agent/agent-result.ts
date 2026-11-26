@@ -1,3 +1,4 @@
+import { constants } from 'os';
 import type { EffortFields } from '../contract/effort';
 import type { ChatUsage } from './since-recorded';
 import type { SampleDraft } from '../history/visit';
@@ -16,6 +17,8 @@ export interface AgentRunResult {
   reported?: ChatUsage | null;
   killReason: KillReason | null;
   exitCode: number;
+  /** The signal that ended the process, when it ended by one that no kill of ours and no answer explains. */
+  signal?: string;
   output?: string;
   resumed: boolean;
   /** Set while the stream was read. A later check does not parse the log again. */
@@ -55,4 +58,18 @@ export function emptyResult(killReason: KillReason, exitCode: number, calls: num
     startedAt: now,
     finishedAt: now,
   };
+}
+
+/** The signal an unexplained end was caused by, read from its shell-style exit code (128 plus the signal's number); none for an answer, a kill of ours or any other code. */
+export function endedBySignal(exitCode: number, explained: boolean): { signal?: string } {
+  const name = Object.entries(constants.signals).find(([, value]) => exitCode > 128 && value === exitCode - 128)?.[0];
+  return name && !explained ? { signal: name } : {};
+}
+
+/** The signals a container gets when docker or the host stops it. Any other signal is a crash of the agent. */
+const STOPPING_SIGNALS = ['SIGTERM', 'SIGKILL'];
+
+/** Whether a launch ended by a signal that stops a container from outside, with no kill of ours and no answer. */
+export function stoppedFromOutside(result: Pick<AgentRunResult, 'signal'>): boolean {
+  return result.signal !== undefined && STOPPING_SIGNALS.includes(result.signal);
 }

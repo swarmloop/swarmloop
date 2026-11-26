@@ -9,7 +9,7 @@ import type { AgentTools } from '../integrations/agent-runtime/agent-runtime';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
-import { emptyResult, type AgentRunResult } from './agent-result';
+import { emptyResult, stoppedFromOutside, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
 import { callsExceeded } from './limits';
 import { NO_USAGE, type ChatUsage } from './since-recorded';
@@ -130,6 +130,10 @@ export class AgentProcessRunner {
           // The CLI already retried its API calls: relaunching only burns launches. The caller waits for the host.
           return merged;
         }
+        if (this.endedFromOutside(attempt, input.runKey)) {
+          // A container stopped from outside: relaunching into it only burns launches. The caller waits.
+          return merged;
+        }
         prior = `${carried}${merged.output ?? ''}`;
         const budget = {
           halted: this.runStop.halted(input.runKey),
@@ -180,6 +184,11 @@ export class AgentProcessRunner {
     } finally {
       this.dropLiveSpend(input);
     }
+  }
+
+  /** A launch a signal ended with no Stop behind it: the container was stopped from outside. */
+  private endedFromOutside(attempt: AgentRunResult, runKey: string): boolean {
+    return stoppedFromOutside(attempt) && !this.runStop.halted(runKey);
   }
 
   /** A launch that is a visit shows its spend live until it ends; a fork shows none. */

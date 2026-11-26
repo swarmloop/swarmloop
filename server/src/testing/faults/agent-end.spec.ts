@@ -1,5 +1,8 @@
 import 'reflect-metadata';
 import { RunQueriesService } from '../../api/run-queries.service';
+import { ERROR_CODES } from '../../contract/error-codes';
+import { HOST_RETRY_MS } from '../../integrations/http';
+import { Reconciler } from '../../pipeline/reconciler';
 import { REASON } from '../../contract/run-state';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
@@ -61,12 +64,22 @@ describe('an agent that ends before its answer', () => {
   const resume = () => flow.app.app.get(CommandService).submit('resume', KEY, { ...PERSON_RESUME });
   const stored = async () => storedState((await flow.app.app.get(RunRepository).findRun(KEY))!);
 
-  // c04's table of outside waits (contract/outside-waits.ts) has no rule for a signal-ended agent, so whether such a
-  // signal settles waiting by itself is c04's class and is not patched here. This case holds what must hold either
-  // way: the step is not lost, the signal is never worded as another step's failure, a person can go on, and every
-  // place reads one state.
-  it('exit 143 without a Stop ends the visit, names the step, and leaves the run a way on', async () => {
-    await start((answered) => Promise.resolve({ ...answered, exitCode: 143, killReason: null, responseText: '' }));
+  it('exit 143 without a Stop waits as an outside wait, and the run goes on once its next try comes', async () => {
+    let launches = 0;
+    await start((answered) =>
+      Promise.resolve(
+        ++launches > 1
+          ? answered
+          : {
+              ...answered,
+              exitCode: 143,
+              signal: 'SIGTERM',
+              killReason: null,
+              responseText: '',
+              finishedAt: flow.app.clock.iso(),
+            },
+      ),
+    );
 
     await resume();
     await settle(flow.app);
@@ -75,9 +88,34 @@ describe('an agent that ends before its answer', () => {
     const [visit] = await flow.app.app.get(VisitRepository).listStats(run.id);
     expect(visit).toMatchObject({ step: 'implement' });
     expect(visit.status).not.toBe('done');
+    const waiting = await stored();
+    expect(waiting).toMatchObject({ state: 'waiting', reason: { code: ERROR_CODES.HOST_UNAVAILABLE } });
+    expect(waiting.reason?.message).toContain('stopped from outside by SIGTERM');
     const view = await flow.app.app.get(RunQueriesService).flow(KEY);
     expect(view.currentStep).toBe('implement');
-    expect(JSON.stringify(view.stateReason)).not.toContain('plan failed');
+    expect(view.stateReason?.retryAt).toBe(waiting.reason?.retryAt);
+    await assertSettled(flow.app);
+
+    flow.app.clock.advance(HOST_RETRY_MS);
+    await flow.app.app.get(Reconciler).resumeOutsideWaits();
+    await settle(flow.app);
+
+    expect((await stored()).state).toBe('done');
+    await assertSettled(flow.app);
+  });
+
+  it('exit 139 ends by another signal: the run fails naming the signal, with Resume offered', async () => {
+    await start((answered) =>
+      Promise.resolve({ ...answered, exitCode: 139, signal: 'SIGSEGV', killReason: null, responseText: '' }),
+    );
+
+    const ended = await flow.app.pipeline.step('implement', KEY);
+    await settle(flow.app);
+
+    expect(ended.message).toContain('implement failed: ended by SIGSEGV');
+    expect((await stored()).state).not.toBe('waiting');
+    const view = await flow.app.app.get(RunQueriesService).flow(KEY);
+    expect(view.currentStep).toBe('implement');
     expect(view.actions).toContain('resume');
     await assertSettled(flow.app);
   });

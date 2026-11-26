@@ -29,6 +29,8 @@ import { withLogReads } from './outside-reads';
 import { StartWaits } from './start-waits';
 import { LimitFailover } from './limit-failover';
 import { ModelHostUnavailable } from './model-host-unavailable';
+import { AgentStoppedFromOutside } from './stopped-from-outside';
+import { stoppedFromOutside } from '../../agent/agent-result';
 import type { AgentRunInput } from '../../agent/agent-run-input';
 import type { AgentLaunchRequest } from './agent-launch-request';
 import { pingInput, withThrowawayOutput } from './launch-ping';
@@ -170,6 +172,7 @@ export class AgentLauncher {
     if (result.outage) {
       throw new ModelHostUnavailable(result.outage, Object.assign({}, result, { callIds }));
     }
+    this.assertNotStoppedFromOutside(request, result, callIds);
     if (request.result && answerIsReadable(request, result)) {
       const exchange = await exchangeResult(request, result, (followUp) =>
         run(resultFollowUpRequest(request, followUp), { followUp: true }),
@@ -181,6 +184,7 @@ export class AgentLauncher {
       if (exchange.result.outage) {
         throw new ModelHostUnavailable(exchange.result.outage, Object.assign({}, exchange.result, { callIds }));
       }
+      this.assertNotStoppedFromOutside(request, exchange.result, callIds);
       if (request.call?.ties) {
         // The valid result adds the ties its actions name to the ones written when each row opened.
         const ties = await request.call.ties(exchange.value);
@@ -189,6 +193,13 @@ export class AgentLauncher {
       return { result: { ...exchange.result, resultValue: exchange.value, callIds }, main };
     }
     return { result: { ...result, callIds }, main };
+  }
+
+  /** A container stopped from outside is a wait. A person's Stop that ended the agent the same way stays a stop. */
+  private assertNotStoppedFromOutside(request: AgentLaunchRequest, result: AgentRunResult, callIds: number[]): void {
+    if (result.signal && stoppedFromOutside(result) && !this.runStop.halted(request.key)) {
+      throw new AgentStoppedFromOutside(result.signal, Object.assign({}, result, { callIds }));
+    }
   }
 
   private async runOnce(
