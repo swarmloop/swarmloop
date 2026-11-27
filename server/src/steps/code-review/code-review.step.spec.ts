@@ -31,6 +31,7 @@ import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { REPORT_CONTINUE, reviewContinue } from './code-review.prompts';
 
+import { ARTIFACTS } from '../contract/artifacts';
 import { selectReviewers } from './review-select';
 import { answerFor, reply, reportReply, result, boot, seed, writeEnv } from './code-review.step.spec-helpers';
 import { storedState } from '../../history/run-state';
@@ -179,6 +180,44 @@ describe('code-review step', () => {
     for (const call of listed) {
       expect(call.prompt).toContain('\nImpact:\n- live agent log | step-documents.tsx | kept');
     }
+  });
+
+  it('lists a test the change edits outside its plan, and shows no section for a change inside it', async () => {
+    const outside = join(root, 'worktrees', 'PROJ-188', 'billing-api');
+    const inside = join(root, 'worktrees', 'PROJ-189', 'billing-api');
+    for (const [dir, file] of [
+      [outside, 'parser.test.ts'],
+      [inside, 'parser.ts'],
+    ]) {
+      gitWorktree(dir);
+      writeFileSync(join(dir, file), 'export const A = 1;\n');
+    }
+    const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
+    useAgent(agent);
+    const plan = ARTIFACTS.planResult.format({
+      summary: [],
+      plan: ['Change the parser - files: parser.ts - proof: parser.spec.ts'],
+      questions: [],
+      contract: [],
+      tasks: [],
+      keep: [],
+    });
+    for (const key of ['PROJ-188', 'PROJ-189']) {
+      await seed(app, key);
+      await app
+        .get(DocumentRepository)
+        .putDocument((await app.get(RunRepository).findRun(key))!, ARTIFACTS.planResult.kind, plan);
+    }
+    await app.get(PipelineService).step('code-review', 'PROJ-188');
+    await app.get(PipelineService).step('code-review', 'PROJ-189');
+    const reviewers = (key: string) =>
+      agent.mock.calls.map((call) => call[0]).filter((call) => call.runKey === key && !call.step.endsWith('report'));
+    expect(reviewers('PROJ-188')).toHaveLength(5);
+    for (const call of reviewers('PROJ-188')) {
+      expect(call.prompt).toContain('\nFiles outside the plan:\nparser.test.ts');
+    }
+    expect(reviewers('PROJ-189')).toHaveLength(5);
+    expect(reviewers('PROJ-189').some((call) => call.prompt.includes('\nFiles outside the plan:\n'))).toBe(false);
   });
 
   it('runs the five reviewers together and writes the report after they finish', async () => {

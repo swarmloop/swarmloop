@@ -7,6 +7,7 @@ import { parseSubtasks, statusLine, SUBTASKS_KIND } from '../../contract/subtask
 import type { RunAction, RunState, StateReason } from '../../contract/run-state';
 import type { FlowItem, FlowView } from '../../contract/api';
 import { parkedConflictIn } from '../../pipeline/parked-conflict';
+import { CHECK_BLOCK_SENTENCE } from '../../steps/shared/check-block-resume';
 import { latest } from './status';
 
 /** The honest state of the run and what the server allows in it. */
@@ -90,7 +91,7 @@ function blockedSentence(run: RunEntity, maxReturns: number, parkedConflict: boo
     return 'The rebase stopped at a conflict with the base branch. Resume has the implement agent resolve it; checks and code review judge the resolution, then the open tasks move onto the resolved branch.';
   }
   if (code === REASON.checkFailed) {
-    return 'A required check failed again on unchanged files. Resume returns to implementation with the stored notes.';
+    return CHECK_BLOCK_SENTENCE;
   }
   return isLoopStep(run.currentStep)
     ? `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`

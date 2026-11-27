@@ -18,7 +18,7 @@ export function implementErrors(
   contract: string | null,
 ): string[] {
   const errors = exchange.check(run, value, contract);
-  const asking = mayQuestion && Boolean(value.question?.trim() || value.outOfScope?.length);
+  const asking = mayQuestion && Boolean(value.question?.trim() || value.outOfScope?.length || value.needs?.length);
   if (value.implementation.length === 0 && !asking && !(isSubtask(run) && value.needs?.length)) {
     errors.push('implementation: must list what you changed');
   }

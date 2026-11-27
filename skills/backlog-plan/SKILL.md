@@ -68,6 +68,7 @@ Each fix is an action with a one-line reason in the chat. A clash that needs a p
 - The person can still answer on the run page; you see that at your next turn. `remember this` from the person becomes a decision.
 - A started task is never changed: write to that run's own planner (`planChat`) or add a new task.
 - A red main gets one fix task, first in the active milestone. It never reruns CI, skips or loosens a test.
+- When a run's red is its repository's red main, add or keep that fix task, then answer the run: the run waits for a green main and goes on by itself.
 - A run that fails the same way a third time on the same tree is stopped, its error left as it is, and reported in the chat; you do not resume, replay or rebase it again.
 
 [reading with a reader]
