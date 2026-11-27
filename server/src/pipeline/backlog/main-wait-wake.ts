@@ -15,9 +15,10 @@ type Backlog = Awaited<ReturnType<BacklogRepository['listBacklogs']>>[number];
 
 /**
  * Ends the wait of a run that waits for a green main and is neither split nor a part (an epic and its parts end theirs
- * through the epic's main move). While a main of the task's repositories is not green the run keeps waiting and its words
- * follow the main. Once every one reads green the run is sent the plain `rebase` a person's Rebase sends, once per heads
- * key, even when it already holds those heads: the Rebase moves it onto main or finds it there, and resumes it.
+ * through the epic's main move). The run keeps waiting while `mainWait` gives words for its task (a fix task not settled,
+ * or a main that does not pass; the task's own `fixesMain` repository is not asked), and the words follow it. Once it gives
+ * none the run is sent the plain `rebase` a person's Rebase sends, once per heads key, even when it already holds those
+ * heads: the Rebase moves it onto main or finds it there, and resumes it.
  */
 @Injectable()
 export class MainWaitWake {
@@ -52,10 +53,12 @@ export class MainWaitWake {
     run: RunEntity,
     mains: Map<string, MainReading>,
   ): Promise<void> {
-    const waiting = record.repositories.find((repository) => !mainPasses(mains.get(repository)));
-    if (waiting !== undefined) {
-      const words = mainWait(task, tasks, mains);
-      if (words !== null && words !== storedState(run).reason?.message) await this.hold.hold(run, waiting, mains);
+    const words = mainWait(task, tasks, mains);
+    if (words !== null) {
+      const waiting = record.repositories.find((repository) => !mainPasses(mains.get(repository)));
+      if (words !== storedState(run).reason?.message) {
+        await this.hold.hold(run, waiting ?? record.repositories[0], mains);
+      }
       return;
     }
     const named = record.repositories.map((repository) => `${repository}@${headOf(mains.get(repository))}`);

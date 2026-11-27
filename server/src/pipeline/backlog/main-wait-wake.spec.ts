@@ -18,13 +18,13 @@ async function withHarness(body: (harness: Harness) => Promise<void>): Promise<v
 const HELD = { code: REASON.waitsForMain, message: 'waits for a green main of web' };
 
 /** A backlog whose task `a` has a run that waits for a green main. Returns the run's key. */
-async function waitingRun(h: Harness, options: { paused?: boolean; repositories?: string[] } = {}) {
-  const { repositories = ['web'], ...backlogOptions } = options;
+async function waitingRun(h: Harness, options: { paused?: boolean; repositories?: string[]; fixesMain?: string } = {}) {
+  const { repositories = ['web'], fixesMain, ...backlogOptions } = options;
   h.setMain('web', 'red');
   const backlog = await h.seedBacklog('one', { owner: 'ada', repositories, ...backlogOptions });
   const key = 'a-run';
   await storeRun(h.runs, h.runs.newWaitingRun(key, null, 'ada'));
-  await h.seedTask(backlog.id as number, 'a', { runKey: key, repositories });
+  await h.seedTask(backlog.id as number, 'a', { runKey: key, repositories, ...(fixesMain ? { fixesMain } : {}) });
   await h.moveRun(key, { status: 'waiting', currentStep: 'implement', reason: HELD });
   return { key, backlogId: backlog.id as number };
 }
@@ -79,6 +79,15 @@ describe('MainWaitWake', () => {
       const { key } = await waitingRun(h, { repositories: ['api', 'docs'] });
       h.setMain('docs', 'no-ci');
       h.setMain('api');
+      await h.tick();
+      expect(rebases(h).map((sent) => sent.key)).toEqual([key]);
+    }));
+
+  it('does not ask the main that the waiting task itself fixes', () =>
+    withHarness(async (h) => {
+      const { key } = await waitingRun(h, { repositories: ['api', 'docs'], fixesMain: 'api' });
+      h.setMain('api', 'red');
+      h.setMain('docs');
       await h.tick();
       expect(rebases(h).map((sent) => sent.key)).toEqual([key]);
     }));

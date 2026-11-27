@@ -19,7 +19,7 @@ export class RedMainWait {
 
   /**
    * The first repository of the run's backlog task (its epic's task for a part) that an unsettled task fixes and whose main
-   * does not read green, or null when the run is not at an implementation step (the only step a red reaches the planner
+   * does not pass (it reads green, or has no CI), or null when the run is not at an implementation step (the only step a red reaches the planner
    * from), has no such task or none of its repositories is held back.
    */
   async repositoryFor(run: RunEntity): Promise<string | null> {
