@@ -11,7 +11,7 @@ import type { StepContext } from '../base-step';
 import { ERROR_CODES } from '../../contract/error-codes';
 import type { RunRebase } from '../run-rebase';
 import type { StepResult } from '../contract/step-contract';
-import { missingPipeline, missingRuns } from './missing-pipeline';
+import { ciFileProjects, missingPipeline, missingRuns } from './missing-pipeline';
 import type { Seen } from './pipeline-report';
 
 const KEY = 'PROJ-500';
@@ -176,5 +176,33 @@ describe('missingRuns', () => {
 
   it('lists a watched repository with a workflow file and no run', async () => {
     await expect(lookAt(withWorkflow(), [noRun('group/demo')])).resolves.toEqual(['demo']);
+  });
+});
+
+describe('ciFileProjects', () => {
+  function read(w: World): Promise<Set<string>> {
+    const ctx = {
+      opened: { run: w.run },
+      reread: (artifact: { kind: string }) => Promise.resolve(w.stored[artifact.kind] ?? null),
+    } as unknown as StepContext;
+    return ciFileProjects(ctx, w.root);
+  }
+
+  it('names the origin project of a repository whose tree has a workflow file', async () => {
+    const w = world();
+    const workflows = join(w.root, 'worktrees', KEY, 'demo', '.github', 'workflows');
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(join(workflows, 'ci.yml'), 'name: ci\n');
+    await expect(read(w)).resolves.toEqual(new Set(['group/demo']));
+  });
+
+  it('leaves out a repository whose tree has no CI file', async () => {
+    await expect(read(world())).resolves.toEqual(new Set());
+  });
+
+  it('is empty when the repo list is missing', async () => {
+    const w = world();
+    delete w.stored.repos;
+    await expect(read(w)).resolves.toEqual(new Set());
   });
 });

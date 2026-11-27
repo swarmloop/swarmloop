@@ -17,17 +17,18 @@ interface WatchDeps {
   root: string;
 }
 
-/** The first look at the CI of every ref, then the wait for a run that has not started or has not ended. */
+/** The first look at the CI of every ref (the given one, or a new load), then the wait for a run that has not started or has not ended. */
 export async function watchCi(
   ctx: StepContext,
   records: PipelineRef[],
   env: SwarmloopEnv,
   host: CodeHost,
   { awake, runStop, root }: WatchDeps,
+  firstLook?: Seen[],
 ): Promise<{ seen: Seen[]; verdict: Verdict }> {
   const { calls } = ctx;
   assertNotStopped(runStop, ctx.opened.run.key);
-  let seen = await awake.run(() => loadSeen(records, calls, host, false));
+  let seen = firstLook ?? (await awake.run(() => loadSeen(records, calls, host, false)));
   let verdict = verdictOf(seen);
   let said: string | null = null;
   const unstartedSince = new Map<number, number>();

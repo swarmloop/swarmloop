@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
 import { RunRebase } from '../run-rebase';
 import { RunStop } from '../../agent/run-stop';
-import { missingPipeline, missingRuns } from './missing-pipeline';
+import { ciFileProjects, missingPipeline, missingRuns } from './missing-pipeline';
 import { backToReview, staleGates } from './stale-gates';
 import { type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
@@ -14,7 +14,6 @@ import { AwakeTime } from '../../core/awake-time';
 import type { StepName } from '../../contract/steps';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { CI_INFRA_SOURCE, issueOf } from '../shared/handoff';
 import { assertNotStopped } from '../../agent/step-stopped';
 import { BaseStep, type StepContext } from '../base-step';
 import {
@@ -23,7 +22,6 @@ import {
   ciTitle,
   jobResults,
   parsePipelineRefs,
-  renderInfra,
   renderNone,
   renderPass,
   stopLine,
@@ -37,16 +35,17 @@ import {
   type InfraCode,
   type Seen,
 } from './pipeline-report';
-import { finishedRuns, readNotes, rerunJobs } from './ci-host';
+import { finishedRuns, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
 import { cancelRunning } from './cancel-running';
 import { loadSeen } from './load-seen';
 import { atBranchHeads } from './branch-heads';
 import { flakyOnPass } from './flaky-tests';
-import { blockedEnd, finish } from './pipeline-result';
+import { finish } from './pipeline-result';
+import { infraBlockedEnd } from './pipeline-infra-end';
 import { watchCi } from './pipeline-watch';
-import { dropNoCi, leaveOut, noCiLines, noCiReason, type NoCiProject } from './pipeline-no-ci';
+import { dropNoCi, noCiLines, noCiReason, type CiScope, type NoCiProject } from './pipeline-no-ci';
 import { hasDraft, markReady } from './pipeline-draft';
 import { red, report, type RedDeps } from './pipeline-red';
 import { EnvironmentService } from '../../environment/environment.service';
@@ -62,15 +61,6 @@ const INPUTS = {
 
 /** The pauses before the two automatic re-runs of a run whose jobs never ran. */
 const RERUN_PAUSES_MS = [60_000, 300_000];
-
-/** What was tried before a person is asked: the wait for a run that never started, or the reruns that ended the same way. */
-function triedLine(unstarted: boolean, reruns: number, notes: string, startTimeoutMs: number): string {
-  if (unstarted) {
-    const minutes = Math.round(startTimeoutMs / 60000);
-    return `tried: waited ${minutes} minutes for the host to start the run${notes ? `; the host says: ${notes}` : ''}\n`;
-  }
-  return reruns > 0 ? `tried: ${reruns} reruns of the failed jobs\n` : '';
-}
 
 @Injectable()
 export class PipelineStep extends BaseStep<typeof INPUTS> {
@@ -132,11 +122,44 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       throw new SwarmloopError('pipeline ref is missing');
     }
     const records = await atBranchHeads(host, recorded, ctx.calls);
-    const watched = await ctx.activity(ciTitle(records), () => this.watch(ctx, records, env, host), ciResult);
-    const result = await this.route(ctx, env, records, watched.seen, watched.verdict, host);
+    const waited = await ctx.activity(
+      ciTitle(records),
+      () => this.firstLookAndWait(ctx, env, records, host),
+      (value) => (value.watched ? ciResult(value.watched) : 'no CI to wait for'),
+    );
+    const { scope, watched } = waited;
+    if (!watched) {
+      return this.withFacts(ctx, await this.endWithoutCi(ctx, scope.dropped), []);
+    }
+    return this.withFacts(ctx, await this.route(ctx, env, scope, watched.seen, watched.verdict, host), watched.seen);
+  }
+
+  /** Decides which projects have CI on the first look, and waits for the ones that do. */
+  private async firstLookAndWait(
+    ctx: StepContext,
+    env: SwarmloopEnv,
+    records: PipelineRef[],
+    host: CodeHost,
+  ): Promise<{ scope: CiScope; watched: { seen: Seen[]; verdict: Verdict } | null }> {
+    const scope = await this.scopeOf(ctx, records, host);
+    if (scope.records.length === 0) {
+      return { scope, watched: null };
+    }
+    return { scope, watched: await this.watch(ctx, scope.records, env, host, scope.seen) };
+  }
+
+  /** The first look at the CI of every ref, before any wait: the projects with no CI are left out of it. */
+  private async scopeOf(ctx: StepContext, records: PipelineRef[], host: CodeHost): Promise<CiScope> {
+    const seen = await loadSeen(records, ctx.calls, host, false);
+    const showedNothing = seen.some((item) => item.runs.length === 0 && item.checks.length === 0);
+    const ciFiles = showedNothing ? await ciFileProjects(ctx, root(this.config)) : new Set<string>();
+    return dropNoCi(host, records, seen, ctx.calls, ciFiles);
+  }
+
+  private async withFacts(ctx: StepContext, result: StepResult, seen: Seen[]): Promise<StepResult> {
     const requests = await ctx.reread(ARTIFACTS.mergeRequest);
     const links = requests ? mergeRequestDetails(parseMergeRequests(requests)) : [];
-    return { ...result, facts: { details: [...jobResults(watched.seen), ...links], ...checkFacts(watched.seen) } };
+    return { ...result, facts: { details: [...jobResults(seen), ...links], ...checkFacts(seen) } };
   }
 
   private watch(
@@ -144,12 +167,16 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     records: PipelineRef[],
     env: SwarmloopEnv,
     host: CodeHost,
+    firstLook?: Seen[],
   ): Promise<{ seen: Seen[]; verdict: Verdict }> {
-    return watchCi(ctx, records, env, host, {
-      awake: this.awakeTime(env),
-      runStop: this.runStop,
-      root: root(this.config),
-    });
+    return watchCi(
+      ctx,
+      records,
+      env,
+      host,
+      { awake: this.awakeTime(env), runStop: this.runStop, root: root(this.config) },
+      firstLook,
+    );
   }
 
   /** Awake time of one wait: the host sleeping between two polls does not count. */
@@ -160,7 +187,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   private async route(
     ctx: StepContext,
     env: SwarmloopEnv,
-    records: PipelineRef[],
+    scope: CiScope,
     seen: Seen[],
     verdict: Verdict,
     host: CodeHost,
@@ -168,10 +195,10 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   ): Promise<StepResult> {
     const { opened, calls } = ctx;
     if (verdict === 'unstarted') {
-      return this.infra(ctx, env, records, seen, 'CI_NOT_RUN', host, reruns);
+      return this.infra(ctx, env, scope, seen, 'CI_NOT_RUN', host, reruns);
     }
     if (verdict === 'wait' && runRows(seen, isRunning).length === 0) {
-      return this.stalled(ctx, env, records, seen, host, reruns);
+      return this.stalled(ctx, env, scope, seen, host, reruns);
     }
     if (verdict === 'wait') {
       const settled = await cancelRunning({
@@ -179,7 +206,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         calls,
         env,
         host,
-        load: (jobs) => loadSeen(records, calls, host, jobs),
+        load: (jobs) => loadSeen(scope.records, calls, host, jobs),
         awakeTime: () => this.awakeTime(env),
       });
       if (!settled.traces) {
@@ -196,7 +223,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       const cause = classify(seen);
       return cause === 'failed'
         ? red(this.redDeps, ctx, env, seen, host)
-        : this.infra(ctx, env, records, seen, cause === 'timeout' ? 'CI_TIMEOUT' : 'CI_NOT_RUN', host, reruns);
+        : this.infra(ctx, env, scope, seen, cause === 'timeout' ? 'CI_TIMEOUT' : 'CI_NOT_RUN', host, reruns);
     }
     if (verdict === 'stop') {
       return finish('failed', report(opened, stopLine(seen)), 'failed');
@@ -204,32 +231,24 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     if (verdict === 'manual') {
       return finish('waiting', report(opened, 'pipeline is manual'), 'waiting');
     }
-    return this.settle(ctx, env, records, seen, host, reruns);
+    return this.settle(ctx, env, scope, seen, host, reruns);
   }
 
   /**
-   * The wait ended with a green or absent verdict. A project whose host refuses to read its pipelines can never show a
-   * run, so it is not waited for whatever its tree holds. A project whose workflow never ran is a missing pipeline.
-   * A project with no CI is left out, and when none is left the run ends skipped. For the rest: stale gates, an absent
-   * draft or the pass.
+   * The wait ended with a green or absent verdict. A project whose workflow never ran is a missing pipeline. For the
+   * rest: stale gates, an absent draft or the pass. The projects left out at the start are named in the log.
    */
   private async settle(
     ctx: StepContext,
     env: SwarmloopEnv,
-    refs: PipelineRef[],
-    read: Seen[],
+    scope: CiScope,
+    seen: Seen[],
     host: CodeHost,
     reruns: number,
   ): Promise<StepResult> {
     const { opened } = ctx;
-    const gate = await dropNoCi(host, refs, read, ctx.calls);
-    const { dropped } = gate;
-    const readable = leaveOut(
-      dropped.filter((item) => item.refused),
-      refs,
-      read,
-    );
-    const missing = await missingRuns(ctx, root(this.config), readable.seen);
+    const { records, dropped } = scope;
+    const missing = await missingRuns(ctx, root(this.config), seen);
     if (missing && missing.length > 0) {
       return missingPipeline({
         ctx,
@@ -240,14 +259,10 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         root: root(this.config),
         limit: env.MAX_PIPELINE_RETURNS,
         host,
-        records: readable.records,
-        seen: readable.seen,
+        records,
+        seen,
         missing,
       });
-    }
-    const { records, seen } = gate;
-    if (records.length === 0) {
-      return this.endWithoutCi(ctx, env, refs, host, reruns, dropped);
     }
     const verdict = verdictOf(seen);
     const noCiLog = noCiLines(dropped);
@@ -262,7 +277,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
           () => 'CI did not start for the draft',
         );
         const watched = await this.watch(ctx, records, env, host);
-        return this.route(ctx, env, records, watched.seen, watched.verdict, host, reruns);
+        return this.route(ctx, env, scope, watched.seen, watched.verdict, host, reruns);
       }
       const body = `${renderNone(seen)}${noCiLog}`;
       return finish('ok', report(opened, 'nothing started', body), 'done', body);
@@ -283,23 +298,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   }
 
   /** No project has CI: the checks and the reviewers are the gate, so the run ends skipped with its merge requests ready. */
-  private async endWithoutCi(
-    ctx: StepContext,
-    env: SwarmloopEnv,
-    records: PipelineRef[],
-    host: CodeHost,
-    reruns: number,
-    dropped: NoCiProject[],
-  ): Promise<StepResult> {
-    if (await hasDraft(ctx)) {
-      await ctx.activity(
-        'Mark merge request ready',
-        () => markReady(ctx, this.registry),
-        () => 'CI did not start for the draft',
-      );
-      const watched = await this.watch(ctx, records, env, host);
-      return this.route(ctx, env, records, watched.seen, watched.verdict, host, reruns);
-    }
+  private async endWithoutCi(ctx: StepContext, dropped: NoCiProject[]): Promise<StepResult> {
     if (await staleGates(ctx, root(this.config), await this.flows.activePhases(ctx.opened.run.id))) {
       return backToReview(ctx, this.flows);
     }
@@ -312,7 +311,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   private async stalled(
     ctx: StepContext,
     env: SwarmloopEnv,
-    records: PipelineRef[],
+    scope: CiScope,
     seen: Seen[],
     host: CodeHost,
     reruns: number,
@@ -322,7 +321,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       return red(this.redDeps, ctx, env, seen, host, note, true);
     }
     const settled = seen.map((item) => ({ ...item, awaiting: [] }));
-    return this.route(ctx, env, records, settled, verdictOf(settled), host, reruns);
+    return this.route(ctx, env, scope, settled, verdictOf(settled), host, reruns);
   }
 
   /**
@@ -332,7 +331,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   private async infra(
     ctx: StepContext,
     env: SwarmloopEnv,
-    records: PipelineRef[],
+    scope: CiScope,
     seen: Seen[],
     code: InfraCode,
     host: CodeHost,
@@ -348,19 +347,21 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
       assertNotStopped(this.runStop, opened.run.key);
       errors.push(...(await rerunJobs(host, finished, calls)));
       if (errors.length === 0) {
-        const watched = await this.watch(ctx, records, env, host);
-        return this.route(ctx, env, records, watched.seen, watched.verdict, host, reruns + 1);
+        const watched = await this.watch(ctx, scope.records, env, host);
+        return this.route(ctx, env, scope, watched.seen, watched.verdict, host, reruns + 1);
       }
     }
-    const notes = await readNotes(host, unstarted.length > 0 ? unstarted : finished, calls);
-    const tried = triedLine(unstarted.length > 0, reruns, notes, env.PIPELINE_START_TIMEOUT_MS);
-    const body = `${renderInfra(code, seen, notes)}${tried}${errors.map((error) => `rerun: ${error}\n`).join('')}`;
-    const result = blockedEnd(
-      report(opened, code === 'CI_TIMEOUT' ? 'CI timed out' : 'CI did not run', body),
+    return infraBlockedEnd({
+      opened,
+      calls,
+      host,
       code,
-      body,
-    );
-    const issue = issueOf(CI_INFRA_SOURCE, code, body);
-    return { ...result, outputs: [...result.outputs, { artifact: ARTIFACTS.issues, value: [issue] }] };
+      seen,
+      unstarted,
+      finished,
+      reruns,
+      errors,
+      startTimeoutMs: env.PIPELINE_START_TIMEOUT_MS,
+    });
   }
 }
