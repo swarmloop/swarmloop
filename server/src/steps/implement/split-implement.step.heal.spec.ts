@@ -4,7 +4,7 @@ import { ERROR_CODES } from '../../contract/error-codes';
 import { parseSubtasks } from '../../contract/subtask';
 import { DocumentRepository } from '../../history/document.repository';
 import { CommandService } from '../../pipeline/command.service';
-import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { RunHosts } from '../../integrations/code-host/run-hosts';
 import type { CodeHost } from '../../integrations/code-host/code-host';
 import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { RunRepository } from '../../history/run.repository';
@@ -138,7 +138,8 @@ describe('split implement, subtasks that heal or block', () => {
       mergeMergeRequest: () => Promise.resolve({ sha: 'abc', httpCalls: [] }),
       deleteBranch: () => Promise.resolve({ httpCalls: [] }),
     };
-    jest.spyOn(app.app.get(CodeHostRegistry), 'byName').mockReturnValue(host as unknown as CodeHost);
+    jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue(host as unknown as CodeHost);
+    jest.spyOn(RunHosts.prototype, 'requiredCredentials').mockReturnValue({} as never);
     const commands = app.app.get(CommandService);
     const accept = commands.accept.bind(commands);
     const rebased: string[] = [];

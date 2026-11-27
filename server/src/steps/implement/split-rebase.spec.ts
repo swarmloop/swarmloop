@@ -22,7 +22,7 @@ function setup(options: { keeps: string[]; conflicting: string[] }) {
     },
   } as unknown as SubtaskOps;
   const hosts = {
-    forRun: () => Promise.resolve({ byName: () => ({ readMergeRequest: () => Promise.resolve({ conflicts: true }) }) }),
+    hostFor: () => Promise.resolve({ readMergeRequest: () => Promise.resolve({ conflicts: true }) }),
   } as unknown as CodeHostRegistry;
   return { moved, rebase: new SplitRebase(subtasks, hosts) };
 }

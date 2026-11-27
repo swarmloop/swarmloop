@@ -148,7 +148,7 @@ describe('pipeline step while the host is down', () => {
       await seed(app, key, `project: group/demo\nref: feature/task\nsha: ${sha}\n`);
       const runs = app.get(RunRepository);
       await app.get(DocumentRepository).putDocument((await runs.findRun(key))!, 'repos', 'demo\n');
-      app.get(CodeHostRegistry).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
+      (await app.get(CodeHostRegistry).forRun(null)).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
         reason: 'MR has conflicts',
         code: 'merge-conflict' as const,
         httpCalls: [],

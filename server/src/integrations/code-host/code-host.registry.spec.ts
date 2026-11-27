@@ -14,11 +14,20 @@ function registryFor(values: typeof env): CodeHostRegistry {
 }
 
 describe('code host registry', () => {
-  it('returns each named host', () => {
-    const hosts = registryFor(env);
+  it('returns each named host', async () => {
+    const hosts = await registryFor(env).forRun(null);
     expect(hosts.byName('github').name).toBe('github');
     expect(hosts.byName('gitlab').name).toBe('gitlab');
     expect(() => hosts.byName('')).toThrow(/code host is missing/);
+  });
+
+  it('names hosts and matches origins without giving a host to call', () => {
+    const hosts = registryFor(env);
+    expect(hosts.names).toEqual(['github', 'gitlab']);
+    expect(hosts.has('gitlab')).toBe(true);
+    expect(hosts.has('other')).toBe(false);
+    expect(hosts.forOrigin('https://github.com/acme/demo.git')).toBe('github');
+    expect('byName' in hosts).toBe(false);
   });
 
   it('matches an https and an ssh origin for each vendor', () => {
@@ -67,13 +76,12 @@ describe('code host credentials', () => {
     ).toThrow(/gitlab\.example matches both code hosts/);
   });
 
-  it('selects the named credential pair and rejects an empty name', () => {
+  it('selects the named credential pair and rejects an empty name', async () => {
     expect(registryFor(env).credentials('github').tokenKey).toBe('GITHUB_TOKEN');
     expect(registryFor(env).credentials('gitlab').baseKey).toBe('GITLAB_BASE_URL');
     expect(() => registryFor(env).credentials('')).toThrow(/code host is missing/);
-    expect(() => registryFor({ ...env, GITHUB_TOKEN: '' }).requiredCredentials('github')).toThrow(
-      /GITHUB_TOKEN is missing/,
-    );
+    const unset = await registryFor({ ...env, GITHUB_TOKEN: '' }).forRun(null);
+    expect(() => unset.requiredCredentials('github')).toThrow(/GITHUB_TOKEN is missing/);
   });
 
   it('keeps one host for the run', () => {

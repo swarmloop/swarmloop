@@ -202,7 +202,7 @@ describe('pipeline step', () => {
     try {
       await seed(app, 'PROJ-311');
       const run = await app.get(RunRepository).findRun('PROJ-311');
-      const host = app.get(CodeHostRegistry).byName('gitlab');
+      const host = (await app.get(CodeHostRegistry).forRun(null)).byName('gitlab');
       const diagnose = jest.fn(async () => ({
         reason: 'PR has merge conflicts; rebase onto the latest base.',
         httpCalls: [call('GET')],

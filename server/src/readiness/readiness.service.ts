@@ -317,7 +317,8 @@ export class ReadinessService {
   private async hostToken(name: (typeof this.hosts.names)[number]): Promise<Outcome> {
     const key = this.hosts.credentials(name).tokenKey;
     try {
-      await withinWait(this.hosts.byName(name).readCurrentUser(), HOST_WAIT_MS);
+      const host = (await this.hosts.forRun(null)).byName(name);
+      await withinWait(host.readCurrentUser(), HOST_WAIT_MS);
     } catch (error) {
       const calls = error instanceof FetchFailed ? error.httpCalls : [];
       if (calls.some((call) => call.statusCode === 401 || call.statusCode === 403)) {

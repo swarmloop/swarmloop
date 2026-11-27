@@ -17,7 +17,7 @@ const bundle: IssueBundle = {
 describe('service context', () => {
   const tracker = { fetch: jest.fn(), ticketKeys: jest.fn() };
   const host = { findMergeRequest: jest.fn() };
-  const hosts = { byName: jest.fn(() => host), forRun: () => Promise.resolve(hosts) };
+  const hosts = { hostFor: jest.fn(() => Promise.resolve(host)) };
   const config = { env: { SWARMLOOP_ROOT: '/tmp/swarmloop' } };
   const runs = { findRun: jest.fn(async () => ({ codeHost: 'gitlab' })) };
   const documents = { latestBody: jest.fn() };
@@ -39,7 +39,7 @@ describe('service context', () => {
     tracker.fetch.mockReset();
     tracker.ticketKeys.mockReset();
     host.findMergeRequest.mockReset();
-    hosts.byName.mockClear();
+    hosts.hostFor.mockClear();
     documents.latestBody.mockReset();
     runs.findRun.mockReset();
     runs.findRun.mockResolvedValue({ codeHost: 'gitlab' });

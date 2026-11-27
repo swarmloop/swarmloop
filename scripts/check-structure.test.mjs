@@ -564,6 +564,26 @@ test('only the epic main door decides which epic takes main', () => {
   }
 });
 
+test('a code host is reached only through the door of the run person', () => {
+  const byName = 'const host = (await this.hosts.forRun(run.startedBy)).byName(run.codeHost);\n';
+  const token = 'const scoped = host.withToken(token);\n';
+
+  assert.equal(check({ 'server/src/steps/implement/split-merge.ts': byName }).length, 1);
+  assert.equal(check({ 'server/src/pipeline/run-driver.ts': token }).length, 1);
+  for (const allowed of [
+    'server/src/integrations/code-host/code-host.registry.ts',
+    'server/src/steps/prepare/remote-repositories.service.ts',
+    'server/src/steps/shared/repository-host.ts',
+    'server/src/steps/shared/rebased-publisher.ts',
+    'server/src/readiness/readiness.service.ts',
+    'server/src/testing/flow-harness.ts',
+    'server/src/steps/implement/split-rebase.spec.ts',
+  ]) {
+    assert.deepEqual(check({ [allowed]: byName + token }), [], allowed);
+  }
+  assert.deepEqual(check({ 'server/src/steps/shared/call-context.ts': 'await this.starts.forRun(run.id);\n' }), []);
+});
+
 test('only the own-change files say what a move carries', () => {
   const onto = "await git(['-C', path, 'rebase', '--onto', base, old]);\n";
   const mergeBase = "await git(['merge-base', 'HEAD', tip]);\n";

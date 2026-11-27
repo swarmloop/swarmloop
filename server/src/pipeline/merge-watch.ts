@@ -126,7 +126,7 @@ export class MergeWatch {
     let closed: MergeOutcome | null = null;
     let open = false;
     for (const { project, iid, url } of records) {
-      const state = await this.lookup.state(run.codeHost, project, iid);
+      const state = await this.lookup.state(run, project, iid);
       if (state.state === 'closed') {
         closed ??= { closed: { repo: project, by: state.by, at: state.at } };
         if (settleAtOnce) return closed;

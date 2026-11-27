@@ -17,7 +17,7 @@ const ready = renderMergeRequest([
 
 /** A code host that accepts every draft change. */
 const registry = {
-  byName: () => ({ setDraft: () => Promise.resolve({ httpCalls: [] }) }),
+  hostFor: () => Promise.resolve({ setDraft: () => Promise.resolve({ httpCalls: [] }) }),
 } as unknown as CodeHostRegistry;
 
 describe('RunReopen', () => {
@@ -59,9 +59,10 @@ describe('RunReopen', () => {
 
   it('reopens the run and waits for the next try when the code host does not answer', async () => {
     const down = {
-      byName: () => ({
-        setDraft: () => Promise.reject(new HostUnavailable('gitlab', 'timeout', '2026-01-01T00:05:00.000Z')),
-      }),
+      hostFor: () =>
+        Promise.resolve({
+          setDraft: () => Promise.reject(new HostUnavailable('gitlab', 'timeout', '2026-01-01T00:05:00.000Z')),
+        }),
     } as unknown as CodeHostRegistry;
     const { db, runs, reopen, start, started } = await setup(
       (run) => writeRunState(run, { status: 'done', currentStep: 'done' }),

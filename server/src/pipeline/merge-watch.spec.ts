@@ -36,7 +36,7 @@ describe('MergeWatch', () => {
     app = await boot(swarm);
     answers = new Map();
     reads = 0;
-    jest.spyOn(app.get(MergeRequestLookup), 'state').mockImplementation((_host, project, iid) => {
+    jest.spyOn(app.get(MergeRequestLookup), 'state').mockImplementation((_run, project, iid) => {
       reads += 1;
       const answer = answers.get(`${project}#${iid}`) ?? new Error('no answer');
       return answer instanceof Error ? Promise.reject(answer) : Promise.resolve({ ...answer, httpCalls: [] });
