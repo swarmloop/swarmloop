@@ -269,6 +269,8 @@ function wire(harness: FlowHarness, key: string, taskWorktrees = false): void {
   if (!taskWorktrees) jest.spyOn(harness.app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
   const registry = harness.app.app.get(CodeHostRegistry);
   jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue(harness.host as unknown as CodeHost);
+  // The fake host stands for the door, so a run needs no real token in the environment.
+  jest.spyOn(RunHosts.prototype, 'requiredCredentials').mockReturnValue(harness.host.selected());
   // A fetch of the server names the url with the token, which `useGitlabOrigin` maps to the local bare repository.
   jest
     .spyOn(registry, 'tokensFor')
@@ -288,7 +290,6 @@ function wireBacklog(harness: FlowHarness): void {
   const registry = app.get(CodeHostRegistry);
   jest.spyOn(registry, 'forRun').mockReturnValue(registry.forRun(null));
   jest.spyOn(RunHosts.prototype, 'forOrigin').mockReturnValue(harness.host.name);
-  jest.spyOn(RunHosts.prototype, 'requiredCredentials').mockReturnValue(harness.host.selected());
 }
 
 /**
