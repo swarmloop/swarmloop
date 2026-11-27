@@ -10,6 +10,7 @@ import type { CheckCommandView, FlowView } from '@contract/api';
 import type { StateReason } from '@contract/run-state';
 import { withReport } from '../phases';
 import { StepCard } from './step-card';
+import { returnLine } from './return-words';
 
 export function FlowBoard({
   phases,
@@ -69,6 +70,11 @@ export function FlowBoard({
           </Box>
         ))}
       </Box>
+      {returns.map((edge) => (
+        <Typography key={edge.counter} variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+          {returnLine(edge)}
+        </Typography>
+      ))}
     </Box>
   );
 }

@@ -186,7 +186,7 @@ export function shownStatus(
   return status;
 }
 
-/** The status word of a step's window: a restart wait, a relaunched step that has not run again yet, else the shown status of its visit. */
+/** The status word of a step's window: a restart wait, a relaunched step that has not run again yet (not started, or will run again), else the shown status of its visit. */
 export function windowLabel(
   restartWait: boolean,
   boardStatus: string | undefined,
@@ -201,8 +201,8 @@ export function windowLabel(
   if (!visit) {
     return '';
   }
-  return boardStatus === 'idle'
-    ? stepState('idle', null).word
+  return boardStatus === 'idle' || boardStatus === 'again'
+    ? stepState(boardStatus, null).word
     : shownStatus(visit.status, latest, runStatus, step, visit.decision, visit.killReason);
 }
 

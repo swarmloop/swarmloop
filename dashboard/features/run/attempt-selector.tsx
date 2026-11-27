@@ -34,17 +34,25 @@ export function AttemptSelector({
 }): ReactElement {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const current = useRef<HTMLButtonElement | null>(null);
+  const rowRef = useRef<HTMLDivElement | null>(null);
   const earlier = items.slice(0, -VISIBLE_ATTEMPTS);
   const chosen = earlier.find((item) => item.key === selected);
   const position = items.findIndex((item) => item.key === selected) + 1 || items.length;
   const shown = [...(chosen ? [chosen] : []), ...items.slice(-VISIBLE_ATTEMPTS)];
 
+  // Only the row moves sideways to the chosen attempt; scrollIntoView would scroll the page as well.
   useEffect(() => {
-    current.current?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' });
+    const row = rowRef.current;
+    const button = current.current;
+    if (!row || !button) return;
+    const rowBox = row.getBoundingClientRect();
+    const buttonBox = button.getBoundingClientRect();
+    if (buttonBox.left < rowBox.left) row.scrollLeft += buttonBox.left - rowBox.left;
+    else if (buttonBox.right > rowBox.right) row.scrollLeft += buttonBox.right - rowBox.right;
   }, [selected, items.length]);
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflowX: 'auto', minWidth: 0 }}>
+    <Box ref={rowRef} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflowX: 'auto', minWidth: 0 }}>
       {caption ? (
         <Typography component="span" color="text.secondary" sx={{ fontSize: 13, flexShrink: 0 }}>
           {`${caption} ${position} of ${items.length}`}

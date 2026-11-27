@@ -13,6 +13,7 @@ import { stateWord, type StateReason } from '@contract/run-state';
 import { stepState } from '@contract/step-state';
 import { StepStateIcon } from '../step-state-icon';
 import { toneColor } from '../run-state-word';
+import { visitsLine } from './return-words';
 
 type Step = FlowView['phases'][number]['steps'][number];
 
@@ -104,6 +105,18 @@ function StepNotes({ step }: { step: Step }): ReactElement {
           {step.note ?? (step.restartedAt ? restartWaitSentence(step.restartedAt, localTime) : undefined)}
         </Box>
       ) : null}
+      {step.status === 'again' ? (
+        <>
+          <Box component="span" sx={{ fontSize: 10, color: 'text.secondary' }}>
+            will run again
+          </Box>
+          {step.lastOutcome ? (
+            <Box component="span" sx={{ fontSize: 10, color: 'text.secondary' }}>
+              {step.lastOutcome}
+            </Box>
+          ) : null}
+        </>
+      ) : null}
       {step.attempts > 1 ? (
         <Box component="span" sx={{ ml: 'auto', fontSize: 10, color: 'text.secondary' }}>
           {`×${step.attempts}`}
@@ -133,8 +146,14 @@ function returnWords(returns: FlowView['returns'], step: string): string {
   return returns.find((edge) => edge.from === from)?.words ?? 'Sent work back';
 }
 
-/** What the hover on a card says: why a step went back, or what the run waits for. */
+/** What the hover on a card says: why a step went back, or what the run waits for, then which returns made its visits. */
 function cardTip(step: Step, returns: FlowView['returns'], stateReason: StateReason | null): string {
+  return [stateTip(step, returns, stateReason), visitsLine(step.name, step.attempts, returns)]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function stateTip(step: Step, returns: FlowView['returns'], stateReason: StateReason | null): string {
   if (step.status === 'returned') return step.returnNote ?? returnWords(returns, step.name);
   if (step.status === 'waiting' && step.current) return stateWord('waiting', stateReason, {}, localTime).word;
   return '';

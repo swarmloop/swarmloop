@@ -32,27 +32,19 @@ import { withRestartWait } from './run-view/restart-wait';
 import { parentOf } from './run-view/merge-wait';
 import { epicTotal } from '../steps/shared/epic-total';
 import { STEP_KINDS } from './run-view/run-view.types';
-import { angleVerdict, decisionLine, decisionStatus } from './run-view/chips';
 import { latest, metrics, phases, returns, runName } from './run-view/flow';
 import { openRelaunch, relaunchViews } from './run-view/relaunch';
 import { reason, sentence, withSkip } from './run-view/flow-waiting';
-import { belongsToVisit, documentView, interruptionOf, withReturnNotes } from './run-view/documents';
+import { withReturnNotes } from './run-view/documents';
+import { storedVisits } from './run-view/stored-visits';
 import { mergeRequestViews } from './run-view/merge-requests';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { shownRun } from './run-view/own-state';
 import { ReviewerSteps } from './run-view/reviewer-steps';
-import { visitKey } from '../contract/visit-key';
 import { launchView, liveVisit } from './run-view/live';
-import {
-  commandViewsOf,
-  effortOf,
-  exchangesOf,
-  latestCommandViews,
-  reviewChecks,
-  samplesOf,
-} from './run-view/visit-parts';
+import { commandViewsOf, latestCommandViews, reviewChecks } from './run-view/visit-parts';
 import { eventPaging, requireRun, runState, stepMeta } from './run-queries-run';
-import { outputsOf, readCheckLog, readStepLog, visitLogSize } from './run-queries-log';
+import { outputsOf, readCheckLog, readStepLog } from './run-queries-log';
 import { openItems } from '../steps/shared/open-items';
 import { QuestionHolds } from '../steps/shared/question-holds';
 import { viewTitle } from './run-view/run-title';
@@ -186,6 +178,7 @@ export class RunQueriesService {
             this.openRounds?.of(run.key),
             checkCommands,
             openRelaunch(relaunches),
+            this.serverSteps(),
           ),
           this.gate.agentWait(run.key),
         ),
@@ -232,6 +225,16 @@ export class RunQueriesService {
     const shown = shownRun(run, (held) => this.pipeline.claimed(held));
     const state = await runState(this.commands, shown, open, parkedConflictIn(documents, run));
     return { open, shown, state };
+  }
+
+  /** The steps that run no agent: their visits are the stored ones. */
+  private serverSteps(): Set<string> {
+    return new Set(
+      this.registry
+        .describe(this.config.env)
+        .filter((entry) => entry.kind === 'server')
+        .map((entry) => entry.name),
+    );
   }
 
   private taskSources(): TaskSources {
@@ -283,38 +286,7 @@ export class RunQueriesService {
     const samples = await this.visits.listSamples(stats.map((stat) => stat.id));
     const kinds = [...(STEP_KINDS[name] ?? []), 'error'];
     const outputs = await outputsOf(this.config, run, runStats, false);
-    const visits: VisitView[] = stats.map((stat, index) => {
-      const owned = documents.filter((document) => document.stepStatId === stat.id);
-      const verdict = name === 'code-review' ? angleVerdict(owned) : null;
-      const interruption = interruptionOf(owned, stat.id);
-      return {
-        id: stat.id,
-        key: visitKey(stat.id),
-        attempt: stat.attempt,
-        status: decisionStatus(verdict, stat.status),
-        model: stat.model,
-        ...effortOf(stat),
-        mode: stat.mode,
-        durationMs: stat.durationMs,
-        preparedMs: stat.preparedMs,
-        tokensIn: stat.tokensIn,
-        tokensOut: stat.tokensOut,
-        usd: stat.usd,
-        cpuAvg: stat.cpuAvg,
-        cpuPeak: stat.cpuPeak,
-        memAvg: stat.memAvg,
-        memPeak: stat.memPeak,
-        killReason: stat.killReason,
-        ...(interruption ? { interruption } : {}),
-        decision: verdict ? `decision: ${verdict}` : decisionLine(owned.map((document) => document.body).join('\n')),
-        ...visitLogSize(outputs, run, name, stat),
-        documents: documents
-          .filter((document) => belongsToVisit(document, stat.id, kinds, index === stats.length - 1))
-          .map(documentView),
-        exchanges: exchangesOf(exchanges, stat.id),
-        samples: samplesOf(samples, stat.id),
-      };
-    });
+    const visits = storedVisits({ run, name, stats, documents, exchanges, samples, outputs, kinds });
     if (run.status === 'running' && run.currentStep === name) {
       visits.push(this.runningVisit(run, name, stats.at(-1)?.attempt ?? 0));
     }

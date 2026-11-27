@@ -34,6 +34,8 @@ function header(view: StepView, attempt: number) {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  delete (document.documentElement as { scrollTop?: number }).scrollTop;
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
 });
 
 describe('AttemptSelector in the step header', () => {
@@ -152,9 +154,40 @@ describe('AttemptSelector in the step header', () => {
   });
 
   it('scrolls inside its own box and never widens the panel', () => {
-    render(header(stepView({ visits: visits(12) }), 11));
-
-    const strip = screen.getByRole('button', { name: '12' }).parentElement;
+    const view = stepView({ visits: visits(12) });
+    const { rerender } = render(header(view, 4));
+    const strip = screen.getByRole('button', { name: '12' }).parentElement as HTMLElement;
     expect(strip).toHaveStyle({ overflowX: 'auto', minWidth: '0' });
+
+    // jsdom keeps no scroll offsets and has no layout: give the row and the page offsets, and the buttons 40 px each.
+    const page = document.documentElement;
+    Object.defineProperty(strip, 'scrollLeft', { value: 0, writable: true });
+    Object.defineProperty(page, 'scrollTop', { value: 0, writable: true, configurable: true });
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      value: () => {
+        page.scrollTop = 500;
+      },
+      configurable: true,
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const left =
+        this === strip
+          ? 0
+          : Array.from(strip.querySelectorAll('button')).indexOf(this as HTMLButtonElement) * 40 - strip.scrollLeft;
+      const width = this === strip ? 100 : 40;
+      return { left, right: left + width, width, top: 0, bottom: 0, height: 0, x: left, y: 0, toJSON: () => ({}) };
+    });
+
+    rerender(header(view, 11));
+
+    // The row is 100 px wide; the last button ends at 360 px and has to end at the row's edge.
+    expect(strip.scrollLeft).toBe(260);
+    expect(page.scrollTop).toBe(0);
+
+    rerender(header(view, 4));
+
+    // Attempt 5 is the first visit button, after `Earlier`: it starts at 40 px, so the row ends at its left edge.
+    expect(strip.scrollLeft).toBe(40);
+    expect(page.scrollTop).toBe(0);
   });
 });

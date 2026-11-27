@@ -25,8 +25,14 @@ describe('returnWords', () => {
     expect(returnWords('pipeline', loop('x', { jobs: ['test', 'lint'] }), [])).toBe('CI sent it back: test, lint');
   });
 
-  it('says only who sent it back when nothing names the cause', () => {
-    expect(returnWords('pipeline', loop('merge conflict'), [])).toBe('CI sent it back');
+  it('says the first line of the reason when nothing names the cause', () => {
+    expect(returnWords('pipeline', loop('merge conflict: automatic rebase\nmore'), [])).toBe(
+      'CI sent it back: merge conflict: automatic rebase',
+    );
+  });
+
+  it('says only who sent it back when nothing names the cause and the reason is empty', () => {
+    expect(returnWords('pipeline', loop(''), [])).toBe('CI sent it back');
   });
 
   it('gives nothing for a counter that is no return', () => {

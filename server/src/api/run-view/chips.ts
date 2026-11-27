@@ -167,7 +167,11 @@ export function reportChip(
   return { name: 'code-review', status, current: false, attempts: saved };
 }
 
-/** The badge is the visit the detail lists. A relaunch inside that visit does not raise it. A stored step with no launch record stays 0. */
+/**
+ * The badge is the visit the detail lists. A relaunch inside that visit does not raise it. The visits of an agent step
+ * are its agent visits, and a stored one with no launch record stays 0. A server step runs no agent: its visits are the
+ * stored ones, and it needs no launch record.
+ */
 export function chipAttempts(
   name: string,
   run: RunEntity,
@@ -175,16 +179,18 @@ export function chipAttempts(
   documents: DocumentEntity[],
   outputs: OutputFiles,
   round: { attempts: number; status: string } | null,
+  serverSteps: ReadonlySet<string> = new Set(),
 ): number {
   if (isReviewStep(name)) {
     return round ? round.attempts : reviewerAttempts(name, stats, documents);
   }
-  const last = agentVisits(stats.filter((stat) => stat.step === name));
+  const own = stats.filter((stat) => stat.step === name);
+  const last = serverSteps.has(name) ? own.length : agentVisits(own);
   if (run.status === 'running' && run.currentStep === name) {
     return last + 1;
   }
-  if (last === 0) {
-    return 0;
+  if (last === 0 || serverSteps.has(name)) {
+    return last;
   }
   const recorded = join(outputs.root, 'data', runFileName(run.key, name, 'launches'));
   if (!existsSync(recorded) || launchCount(outputs.root, run.key, name, run.activeAttempt) === 0) {

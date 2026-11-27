@@ -9,6 +9,7 @@ import {
   tokenUsage,
   usage,
   visitChecks,
+  windowLabel,
   withFileUsage,
   withLog,
 } from './step-view.ts';
@@ -405,5 +406,14 @@ describe('the visits of a step', () => {
 
   it('gives a file view a live key', () => {
     assert.equal(fileView('code-review-quality', 'x').visits[0]?.key, 'live-code-review-quality-1');
+  });
+});
+
+void describe('windowLabel', () => {
+  void it('says a relaunched step that has run before will run again, and one that has not is not started', () => {
+    const done = visit({ status: 'done' });
+    assert.equal(windowLabel(false, 'again', done, true, 'waiting', 'commit'), 'Will run again');
+    assert.equal(windowLabel(false, 'idle', done, true, 'waiting', 'commit'), 'Not started');
+    assert.equal(windowLabel(false, 'done', done, true, 'waiting', 'commit'), 'done');
   });
 });

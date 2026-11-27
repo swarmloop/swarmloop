@@ -1,7 +1,19 @@
 import { ERROR_CODES } from './error-codes';
 import { stepState } from './step-state';
 
-const STATUSES = ['idle', 'preparing', 'running', 'waiting', 'returned', 'failed', 'blocked', 'skipped', 'done', 'odd'];
+const STATUSES = [
+  'idle',
+  'preparing',
+  'running',
+  'waiting',
+  'returned',
+  'failed',
+  'blocked',
+  'skipped',
+  'done',
+  'again',
+  'odd',
+];
 
 describe('stepState', () => {
   it('has no step status that reads as the word waiting', () => {
@@ -34,6 +46,7 @@ describe('stepState', () => {
     expect(stepState('preparing', null)).toMatchObject({ tone: 'working', icon: 'preparing' });
     expect(stepState('done', null)).toMatchObject({ tone: 'done', icon: 'done' });
     expect(stepState('skipped', null)).toMatchObject({ tone: 'neutral', icon: 'skipped' });
+    expect(stepState('again', null)).toEqual({ word: 'Will run again', tone: 'neutral', icon: 'idle' });
     expect(stepState('odd', null).icon).toBe('idle');
   });
 });
