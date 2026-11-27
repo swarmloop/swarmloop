@@ -218,7 +218,6 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 
 **Today.**
 - The tables hold.
-- A return of an epic does not always reach its implement; f124 (running) closes this.
 
 ## 3.6 Checks and the project environment
 
@@ -239,6 +238,7 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 
 **Today.**
 - The above holds: f118 and f119 added the cores, and the passes are recorded.
+- The Resume of a `CHECK_FAILED` block starts implementation with the stored notes, wherever the block was written (`steps/shared/check-block-resume.ts`); the run view's sentence (`flow-waiting.ts`) reads the same rule, so a block at `checks` no longer runs the same checks again.
 - Since 24.11 the checks run no tests. From 21.11 to 24.11 the server and dashboard tests took 47 of the 61 hours of checks and failed 47 times, most of them timeouts under load. A test that only fails under load is still broken (3.24): steady-vitest and steady-agent-limit fix those tests. Server: each of the four specs that sent runs back on 24.11 takes 2.6 to 6.1 s as a file, alone on four cores and squeezed onto one, before and after the fix (before/after, alone then squeezed: `agent-limit.e2e` 3.8/4.1 s and 4.5/4.9 s, `plan-chat-subtask.e2e` 3.4/3.9 s and 4.1/5.3 s, `runs-rebase.journal` 2.6/2.9 s and 3.5/3.4 s, `flow-default-test.e2e` 4.8/5.1 s and 5.9/6.1 s), so neither a spec's own work nor the workers against the cores explains a timeout. Git is 0.6 to 1.4 s of each file. The numbers of the 71-file run point to one cause, not yet confirmed on the whole suite: a Jest worker's heap grows with every flow spec file (2.3 GB over the 71 files of `server/src/testing` in one process) and a grown worker runs the same spec two to three times slower (`flow-default-test.e2e` 15.4 s grown against 5.8 s fresh, `flow-ci-silent.e2e` 23.3 s against 8 s). `server/jest.config.js` now sets `workerIdleMemoryLimit` to 1500 MB, about four to six times the 250 to 400 MB of a fresh worker, so a grown worker is replaced between files, and `server/jest.global-setup.js` turns off git's `gc.auto` and `maintenance.auto` for every git a spec starts (16 and 23 upkeep processes of about 500 in two of the four specs). In one worker over the files `server/src/testing/[a-f]*.spec.ts` (`npx jest --maxWorkers=1 --logHeapUsage` on one core, cut at 285 s) the heap reached 1962 MB without the limit and 885 MB with it, and `flow-ci-silent.e2e` took 13.9 s against 11.6 s. Over the 37 files `server/src/testing/[a-f]*.e2e.spec.ts` in one worker on one core, `agent-limit.e2e` took 12.2 s without the limit and 5.0 s with it, `flow-default-test.e2e` 9.9 s and 6.3 s, `flow-ci-silent.e2e` 13.2 s and 6.9 s; a second pair of runs of the same files gave 6.5 s and 5.1 s, 7.9 s and 7.6 s, 11.0 s and 8.5 s, with heaps of 328 to 667 MB without the limit and 295 to 641 MB with it, and 231 s against 243 s for the whole set, so the gain of the limit is not stable on this machine and the growth to 2 GB showed only in the 71-file run. `flow-epic-main.e2e` is still the slowest file (12.3 s alone on one core, 21 to 26 s in a run of many files, eight tests sharing the 12.3 s alone) and is left as it is. No whole-suite run has measured the effect; CI's jobs `server-test` and `server-test-seeds` judge the whole server suite, and a spec that is slow under load is not ruled out. The timeout, the worker count and the specs are unchanged. Dashboard: jsdom's `getComputedStyle` matches every emotion style rule on each call, and role queries, clicks and style reads make one per element, so a test slows with the rules in `document.head`. `dashboard/vitest.setup.ts` now empties emotion's style rules after each test (`dashboard/test/emotion-cache.ts`), and the dialog and edit tests were split into one flow each, while the paging, layout and conversation tests were made cheaper. Since 24.11 the dashboard suite runs only in CI, where the `dashboard-test` job judges it; a dialog test still spends a third of its time in `getComputedStyle` on the rules of its own tree, so a test that is slow under load is not ruled out.
 
 ## 3.7 Code review
@@ -251,7 +251,7 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 5. A reviewer's question that it cannot settle goes up the chain (rule 8).
 6. A round interrupted by a restart resumes only its own reviewers' files.
 
-**Today.** Holds (`steps/code-review/`). The f124 parts *review-input* (merged into the epic) and *review-input-read* and *review-input-bytes* (pending) make the review read exactly the committed change.
+**Today.** Holds (`steps/code-review/`). A review reads each worktree's head commit plus a read-only fingerprint of its uncommitted changes, then the brief and the added instructions (`readVisitInput` in `steps/shared/visit-input.ts`, `changeFingerprint` in `git/change-fingerprint.ts`). Its prompt lists the files changed outside the plan through `MergeMarks`' rule (`outsideOwn`; a subtask's own files come from `StarterBriefing.ownFiles`), and the requirements reviewer returns each test among them that the plan or an answer does not approve.
 
 ## 3.8 Commit, merge request and CI
 
@@ -299,10 +299,9 @@ When `main` moves while the epic waits, the epic takes it (rule 6). A conflict g
 
 **Today.**
 - Holds (`steps/implement/split-*`, `pipeline/subtask-*`, `steps/shared/epic-*`, `epic-conflict-implement`), with these gaps:
-  - a return of an epic does not always reach implement (f124);
   - the epic may read its tasks before their queued move has run (epic-round-moves, not in M1);
   - an epic's plan review may not change a task that has not started (plan-review-waiting-part, not in M1).
-- An epic whose pass waits on a question that its parts or its gaps raised takes a new green main too, with no part running (rule 6; `takesMain` in `steps/shared/epic-between-passes.ts`, read by the main move and by an epic's Rebase; a structure rule in `scripts/structure-rules.json` fails any other file that names `takesMain`). Every open part moves with its epic; a part that waits on a question or a sibling is moved and keeps its wait.
+- An epic whose pass waits on a question that its parts or its gaps raised takes a new green main too, with no part running (rule 6; `takesMain` in `steps/shared/epic-between-passes.ts`, which also takes an epic that waits at implement for a green main (`WAITS_FOR_MAIN`), read by the main move and by an epic's Rebase; a structure rule in `scripts/structure-rules.json` fails any other file that names `takesMain`). Every open part moves with its epic; a part that waits on a question or a sibling is moved and keeps its wait.
 - Child runs follow the flow, but several mechanisms have their own code for children (3.11, 3.12).
 
 ## 3.11 Base moves and conflicts
@@ -317,7 +316,7 @@ When `main` moves while the epic waits, the epic takes it (rule 6). A conflict g
 
 The journal makes a rebase that a crash cut finish or roll back. Every git operation on a worktree takes that worktree's lock, so two operations never touch one worktree at once.
 
-**Today.** A relaunch after a rebase is marked on its flow row (`cause: rebase`). The run view and the history read its reason from the subtask's handoff `rebase` note, or say `Rebased onto main`, and show it until its steps ran on the new head; it is not a return. About eight paths move a branch:
+**Today.** A relaunch after a rebase is marked on its flow row (`cause: rebase`). The run view and the history read its reason from the subtask's handoff `rebase` note, or say `Rebased onto main`, and show it until its steps ran on the new head; it is not a return. A run whose red the backlog planner confirms is main's waits for a green main and is then rebased through the existing Rebase and resumed. A plain run goes through `pipeline/backlog/main-wait-wake.ts`, which sends through `main-rebase-send.ts`, the send-once-per-head logic it shares with the epic main move; an epic and its parts take main through the main move. About eight paths move a branch:
 1. a person's Rebase, or a parent's or the machine's (`steps/run-rebase.ts`, `api/run-rebase.service.ts`);
 2. implement finishing a parked rebase (`implement-rebase.ts`);
 3. an epic's own edits (`implement-own-conflict.ts`, `subtask-worktrees.commitOwnEdits`);
@@ -347,6 +346,7 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 - Gaps:
   - a planner's change can overwrite one it did not see (f130).
 - A backlog planner turn takes what arrives while it runs: `TurnTakes` (`pipeline/backlog/planner/turn-takes.ts`) holds the window of the running turn, each take goes through the one `takeInto` (`history/backlog-chat.repository.ts`), and `turn-runner.ts` closes the window after the first valid answer and sends what the turn took since its brief as one follow-up through `AgentLauncher` on the turn's key (`followUp` in `turn-prompt.ts`, facts from the same `BacklogTurnState` reading as the brief's events); the answer to it is the one applied, and what comes after waits for the next turn.
+- Implement of any run sends a need that names no task up the chain (`steps/implement/implement-asks.ts`, `StarterExchange`); a red outside the task's own files is sent up that way, not changed.
 - A backlog planner turn hands heavy reading to the helpers of `AGENTS_BACKLOG_READ` (`pipeline/backlog/planner/turn-runner.ts`, `skills/backlog-plan/SKILL.md`); the turn stays read-only and its row counts the helpers' tokens and dollars. `AgentLauncher` asks for the code-only-by-helper rights with the helper on every launch that gets one, Claude Code's adapter denies the turn's agent its own Read and Glob of the code and Bash, and a settled task shows in the turn's brief as one line. Only Claude Code turns get a helper today (3.21).
 
 ## 3.13 Questions to a person
@@ -366,6 +366,8 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 - question parts and holds;
 - the answers route.
 - f129's message route has no structure rule: `messageTurn` is a pure decision its readers import, and a second decision would carry another name that no pattern catches.
+
+The backlog planner's answer to a run's question, given while an unsettled fix task for a red main names the run's repository and that main is not green, holds the run for that main (`pipeline/backlog/red-main-wait.ts`).
 
 A part's starter answer escalates by the chain of f124 (`starter-answer.ts`, `StarterExchange`).
 Every other planner answer, a step's question and a reply to a message on any path (the plan step's `answerMessages`, f129's own turn), has its `escalate` read by one function (`steps/shared/reply-escalation.ts`). It goes up only through `pipeline/escalation.ts`: `PlannerTurns.raise` puts the entry the plan step wrote to the person or, on a backlog run, to the backlog planner first. A subtask's message escalation is a `StarterExchange` hand-up for its epic's planner. A person's message has no step to read the planner's answer, so that answer is a taken line of the chat.
@@ -409,7 +411,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 
 **Today.**
 - Waits are kept in many ways:
-  - the run's state and reason (13 states, 29 error codes, 18 reason codes);
+  - the run's state and reason (13 states, 29 error codes, 19 reason codes);
   - `run_waits` stretches;
   - runtime and credential cooldowns;
   - agent places and check slots;
@@ -417,6 +419,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
   - child-run waits;
   - a stopped run's pending message in its plan chat, which waits for the model host (`wait` of the entry).
 - Outside waits (usage limit, code or model host, CI not started, docker, disk, git auth) end by one table (`contract/outside-waits.ts`) and one reconciler pass (`ReconcilerResumes.resumeOutsideWaits`), which also takes a stopped run's pending message at its next try. The backlog's turn wait, merges, main readings and an epic's main move read the same table. A structure rule fails an outside-wait test outside that table and `model-host-unavailable.ts`. The stall watch's tries stay with 3.16.
+- The wait for a green main (`WAITS_FOR_MAIN`) is not an outside wait: it ends only when a backlog fix task lands and main reads green, which only the scheduler's main reading sees. That reading is its single wake rule (`MainWaitWake` for a plain run, the epic main move for an epic and its parts), and its rebase reads a failed try through the same table (`outsideWaitOf`). Gap: an epic that already holds main's green head waits for the next head.
 - An agent start that waits before its first output, for a free agent place (with how many are busy) or for the server's pause, stores that wait with its run's state (on its turn row for a backlog planner turn) through `steps/shared/start-waits.ts` (a structure rule fails any other file that calls `recordStartWait`), and the run page, the run list and the backlog chat show it. A place comes back when its launch ends, because the launch ends its container in every ending (`agent/agent-launch.ts`).
 - wait-frees-place and held-run-says-so come after.
 
