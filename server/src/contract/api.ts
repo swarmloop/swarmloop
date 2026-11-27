@@ -10,6 +10,7 @@ import type { ConversationView } from './plan-chat';
 import type { RelaunchView } from './relaunch';
 
 export type { SettingsBody, StoredAgents } from './settings';
+export type { ConnectionView, ConnectionsView, TokenSignInView, ProvidersView } from './host-login';
 export type {
   RunOutcome,
   StatsCiReturns,
@@ -377,33 +378,6 @@ export interface RemoteListView {
   allowedNames: string[];
 }
 
-/** One host on the Connections page. It never holds a token or a secret. */
-export interface ConnectionView {
-  host: string;
-  /** What the host calls the app of its login: `App` or `Application`. */
-  appLabel: string;
-  /** True when the host has installations that choose repositories. */
-  installs: boolean;
-  /** The app or OAuth application of the host, by name and client id. Null when none is set up. */
-  app: { name: string; clientId: string; madeBy?: string | null; settingsUrl?: string | null } | null;
-  /** The login of the person, or null when they are not connected on this host. */
-  account: string | null;
-  /** `owner/name` of the repositories the installation covers. */
-  repositories: string[];
-  selection: 'all' | 'selected' | null;
-  health: { status: 'ok' | 'broken'; expiresAt: string | null; refreshedAt: string | null } | null;
-  /** `owner/name` of the repositories this server works on that neither the installation nor the server's token reaches. */
-  unreachable?: string[];
-  /** People connected through the app; only for who may replace it. */
-  connected?: string[];
-  /** True when the viewer may replace the app: its maker, or an admin. */
-  mayReplace: boolean;
-}
-
-export interface ConnectionsView {
-  connections: ConnectionView[];
-}
-
 export interface CreateRepositoryBody {
   host: RemoteRepository['host'];
   owner: string;
@@ -415,19 +389,6 @@ export interface CreateRepositoryBody {
 export interface ProjectsView {
   projects: string[];
   applied: boolean;
-}
-
-/** A host where a person signs in by pasting a personal access token: where it is made. */
-export interface TokenSignInView {
-  provider: string;
-  base: string;
-  tokenPage: string;
-}
-
-/** `/auth/providers`: the hosts with a login, and the hosts that take a token. */
-export interface ProvidersView {
-  providers: string[];
-  tokens: TokenSignInView[];
 }
 
 /** `/auth/me`: who is signed in. */
