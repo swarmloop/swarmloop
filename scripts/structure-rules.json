@@ -109,6 +109,37 @@
       "include": "server/src/",
       "exclude": "\\.spec(-helpers)?\\.ts$",
       "allowFiles": [
+        "server/src/integrations/code-host/",
+        "server/src/steps/prepare/remote-repositories.service.ts",
+        "server/src/steps/shared/repository-host.ts",
+        "server/src/steps/shared/rebased-publisher.ts",
+        "server/src/readiness/readiness.service.ts",
+        "server/src/testing/"
+      ],
+      "reasons": {
+        "server/src/integrations/code-host/": "the door itself: the registry builds the hosts of a person",
+        "server/src/steps/prepare/remote-repositories.service.ts": "a person's own list, clone and create",
+        "server/src/steps/shared/repository-host.ts": "a person's own main reading",
+        "server/src/steps/shared/rebased-publisher.ts": "git push credentials of the run's person, no host API call",
+        "server/src/readiness/readiness.service.ts": "the server's own token, no person",
+        "server/src/testing/": "test harness that stubs the door; product code never imports it"
+      },
+      "allowLine": "\\bstarts\\.forRun\\(",
+      "pattern": "\\.forRun\\(|\\bwithToken\\(|\\bnew RunHosts\\("
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/integrations/code-host/"],
+      "reasons": {
+        "server/src/integrations/code-host/": "the door itself: the registry builds the hosts from the adapters"
+      },
+      "pattern": "\\b\\w*[aA]dapters?\\w*(\\([^)]*\\))?(\\[[^\\]]*\\])?[!?]?\\.create\\("
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
         "server/src/git/rebase/own-change.ts",
         "server/src/pipeline/parent-tree-sync.ts",
         "server/src/pipeline/subtask-worktrees.ts"

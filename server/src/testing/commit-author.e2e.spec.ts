@@ -33,8 +33,9 @@ describe('the person of a run is the author and committer of its commits', () =>
     const runs = flow.app.app.get(RunRepository);
     await storeRun(runs, { ...run, startedBy: person });
     const registry = flow.app.app.get(CodeHostRegistry);
-    jest.spyOn(registry, 'forRun').mockResolvedValue(registry);
-    jest.spyOn(registry, 'requiredCredentials').mockReturnValue(flow.host.selected());
+    const hosts = await registry.forRun(null);
+    jest.spyOn(registry, 'forRun').mockResolvedValue(hosts);
+    jest.spyOn(hosts, 'requiredCredentials').mockReturnValue(flow.host.selected());
   }
 
   async function commitOne(): Promise<string> {

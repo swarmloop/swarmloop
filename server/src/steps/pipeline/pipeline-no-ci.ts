@@ -13,29 +13,26 @@ export interface NoCiProject {
   refused: boolean;
 }
 
-/** The records and what was seen of them, without the given projects. */
-export function leaveOut(
-  projects: NoCiProject[],
-  records: PipelineRef[],
-  seen: Seen[],
-): { records: PipelineRef[]; seen: Seen[] } {
-  const gone = new Set(projects.map((item) => item.project));
-  return {
-    records: records.filter((ref) => !gone.has(ref.project)),
-    seen: seen.filter((item) => !gone.has(item.project)),
-  };
+/** What the step waits for: the records and what was seen of them, and the projects left out of the wait. */
+export interface CiScope {
+  records: PipelineRef[];
+  seen: Seen[];
+  dropped: NoCiProject[];
 }
 
 /**
- * Leaves out each project that showed no run and no check and has no CI by the one rule (`noCi`): the host refuses to
- * read its pipelines, or neither its main nor the run's branch ever had one. The rest is waited for as it is.
+ * Leaves out each project that showed no run and no check and has no CI by the one rule (`noCi`). A project whose host
+ * refuses to read its pipelines can never show a run, so it is left out whatever its tree holds. A project that never
+ * had one is left out unless its tree has a CI file (`ciFiles`): that one is waited for, and a run that never starts is
+ * a missing pipeline. The rest is waited for as it is.
  */
 export async function dropNoCi(
   host: CodeHost,
   records: PipelineRef[],
   seen: Seen[],
   calls: HttpCallDraft[],
-): Promise<{ records: PipelineRef[]; seen: Seen[]; dropped: NoCiProject[] }> {
+  ciFiles: Set<string>,
+): Promise<CiScope> {
   const dropped: NoCiProject[] = [];
   for (const item of seen) {
     const record = records.find((ref) => ref.project === item.project);
@@ -44,11 +41,16 @@ export async function dropNoCi(
     }
     const { cause, refused, httpCalls } = await noCi(host, record);
     calls.push(...httpCalls);
-    if (cause) {
+    if (cause && (refused || !ciFiles.has(item.project))) {
       dropped.push({ project: item.project, cause, refused });
     }
   }
-  return { ...leaveOut(dropped, records, seen), dropped };
+  const gone = new Set(dropped.map((item) => item.project));
+  return {
+    records: records.filter((ref) => !gone.has(ref.project)),
+    seen: seen.filter((item) => !gone.has(item.project)),
+    dropped,
+  };
 }
 
 /** Why a run with no CI at all ends skipped, in the words of a CI skip. */

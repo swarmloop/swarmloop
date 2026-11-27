@@ -9,6 +9,7 @@ import { PERSON_RESUME } from '../pipeline/resume-sender';
 import * as delays from '../core/delay';
 import { Reconciler } from '../pipeline/reconciler';
 import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { RunHosts } from '../integrations/code-host/run-hosts';
 import type { CodeHost } from '../integrations/code-host/code-host';
 import { AgentCallRepository } from '../history/agent-call.repository';
 import { seedCall } from '../history/agent-call.spec-helpers';
@@ -265,7 +266,9 @@ function useDisk(harness: FlowHarness, bytes: number): void {
 function wire(harness: FlowHarness, key: string, taskWorktrees = false): void {
   if (!taskWorktrees) jest.spyOn(harness.app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
   const registry = harness.app.app.get(CodeHostRegistry);
-  jest.spyOn(registry, 'byName').mockReturnValue(harness.host as unknown as CodeHost);
+  jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue(harness.host as unknown as CodeHost);
+  // The fake host stands for the door, so a run needs no real token in the environment.
+  jest.spyOn(RunHosts.prototype, 'requiredCredentials').mockReturnValue(harness.host.selected());
   // A fetch of the server names the url with the token, which `useGitlabOrigin` maps to the local bare repository.
   jest
     .spyOn(registry, 'tokensFor')
@@ -283,9 +286,8 @@ function wireBacklog(harness: FlowHarness): void {
     app.get(UserSettingRepository),
   ).onModuleInit();
   const registry = app.get(CodeHostRegistry);
-  jest.spyOn(registry, 'forRun').mockResolvedValue(registry);
-  jest.spyOn(registry, 'forOrigin').mockReturnValue(harness.host.name);
-  jest.spyOn(registry, 'requiredCredentials').mockReturnValue(harness.host.selected());
+  jest.spyOn(registry, 'forRun').mockReturnValue(registry.forRun(null));
+  jest.spyOn(RunHosts.prototype, 'forOrigin').mockReturnValue(harness.host.name);
 }
 
 /**

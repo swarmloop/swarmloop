@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, statSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import type { RunHosts } from '../../integrations/code-host/run-hosts';
 import { pushRejectionOfAnyHost } from '../../integrations/code-host/code-host-rules';
 import { root } from '../../history/run-paths';
 import { baseBranch, originRef } from '../../git/base-ref';
@@ -156,7 +157,7 @@ export class RebasedPublisher {
     published: string | null,
     codeHost: string,
     origin: string,
-    registry: CodeHostRegistry,
+    registry: RunHosts,
   ): Promise<boolean> {
     try {
       return await this.push(tree, branch, published, codeHost, origin, registry);
@@ -204,7 +205,7 @@ export class RebasedPublisher {
     branch: string,
     codeHost: string,
     origin: string,
-    registry: CodeHostRegistry,
+    registry: RunHosts,
   ): Promise<string | null> {
     const known = registry.has(codeHost);
     const url = known ? registry.byName(codeHost).pushUrl(origin) : null;
@@ -227,7 +228,7 @@ export class RebasedPublisher {
     published: string | null,
     codeHost: string,
     origin: string,
-    registry: CodeHostRegistry,
+    registry: RunHosts,
   ): Promise<boolean> {
     const lease = published ? [`--force-with-lease=refs/heads/${branch}:${published}`] : [];
     if (!registry.has(codeHost)) {

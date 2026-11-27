@@ -108,6 +108,37 @@ async function changedWorktree(
  * not change it) is left out. Null when the repo list is missing.
  */
 export async function missingRuns(ctx: StepContext, root: string, seen: Seen[]): Promise<string[] | null> {
+  const withCi = await reposWithCi(ctx, root);
+  if (!withCi) {
+    return null;
+  }
+  const missing: string[] = [];
+  for (const { name, project } of withCi) {
+    const run = project ? seen.find((item) => item.project === project) : undefined;
+    if (project && !run) {
+      continue;
+    }
+    if (!run || run.runs.length === 0) {
+      missing.push(name);
+    }
+  }
+  return missing;
+}
+
+/**
+ * The origin projects of the run's checked repositories whose tree has a CI file, read the way `missingRuns` reads
+ * them. Empty when the repo list is missing or unreadable.
+ */
+export async function ciFileProjects(ctx: StepContext, root: string): Promise<Set<string>> {
+  const projects = (await reposWithCi(ctx, root))?.flatMap(({ project }) => (project ? [project] : [])) ?? [];
+  return new Set(projects);
+}
+
+/**
+ * The run's checked repositories whose tree has a CI file, with the origin project of each (null when it has none).
+ * Null when the repo list is missing or unreadable.
+ */
+async function reposWithCi(ctx: StepContext, root: string): Promise<{ name: string; project: string | null }[] | null> {
   const lines = await ctx.reread(ARTIFACTS.repos);
   if (!lines || lines.length === 0) {
     return null;
@@ -118,20 +149,12 @@ export async function missingRuns(ctx: StepContext, root: string, seen: Seen[]):
   } catch {
     return null;
   }
-  const missing: string[] = [];
+  const found: { name: string; project: string | null }[] = [];
   for (const name of names) {
     const dir = worktreePath(root, ctx.opened.run.key, name);
-    if (!hasCi(dir)) {
-      continue;
-    }
-    const project = await withWorktree(dir, () => originProject(dir));
-    const run = project ? seen.find((item) => item.project === project) : undefined;
-    if (project && !run) {
-      continue;
-    }
-    if (!run || run.runs.length === 0) {
-      missing.push(name);
+    if (hasCi(dir)) {
+      found.push({ name, project: await withWorktree(dir, () => originProject(dir)) });
     }
   }
-  return missing;
+  return found;
 }

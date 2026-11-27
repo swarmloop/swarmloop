@@ -71,7 +71,7 @@ describe('a person takes over a run recorded as machine', () => {
   it('keeps the env tokens for a machine run nobody took over', async () => {
     await seed(KEY, 'machine');
     const registry = app.app.get(CodeHostRegistry);
-    expect(await registry.forRun('machine', 'gitlab')).toBe(registry);
+    expect(await registry.forRun('machine', 'gitlab')).toBe(await registry.forRun(null));
     expect(await columns(KEY)).toMatchObject({ started_by: 'machine', owner_since: null });
   });
 

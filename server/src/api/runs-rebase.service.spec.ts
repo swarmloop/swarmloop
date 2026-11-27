@@ -167,7 +167,7 @@ describe('runs api', () => {
         renderMergeRequest([{ project: 'group/demo', iid: 7, url, draft: false, summary: 'Ships it.' }]),
       );
       const setDraft = jest.fn().mockRejectedValueOnce(new FetchFailed('gitlab merge request failed', []));
-      Object.assign(app.get(CodeHostRegistry), { byName: () => ({ setDraft }) });
+      Object.assign(app.get(CodeHostRegistry), { hostFor: () => Promise.resolve({ setDraft }) });
       await expect(app.get(RunRebaseService).rebase('proj-52')).rejects.toThrow('gitlab merge request failed');
       expect(pipeline.startDetached).not.toHaveBeenCalled();
       expect((await runs.findRun('proj-52'))?.status).toBe('done');

@@ -53,7 +53,7 @@ export class SplitRebase {
   }
 
   private async conflicts(parent: RunEntity, child: RunEntity): Promise<boolean> {
-    const host = (await this.hosts.forRun(parent.startedBy, parent.codeHost)).byName(parent.codeHost);
+    const host = await this.hosts.hostFor(parent);
     for (const request of await this.subtasks.mergeRequests(child)) {
       if ((await host.readMergeRequest(request.project, request.iid)).conflicts) return true;
     }

@@ -15,7 +15,7 @@ export async function markReady(ctx: StepContext, registry: CodeHostRegistry): P
   if (!body) {
     return;
   }
-  const ready = await setMergeRequestsDraft(registry, ctx.opened.run.codeHost, body, false);
+  const ready = await setMergeRequestsDraft(registry, ctx.opened.run, body, false);
   ctx.calls.push(...ready.httpCalls);
   await ctx.write(ARTIFACTS.mergeRequest, ready.body);
 }

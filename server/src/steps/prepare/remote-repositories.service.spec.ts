@@ -8,6 +8,7 @@ import { FetchFailed, HostUnavailable } from '../../core/swarmloop-error';
 import * as gitModule from '../../git/git';
 import type { CodeHost } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import type { RunHosts } from '../../integrations/code-host/run-hosts';
 import { git } from '../../testing/git-fixture';
 import { RemoteRepositories } from './remote-repositories.service';
 
@@ -77,6 +78,10 @@ function harness(options: {
   const token = options.token ?? TOKEN;
   const hosts = {
     forRun: () => Promise.resolve(hosts),
+    forOrigin: (origin: string) =>
+      (['github', 'gitlab'] as const).find((name) =>
+        (name === 'github' ? github : gitlab).host.matchesOrigin(origin),
+      ) ?? null,
     names: ['github', 'gitlab'],
     has: (name: string) => name === 'github' || name === 'gitlab',
     byName: (name: string) => (name === 'github' ? github.host : gitlab.host),
@@ -86,7 +91,7 @@ function harness(options: {
         throw new Error(`${name.toUpperCase()}_TOKEN is missing`);
       }
     },
-  } as unknown as CodeHostRegistry & { forRun(): Promise<CodeHostRegistry> };
+  } as unknown as CodeHostRegistry & { forRun(): Promise<RunHosts> };
   const clock = new FakeClock();
   const saveCheckout = jest.fn(async () => undefined);
   const service = new RemoteRepositories(

@@ -5,6 +5,7 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+import { RunStop } from '../../agent/run-stop';
 import { PipelinesRefused } from '../../core/swarmloop-error';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -44,6 +45,13 @@ async function settledRun(app: App, root: string, draft: boolean, body = one): P
   await app
     .get(DocumentRepository)
     .putDocument(run!, 'merge_request', renderMergeRequest([{ ...record, summary: 'x' }]));
+}
+
+/** A workflow file in the run's worktree, so its tree has CI. */
+async function withCiFile(root: string): Promise<void> {
+  const workflow = join(root, 'worktrees', KEY, 'demo', '.github', 'workflows');
+  mkdirSync(workflow, { recursive: true });
+  await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
 }
 
 function setDraft() {
@@ -127,6 +135,7 @@ describe('pipeline step and projects with no CI', () => {
   it('ends skipped, without the CI wait, for a refused project whose tree has a CI file', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-refused-file-'));
     const clock = fakeWait();
+    const started = clock.now();
     const app = await boot(
       root,
       jest.fn(refuse),
@@ -137,14 +146,76 @@ describe('pipeline step and projects with no CI', () => {
       { readBranchHasPipeline: jest.fn(refuse) },
     );
     try {
-      const workflow = join(root, 'worktrees', KEY, 'demo', '.github', 'workflows');
-      mkdirSync(workflow, { recursive: true });
-      await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
+      await withCiFile(root);
       await settledRun(app, root, false);
       const result = await app.get(PipelineService).step('pipeline', KEY);
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain(`CI skipped: no CI on group/demo (${REFUSED})`);
+      expect(clock.now()).toBe(started);
       expect((await app.get(RunRepository).findRun(KEY))?.status).toBe('done');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('marks the draft ready and ends skipped on the first pass for a refused project whose tree has a CI file', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-refused-draft-'));
+    const clock = fakeWait();
+    const started = clock.now();
+    const host = setDraft();
+    const app = await boot(
+      root,
+      jest.fn(refuse),
+      jest.fn(),
+      'TICK_MS=1\nPIPELINE_START_TIMEOUT_MS=50\nPIPELINE_TIMEOUT_MS=1500\n',
+      undefined,
+      clock,
+      { readBranchHasPipeline: jest.fn(refuse), setDraft: host.mock },
+    );
+    try {
+      await withCiFile(root);
+      await settledRun(app, root, true);
+      const result = await app.get(PipelineService).step('pipeline', KEY);
+      expect(result.exitCode).toBe(0);
+      expect(result.message).toContain(`CI skipped: no CI on group/demo (${REFUSED})`);
+      expect(host.drafts.get('group/demo!1')).toBe(false);
+      expect(await app.get(DocumentRepository).latestBody(KEY, 'merge_request')).toContain('draft: false');
+      expect(clock.now()).toBe(started);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not mark a draft ready for a run with no CI that was asked to stop', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-no-ci-stop-'));
+    const host = setDraft();
+    const app = await boot(root, jest.fn(refuse), jest.fn(), undefined, undefined, undefined, {
+      readBranchHasPipeline: jest.fn(refuse),
+      setDraft: host.mock,
+    });
+    try {
+      await settledRun(app, root, true);
+      jest.spyOn(app.get(RunStop), 'halted').mockReturnValue(true);
+      const result = await app.get(PipelineService).step('pipeline', KEY);
+      expect(result.message).toContain('Stopped by request');
+      expect(host.drafts.get('group/demo!1')).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('goes back to code-review, not skipped, when the stamped gates of a run with no CI are stale', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-no-ci-stale-'));
+    const app = await boot(root, jest.fn(nothing), jest.fn(), undefined, undefined, undefined, {
+      readBranchHasPipeline: never,
+    });
+    try {
+      await settledRun(app, root, false);
+      await app.get(RunRepository).bumpGeneration(KEY);
+      const result = await app.get(PipelineService).step('pipeline', KEY);
+      expect(result.exitCode).toBe(0);
+      expect(result.message).toContain('pipeline result is stale: back to code-review');
+      expect((await app.get(RunRepository).findRun(KEY))?.currentStep).toBe('code-review');
     } finally {
       await app.close();
     }

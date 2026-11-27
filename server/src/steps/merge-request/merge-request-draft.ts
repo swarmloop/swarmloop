@@ -12,11 +12,11 @@ import { parseMergeRequests } from './merge-request-record';
  */
 export async function setMergeRequestsDraft(
   registry: CodeHostRegistry,
-  codeHost: string,
+  run: { codeHost: string; startedBy: string | null },
   body: string,
   draft: boolean,
 ): Promise<{ body: string; httpCalls: HttpCallDraft[] }> {
-  const host = registry.byName(codeHost);
+  const host = await registry.hostFor(run);
   const httpCalls: HttpCallDraft[] = [];
   for (const record of parseMergeRequests(body)) {
     if (record.draft !== draft) {
@@ -42,7 +42,7 @@ export class MergeRequestDrafts {
   async backToDraft(run: RunEntity): Promise<void> {
     const body = await this.documents.latestBody(run.key, ARTIFACTS.mergeRequest.kind);
     if (!body) return;
-    const draft = await setMergeRequestsDraft(this.hosts, run.codeHost, body, true);
+    const draft = await setMergeRequestsDraft(this.hosts, run, body, true);
     await this.documents.putDocument(run, ARTIFACTS.mergeRequest.kind, draft.body);
   }
 }

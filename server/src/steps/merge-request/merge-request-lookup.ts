@@ -11,8 +11,12 @@ export class MergeRequestLookup {
   constructor(private readonly registry: CodeHostRegistry) {}
 
   /** How one merge request stands now: open, merged or closed, with who ended it and when. Read-only. */
-  state(codeHost: string, project: string, iid: number): ReturnType<CodeHost['mergeRequestState']> {
-    return this.registry.byName(codeHost).mergeRequestState(project, iid);
+  async state(
+    run: { codeHost: string; startedBy: string | null },
+    project: string,
+    iid: number,
+  ): ReturnType<CodeHost['mergeRequestState']> {
+    return (await this.registry.hostFor(run)).mergeRequestState(project, iid);
   }
 
   /** The display name of a host, or its raw name when no host has it. */
@@ -22,7 +26,7 @@ export class MergeRequestLookup {
 
   /** The `merge_request` body for the branches in `pipelineRef`, or null when any of them has no merge request. */
   async existing(run: { codeHost: string; startedBy: string | null }, pipelineRef: string): Promise<string | null> {
-    const host = (await this.registry.forRun(run.startedBy, run.codeHost)).byName(run.codeHost);
+    const host = await this.registry.hostFor(run);
     const records: (MergeRequestLine & { summary: string })[] = [];
     for (const ref of pipelineRefs(pipelineRef)) {
       const { record } = await host.findMergeRequest({ project: ref.project, source: ref.ref });

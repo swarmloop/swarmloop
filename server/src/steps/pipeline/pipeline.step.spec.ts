@@ -72,7 +72,7 @@ describe('pipeline step', () => {
         const documents = app.get(DocumentRepository);
         const runs = app.get(RunRepository);
         await documents.putDocument((await runs.findRun(key))!, 'repos', 'demo\n');
-        app.get(CodeHostRegistry).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
+        (await app.get(CodeHostRegistry).forRun(null)).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
           reason: 'MR has conflicts',
           code: 'merge-conflict' as const,
           httpCalls: [],
@@ -151,7 +151,7 @@ describe('pipeline step', () => {
       });
       stuck.currentStep = 'pipeline';
       await storeRun(runs, stuck);
-      app.get(CodeHostRegistry).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
+      (await app.get(CodeHostRegistry).forRun(null)).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
         reason: 'MR has conflicts',
         code: 'merge-conflict' as const,
         httpCalls: [],
@@ -217,7 +217,7 @@ describe('pipeline step', () => {
         'requirements',
         `${JSON.stringify({ prompt: 'Ship the field\n', tickets: [] })}\n`,
       );
-      app.get(CodeHostRegistry).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
+      (await app.get(CodeHostRegistry).forRun(null)).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
         reason: 'MR has conflicts',
         code: 'merge-conflict' as const,
         httpCalls: [],

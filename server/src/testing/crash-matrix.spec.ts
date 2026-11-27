@@ -10,7 +10,7 @@ import type { BarrierName } from '../core/barrier';
 import * as delays from '../core/delay';
 import { StepEventEntity, StepStatEntity } from '../history/entities';
 import type { RunEntity } from '../history/entities';
-import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { RunHosts } from '../integrations/code-host/run-hosts';
 import { CheckCommandRepository } from '../history/check-command.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { CommandRepository } from '../history/command.repository';
@@ -422,7 +422,8 @@ describe('crash matrix', () => {
       lookups.push(query);
       return Promise.resolve({ record: found, httpCalls: [] });
     });
-    jest.spyOn(CodeHostRegistry.prototype, 'byName').mockReturnValue({ findMergeRequest, openMergeRequest } as never);
+    jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue({ findMergeRequest, openMergeRequest } as never);
+    jest.spyOn(RunHosts.prototype, 'requiredCredentials').mockReturnValue({} as never);
     app = await createTestApp();
     const runs = app.app.get(RunRepository);
     const documents = app.app.get(DocumentRepository);
@@ -481,7 +482,8 @@ describe('crash matrix', () => {
   it('a merge request step that died after the push has its merge request stored before the relaunch', async () => {
     const found = { project: 'group/app', iid: 7, url: 'https://code.example/group/app/-/merge_requests/7' };
     const findMergeRequest = jest.fn().mockResolvedValue({ record: found, httpCalls: [] });
-    jest.spyOn(CodeHostRegistry.prototype, 'byName').mockReturnValue({ findMergeRequest } as never);
+    jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue({ findMergeRequest } as never);
+    jest.spyOn(RunHosts.prototype, 'requiredCredentials').mockReturnValue({} as never);
     app = await createTestApp();
     const documents = app.app.get(DocumentRepository);
     const stored: (string | null)[] = [];

@@ -71,12 +71,12 @@ export class ServiceContextService {
     if (!run?.codeHost) {
       return null;
     }
-    const host = (await this.registry.forRun(run.startedBy, run.codeHost)).byName(run.codeHost);
     const label = codeHostLabel(run.codeHost) ?? run.codeHost;
     const body = await this.documents.latestBody(key, 'pipeline_ref');
     const lines: string[] = [];
     for (const ref of body ? pipelineRefs(body) : []) {
       try {
+        const host = await this.registry.hostFor(run);
         const found = await host.findMergeRequest({ project: ref.project, source: ref.ref });
         if (found.record) {
           lines.push(`${label} ${found.record.project} !${found.record.iid} ${found.record.url}`);
