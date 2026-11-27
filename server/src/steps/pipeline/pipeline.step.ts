@@ -28,11 +28,9 @@ import {
   renderPass,
   stopLine,
   isRunning,
-  externalWork,
   pendingNote,
   runRows,
   unstartedRuns,
-  waitingFor,
   checkFacts,
   verdictOf,
   type Verdict,
@@ -47,7 +45,8 @@ import { loadSeen } from './load-seen';
 import { atBranchHeads } from './branch-heads';
 import { flakyOnPass } from './flaky-tests';
 import { blockedEnd, finish } from './pipeline-result';
-import { stuckAtStart } from './stuck-start';
+import { watchCi } from './pipeline-watch';
+import { dropNoCi, leaveOut, noCiLines, noCiReason, type NoCiProject } from './pipeline-no-ci';
 import { hasDraft, markReady } from './pipeline-draft';
 import { red, report, type RedDeps } from './pipeline-red';
 import { EnvironmentService } from '../../environment/environment.service';
@@ -140,50 +139,17 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     return { ...result, facts: { details: [...jobResults(watched.seen), ...links], ...checkFacts(watched.seen) } };
   }
 
-  private async watch(
+  private watch(
     ctx: StepContext,
     records: PipelineRef[],
     env: SwarmloopEnv,
     host: CodeHost,
   ): Promise<{ seen: Seen[]; verdict: Verdict }> {
-    const { calls } = ctx;
-    const awake = this.awakeTime(env);
-    assertNotStopped(this.runStop, ctx.opened.run.key);
-    let seen = await awake.run(() => loadSeen(records, calls, host, false));
-    let verdict = verdictOf(seen);
-    let said: string | null = null;
-    const unstartedSince = new Map<number, number>();
-    stuckAtStart(unstartedSince, seen, awake.elapsedMs(), env.PIPELINE_START_TIMEOUT_MS);
-    while (
-      awake.elapsedMs() < env.PIPELINE_TIMEOUT_MS &&
-      (verdict === 'wait' || verdict === 'absent' || verdict === 'green')
-    ) {
-      const missing = verdict === 'wait' ? null : await awake.run(() => missingRuns(ctx, root(this.config), seen));
-      if (verdict === 'green' && !(missing && missing.length > 0)) {
-        break;
-      }
-      if (verdict === 'absent' && missing?.length === 0) {
-        break;
-      }
-      const limit = verdict === 'wait' ? env.PIPELINE_TIMEOUT_MS : env.PIPELINE_START_TIMEOUT_MS;
-      const pause = Math.min(env.TICK_MS, limit - awake.elapsedMs());
-      if (pause <= 0) {
-        break;
-      }
-      await delay(pause);
-      assertNotStopped(this.runStop, ctx.opened.run.key, externalWork(seen));
-      seen = await awake.run(() => loadSeen(records, calls, host));
-      verdict = verdictOf(seen);
-      const waiting = verdict === 'wait' ? waitingFor(seen) : null;
-      if (waiting && waiting !== said) {
-        await ctx.activity(waiting, () => Promise.resolve());
-      }
-      said = waiting ?? said;
-      if (stuckAtStart(unstartedSince, seen, awake.elapsedMs(), env.PIPELINE_START_TIMEOUT_MS)) {
-        return { seen, verdict: 'unstarted' };
-      }
-    }
-    return { seen, verdict };
+    return watchCi(ctx, records, env, host, {
+      awake: this.awakeTime(env),
+      runStop: this.runStop,
+      root: root(this.config),
+    });
   }
 
   /** Awake time of one wait: the host sleeping between two polls does not count. */
@@ -238,7 +204,32 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     if (verdict === 'manual') {
       return finish('waiting', report(opened, 'pipeline is manual'), 'waiting');
     }
-    const missing = await missingRuns(ctx, root(this.config), seen);
+    return this.settle(ctx, env, records, seen, host, reruns);
+  }
+
+  /**
+   * The wait ended with a green or absent verdict. A project whose host refuses to read its pipelines can never show a
+   * run, so it is not waited for whatever its tree holds. A project whose workflow never ran is a missing pipeline.
+   * A project with no CI is left out, and when none is left the run ends skipped. For the rest: stale gates, an absent
+   * draft or the pass.
+   */
+  private async settle(
+    ctx: StepContext,
+    env: SwarmloopEnv,
+    refs: PipelineRef[],
+    read: Seen[],
+    host: CodeHost,
+    reruns: number,
+  ): Promise<StepResult> {
+    const { opened } = ctx;
+    const gate = await dropNoCi(host, refs, read, ctx.calls);
+    const { dropped } = gate;
+    const readable = leaveOut(
+      dropped.filter((item) => item.refused),
+      refs,
+      read,
+    );
+    const missing = await missingRuns(ctx, root(this.config), readable.seen);
     if (missing && missing.length > 0) {
       return missingPipeline({
         ctx,
@@ -249,11 +240,17 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         root: root(this.config),
         limit: env.MAX_PIPELINE_RETURNS,
         host,
-        records,
-        seen,
+        records: readable.records,
+        seen: readable.seen,
         missing,
       });
     }
+    const { records, seen } = gate;
+    if (records.length === 0) {
+      return this.endWithoutCi(ctx, env, refs, host, reruns, dropped);
+    }
+    const verdict = verdictOf(seen);
+    const noCiLog = noCiLines(dropped);
     if (await staleGates(ctx, root(this.config), await this.flows.activePhases(opened.run.id))) {
       return backToReview(ctx, this.flows);
     }
@@ -267,7 +264,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         const watched = await this.watch(ctx, records, env, host);
         return this.route(ctx, env, records, watched.seen, watched.verdict, host, reruns);
       }
-      const body = renderNone(seen);
+      const body = `${renderNone(seen)}${noCiLog}`;
       return finish('ok', report(opened, 'nothing started', body), 'done', body);
     }
     const warnings = seen.flatMap((item) =>
@@ -280,9 +277,35 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     if (flaky) {
       return flaky;
     }
-    const body = renderPass(seen, warnings);
+    const body = `${renderPass(seen, warnings)}${noCiLog}`;
     await markReady(ctx, this.registry);
     return finish('ok', report(opened, 'pipeline done', body), 'done', body);
+  }
+
+  /** No project has CI: the checks and the reviewers are the gate, so the run ends skipped with its merge requests ready. */
+  private async endWithoutCi(
+    ctx: StepContext,
+    env: SwarmloopEnv,
+    records: PipelineRef[],
+    host: CodeHost,
+    reruns: number,
+    dropped: NoCiProject[],
+  ): Promise<StepResult> {
+    if (await hasDraft(ctx)) {
+      await ctx.activity(
+        'Mark merge request ready',
+        () => markReady(ctx, this.registry),
+        () => 'CI did not start for the draft',
+      );
+      const watched = await this.watch(ctx, records, env, host);
+      return this.route(ctx, env, records, watched.seen, watched.verdict, host, reruns);
+    }
+    if (await staleGates(ctx, root(this.config), await this.flows.activePhases(ctx.opened.run.id))) {
+      return backToReview(ctx, this.flows);
+    }
+    await markReady(ctx, this.registry);
+    const reason = noCiReason(dropped);
+    return finish('ok', report(ctx.opened, reason), 'skipped', reason);
   }
 
   /** The wait ended with no run left to cancel: a check that never showed up is dropped, one that never ended is red. */

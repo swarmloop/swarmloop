@@ -103,7 +103,39 @@
       "step": "commit"
     },
     {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
       "kind": "activity.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
       "step": "commit"
     },
     {

@@ -225,9 +225,9 @@ export async function unchangedSincePipeline(refBody: string | null, mounts: San
   return compared ? true : null;
 }
 
-/** The title of the activity that waits for the pipelines of a commit. */
+/** The title of the activity that waits for CI: each watched project with its own commit. */
 export function ciTitle(records: PipelineRef[]): string {
-  return `Wait for CI on ${records[0]?.sha?.slice(0, 7) ?? records[0]?.ref}`;
+  return `Wait for CI on ${records.map((record) => `${record.project} ${record.sha?.slice(0, 7) ?? record.ref}`).join(', ')}`;
 }
 
 /** How the wait for CI came out, for its activity: `passed`, or `failed: <job>`. */

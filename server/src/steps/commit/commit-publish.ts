@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
+import { baseBranch } from '../../git/base-ref';
 import { commitIdentity, originUrl, type CommitAuthor } from '../../git/git';
 import { withWorktree } from '../../git/worktree-lock';
 import type { RunEntity } from '../../history/entities';
@@ -41,7 +42,8 @@ export class CommitPublish {
 
   /**
    * Start CI again on a clean tree: push an unpublished HEAD; when origin already has HEAD, ask the host to run the
-   * failed jobs of the branch's last pipeline again. Fills `heads` with `<repo> <head>` per repo that has an origin.
+   * failed jobs of the branch's last pipeline again. Fills `heads` with `<repo> <head>` per repo that has an origin and
+   * that the run changed.
    */
   async republish(
     trees: Tree[],
@@ -53,7 +55,7 @@ export class CommitPublish {
     let again = false;
     for (const tree of trees) {
       const origin = await withWorktree(tree.path, () => originUrl(tree.path, tree.repo, 'origin failed'));
-      if (!origin) {
+      if (!origin || !(await this.publisher.hasOwnWork(tree, baseBranch(run.prompt)))) {
         continue;
       }
       const delivered = await withWorktree(tree.path, async () => {
@@ -146,7 +148,7 @@ export class CommitPublish {
       );
     }
     const origin = await originUrl(cwd, tree.repo, 'origin failed');
-    if (!origin) {
+    if (!origin || !(await this.publisher.hasOwnWork(tree, baseBranch(run.prompt)))) {
       return false;
     }
     return this.pushHead(tree, run, origin);

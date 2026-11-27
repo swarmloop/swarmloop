@@ -1,15 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { RepositoryMainView } from '../../contract/repository-main';
 import type { RunEntity } from '../../history/run.entity';
-import { PipelinesRefused, SwarmloopError } from '../../core/swarmloop-error';
-import type {
-  CodeHost,
-  MergeGate,
-  MergeRequestRecord,
-  PipelineRef,
-  PipelineSnapshot,
-} from '../../integrations/code-host/code-host';
+import { SwarmloopError } from '../../core/swarmloop-error';
+import type { MergeGate, MergeRequestRecord, PipelineSnapshot } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { ciState, readCi } from './ci-reading';
 import { mergeHow } from './merge-method';
 import { RepositoryOrigins } from './repository-origins';
 import { RunNames } from './run-names';
@@ -26,16 +21,6 @@ interface FailedJob {
 }
 
 type GateReading = MergeGate & { failing: string[]; pending: string[] };
-
-function hasPipeline(snapshot: PipelineSnapshot | null): snapshot is PipelineSnapshot {
-  return snapshot !== null && (snapshot.runs.length > 0 || snapshot.checks.length > 0);
-}
-
-function stateOf(snapshot: PipelineSnapshot | null): RepositoryMainView['state'] {
-  if (!hasPipeline(snapshot)) return 'pending';
-  if (snapshot.status === 'success') return 'green';
-  return snapshot.status === 'failed' || snapshot.status === 'canceled' ? 'red' : 'pending';
-}
 
 function namesOf(snapshot: PipelineSnapshot | null, statuses: string[]): string[] {
   return (snapshot?.checks ?? []).filter((check) => statuses.includes(check.status)).map((check) => check.name);
@@ -62,34 +47,6 @@ export class RepositoryHost {
     return { host: scoped.byName(name), project };
   }
 
-  /** The pipeline of a ref, or 'refused' when the host refuses to read pipelines. */
-  private async readPipeline(host: CodeHost, ref: PipelineRef): Promise<PipelineSnapshot | null | 'refused'> {
-    try {
-      return (await host.readBranchPipeline(ref)).snapshot;
-    } catch (error) {
-      if (error instanceof PipelinesRefused) return 'refused';
-      throw error;
-    }
-  }
-
-  /** The state of a main and, for 'none' by a refusal, its cause; the whole branch is read only when the head has no pipeline. */
-  private async mainState(
-    host: CodeHost,
-    ref: PipelineRef,
-    head: PipelineSnapshot | null | 'refused',
-  ): Promise<{ state: RepositoryMainView['state']; cause: string | null }> {
-    const refused = { state: 'none', cause: new PipelinesRefused().message } as const;
-    if (head === 'refused') return refused;
-    if (hasPipeline(head)) return { state: stateOf(head), cause: null };
-    try {
-      const { found } = await host.readBranchHasPipeline(ref);
-      return { state: found ? 'pending' : 'none', cause: null };
-    } catch (error) {
-      if (error instanceof PipelinesRefused) return refused;
-      throw error;
-    }
-  }
-
   private logState(repo: string, state: string, cause: string | null): void {
     if (this.logged.get(repo) === state) return;
     this.logged.set(repo, state);
@@ -101,9 +58,9 @@ export class RepositoryHost {
     const { host, project } = await this.hostOf(repo, person);
     const { branch, sha } = await host.readDefaultHead(project);
     const ref = { project, ref: branch, sha };
-    const head = await this.readPipeline(host, ref);
-    const snapshot = head === 'refused' ? null : head;
-    const { state, cause } = await this.mainState(host, ref, head);
+    const reading = await readCi(host, ref);
+    const { snapshot } = reading;
+    const { state, cause } = await ciState(host, ref, reading);
     this.logState(repo, state, cause);
     const durations = (snapshot?.checks ?? []).map((check) => check.durationMs);
     return {
@@ -134,8 +91,7 @@ export class RepositoryHost {
   async gate(run: HostRun, request: MergeRequestRef, branch: string): Promise<GateReading> {
     const host = await this.hosts.hostFor(run);
     const { httpCalls: _calls, ...gate } = await host.readMergeGate(request.project, request.iid);
-    const read = await this.readPipeline(host, { project: request.project, ref: branch, sha: gate.head });
-    const snapshot = read === 'refused' ? null : read;
+    const { snapshot } = await readCi(host, { project: request.project, ref: branch, sha: gate.head });
     return {
       ...gate,
       failing: namesOf(snapshot, ['failed', 'canceled']),

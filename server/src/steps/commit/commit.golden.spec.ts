@@ -93,6 +93,9 @@ describe('commit step golden traces', () => {
 
   it('fails with a SwarmloopError when a re-run of CI cannot be pushed', async () => {
     const tree = featureWorktree(root, KEY).tree;
+    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+    runGit(tree, ['add', 'src/field.ts']);
+    runGit(tree, ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'field']);
     runGit(tree, ['push', '-q', '-u', 'origin', `feature/${KEY}-ship-the-field`]);
     runGit(tree, ['remote', 'set-url', 'origin', join(root, 'gone.git')]);
     await trace('swarmloop-error', tree, async () => {

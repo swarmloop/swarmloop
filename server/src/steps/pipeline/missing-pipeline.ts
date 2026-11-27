@@ -103,7 +103,10 @@ async function changedWorktree(
   return null;
 }
 
-/** Repo names that have a workflow file and no run. Null when the repo list is missing. */
+/**
+ * Repo names that have a workflow file and no run. A repository whose project is known and is not watched (the run did
+ * not change it) is left out. Null when the repo list is missing.
+ */
 export async function missingRuns(ctx: StepContext, root: string, seen: Seen[]): Promise<string[] | null> {
   const lines = await ctx.reread(ARTIFACTS.repos);
   if (!lines || lines.length === 0) {
@@ -123,6 +126,9 @@ export async function missingRuns(ctx: StepContext, root: string, seen: Seen[]):
     }
     const project = await withWorktree(dir, () => originProject(dir));
     const run = project ? seen.find((item) => item.project === project) : undefined;
+    if (project && !run) {
+      continue;
+    }
     if (!run || run.runs.length === 0) {
       missing.push(name);
     }

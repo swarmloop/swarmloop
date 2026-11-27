@@ -131,6 +131,8 @@ export async function boot(
   clock?: Clock,
   infra: {
     readBranchHead?: jest.Mock;
+    readDefaultHead?: jest.Mock;
+    readBranchHasPipeline?: jest.Mock;
     rerunFailedJobs?: jest.Mock;
     readRunNotes?: jest.Mock;
     setDraft?: jest.Mock;
@@ -167,6 +169,10 @@ export async function boot(
           openMergeRequest: jest.fn(),
           readBranchHead: jest.fn((ref: PipelineRef) => Promise.resolve({ sha: ref.sha ?? '', httpCalls: [] })),
           readBranchPipeline: read,
+          readDefaultHead: jest.fn((project: string) =>
+            Promise.resolve({ branch: 'main', sha: `${project}-main`, httpCalls: [] }),
+          ),
+          readBranchHasPipeline: jest.fn(() => Promise.resolve({ found: true, httpCalls: [] })),
           readJobTrace: trace,
           cancelPipeline: cancel,
           diagnoseMissingPipeline: () => Promise.resolve({ reason: null, httpCalls: [] }),

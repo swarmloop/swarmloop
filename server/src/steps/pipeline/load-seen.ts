@@ -1,8 +1,9 @@
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
+import { readCi } from '../shared/ci-reading';
 import type { Seen } from './pipeline-report';
 
-/** Reads the CI of every ref from the host; the host's calls are added to `calls`. */
+/** Reads the CI of every ref from the host; the host's calls are added to `calls`. A ref the host refuses to read shows nothing. */
 export async function loadSeen(
   records: PipelineRef[],
   calls: HttpCallDraft[],
@@ -11,7 +12,7 @@ export async function loadSeen(
 ): Promise<Seen[]> {
   const loaded = await Promise.all(
     records.map(async (record) => {
-      const result = await host.readBranchPipeline(record, jobs);
+      const result = await readCi(host, record, jobs);
       return {
         result,
         seen: {
