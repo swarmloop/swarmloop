@@ -53,7 +53,6 @@ export type BlockCode =
   | ErrorCode
   | typeof REASON.stopped
   | typeof REASON.checkFailed
-  | typeof REASON.didNotFit
   | typeof REASON.loopLimit
   | typeof REASON.ciLogUnavailable
   | typeof REASON.ciTimeout

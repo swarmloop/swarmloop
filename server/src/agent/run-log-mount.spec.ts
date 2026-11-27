@@ -28,7 +28,6 @@ function setup() {
         model: 'claude-sonnet-5-5',
         agentCalls: 0,
         spentUsd: 0,
-        tokensInRun: 0,
         resumeChatId: null,
         runKey: 'PROJ-1',
         step,

@@ -73,5 +73,5 @@ export function emptyWrite(): RequirementsWrite {
 }
 
 function ceiling(reason: KillReason | null): boolean {
-  return reason === 'usd' || reason === 'tokens' || reason === 'calls';
+  return reason === 'usd' || reason === 'tokens';
 }

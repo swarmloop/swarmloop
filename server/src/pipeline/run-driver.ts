@@ -325,7 +325,7 @@ export class RunDriver {
     const missing = await this.missingInput(name, key, options);
     if (missing) return { exitCode: 1, message: `${missing} is missing` };
     if (await busy(key)) return { exitCode: 1, message: `${key} is already running` };
-    const unfit = await this.guards.stopBefore(key, name);
+    const unfit = await this.guards.workspaceStop(key, name);
     if (unfit) return { exitCode: 1, message: unfit };
     return this.execute(name, key, options);
   }

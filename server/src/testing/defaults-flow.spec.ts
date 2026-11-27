@@ -38,7 +38,7 @@ describe('the defaults the server ships, in a whole flow that sets nothing', () 
     expect(env).toMatchObject({
       REQUIREMENTS_VIA: 'agent',
       SPLIT: 'auto',
-      EPIC_EFFORT: 'xhigh',
+      EPIC_EFFORT: 'high',
       CHECKS_PARALLEL: 3,
       MIN_FREE_GB: 10,
     });
@@ -50,7 +50,7 @@ describe('the defaults the server ships, in a whole flow that sets nothing', () 
     expect(missing.sort()).toEqual([...OUTSIDE_APP_CONFIG].sort());
   });
 
-  it('plans a split, plans once more at the epic effort, and goes on past plan-improve', async () => {
+  it('plans a split, plans no second time at the shipped epic effort, and goes on past plan-improve', async () => {
     const runs = app.app.get(RunRepository);
     const documents = app.app.get(DocumentRepository);
     const run = await runs.openSplit(KEY);
@@ -62,8 +62,8 @@ describe('the defaults the server ships, in a whole flow that sets nothing', () 
 
     await app.pipeline.runThrough(KEY, { auto: true });
 
-    expect(agent.launches.map((launch) => launch.step)).toEqual(['plan', 'plan-improve', 'plan-improve']);
-    expect(agent.launches.map((launch) => launch.effort)).toEqual(['high', 'high', 'xhigh']);
+    expect(agent.launches.map((launch) => launch.step)).toEqual(['plan', 'plan-improve']);
+    expect(agent.launches.map((launch) => launch.effort)).toEqual(['high', 'high']);
     const stored = (await runs.findRun(KEY))!;
     expect(stored.split).toBe(true);
     expect(stored.epicAt).toBeTruthy();
@@ -71,10 +71,10 @@ describe('the defaults the server ships, in a whole flow that sets nothing', () 
     expect(tasks.map((task) => [task.id, task.depends])).toEqual([
       ['column', []],
       ['api', ['column']],
-      ['ui', ['column']],
+      ['ui', ['api']],
     ]);
     expect(readPlan((await documents.latestBody(KEY, 'requirements')) ?? '')?.decision).toBe('approve');
     const visited = (await app.app.get(VisitRepository).listStats(stored.id)).map((visit) => visit.step);
-    expect(visited.slice(0, 4)).toEqual(['plan', 'plan-improve', 'plan-improve', 'branch']);
+    expect(visited.slice(0, 3)).toEqual(['plan', 'plan-improve', 'branch']);
   });
 });

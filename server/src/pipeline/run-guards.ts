@@ -7,7 +7,7 @@ import { SpendLimit } from '../steps/shared/spend-limit';
 import { DiskGuard } from './disk-guard';
 import { WorkspaceGuard, workspaceBlock } from './workspace-guard';
 
-/** What stops a step from starting: the spend and token limits, then a workspace or disk that cannot be made ready. */
+/** What stops a step from starting: a workspace or disk that cannot be made ready. The spend limit is the door's. */
 @Injectable()
 export class RunGuards {
   constructor(
@@ -18,19 +18,14 @@ export class RunGuards {
     private readonly disk: DiskGuard,
   ) {}
 
-  /** Why the step may not start on the limits, or null. Only the run recorded `running` on the step continues past them. */
-  spendStop(key: string, step: StepName): Promise<string | null> {
-    return this.limit.spendStop(key, step);
+  /** Whether the run's spend is under MAX_RUN_USD. */
+  async underSpendLimit(run: Pick<RunEntity, 'id'>): Promise<boolean> {
+    return (await this.limit.overLimit(run)) === null;
   }
 
   /** Releases the run blocked on a step, with the reason a person reads. */
   block(run: RunEntity, step: StepName, code: string, message: string): Promise<void> {
     return this.limit.block(run, step, code, message);
-  }
-
-  /** Why a step may not start: the limits first, then a workspace or disk that cannot be made ready. */
-  async stopBefore(key: string, step: StepName): Promise<string | null> {
-    return (await this.spendStop(key, step)) ?? this.workspaceStop(key, step);
   }
 
   /**

@@ -92,7 +92,6 @@ export async function writeEnv(
     GITHUB_TOKEN: '',
     CURSOR_API_KEY: '',
     ANTHROPIC_API_KEY: '',
-    MAX_AGENT_CALLS: '20',
     MAX_RETURNS: '3',
     MAX_LAUNCHES: '3',
     MAX_RUN_USD: '25',

@@ -300,7 +300,7 @@ describe('RunDriver with a Stop', () => {
       runStop,
       new FakeClock(),
       { flush: async () => undefined } as never,
-      { stopBefore: async () => null, workspaceStop: async () => null } as never,
+      { workspaceStop: async () => null } as never,
       { admit: async () => ({ kind: 'admitted', start: { agent: false } }) } as never,
       { takeRefusal: () => null } as never,
     );
@@ -344,9 +344,9 @@ describe('AgentLauncher with a Stop', () => {
     runStop.halt('KEY-1');
     const run = jest.fn();
 
-    await expect(
-      new AgentLauncher({ run } as never, {} as never, runStop).launch({ key: 'KEY-1' } as never),
-    ).rejects.toBeInstanceOf(StepStopped);
+    await expect(new AgentLauncher({ run } as never, runStop).launch({ key: 'KEY-1' } as never)).rejects.toBeInstanceOf(
+      StepStopped,
+    );
     expect(run).not.toHaveBeenCalled();
   });
 });

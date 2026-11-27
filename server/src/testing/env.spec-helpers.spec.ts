@@ -32,13 +32,13 @@ describe('writeEnvOverrides', () => {
 
   it('writes only the supplied line and the rest comes from defaults.env', async () => {
     delete process.env.MAX_RETURNS;
-    delete process.env.MAX_AGENT_CALLS;
+    delete process.env.EPIC_EFFORT;
     await writeEnvOverrides(root, { MAX_RETURNS: '3' });
 
     expect(readFileSync(join(root, '.env'), 'utf8')).toBe('MAX_RETURNS=3\n');
     const { env } = await boot();
     expect(env.MAX_RETURNS).toBe(3);
-    expect(env.MAX_AGENT_CALLS).toBe(100);
+    expect(env.EPIC_EFFORT).toBe('high');
   });
 
   it('keeps the shipped MIN_FREE_GB while the free-space reading stays fixed', async () => {

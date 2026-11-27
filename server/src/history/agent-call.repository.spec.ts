@@ -205,7 +205,7 @@ describe('AgentCallRepository', () => {
       expect(await log.tokensOfRun('run-none')).toBe(0);
     }));
 
-  it('sums the spend and tokens of a backlog turn and of a chat', () =>
+  it('sums the spend of a backlog turn and of a chat', () =>
     withLog(async (log) => {
       const turn = await log.open(start({ runKey: undefined, turnKey: 'turn-1', chatId: 'c-turn' }));
       await log.addRequest(turn, request({ usd: 0.75 }));
@@ -214,7 +214,6 @@ describe('AgentCallRepository', () => {
       const again = await log.open(start({ chatId: 'chat-1', resumed: true }));
       await log.addRequest(again, request({ usd: 2 }));
       expect(await log.spendOfTurn('turn-1')).toBe(0.75);
-      expect(await log.tokensOfTurn('turn-1')).toBe(135);
       expect(await log.spendOfTurn('turn-2')).toBe(0);
       expect(await log.spendOfChat('chat-1')).toBe(3);
       expect(await log.lastCallOfChat('chat-1')).toMatchObject({ id: again });

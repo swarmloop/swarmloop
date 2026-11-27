@@ -2,7 +2,6 @@ import type { AgentHelper } from '../../../integrations/agent-runtime/agent-runt
 import { mkdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import type { BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
-import { emptyResult } from '../../../agent/agent-result';
 import type { AgentRunResult } from '../../../agent/agent-result';
 import type { PricedRequest } from '../../../agent/request-usage';
 import { sessionHome } from '../../../history/session-group';
@@ -26,7 +25,7 @@ import { AgentCallRecorder } from '../../../steps/shared/agent-call-recorder';
 import { AgentLauncher } from '../../../steps/shared/agent-launcher';
 import { CallContexts } from '../../../steps/shared/call-context';
 import { LimitFailover } from '../../../steps/shared/limit-failover';
-import { resultAnswer } from '../../../testing/result-answer';
+import { emptyResult, resultAnswer } from '../../../testing/result-answer';
 import { BacklogActionSupport } from '../backlog-action-support';
 import { backlogHarness } from '../backlog.spec-helpers';
 import { BacklogPlanner } from './backlog-planner';
@@ -207,7 +206,6 @@ export async function plannerTurnsHarness(
   );
   const launcher = new AgentLauncher(
     agent as never,
-    db.app.get(VisitRepository),
     runStop,
     failover,
     config,

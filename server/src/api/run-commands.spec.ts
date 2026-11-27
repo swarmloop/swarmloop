@@ -1,10 +1,10 @@
 import { storeRun } from '../testing/store-run.spec-helpers';
-import { AppConfig } from '../config/env';
 import { AgentCallRepository } from '../history/agent-call.repository';
 import { seedCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { writeRunState } from '../history/run-state';
+import { VisitRepository } from '../history/visit.repository';
+import { storedState, writeRunState } from '../history/run-state';
 import { createTestApp, type TestApp } from '../testing/test-app';
 import { RunCommandsService } from './run-commands.service';
 import { RunQueriesService } from './run-queries.service';
@@ -46,26 +46,24 @@ describe('resume of a limit block', () => {
     }
   });
 
-  it('accepts Resume of SPEND_LIMIT, checks the spend again and goes on once MAX_RUN_USD is raised', async () => {
+  it("accepts a person's Resume of SPEND_LIMIT and runs the step past the limit", async () => {
     const app = await createTestApp({ env: { MAX_RUN_USD: '25' } });
     try {
       await block(
         app,
         'research',
         'SPEND_LIMIT',
-        'spent $30.00 of MAX_RUN_USD $25.00; raise MAX_RUN_USD, then Resume',
+        'spent $30.00 of MAX_RUN_USD $25.00. Resume runs the step past the limit; a higher MAX_RUN_USD lets the run go on by itself',
         30,
       );
-      const commands = app.app.get(RunCommandsService);
-      await expect(commands.resume(KEY)).rejects.toThrow('is over the spend limit');
+      await app.app.get(RunCommandsService).resume(KEY);
       await app.pipeline.whenIdle(KEY);
-      const stillBlocked = (await app.app.get(RunRepository).findRun(KEY))!;
-      expect(stillBlocked.status).toBe('blocked');
-      expect(stillBlocked.stateReason).toContain('SPEND_LIMIT');
-      app.app.get(AppConfig).env.MAX_RUN_USD = 100;
-      await commands.resume(KEY);
-      await app.pipeline.whenIdle(KEY);
-      expect((await app.app.get(RunRepository).findRun(KEY))!.status).not.toBe('blocked');
+      const after = (await app.app.get(RunRepository).findRun(KEY))!;
+      const visits = await app.app.get(VisitRepository).listStats(after.id);
+      // The step ran past the limit; the machine's next start is held back by it again.
+      expect(visits.map((visit) => [visit.step, visit.status])).toEqual([['research', 'done']]);
+      expect(after.currentStep).toBe('plan');
+      expect(storedState(after).reason?.code).toBe('SPEND_LIMIT');
     } finally {
       await app.close();
     }

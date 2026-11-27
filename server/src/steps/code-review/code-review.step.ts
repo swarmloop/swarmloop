@@ -28,8 +28,9 @@ import { CheckoutService } from '../shared/checkout.service';
 import { requiredDocument } from '../step';
 import { writeReviewDiff } from './review-diff';
 import { approvedPlan, foreignReviewOf, storedCheckout } from './review-input';
-import { closeReview, failed } from './review-report';
+import { closeReview } from './review-report';
 import { reportDue, runRound } from './review-round';
+import type { ReviewDeps } from './reviewer';
 import { settleAsked } from './review-ask';
 import { ReviewPlannerAnswers } from './review-planner-answers';
 import { ReviewSettle } from './review-settle';
@@ -40,6 +41,7 @@ import { ARTIFACTS, REVIEW_RESULTS } from '../contract/artifacts';
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { EpicRound } from '../shared/epic-round';
+import { refusedRoute, StartRefused } from '../shared/start-refused';
 
 const INPUTS = {
   implementationResult: { artifact: ARTIFACTS.implementationResult, need: 'optional' },
@@ -223,19 +225,20 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
       return settled;
     }
     const calls = pending.length + (reportDue(kept, pending) ? 1 : 0);
-    if (options.auto && calls > 0 && opened.run.agentCalls + calls > env.MAX_AGENT_CALLS) {
-      return closeReview(
-        ctx,
-        failed('code-review does not fit'),
-        `${opened.startedAt} code-review does not fit`,
-        [],
-        null,
-      );
+    if (calls > 0) {
+      try {
+        // One ask for the whole round, so the money never stops it between its reviewers and its report.
+        await this.door.admitRound(opened.run, 'code-review', deps.start.by);
+      } catch (error) {
+        if (!(error instanceof StartRefused)) throw error;
+        return closeReview(ctx, refusedRoute(error), `${opened.startedAt} ${error.message}`, [], null);
+      }
     }
+    const admitted: ReviewDeps = { ...deps, start: { ...deps.start, round: true } };
     writeReviewDiff(root(this.config), key, diff.patch);
     const { handoff, list, plan, coveredPlan, impact, contract, starter, keep, subtasks, round } =
       await this.roundReads(ctx);
-    const finished = await runRound(deps, {
+    const finished = await runRound(admitted, {
       opened,
       key,
       env,
@@ -262,7 +265,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
     });
     const closed = await this.settling.settle({
       ctx,
-      deps,
+      deps: admitted,
       env,
       finished,
       kept,

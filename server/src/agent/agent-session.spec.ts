@@ -5,7 +5,7 @@ import type { AgentRunResult } from './agent-result';
 import { chatMissingAnswer, loopHint, relaunchPlan, resumableChat } from './agent-session';
 import { RESULT_AS_BEFORE } from '../agent-result/result-prompt';
 
-const budget = { halted: false, callsSoFar: 1, maxCalls: 50, attempts: 1, maxLaunches: 3 };
+const budget = { halted: false, attempts: 1, maxLaunches: 3 };
 
 function crashed(output: string, resumed: boolean): AgentRunResult {
   return {

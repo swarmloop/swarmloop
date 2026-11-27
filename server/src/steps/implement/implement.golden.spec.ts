@@ -1,12 +1,9 @@
 import 'reflect-metadata';
-import { storeRun } from '../../testing/store-run.spec-helpers';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { EnvironmentService } from '../../environment/environment.service';
 import { runGit } from '../../git/git-repo.spec-helpers';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
-import { REASON } from '../../contract/run-state';
-import { storedState } from '../../history/run-state';
 import { goldenRun, type GoldenApp } from './implement.golden.spec-helpers';
 import { reply, result } from './implement.step.spec-helpers';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -117,26 +114,5 @@ describe('implement step golden traces', () => {
       },
     });
     expect(done.exitCode).toBe(0);
-  });
-
-  it('blocks in auto when MAX_AGENT_CALLS is reached', async () => {
-    const done = await goldenRun({
-      step: 'implement',
-      key: 'PROJ-305',
-      scenario: 'max-agent-calls-blocked',
-      agent: agent(),
-      options: { auto: true },
-      prepare: async ({ app }) => {
-        const runs = app.get(RunRepository);
-        const run = (await runs.findRun('PROJ-305'))!;
-        run.agentCalls = 20;
-        await storeRun(runs, run);
-      },
-      after: async (app) => {
-        const stored = (await app.get(RunRepository).findRun('PROJ-305'))!;
-        expect(storedState(stored).reason?.code).toBe(REASON.didNotFit);
-      },
-    });
-    expect(done.message).toContain('implement does not fit');
   });
 });

@@ -3,7 +3,7 @@ import type { CacheWriteSplit } from './stream-usage';
 import { parseResultBlock } from '../contract/result-block';
 import { takeAnswer } from './stream';
 
-export type KillReason = 'time' | 'idle' | 'usd' | 'tokens' | 'calls' | 'loop';
+export type KillReason = 'time' | 'idle' | 'usd' | 'tokens' | 'loop';
 
 export interface LimitSnapshot {
   elapsedMs: number;
@@ -14,9 +14,7 @@ export interface LimitSnapshot {
   stepUsd: number;
   maxRunUsd: number;
   stepUsdMax: number | null;
-  tokensInRun: number;
   stepTokens: number;
-  maxRunTokens: number | null;
   stepTokenMax: number | null;
   warned: boolean;
   enforceSpend?: boolean;
@@ -32,11 +30,7 @@ export function judgeLimits(snapshot: LimitSnapshot): { kill: KillReason | null;
   if (snapshot.idleMs >= snapshot.idleLimitMs) {
     return { kill: 'idle', warn };
   }
-  const tokens = snapshot.tokensInRun + snapshot.stepTokens;
-  if (
-    (snapshot.maxRunTokens !== null && tokens >= snapshot.maxRunTokens) ||
-    (snapshot.stepTokenMax !== null && snapshot.stepTokens >= snapshot.stepTokenMax)
-  ) {
+  if (snapshot.stepTokenMax !== null && snapshot.stepTokens >= snapshot.stepTokenMax) {
     return { kill: 'tokens', warn };
   }
   return { kill: null, warn };
@@ -47,31 +41,22 @@ export function overSpend(spentUsd: number, maxRunUsd: number): boolean {
   return maxRunUsd > 0 && spentUsd >= maxRunUsd;
 }
 
-export function callsExceeded(agentCalls: number, maxAgentCalls: number): boolean {
-  return agentCalls >= maxAgentCalls;
-}
-
 /** Another launch after the process died before a decision. A limit kill, a stop, a result, or a decision in the model's answer stays down. */
 export function retryCrash(input: {
   exitCode: number;
   killReason: KillReason | null;
   halted: boolean;
-  callsSoFar: number;
-  maxCalls: number;
   attempts: number;
   maxLaunches: number;
   decided: boolean;
 }): boolean {
-  if (
-    input.exitCode === 0 ||
-    input.killReason !== null ||
-    input.halted ||
-    input.attempts >= input.maxLaunches ||
-    input.decided
-  ) {
-    return false;
-  }
-  return !callsExceeded(input.callsSoFar, input.maxCalls);
+  return (
+    input.exitCode !== 0 &&
+    input.killReason === null &&
+    !input.halted &&
+    input.attempts < input.maxLaunches &&
+    !input.decided
+  );
 }
 
 /** The answer text seen while the process was writing. A user message is the prompt, not an answer. */

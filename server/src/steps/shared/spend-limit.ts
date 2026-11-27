@@ -9,7 +9,7 @@ import { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import { RunRepository } from '../../history/run.repository';
 
-/** The spend and token limits of a run: whether a step may start, and the block a start over a limit leaves. */
+/** The spend limit of a run, its one budget: whether a step may start, and the block a start over the limit leaves. */
 @Injectable()
 export class SpendLimit {
   constructor(
@@ -19,7 +19,7 @@ export class SpendLimit {
     private readonly config: AppConfig,
   ) {}
 
-  /** Why the step may not start on the limits, or null. Only the run recorded `running` on the step continues past them. */
+  /** Why the step may not start on the spend limit, or null. Only the run recorded `running` on the step continues past it. */
   async spendStop(key: string, step: StepName): Promise<string | null> {
     const existing = await this.runs.findRun(key);
     if (!existing || continuesSameStep(existing.status, existing.currentStep, step)) {
@@ -37,23 +37,16 @@ export class SpendLimit {
     return message;
   }
 
-  /** The words a person reads for the limit the run is over, or null when it is under both. Both sums are the log's. */
+  /** The words a person reads when the run is over MAX_RUN_USD, its one budget, or null when it is under. The sum is the log's. */
   async overLimit(run: Pick<RunEntity, 'id'>): Promise<string | null> {
-    const { MAX_RUN_USD, MAX_RUN_TOKENS } = this.config.env;
+    const { MAX_RUN_USD } = this.config.env;
     const stored = await this.runs.findById(run.id);
     if (!stored) {
       return null;
     }
     const spent = await this.calls.spendOfRun(stored.key);
-    if (overSpend(spent, MAX_RUN_USD)) {
-      return `spent $${spent.toFixed(2)} of MAX_RUN_USD $${MAX_RUN_USD.toFixed(2)}; raise MAX_RUN_USD, then Resume`;
-    }
-    if (MAX_RUN_TOKENS === null) {
-      return null;
-    }
-    const used = await this.calls.tokensOfRun(stored.key);
-    return used >= MAX_RUN_TOKENS
-      ? `used ${used} tokens of MAX_RUN_TOKENS ${MAX_RUN_TOKENS}; raise MAX_RUN_TOKENS, then Resume`
+    return overSpend(spent, MAX_RUN_USD)
+      ? `spent $${spent.toFixed(2)} of MAX_RUN_USD $${MAX_RUN_USD.toFixed(2)}. Resume runs the step past the limit; a higher MAX_RUN_USD lets the run go on by itself`
       : null;
   }
 

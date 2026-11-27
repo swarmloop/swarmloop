@@ -29,7 +29,6 @@ export type CallLink = Omit<CallOpening, 'chatId'>;
 /** What is known of the owner and the chat before a launch: what they spent, and what the chat last reported. */
 interface SpendBefore {
   spentUsd: number;
-  tokensInRun: number;
   chatSpentUsd: number;
   prior: ChatUsage;
 }
@@ -299,15 +298,14 @@ export class AgentCallRecorder {
     last: AgentCallRow | null,
   ): Promise<SpendBefore> {
     const turn = context.owner === 'turn';
-    const [spentUsd, tokensInRun, chatSpentUsd] = await Promise.all([
+    const [spentUsd, chatSpentUsd] = await Promise.all([
       turn ? this.calls.spendOfTurn(context.key) : this.calls.spendOfRun(context.key),
-      turn ? this.calls.tokensOfTurn(context.key) : this.calls.tokensOfRun(context.key),
       chatId === null ? 0 : this.calls.spendOfChat(chatId),
     ]);
     const reported =
       last && last.reportedUsd !== null && last.reportedTokensIn !== null && last.reportedTokensOut !== null
         ? { usd: last.reportedUsd, tokensIn: last.reportedTokensIn, tokensOut: last.reportedTokensOut }
         : NO_USAGE;
-    return { spentUsd, tokensInRun, chatSpentUsd, prior: reported };
+    return { spentUsd, chatSpentUsd, prior: reported };
   }
 }

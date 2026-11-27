@@ -151,10 +151,14 @@ export class ReconcilerResumes {
 
   /** Names an outage by the attempt it cut and by its own retry time (or message), so another write to the run does not move it. */
   private async outageKey(prefix: 'host' | 'ci' | 'docker' | 'disk', run: RunEntity): Promise<string> {
-    const stats = await this.visits.listStats(run.id);
-    const attempt = stats[stats.length - 1]?.attemptId ?? 'none';
     const reason = storedState(run).reason;
-    return `${prefix}-${attempt}-${(prefix === 'disk' ? reason?.message : reason?.retryAt) ?? ''}`;
+    return `${prefix}-${await this.lastAttempt(run)}-${(prefix === 'disk' ? reason?.message : reason?.retryAt) ?? ''}`;
+  }
+
+  /** The attempt of the run's last visit: the attempt a wait or a block cut. */
+  private async lastAttempt(run: RunEntity): Promise<string> {
+    const stats = await this.visits.listStats(run.id);
+    return stats[stats.length - 1]?.attemptId ?? 'none';
   }
 
   private async withReason(status: string, code: string): Promise<RunEntity[]> {
@@ -246,6 +250,19 @@ export class ReconcilerResumes {
       const question = await this.subtasks.openQuestion(run);
       if (!question || this.claimed()(run.key)) continue;
       await this.resumeOnce(run, `same-input-${question.key}`, () => Promise.resolve(true));
+    }
+  }
+
+  /**
+   * A run blocked at the spend limit goes on by itself once its spend is under MAX_RUN_USD, after a higher MAX_RUN_USD.
+   * The key names the attempt the block cut and the limit, so a limit raised again resumes the run once more; the
+   * resumed hop still passes the door.
+   */
+  async resumeUnderSpendLimit(): Promise<void> {
+    for (const run of await this.withReason('blocked', ERROR_CODES.SPEND_LIMIT)) {
+      if (this.claimed()(run.key)) continue;
+      const key = `spend-${await this.lastAttempt(run)}-${this.config.env.MAX_RUN_USD}`;
+      await this.resumeOnce(run, key, () => this.gate.underSpendLimit(run));
     }
   }
 

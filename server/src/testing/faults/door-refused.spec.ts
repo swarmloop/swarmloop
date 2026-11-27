@@ -90,7 +90,7 @@ describe('a start refused at the door of an agent start inside the code-review s
     await assertSettled(flow.app);
   });
 
-  it('a limit reached between two reviewers starts no further reviewer, and the run is blocked on the limit', async () => {
+  it('a limit reached between two reviewers does not cut a round the machine started, and the next start is blocked on the limit', async () => {
     const spend = new BlockAgentRunner();
     await boot(spend, { MAX_RUN_USD: '1' });
     await atReview();
@@ -98,10 +98,14 @@ describe('a start refused at the door of an agent start inside the code-review s
       await seedCall(flow.app.app.get(AgentCallRepository), { runKey: KEY, step: FIRST, usd: 2 });
     });
 
-    await flow.app.pipeline.step('code-review', KEY);
+    await flow.app.pipeline.step('code-review', KEY, { auto: true, startBy: 'machine' });
     await settle(flow.app);
 
-    expect(spend.steps).toEqual([FIRST]);
+    expect([...spend.steps].sort()).toEqual(
+      [...CODE_REVIEWERS.map((name) => `code-review-${name}`), 'code-review-report'].sort(),
+    );
+    const next = await flow.app.app.get(AgentDoor).admitStep(KEY, 'commit', { auto: true, startBy: 'machine' }, true);
+    expect(next.kind).toBe('blocked');
     expect((await find()).status).toBe('blocked');
     expect(storedState(await find()).reason?.code).toBe(ERROR_CODES.SPEND_LIMIT);
     await assertSettled(flow.app);

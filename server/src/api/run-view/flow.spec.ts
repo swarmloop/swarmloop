@@ -454,10 +454,16 @@ describe('sentence of a stop with its own next step', () => {
     );
   });
 
-  it('tells to raise MAX_RUN_USD after the spend limit', () => {
+  it('tells that Resume runs past the spend limit and a higher MAX_RUN_USD goes on by itself', () => {
     expect(say(run('blocked', 'implement', 'SPEND_LIMIT'))).toBe(
-      'The run spent as much as MAX_RUN_USD allows. Raise MAX_RUN_USD, then Resume.',
+      'The run spent as much as MAX_RUN_USD allows. Resume runs the step past the limit; a higher MAX_RUN_USD lets the run go on by itself.',
     );
+  });
+
+  it('shows the generic blocked sentence for a block an old run stored for the retired call budget', () => {
+    const sentence = say(run('blocked', 'implement', 'DID_NOT_FIT'));
+    expect(sentence).not.toContain('agent-call budget');
+    expect(sentence).toBe('This run is blocked. Another return is not available.');
   });
 
   it('says who to look at when a pipeline failure stays unfixed', () => {

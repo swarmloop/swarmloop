@@ -50,7 +50,6 @@ export function input(root: string, outputFile: string, patch: Partial<AgentRunI
     model: 'm',
     agentCalls: 0,
     spentUsd: 0,
-    tokensInRun: 0,
     resumeChatId: 'chat-1',
     runKey: 'run1',
     step: 'implement',
@@ -68,7 +67,6 @@ export function config(root: string, patch: Partial<SwarmloopEnv> = {}): AppConf
     testEnv({
       CURSOR_API_KEY: 'test-key',
       ANTHROPIC_API_KEY: 'test-key',
-      MAX_AGENT_CALLS: 20,
       MAX_RUN_USD: 25,
       AGENTS_PLAN: 'cursor:m',
       AGENTS_IMPLEMENT: 'cursor:m',

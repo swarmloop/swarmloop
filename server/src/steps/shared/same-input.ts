@@ -41,7 +41,7 @@ const OUTSIDE_WAIT_CODES: readonly string[] = [...TIMED_RETRY_CODES, ERROR_CODES
 /**
  * A visit that ended on its own, so it counts as finished on its input: it finished (not killed, not failed, no outage
  * or limit wait), its answer stayed invalid after its follow-ups (it has stored answer errors), or the agent's own
- * limit killed it (calls, loop, tokens, spend, time or idle). Every other end runs again on its input: a process that
+ * limit killed it (loop, tokens, spend, time or idle). Every other end runs again on its input: a process that
  * died (no stored visit), a model host outage, a usage limit, an outside wait, a person's Stop and any other failure.
  */
 function endedOnItsOwn(stat: SameInputFacts['stats'][number]): boolean {

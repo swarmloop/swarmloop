@@ -92,7 +92,9 @@ describe('implement step and a person saying a usage limit is over', () => {
       await app.get(Reconciler).resumeOutsideWaits();
 
       expect(runtimesOf(agent)[0]).toBe('codex');
-      expect((await app.get(RunRepository).findRun(SECOND))!.status).not.toBe('waiting');
+      expect(storedState((await app.get(RunRepository).findRun(SECOND))!).reason?.code).not.toBe(
+        ERROR_CODES.RUNTIME_LIMIT,
+      );
     } finally {
       await app.close();
     }

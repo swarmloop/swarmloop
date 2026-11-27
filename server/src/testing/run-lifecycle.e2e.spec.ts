@@ -10,7 +10,6 @@ import type { StepName } from '../contract/steps';
 import { DocumentRepository } from '../history/document.repository';
 import { sessionHome } from '../history/session-group';
 import { RunRepository } from '../history/run.repository';
-import { VisitRepository } from '../history/visit.repository';
 import { REQUIREMENTS_INPUT, lateInput } from '../steps/agent-step';
 import { BaseStep, type StepContext } from '../steps/base-step';
 import { ARTIFACTS } from '../steps/contract/artifacts';
@@ -121,11 +120,7 @@ describe('a return is one issue in two windows', () => {
         },
       };
       const kernel = app.app.get(StepKernel);
-      const launcher = new AgentLauncher(
-        fakeAgent as unknown as AgentProcessRunner,
-        app.app.get(VisitRepository),
-        new RunStop(),
-      );
+      const launcher = new AgentLauncher(fakeAgent as unknown as AgentProcessRunner, new RunStop());
       // The second visit starts a new chat.
       const implement = new ImplementProbe(kernel, launcher, join(app.root), (run) => run === 2);
       const pipeline = new PipelineProbe(kernel);

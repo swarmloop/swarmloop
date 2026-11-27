@@ -90,7 +90,6 @@ async function visitsOfOneChat(lines: Reported[]): Promise<{ usd: number[]; toke
     const visits = db.app.get(VisitRepository);
     const launcher = new AgentLauncher(
       runner,
-      visits,
       new RunStop(),
       undefined,
       config,

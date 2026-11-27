@@ -93,19 +93,13 @@ export async function boot(root: string, agent: jest.Mock) {
     .compile();
 }
 
-export async function seed(
-  app: Awaited<ReturnType<typeof boot>>,
-  key: string,
-  attemptsReview = 0,
-  agentCalls = 0,
-): Promise<void> {
+export async function seed(app: Awaited<ReturnType<typeof boot>>, key: string, attemptsReview = 0): Promise<void> {
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);
   const seeded = await runs.begin(key, 'code-review');
   seeded.status = 'waiting';
   seeded.currentStep = 'implement-improve';
   seeded.attemptsReview = attemptsReview;
-  seeded.agentCalls = agentCalls;
   await storeRun(runs, seeded);
   await documents.putDocument(seeded, 'requirements', `${JSON.stringify({ prompt: 'Ship the field\n' })}\n`);
   await documents.putDocument(seeded, 'repos', 'billing-api\n');
@@ -204,7 +198,6 @@ export async function writeEnv(
     GITLAB_BASE_URL: '',
     GITHUB_BASE_URL: '',
     CURSOR_API_KEY: 'test-key',
-    MAX_AGENT_CALLS: '20',
     MAX_RETURNS: '3',
     MAX_LAUNCHES: String(maxLaunches),
     MAX_RUN_USD: '25',

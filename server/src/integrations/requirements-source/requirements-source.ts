@@ -8,7 +8,6 @@ export interface RequirementsInput {
   bundle: IssueBundle;
   agentCalls: number;
   spentUsd: number;
-  tokensInRun: number;
   prompt?: string;
   issueKeys?: string[];
   bundles?: IssueBundle[];

@@ -20,6 +20,9 @@ async function setup() {
   };
   const none = undefined as never;
   const door = new AgentDoor(none, fixture.runs, none, none, none, none, none, none, none);
+  /** Whether the spend of every run is under MAX_RUN_USD now, and the attempt its last visit had. */
+  const spend = { under: false };
+  const visits = { listStats: async () => [{ attemptId: 'attempt-7' }] };
   const reconciler = new Reconciler(
     fixture.runs,
     {} as never,
@@ -33,10 +36,10 @@ async function setup() {
     {} as never,
     {} as never,
     {} as never,
+    visits as never,
     {} as never,
     {} as never,
-    {} as never,
-    new StartGate({ accept } as never, {} as never, {} as never, door),
+    new StartGate({ accept } as never, { underSpendLimit: async () => spend.under } as never, {} as never, door),
     undefined,
     fixture.credentials,
   );
@@ -50,7 +53,17 @@ async function setup() {
     });
     return storeRun(fixture.runs, run);
   };
-  return { ...fixture, accepted, reconciler, waiting };
+  /** A run that a step of the machine left blocked at the spend limit. */
+  const blockedOnSpend = async (key: string) => {
+    const run = await fixture.run(key, null);
+    writeRunState(run, {
+      status: 'blocked',
+      currentStep: 'implement',
+      reason: { code: ERROR_CODES.SPEND_LIMIT, message: 'spent' },
+    });
+    return storeRun(fixture.runs, run);
+  };
+  return { ...fixture, accepted, reconciler, waiting, blockedOnSpend, spend };
 }
 
 describe('reconciler and the limits of a credential', () => {
@@ -105,6 +118,38 @@ describe('reconciler and the limits of a credential', () => {
       db.clock.advance(RESUME_AFTER_RESET_MS);
       await reconciler.resumeOutsideWaits();
       expect(accepted).toHaveLength(1);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('resumes a run blocked at the spend limit once, when its spend is under MAX_RUN_USD again', async () => {
+    const { db, config, accepted, reconciler, blockedOnSpend, spend } = await setup();
+    try {
+      const run = await blockedOnSpend('S-1');
+      await reconciler.resumeUnderSpendLimit();
+      expect(accepted).toEqual([]);
+
+      spend.under = true;
+      await reconciler.resumeUnderSpendLimit();
+      const resume = ['resume', run.key, MACHINE, { idempotencyKey: `spend-attempt-7-${config.env.MAX_RUN_USD}` }];
+      expect(accepted).toEqual([resume]);
+
+      // A pass again names the same event, so the command store replays it.
+      await reconciler.resumeUnderSpendLimit();
+      expect(accepted).toEqual([resume, resume]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('does not resume a run that waits for something else than the spend limit', async () => {
+    const { db, accepted, reconciler, waiting, spend } = await setup();
+    try {
+      await waiting('S-2', null);
+      spend.under = true;
+      await reconciler.resumeUnderSpendLimit();
+      expect(accepted).toEqual([]);
     } finally {
       await db.close();
     }

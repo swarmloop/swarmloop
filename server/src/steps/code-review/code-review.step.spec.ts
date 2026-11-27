@@ -33,6 +33,9 @@ import { REPORT_CONTINUE, reviewContinue } from './code-review.prompts';
 
 import { selectReviewers } from './review-select';
 import { answerFor, reply, reportReply, result, boot, seed, writeEnv } from './code-review.step.spec-helpers';
+import { storedState } from '../../history/run-state';
+import { AgentCallRepository } from '../../history/agent-call.repository';
+import { seedCall } from '../../history/agent-call.spec-helpers';
 
 describe('code-review step', () => {
   let root: string;
@@ -344,21 +347,35 @@ describe('code-review step', () => {
     expect((await app.get(RunRepository).findRun('PROJ-83'))?.currentStep).toBe('commit');
   });
 
-  it('does not start when the remaining call ceiling cannot cover every reviewer', async () => {
+  it('blocks a round the machine starts on a run over MAX_RUN_USD, and starts no reviewer and no report', async () => {
     gitWorktree(join(root, 'worktrees', 'PROJ-84', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step)));
     useAgent(agent);
-    await seed(app, 'PROJ-84', 0, 15);
-    const done = await app.get(PipelineService).step('code-review', 'PROJ-84', { auto: true });
+    await seed(app, 'PROJ-84');
+    await seedCall(app.get(AgentCallRepository), { runKey: 'PROJ-84', usd: 30 });
+    const done = await app.get(PipelineService).step('code-review', 'PROJ-84', { auto: true, startBy: 'machine' });
     expect(done.exitCode).toBe(1);
-    expect(done.message).toContain('code-review does not fit');
     expect(agent).not.toHaveBeenCalled();
     const run = await app.get(RunRepository).findRun('PROJ-84');
-    expect(run?.status).toBe('failed');
+    expect(storedState(run!)).toMatchObject({ state: 'blocked', reason: { code: 'SPEND_LIMIT' } });
     expect(run?.currentStep).toBe('code-review');
+    expect(storedState(run!).reason?.message).toContain('MAX_RUN_USD $25.00');
   });
 
-  it('keeps an unchanged approved diff when a new fan-out does not fit', async () => {
+  it('starts the whole round a person starts on a run over MAX_RUN_USD', async () => {
+    gitWorktree(join(root, 'worktrees', 'PROJ-85', 'billing-api'));
+    const agent = jest.fn(async (input: AgentRunInput) =>
+      result(input.step.endsWith('report') ? reportReply('The checks are in.') : reply(input.step, 'ok')),
+    );
+    useAgent(agent);
+    await seed(app, 'PROJ-85');
+    await seedCall(app.get(AgentCallRepository), { runKey: 'PROJ-85', usd: 30 });
+    const done = await app.get(PipelineService).step('code-review', 'PROJ-85', { auto: true });
+    expect(done.exitCode).toBe(0);
+    expect(agent.mock.calls.map((call) => call[0].step)).toContain('code-review-report');
+  });
+
+  it('keeps the reviews of an unchanged approved diff and runs only the report', async () => {
     gitWorktree(join(root, 'worktrees', 'PROJ-100', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
       result(input.step.endsWith('report') ? reportReply('The checks are in.') : reply(input.step, 'ok')),
@@ -372,14 +389,12 @@ describe('code-review step', () => {
     if (!run) {
       throw new Error('run is missing');
     }
-    run.agentCalls = 15;
     run.status = 'waiting';
     run.currentStep = 'code-review';
     await storeRun(runs, run);
     agent.mockClear();
     const second = await app.get(PipelineService).step('code-review', 'PROJ-100', { auto: true });
     expect(second.exitCode).toBe(0);
-    expect(second.message).not.toContain('does not fit');
     expect(agent.mock.calls.map((call) => call[0].step)).toEqual(['code-review-report']);
     expect((await runs.findRun('PROJ-100'))?.currentStep).toBe('commit');
   });
@@ -392,7 +407,7 @@ describe('code-review step', () => {
       ),
     );
     useAgent(agent);
-    await seed(app, 'PROJ-88', 1, 17);
+    await seed(app, 'PROJ-88', 1);
     const runs = app.get(RunRepository);
     const visits = app.get(VisitRepository);
     const run = await runs.findRun('PROJ-88');
@@ -424,7 +439,7 @@ describe('code-review step', () => {
     await putStamped(app, run!, 'review_quality', 'theme.alpha\ndecision: return\n', ['billing-api']);
     await putStamped(app, run!, 'review_regressions', 'statusColor\ndecision: return\n', ['billing-api']);
     const done = await app.get(PipelineService).step('code-review', 'PROJ-88');
-    expect(done.message).not.toContain('does not fit');
+    expect(done.exitCode).toBe(0);
     expect(agent.mock.calls.map((call) => call[0].step).sort()).toEqual(['code-review-report']);
     const next = await runs.findRun('PROJ-88');
     expect(next?.currentStep).toBe('implement');

@@ -28,7 +28,6 @@ export function expectedEnv(isolation: Pick<SwarmloopEnv, (typeof ISOLATION_KEYS
   for (const key of OUTSIDE_APP_CONFIG) delete validated[key];
   return {
     ...validated,
-    MAX_RUN_TOKENS: optionalLimit(raw.MAX_RUN_TOKENS),
     STEP_USD_MAX: optionalLimit(raw.STEP_USD_MAX),
     STEP_TOKEN_MAX: optionalLimit(raw.STEP_TOKEN_MAX),
     SWARMLOOP_REPOS: splitList(raw.SWARMLOOP_REPOS),
@@ -55,12 +54,8 @@ export function tasksAnswer(tasks: { id: string; depends?: string[] }[]): string
 const COLUMN = { id: 'column' };
 const API = { id: 'api', depends: ['column'] };
 
-/** The answers of the planning agent in order: the plan, the first check, and the check at the epic effort. */
-const PLANNING_ANSWERS = [
-  tasksAnswer([COLUMN, API]),
-  tasksAnswer([COLUMN, API, { id: 'ui', depends: ['api'] }]),
-  tasksAnswer([COLUMN, API, { id: 'ui', depends: ['column'] }]),
-];
+/** The answers of the planning agent in order: the plan and its check. The shipped epic effort asks for no second check. */
+const PLANNING_ANSWERS = [tasksAnswer([COLUMN, API]), tasksAnswer([COLUMN, API, { id: 'ui', depends: ['api'] }])];
 
 /** The agent of a split plan: each planning launch gets the next answer and is kept. The scripted steps get nothing. */
 export class SplitPlanAgent implements FakeAgentRunner {

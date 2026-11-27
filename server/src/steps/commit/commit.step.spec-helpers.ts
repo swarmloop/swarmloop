@@ -18,7 +18,6 @@ export async function boot(root: string, codeHost = 'gitlab', host: { baseUrl?: 
     GITLAB_TOKEN: codeHost === 'gitlab' ? (host.token ?? '') : '',
     GITHUB_BASE_URL: codeHost === 'github' ? (host.baseUrl ?? '') : '',
     GITHUB_TOKEN: codeHost === 'github' ? (host.token ?? '') : '',
-    MAX_AGENT_CALLS: '20',
     MAX_RETURNS: '3',
     MAX_RUN_USD: '25',
     AGENTS_PLAN: 'cursor:opus-5.5-extra-high',

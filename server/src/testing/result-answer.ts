@@ -1,13 +1,33 @@
 import { OWN_CONFLICT_LEAD } from '../steps/implement/implement.prompts';
 import { NO_STEP_RUNS, PERSON_WORDS } from '../steps/plan/plan.prompts';
 import { CODE_REVIEWERS } from '../contract/steps';
-import { emptyResult } from '../agent/agent-result';
 import type { AgentRunResult } from '../agent/agent-result';
+import type { KillReason } from '../agent/limits';
 import type { LimitHit } from '../integrations/agent-runtime/runtime-limit';
 import type { ModelHostOutage } from '../integrations/agent-runtime/runtime-outage';
 import { mkdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { sessionHome } from '../history/session-group';
+
+/** A result for a launch that never started. */
+export function emptyResult(killReason: KillReason, exitCode: number, calls: number, now: string): AgentRunResult {
+  return {
+    responseText: '',
+    chatId: null,
+    tokensIn: 0,
+    tokensOut: 0,
+    usd: 0,
+    killReason,
+    exitCode,
+    output: '',
+    resumed: false,
+    calls,
+    samples: [],
+    durationMs: 0,
+    startedAt: now,
+    finishedAt: now,
+  };
+}
 
 const FENCE = '```';
 

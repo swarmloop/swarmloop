@@ -362,12 +362,6 @@ describe('AgentProcessRunner limit continuation', () => {
     }
   });
 
-  it('does not relaunch a calls kill', async () => {
-    const { result, launches } = await start('calls', [], { auto: true, agentCalls: 20 });
-    expect(launches).toHaveLength(0);
-    expect(result.killReason).toBe('calls');
-  });
-
   it('does not relaunch a halted run', async () => {
     const stop = new RunStop();
     stop.halt('run1');

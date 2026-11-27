@@ -180,8 +180,6 @@ export class AgentLaunch {
           spentUsd: input.spentUsd,
           maxRunUsd: env.MAX_RUN_USD,
           stepUsdMax: env.STEP_USD_MAX,
-          tokensInRun: input.tokensInRun,
-          maxRunTokens: env.MAX_RUN_TOKENS,
           stepTokenMax: env.STEP_TOKEN_MAX,
           auto: input.auto === true,
         },

@@ -37,7 +37,9 @@ describe('SpendLimit.overLimit', () => {
       await seedCall(calls, { runKey: run.key, usd: 1.5 });
       expect(await limit.overLimit(run)).toBeNull();
       await seedCall(calls, { runKey: run.key, usd: 0.5 });
-      expect(await limit.overLimit(run)).toBe('spent $2.00 of MAX_RUN_USD $2.00; raise MAX_RUN_USD, then Resume');
+      expect(await limit.overLimit(run)).toBe(
+        'spent $2.00 of MAX_RUN_USD $2.00. Resume runs the step past the limit; a higher MAX_RUN_USD lets the run go on by itself',
+      );
     }));
 
   it('counts the pings of the run toward the limit', () =>
@@ -47,18 +49,8 @@ describe('SpendLimit.overLimit', () => {
       expect(await limit.overLimit(run)).toContain('MAX_RUN_USD');
     }));
 
-  it('stops a run whose logged tokens reach MAX_RUN_TOKENS, all four kinds counted', () =>
-    withLimit({ MAX_RUN_TOKENS: 100 }, async (limit, run, calls, data) => {
-      await seedCall(calls, { runKey: run.key, input: 10, cacheRead: 40, cacheWrite: 20, output: 20 });
-      expect(await limit.overLimit(run)).toBeNull();
-      await seedPingCall(data, calls, { runKey: run.key, cacheRead: 10 });
-      expect(await limit.overLimit(run)).toBe(
-        'used 100 tokens of MAX_RUN_TOKENS 100; raise MAX_RUN_TOKENS, then Resume',
-      );
-    }));
-
   it('reads only the rows of its own run', () =>
-    withLimit({ MAX_RUN_USD: 2, MAX_RUN_TOKENS: 100 }, async (limit, run, calls) => {
+    withLimit({ MAX_RUN_USD: 2 }, async (limit, run, calls) => {
       await seedCall(calls, { runKey: 'other-run', usd: 9, output: 999 });
       expect(await limit.overLimit(run)).toBeNull();
     }));

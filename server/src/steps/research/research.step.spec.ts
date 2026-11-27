@@ -470,38 +470,6 @@ describe('research step', () => {
     }
   });
 
-  it('skips another launch on an automatic hop at the call ceiling', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-ceiling-'));
-    await writeEnv(root);
-    const agent = jest.fn(async () => killed('time'));
-    const app = await boot(root, agent);
-    try {
-      await seed(app, root, 'PROJ-34', 19);
-      const done = await app.get(PipelineService).step('research', 'PROJ-34', { auto: true });
-      expect(done.exitCode).toBe(1);
-      expect(done.message).toContain('process killed: time');
-      expect((await app.get(RunRepository).findRun('PROJ-34'))?.agentCalls).toBe(20);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('does not relaunch a time kill once agent calls reach the cap', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-manual-'));
-    await writeEnv(root, { RESEARCH_TIMEOUT_MS: '0' });
-    const spawn = scripted([chatStream('research-chat'), doneStream(FINISHED)]);
-    const app = await bootLive(root, spawn);
-    try {
-      await seed(app, root, 'PROJ-35', 19);
-      const done = await app.get(PipelineService).step('research', 'PROJ-35');
-      expect(done.exitCode).toBe(1);
-      expect(done.message).toContain('process killed: time');
-      expect((await app.get(RunRepository).findRun('PROJ-35'))?.agentCalls).toBe(20);
-    } finally {
-      await app.close();
-    }
-  });
-
   it('keeps a valid answer after a write was refused in plan mode', async () => {
     const clean = await researchOutcome(result(FINISHED));
     const refused = await researchOutcome({ ...result(FINISHED), output: REFUSED_WRITE });
@@ -537,10 +505,6 @@ async function researchOutcome(answer: AgentRunResult) {
   } finally {
     await app.close();
   }
-}
-
-function killed(reason: 'time' | 'idle', chatId: string | null = 'research-chat'): AgentRunResult {
-  return { ...result('partial'), chatId, killReason: reason, exitCode: 1 };
 }
 
 async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeof boot> {

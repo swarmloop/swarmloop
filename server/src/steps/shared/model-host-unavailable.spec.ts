@@ -1,4 +1,4 @@
-import { emptyResult } from '../../agent/agent-result';
+import { emptyResult } from '../../testing/result-answer';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { HostUnavailable, isHostOutage } from '../../core/swarmloop-error';
 import { HOST_VISIT, ModelHostUnavailable, hostRoute, isModelOutage } from './model-host-unavailable';
