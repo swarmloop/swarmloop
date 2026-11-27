@@ -13,6 +13,8 @@ import { PlanChatStore } from '../../history/plan-chat.store';
 import { RunRepository } from '../../history/run.repository';
 import { storedState } from '../../history/run-state';
 import { PipelineService } from '../../pipeline/pipeline.service';
+import { FlowRepository } from '../../history/flow.repository';
+import { hostConflictMarker } from '../shared/host-conflict-marker';
 import { runJournal } from '../shared/rebase-journal';
 import { SubtaskOps } from '../shared/subtask-ops';
 import {
@@ -297,6 +299,47 @@ describe('implement resuming a part whose move the squash from git merge base pa
       expect((await documents.latestBody(key, REBASE_CONFLICT))?.trim()).toBe('review');
     } finally {
       await app.close();
+    }
+  });
+});
+
+describe('implement with a conflict only the code host sees', () => {
+  const HOST_TEXT = 'GitHub reports merge conflicts with the base branch';
+
+  async function hostWorld(key: string, phases: string[] | null) {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-implement-host-conflict-'));
+    await writeEnv(root);
+    featureTree(root, key, 'billing-api');
+    const agent = jest.fn(async (_input: AgentRunInput) => result(rebaseReply));
+    const app = await boot(root, agent);
+    await seed(app, key, 'approve');
+    const runs = app.get(RunRepository);
+    const documents = app.get(DocumentRepository);
+    const run = (await runs.findRun(key))!;
+    if (phases) await app.get(FlowRepository).noteFlow(key, phases, 'implement');
+    await documents.putDocument(run, 'implementation', '- changed the field parser\n');
+    await documents.putDocument(run, REBASE_CONFLICT, hostConflictMarker(HOST_TEXT));
+    return { app, agent, runs, documents };
+  }
+
+  it.each([
+    ['checks', null],
+    ['code-review', ['implementation', 'code-review', 'ci']],
+  ])('launches the conflict agent once and jumps to %s', async (next, phases) => {
+    const key = `PROJ-71${next === 'checks' ? 1 : 2}`;
+    const world = await hostWorld(key, phases);
+    try {
+      const done = await world.app.get(PipelineService).step('implement', key);
+      expect(done.exitCode).toBe(0);
+      expect(world.agent).toHaveBeenCalledTimes(1);
+      const prompt = world.agent.mock.calls[0]?.[0].prompt;
+      expect(prompt).toContain(HOST_TEXT);
+      expect(prompt).not.toContain('The commit being replayed is');
+      expect(await world.documents.latestBody(key, 'rebase_resolution_result')).toBeTruthy();
+      expect((await world.runs.findRun(key))?.currentStep).toBe(next);
+      expect((await world.documents.latestBody(key, REBASE_CONFLICT))?.trim()).toBe('review');
+    } finally {
+      await world.app.close();
     }
   });
 });

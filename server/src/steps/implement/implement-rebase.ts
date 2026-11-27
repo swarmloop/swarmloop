@@ -14,6 +14,8 @@ import { rebaseResolution, type RebaseResolutionResult } from '../../agent-resul
 import type { PlanChatEntry } from '../../contract/plan-chat';
 import { answersConflict, askConflict, inRound, resolvedResult, type RebaseDeps } from './rebase-resolved';
 import { settleOwnConflict } from './implement-own-conflict';
+import { settleHostConflict } from './implement-host-conflict';
+import { hostConflictOf } from '../shared/host-conflict-marker';
 import { ownConflictOf } from './own-conflict-marker';
 import { rebaseConflictPrompt } from './implement.prompts';
 import { plannerWait, takeAnswer } from './implement-question';
@@ -40,6 +42,10 @@ export async function settleRebase(
   const own = ownConflictOf(storedStderr);
   if (marker === 'pending' && own !== null) {
     return settleOwnConflict(deps, requirements, ctx, names, forRepo(branch, names[0] ?? ''), own, answer);
+  }
+  const host = hostConflictOf(storedStderr);
+  if (marker === 'pending' && host !== null) {
+    return settleHostConflict(deps, requirements, ctx, names, host, answer);
   }
   const bases = new Map<string, string>();
   const input = {
