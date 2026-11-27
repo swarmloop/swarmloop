@@ -4,10 +4,11 @@ import { PlanChatStore } from '../history/plan-chat.store';
 import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { RunRepository } from '../history/run.repository';
 import { latest } from '../history/latest-document';
-import { answered } from '../steps/shared/answers';
+import { answered, renderAnswers } from '../steps/shared/answers';
 import { OPEN_ITEM_KINDS, openItems } from '../steps/shared/open-items';
 import { escalateToPerson, escalationLine } from './escalation';
-import { closeSkippedQuestions } from './skipped-questions';
+import { questionFor } from '../steps/implement/split-questions';
+import { closeEpicQuestions, closeSkippedQuestions } from './skipped-questions';
 
 const REASON = 'this task was skipped';
 
@@ -88,6 +89,56 @@ describe('closeSkippedQuestions', () => {
 
       expect(await documents.latestDocuments([run.id], ['answers'])).toHaveLength(once.length);
       expect(answered(latest(once, 'answers') ?? '').get('first?')).toBe(REASON);
+    } finally {
+      await db.close();
+    }
+  });
+});
+
+describe('closeEpicQuestions', () => {
+  const ASKED_AT = '2026-01-01T00:00:00.000Z';
+  const line = (task: string, question: string) => questionFor(task, question, ASKED_AT);
+
+  async function epic() {
+    const db = await repositoryDatabase();
+    const runs = db.app.get(RunRepository);
+    const documents = db.app.get(DocumentRepository);
+    const parent = await runs.openWaiting('epic-1', '/target');
+    const part = await runs.openSubtask('epic-1-b', parent.id, 'b', parent.startedBy, parent.agents);
+    const answers = async () => answered((await documents.latestBody('epic-1', 'answers')) ?? '');
+    const close = (run = part) => closeEpicQuestions({ documents, runs }, run, REASON);
+    return { db, runs, documents, parent, part, answers, close };
+  }
+
+  it("answers the part's open lines on its epic with the reason and keeps the other lines and answers", async () => {
+    const { db, documents, parent, answers, close } = await epic();
+    try {
+      const own = [line('b', 'first?'), line('b', 'second?')];
+      const sibling = line('c', 'third?');
+      await documents.putDocument(parent, 'subtask_questions', `- ${[...own, sibling].join('\n- ')}\n`);
+      await documents.putDocument(parent, 'answers', renderAnswers([[own[0], 'yes']]));
+
+      await close();
+
+      expect([...(await answers())]).toEqual([
+        [own[0], 'yes'],
+        [own[1], REASON],
+      ]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('writes nothing when no line of the part is open, and nothing on a run with no epic', async () => {
+    const { db, runs, documents, parent, answers, close } = await epic();
+    try {
+      await documents.putDocument(parent, 'subtask_questions', `- ${line('c', 'third?')}\n`);
+
+      await close();
+      await close((await runs.findRun('epic-1'))!);
+
+      expect(await documents.latestBody('epic-1', 'answers')).toBeNull();
+      expect(await answers()).toEqual(new Map());
     } finally {
       await db.close();
     }

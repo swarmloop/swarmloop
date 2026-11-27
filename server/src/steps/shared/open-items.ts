@@ -3,6 +3,8 @@ import type { FlowItem } from '../../contract/api';
 import { jiraIssueKey } from '../../integrations/issue-tracker/jira/jira-url';
 import { answered, openQuestions } from './answers';
 import { readStoredQuestions } from './question-parts';
+import { withoutSkipped } from './subtask-question-line';
+import { parseSubtasks, SUBTASKS_KIND } from '../../contract/subtask';
 import { research } from '../../agent-result/definitions/research';
 import { storedResult } from '../../agent-result/stored-result';
 import type { ResearchResult } from '../../agent-result/definitions/research';
@@ -45,6 +47,7 @@ export const OPEN_ITEM_KINDS = [
   'answers',
   'question_parts',
   'subtask_questions',
+  SUBTASKS_KIND,
   'review_questions',
   'pending',
   'passed_on',
@@ -66,7 +69,15 @@ export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls
     itemsOut.push(...questionItems(documents, 'questions', [], true));
   }
   if (run.split && run.currentStep === 'implement') {
-    itemsOut.push(...questionItems(documents, 'subtask_questions', []));
+    // A question of a skipped task is asked of no one.
+    const items = questionItems(documents, 'subtask_questions', []);
+    const asked = new Set(
+      withoutSkipped(
+        items.map((item) => item.id),
+        parseSubtasks(latest(documents, SUBTASKS_KIND) ?? ''),
+      ),
+    );
+    itemsOut.push(...items.filter((item) => asked.has(item.id)));
   }
   if (run.currentStep === 'code-review') {
     itemsOut.push(...questionItems(documents, 'review_questions', []));

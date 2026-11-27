@@ -19,6 +19,15 @@ export function betweenPasses(parent: RunEntity): boolean {
   );
 }
 
+/** The epic waits at implement on questions that its parts or its gaps raised. */
+export function asksAtImplement(parent: RunEntity): boolean {
+  const { state, reason } = storedState(parent);
+  const code = reason?.code ?? '';
+  return (
+    parent.currentStep === 'implement' && state === 'waiting' && (code === NEEDS_ANSWERS || code === REASON.asksPlanner)
+  );
+}
+
 /**
  * The epic the main move takes: between passes, or waiting at implement on questions that its parts or its gaps raised.
  * A wait of the epic's own agent (a parked conflict of its own branch, a resolution round, a defect return it fixes)
@@ -33,10 +42,7 @@ export async function takesMain(
 ): Promise<boolean> {
   if (!parent.split) return false;
   if (betweenPasses(parent)) return true;
-  const { state, reason } = storedState(parent);
-  const code = reason?.code ?? '';
-  const asking = state === 'waiting' && (code === NEEDS_ANSWERS || code === REASON.asksPlanner);
-  if (parent.currentStep !== 'implement' || !asking) return false;
+  if (!asksAtImplement(parent)) return false;
   const subtasks = { settledAt: (run: RunEntity, id: string) => settledAt(runs, documents, run, id) };
   return (await implementRunner(new InputReader(documents), documents, subtasks, parent)) === 'split';
 }

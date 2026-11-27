@@ -1,10 +1,15 @@
 import 'reflect-metadata';
 import { RunSubtaskCommandsService } from '../../api/run-subtask-commands.service';
-import { actionsFor, SKIPPED_NOTE } from '../../contract/run-state';
+import { actionsFor, REASON, SKIPPED_NOTE } from '../../contract/run-state';
+import { RunRepository } from '../../history/run.repository';
+import { storeRun } from '../../testing/store-run.spec-helpers';
+import { renderQuestions } from '../research/research-record';
+import { answered, renderAnswers } from '../shared/answers';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { skippedByEpic } from '../shared/subtask-skip-reason';
+import { questionFor } from './split-questions';
 import { DocumentRepository } from '../../history/document.repository';
-import { storedState } from '../../history/run-state';
+import { storedState, writeRunState } from '../../history/run-state';
 import type { TestApp } from '../../testing/test-app';
 import {
   child,
@@ -14,6 +19,7 @@ import {
   opened,
   pass,
   seedMergeParent,
+  setStatus,
   statuses,
   task,
 } from './split-implement.spec-helpers';
@@ -136,5 +142,66 @@ describe('split implement: a skipped task and its merge request', () => {
       'removed',
     ]);
     expect(actionsFor(state, reason?.code ?? null)).toEqual([]);
+  });
+
+  const LINE = questionFor('a', 'Which one?', '2026-01-01T00:00:00.000Z');
+
+  /** Task a reads skipped in the list and its run is stored skipped, and the epic holds a question of it. */
+  async function skippedWithLine(answer?: string) {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    const entries = await escalated('a');
+    const part = await child(app, 'a');
+    writeRunState(part, { status: 'blocked', reason: { code: REASON.skipped, message: SKIPPED_NOTE } });
+    await storeRun(app.app.get(RunRepository), part);
+    await setStatus(app, 'a', 'skipped');
+    const documents = app.app.get(DocumentRepository);
+    const parent = (await app.app.get(RunRepository).findRun(KEY))!;
+    await documents.putDocument(parent, 'contract', '- keep it\n');
+    await documents.putDocument(parent, 'subtask_questions', renderQuestions([LINE]));
+    if (answer) await documents.putDocument(parent, 'answers', renderAnswers([[LINE, answer]]));
+    return { documents, entries };
+  }
+
+  const epicStep = async () => (await app.app.get(RunRepository).findRun(KEY))?.currentStep;
+
+  it('closes the open question its epic holds for a part stored skipped, with the stored reason, and goes on', async () => {
+    const { documents, entries } = await skippedWithLine();
+
+    await pass(app);
+
+    expect(answered((await documents.latestBody(KEY, 'answers')) ?? '').get(LINE)).toBe(SKIPPED_NOTE);
+    expect(await entries()).toEqual([['taken', SKIPPED_NOTE]]);
+    expect(await documents.latestBody(KEY, 'subtask_questions')).toBe('');
+    expect(await epicStep()).toBe('checks');
+  });
+
+  it('hands no answer to a part the list reads skipped and records no decision of it', async () => {
+    const { documents } = await skippedWithLine('Use the first.');
+
+    await pass(app);
+
+    expect(await documents.latestBody(KEY, 'contract')).toBe('- keep it\n');
+    expect(await documents.latestBody(KEY, 'subtask_questions')).toBe('');
+    expect(await epicStep()).toBe('checks');
+  });
+
+  it('leaves no open question of a part the pass itself skips', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await delivered(built);
+    const documents = app.app.get(DocumentRepository);
+    const parent = (await app.app.get(RunRepository).findRun(KEY))!;
+    await documents.putDocument(parent, 'subtask_questions', renderQuestions([LINE]));
+
+    await pass(app);
+
+    expect(answered((await documents.latestBody(KEY, 'answers')) ?? '').get(LINE)).toBe(
+      skippedByEpic('already delivered: src/a.ts'),
+    );
+    expect(await documents.latestBody(KEY, 'subtask_questions')).toBe('');
+    expect(await epicStep()).toBe('checks');
   });
 });

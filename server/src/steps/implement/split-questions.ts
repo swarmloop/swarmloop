@@ -1,11 +1,11 @@
 import type { RunEntity } from '../../history/entities';
+import type { Subtask } from '../../contract/subtask';
 import { renderQuestions } from '../research/research-record';
 import { answered, openQuestions } from '../shared/answers';
 import { withDecision } from '../shared/handoff';
 import { askedParts, type StoredQuestion } from '../shared/question-parts';
 import type { SubtaskOps } from '../shared/subtask-ops';
-
-const PREFIX = /^Subtask (\S+) asks: /;
+import { questionTask, withoutSkipped } from '../shared/subtask-question-line';
 
 const flat = (text: string): string => text.trim().replace(/\s*\n\s*/g, ' ');
 
@@ -36,13 +36,13 @@ export class SplitQuestions {
     const stored = answered(answersBody);
     return openQuestions(body, [])
       .filter((line) => !(stored.get(line) ?? '').trim())
-      .flatMap((line) => this.taskOf(line) ?? []);
+      .flatMap((line) => questionTask(line) ?? []);
   }
 
   /**
    * Sends every answered question to its subtask: a task that waits in research gets the Answer command, a task that
    * waits with needs gets a line in its handoff. Each answer is a decision in the contract with the time `at`, and its
-   * question is closed.
+   * question is closed. A question of a task that `tasks` reads skipped is dropped: it is handed to no one.
    */
   async deliver(
     parent: RunEntity,
@@ -50,13 +50,14 @@ export class SplitQuestions {
     body: string,
     answersBody: string,
     at: string,
+    tasks: Subtask[],
   ): Promise<{ contract: string; body: string }> {
     const stored = answered(answersBody);
     const open: string[] = [];
     let current = contract;
-    for (const line of openQuestions(body, [])) {
+    for (const line of withoutSkipped(openQuestions(body, []), tasks)) {
       const answer = (stored.get(line) ?? '').trim();
-      const id = this.taskOf(line);
+      const id = questionTask(line);
       if (!answer || !id) {
         open.push(line);
         continue;
@@ -67,9 +68,5 @@ export class SplitQuestions {
       current = withDecision(current, id, answer, at);
     }
     return { contract: current, body: renderQuestions(open) };
-  }
-
-  private taskOf(line: string): string | null {
-    return PREFIX.exec(line)?.[1] ?? null;
   }
 }

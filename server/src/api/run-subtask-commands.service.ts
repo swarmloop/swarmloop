@@ -11,6 +11,7 @@ import { ARTIFACTS } from '../steps/contract/artifacts';
 import { PlanChatStore } from '../history/plan-chat.store';
 import { skipRun } from '../pipeline/skip-run';
 import { SubtaskPort } from '../pipeline/subtask-port';
+import { asksAtImplement } from '../steps/shared/epic-between-passes';
 import { storedProjects } from '../config/checkout-path';
 import { SKIPPED_NOTE } from '../contract/run-state';
 import { RunRef } from '../contract/api';
@@ -118,7 +119,9 @@ export class RunSubtaskCommandsService {
       ),
     );
     const fresh = (await this.runs.findRun(key)) ?? parent;
-    if (this.subtasks.passDue(fresh)) await this.subtasks.resumeParent(fresh, `skip-${taskId}-${fresh.revision}`);
+    // An epic that waits on questions may wait on this part's, which the skip just closed: its pass is due as well.
+    if (this.subtasks.passDue(fresh) || asksAtImplement(fresh))
+      await this.subtasks.resumeParent(fresh, `skip-${taskId}-${fresh.revision}`);
     return { key, status: 'started' };
   }
 }
