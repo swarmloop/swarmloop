@@ -5,7 +5,10 @@ import { DocumentRepository } from './document.repository';
 import { root, runDir } from './run-paths';
 import { repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
-import { storedState, writeRunState } from './run-state';
+import { LiveHub } from '../live/live.hub';
+import { RunEntity } from './run.entity';
+import { DataSource } from 'typeorm';
+import { startWaitColumns, storedState, writeRunState } from './run-state';
 import { storeRun } from '../testing/store-run.spec-helpers';
 import { VisitRepository } from './visit.repository';
 
@@ -328,5 +331,45 @@ describe('RunRepository', () => {
     } finally {
       await db.close();
     }
+  });
+
+  describe('recordStartWait', () => {
+    const wait = startWaitColumns({ code: 'AGENT_PLACE', message: 'Waiting for a free agent place (4 of 4 busy)' });
+
+    async function waiting() {
+      const db = await repositoryDatabase();
+      const dataSource = db.app.get(DataSource);
+      const run = await db.app.get(RunRepository).openWaiting('run-1', '/target');
+      const noticed: string[] = [];
+      db.app.get(LiveHub).onChanged((key) => noticed.push(key));
+      const row = () => dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id });
+      return { db, dataSource, runs: db.app.get(RunRepository), run, noticed, row };
+    }
+
+    it('stores the wait of a running run without a new revision, and nothing when it is unchanged', async () => {
+      const { db, dataSource, runs, run, noticed, row } = await waiting();
+      try {
+        await dataSource.getRepository(RunEntity).update({ id: run.id }, { status: 'running' });
+        const seen = await row();
+        expect(await runs.recordStartWait(seen, wait)).toBe(true);
+        expect(await row()).toMatchObject({ ...wait, revision: seen.revision });
+        expect(noticed).toEqual([run.key]);
+        expect(await runs.recordStartWait(await row(), wait)).toBe(false);
+        expect(noticed).toEqual([run.key]);
+      } finally {
+        await db.close();
+      }
+    });
+
+    it('writes nothing once the run no longer runs', async () => {
+      const { db, runs, row } = await waiting();
+      try {
+        const seen = await row();
+        expect(await runs.recordStartWait(seen, wait)).toBe(false);
+        expect(await row()).toMatchObject({ state: seen.state, stateReason: seen.stateReason });
+      } finally {
+        await db.close();
+      }
+    });
   });
 });

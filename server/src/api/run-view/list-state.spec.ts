@@ -1,19 +1,21 @@
 import type { DocumentEntity, RunEntity } from '../../history/entities';
 import { ERROR_CODES } from '../../contract/error-codes';
 import { SUBTASKS_KIND } from '../../contract/subtask';
-import { factColumns, startWaitColumns } from '../../history/run-state';
+import { startWaitColumns, stateOfStatus, writeOpenItemState } from '../../history/run-state';
 import { listPlans, listStates } from './list-state';
 import { ownStates } from './own-state';
 import { childrenByParent } from './status';
 
 function run(id: number, key: string, extra: Partial<RunEntity> = {}): RunEntity {
-  return { id, key, status: 'waiting', currentStep: 'implement', stateReason: null, ...extra } as RunEntity;
+  const row = { id, key, status: 'waiting', currentStep: 'implement', stateReason: null, ...extra } as RunEntity;
+  return extra.state ? row : { ...row, ...stateOfStatus(row) };
 }
 
-/** A waiting run as the refresh stores it when its documents hold an open question or an unsaved paste. */
+/** A waiting run as its writer stores it when its documents hold an open question or an unsaved paste. */
 function asking(id: number, key: string, extra: Partial<RunEntity> = {}): RunEntity {
   const row = run(id, key, extra);
-  return { ...row, ...factColumns(row, { needsAnswers: true }) };
+  writeOpenItemState(row, { needsAnswers: true });
+  return row;
 }
 
 function reason(code: string, extra: object = {}): string {

@@ -13,7 +13,6 @@ import { remoteProject } from '../integrations/code-host/remote-project';
 import { BacklogQueries } from '../pipeline/backlog/backlog-queries';
 import { BacklogPlanner } from '../pipeline/backlog/planner/backlog-planner';
 import { CommandService } from '../pipeline/command.service';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { FAKE_MODEL_KEY } from './env.spec-helpers';
 import { createFlowHarness } from './flow-harness';
 import { BlockAgentRunner, DEFAULT_RESEARCH, type ScriptedAnswer } from './result-answer';
@@ -95,7 +94,6 @@ describe('a question of a backlog run goes to the person only when the backlog p
     await flow.app.pipeline.step(step, runKey);
     await flow.app.pipeline.whenIdle(runKey);
     await flow.tick();
-    await get(RunStateRefresh).settled();
     const waiting = (await get(RunRepository).findRun(runKey))!;
     expect([waiting.currentStep, waiting.status]).toEqual([step, 'waiting']);
   }

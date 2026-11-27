@@ -1,15 +1,17 @@
 import 'reflect-metadata';
 import type { AppConfig } from '../config/env';
+import { stateOfStatus } from '../history/run-state';
 import { StoppedCleanup } from './stopped-cleanup';
 
 type Answer = 'gone' | 'unknown' | Error;
 
 function world(marks: Record<string, string>, answers: Record<string, Answer>, resumed: string[] = []) {
-  const stoppedRun = { status: 'blocked', stateReason: JSON.stringify({ code: 'STOPPED', message: 'stopped' }) };
+  const stoppedRow = { status: 'blocked', stateReason: JSON.stringify({ code: 'STOPPED', message: 'stopped' }) };
+  const stoppedRun = { ...stoppedRow, ...stateOfStatus(stoppedRow) };
   const runs = Object.keys(marks).map((key, index) => ({
     id: index + 1,
     key,
-    ...(resumed.includes(key) ? { status: 'running', stateReason: null } : stoppedRun),
+    ...(resumed.includes(key) ? { status: 'running', ...stateOfStatus({ status: 'running' }) } : stoppedRun),
   }));
   const cleared: string[] = [];
   const stopped: string[] = [];

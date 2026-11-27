@@ -34,6 +34,7 @@ async function insertOneRowPerTable(dataSource: DataSource): Promise<void> {
   await dataSource.getRepository(RunEntity).insert({
     key: 'run-1',
     status: 'running',
+    state: 'running',
     currentStep: 'research',
     runtime: 'cursor',
     codeHost: 'gitlab',

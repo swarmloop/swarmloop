@@ -20,11 +20,21 @@
       "pattern": "\\binstanceof\\s+(HostUnavailable|RuntimeLimit|ModelHostUnavailable)\\b"
     },
     {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/history/run-state.ts", "server/src/history/migrations/"],
+      "reasons": {
+        "server/src/history/run-state.ts": "the one door through which a run's state changes",
+        "server/src/history/migrations/": "a migration rewrites stored rows, not a run's change"
+      },
+      "allowLine": "@Column\\(",
+      "pattern": "\\bstate_reason\\b|\\.set\\(\\{[^}]*\\b(state|stateReason)\\b|\\bstateReason\\s*=[^=]"
+    },
+    {
       "include": [
         "server/src/history/run-state.ts",
         "server/src/api/run-view/flow-waiting.ts",
-        "server/src/pipeline/command.service.ts",
-        "server/src/steps/shared/run-state-refresh.ts"
+        "server/src/pipeline/command.service.ts"
       ],
       "allowLine": "latest\\(current, 'error'\\)|A required check failed again on unchanged files\\.",
       "pattern": "\\bblockCode\\b|\\bdidNotFit\\(|\\bisStopNote\\b|does not fit|failed again on unchanged|\\.latestBody\\(|'error'|ARTIFACTS\\.error"

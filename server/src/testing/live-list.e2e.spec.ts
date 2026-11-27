@@ -5,7 +5,6 @@ import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { SubtaskPort } from '../pipeline/subtask-port';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { createTestApp, type TestApp } from './test-app';
 import { BlockAgentRunner, DEFAULT_RESEARCH } from './result-answer';
 import { connect, fakeBatchTimer, HeldList, open, pass } from './live-clients.spec-helpers';
@@ -117,7 +116,6 @@ describe('the run list follows a run to the end', () => {
     const active = new HeldList(app, 'active', '');
     await open(app, sockets, active);
 
-    await app.app.get(RunStateRefresh).settled();
     await pass();
     expect(active.runs.map((item) => item.state)).toEqual(['running']);
 

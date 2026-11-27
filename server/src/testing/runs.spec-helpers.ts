@@ -29,7 +29,6 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { writeRunState } from '../history/run-state';
 import { QuestionHolds } from '../steps/shared/question-holds';
 import { QuestionPassOn } from '../pipeline/question-pass-on';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { StepRegistry } from '../steps/step.registry';
 import { RunFolders } from '../pipeline/run-folders';
 import { ProjectAppendService } from '../steps/prepare/project-append.service';
@@ -77,7 +76,6 @@ export async function boot(
     imports: [SwarmloopConfigModule.forRoot(join(root, '.env')), HistoryModule, LiveModule, AuthModule],
     providers: [
       RunQueriesService,
-      RunStateRefresh,
       QuestionHolds,
       QuestionPassOn,
       RunListRows,

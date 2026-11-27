@@ -9,7 +9,7 @@ const PLACE = 'Waiting for a free agent place (1 of 1 busy)';
 
 function setup() {
   const gate = new ContainerGate(new AppConfig(testEnv({ AGENTS_PARALLEL: 1 })));
-  const waits = new StartWaits(gate, undefined as never, undefined as never);
+  const waits = new StartWaits(gate, undefined as never);
   waits.onModuleInit();
   const written: (StateReason | null)[] = [];
   const store = (wait: StateReason | null): Promise<void> => {
@@ -86,12 +86,10 @@ describe('StartWaits', () => {
     const stored: string[] = [];
     const runs = {
       findRun: (key: string) => Promise.resolve({ key, status: 'running', state: 'running', stateReason: null }),
-    };
-    const facts = {
       recordStartWait: (_run: unknown, columns: { stateReason: string | null }) =>
         Promise.resolve(void stored.push(columns.stateReason ?? 'none')),
     };
-    const waits = new StartWaits(gate, runs as never, facts as never);
+    const waits = new StartWaits(gate, runs as never);
     waits.onModuleInit();
     const hold: AgentHold = { step: 'implement', onWait: () => undefined };
     const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));

@@ -1,5 +1,4 @@
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
-import { RunFactsRepository } from '../../history/run-facts.repository';
 import { RunRepository } from '../../history/run.repository';
 import { startWaitColumns } from '../../history/run-state';
 import { createTestApp, type TestApp } from '../test-app';
@@ -49,7 +48,7 @@ describe('assertSettled', () => {
       row.status = 'running';
     });
     const seen = (await runs.findRun(key))!;
-    await app.app.get(RunFactsRepository).recordStartWait(seen, WAIT);
+    await runs.recordStartWait(seen, WAIT);
   }
 
   it('passes on a run that settled waiting with a named reason', async () => {

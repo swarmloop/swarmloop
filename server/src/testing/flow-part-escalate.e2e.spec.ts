@@ -15,7 +15,6 @@ import { storedState, writeRunState } from '../history/run-state';
 import { remoteProject } from '../integrations/code-host/remote-project';
 import { BacklogPlanner } from '../pipeline/backlog/planner/backlog-planner';
 import { CommandService } from '../pipeline/command.service';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { FAKE_MODEL_KEY } from './env.spec-helpers';
 import { assertInvariants } from './flow-invariants';
 import { createFlowHarness } from './flow-harness';
@@ -150,7 +149,6 @@ describe('the planner of an epic escalates the question of a part', () => {
   async function epicPass(): Promise<void> {
     await flow.app.pipeline.step('implement', KEY);
     await get(CommandService).idle();
-    await get(RunStateRefresh).settled();
   }
 
   const state = async () => storedState((await get(RunRepository).findRun(KEY))!);

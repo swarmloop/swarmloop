@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import type { StateReason } from '../contract/run-state';
 import { storeRun } from './store-run.spec-helpers';
 import type { Socket } from 'socket.io-client';
 import type { FlowView } from '../contract/api';
@@ -87,9 +88,8 @@ describe('the epic page follows its subtasks', () => {
   }
 
   const taskA = (page: HeldRunPage) => page.flow?.tasks?.find((task) => task.id === 'a');
-  const move = (status: string, currentStep: string, reason?: object) => async (run: RunEntity) => {
-    writeRunState(run, { status, currentStep });
-    run.stateReason = reason ? JSON.stringify(reason) : null;
+  const move = (status: string, currentStep: string, reason?: StateReason) => async (run: RunEntity) => {
+    writeRunState(run, { status, currentStep, reason });
     await storeRun(runs(), run);
   };
 

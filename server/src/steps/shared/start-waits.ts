@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { StateReason } from '../../contract/run-state';
-import { RunFactsRepository } from '../../history/run-facts.repository';
 import { RunRepository } from '../../history/run.repository';
 import { startWaitColumns } from '../../history/run-state';
 import { ContainerGate } from '../../sandbox/container-gate';
@@ -26,7 +25,6 @@ export class StartWaits implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly gate: ContainerGate,
     private readonly runs: RunRepository,
-    private readonly facts: RunFactsRepository,
   ) {}
 
   /**
@@ -85,7 +83,7 @@ export class StartWaits implements OnModuleInit, OnModuleDestroy {
   private async onRun(key: string, wait: StateReason | null): Promise<void> {
     const run = await this.runs.findRun(key);
     if (run?.status === 'running') {
-      await this.facts.recordStartWait(run, startWaitColumns(wait));
+      await this.runs.recordStartWait(run, startWaitColumns(wait));
     }
   }
 }

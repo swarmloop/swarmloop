@@ -34,7 +34,6 @@ import { WalCheckpoint } from './wal-checkpoint';
 import { RunWaitLog } from './run-wait.log';
 import { VisitStartRepository } from './visit-start.repository';
 import { AgentCallRepository } from './agent-call.repository';
-import { RunFactsRepository } from './run-facts.repository';
 import { OpenItemRules } from './open-item-rules';
 import { RunOpenItems } from './run-open-items';
 import { OpenItemFacts } from '../steps/shared/open-item-facts';
@@ -106,7 +105,6 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     ServerStallRepository,
     SlowRequestRepository,
     RunWaitLog,
-    RunFactsRepository,
     EtaHistoryRepository,
     VisitStartRepository,
     AgentCallRepository,
@@ -136,7 +134,6 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     ServerStallRepository,
     SlowRequestRepository,
     RunWaitLog,
-    RunFactsRepository,
     EtaHistoryRepository,
     VisitStartRepository,
     AgentCallRepository,

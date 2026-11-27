@@ -264,11 +264,11 @@ test('forbidOutside reports a state derived outside the run state module and let
   assert.match(violations[1], /^server\/src\/pipeline\/foo\.spec\.ts:1:/);
 });
 
-test('forbidOutside reports a block code or an error document read in the four state readers and lets the display read and other files be', () => {
+test('forbidOutside reports a block code or an error document read in the three state readers and lets the display read and other files be', () => {
   const files = {
     'server/src/history/run-state.ts':
       'const code = blockCode(step, error);\nconst stored = readReason(run.stateReason);\n',
-    'server/src/steps/shared/run-state-refresh.ts':
+    'server/src/pipeline/command.service.ts':
       "const documents = await latestDocuments([run.id], [...KINDS, 'error']);\n",
     'server/src/api/run-view/flow-waiting.ts': "const residual = latest(current, 'error') ?? null;\n",
     'server/src/steps/step-error-end.ts': 'const code = blockCode(step, error);\n',
@@ -279,7 +279,29 @@ test('forbidOutside reports a block code or an error document read in the four s
 
   assert.equal(violations.length, 2);
   assert.match(violations[0], /^server\/src\/history\/run-state\.ts:1:/);
-  assert.match(violations[1], /^server\/src\/steps\/shared\/run-state-refresh\.ts:1:/);
+  assert.match(violations[1], /^server\/src\/pipeline\/command\.service\.ts:1:/);
+});
+
+test('forbidOutside reports a write of the state columns outside the run state module and lets that module, a migration, a column declaration and a spec be', () => {
+  const files = {
+    'server/src/history/run-state.ts': 'run.stateReason = JSON.stringify(reason);\n',
+    'server/src/history/migrations/1797700000000-run-state-filled.ts': 'UPDATE runs SET state_reason = ?, state = ?\n',
+    'server/src/history/run.entity.ts': "@Column({ name: 'state_reason', type: 'text', nullable: true })\n",
+    'server/src/history/run-state.spec.ts': 'run.stateReason = null;\n',
+    'server/src/history/run-facts.ts': '.set({ state: derived.state, stateReason: derived.reason })\n',
+    'server/src/steps/shared/refresh.ts': 'run.stateReason = JSON.stringify(reason);\n',
+    'server/src/history/run.repository.ts': '.set({ ...columns })\n',
+    'server/src/history/query.ts': "query('UPDATE runs SET state_reason = ?');\n",
+    'server/src/history/read.ts': 'if (run.stateReason === null) return;\n',
+  };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.equal(violations.length, 3);
+  assert.match(violations[0], /^server\/src\/history\/run-facts\.ts:1:/);
+  assert.match(violations[1], /^server\/src\/steps\/shared\/refresh\.ts:1:/);
+  assert.match(violations[2], /^server\/src\/history\/query\.ts:1:/);
 });
 
 test('forbidOutside keeps the old phase name in the migration and nowhere else', () => {

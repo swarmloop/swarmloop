@@ -19,7 +19,6 @@ import { checkRepeatedBlock } from '../steps/implement/implement-record';
 import { blockedEnd } from '../steps/pipeline/pipeline-result';
 import { flakyBlock } from '../steps/pipeline/pipeline-red';
 import type { OpenedStep } from '../steps/step-run';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 
 /** A block as its writer ends it: the step, the code and the text it gives. */
 interface Block {
@@ -91,12 +90,10 @@ describe('a block says why by its code, not by its text', () => {
       await storeRun(runs, run);
       await app.get(DocumentRepository).putDocument(run, 'error', `${block.text}\n`);
       runs.notify(key);
-      await app.get(RunStateRefresh).settled();
       const before = await view(key);
 
       await app.get(DocumentRepository).putDocument(run, 'error', 'Reworded: nothing here names a reason.\n');
       runs.notify(key);
-      await app.get(RunStateRefresh).settled();
       const after = await view(key);
 
       expect(after).toEqual(before);
