@@ -71,12 +71,7 @@ async function readings(setup: Setup): Promise<Readings> {
   const { view } = await app.get(RunListRows).read();
   const row = view.runs.find((item) => item.key === key)!;
   const column = storedState(stored);
-  const stats = await new StatsController(
-    app.get(StatsRepository),
-    runs,
-    app.get(DocumentRepository),
-    app.get(Clock),
-  ).report('0');
+  const stats = await new StatsController(app.get(StatsRepository), runs, app.get(Clock)).report('0');
   const retention = new RunRetention(
     runs,
     { remove: async () => undefined, removeLeftTmp: async () => undefined } as never,

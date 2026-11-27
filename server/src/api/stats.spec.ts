@@ -359,10 +359,18 @@ describe('stats range', () => {
   it('refuses a range that is not a whole number of days', async () => {
     const controller = new StatsController(
       {
-        rows: async () => ({ firstRunAt: null, runs: [], steps: [], loops: [], stalls: [], person: NO_PERSON }),
+        read: async () => ({
+          firstRunAt: null,
+          runs: [],
+          steps: [],
+          loops: [],
+          stalls: [],
+          person: NO_PERSON,
+          durationRows: { stats: [], reportMs: new Map() },
+          documents: [],
+        }),
       } as never,
       { durationByRun: async () => new Map() } as never,
-      { latestDocuments: async () => [] } as never,
       { now: () => NOW, iso: () => new Date(NOW).toISOString() },
     );
     await expect(controller.report('7.5')).rejects.toBeInstanceOf(BadRequestException);

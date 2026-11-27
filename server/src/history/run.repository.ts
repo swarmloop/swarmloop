@@ -15,7 +15,7 @@ import { KeyedQueue } from './keyed-queue';
 import { RunOpenItems } from './run-open-items';
 import { transaction } from './transaction';
 import { pidAlive } from './pid-alive';
-import { durationByRun } from './run-durations';
+import { durationByRun, type DurationRows } from './run-durations';
 import type { RunStateChange, StartWaitColumns } from './run-state';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -394,8 +394,8 @@ export class RunRepository {
     );
   }
 
-  /** The active time of every run, or only of the runs with these ids. */
-  async durationByRun(runIds?: number[]): Promise<Map<number, number>> {
-    return durationByRun(this.stepStats, this.visitRepository, runIds);
+  /** The active time of every run, or only of the runs with these ids. Given the step `rows`, it reads none. */
+  async durationByRun(runIds?: number[], rows?: DurationRows): Promise<Map<number, number>> {
+    return durationByRun(this.stepStats, this.visitRepository, runIds, rows);
   }
 }

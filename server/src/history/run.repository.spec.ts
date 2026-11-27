@@ -328,6 +328,20 @@ describe('RunRepository', () => {
       expect([...asked.keys()]).toEqual([first.id]);
       expect(asked.get(first.id)).toBe(all.get(first.id));
       expect(all.has(second.id)).toBe(true);
+
+      const stats = await db.app.get(DataSource).query(
+        `SELECT id, run_id AS runId, step, duration_ms AS durationMs, step_started_at AS stepStartedAt,
+             started_at AS startedAt, finished_at AS finishedAt FROM step_stats WHERE run_id = ? ORDER BY id`,
+        [first.id],
+      );
+      const given = { stats, reportMs: new Map<number, number>() };
+      const at = '2026-11-01T00:00:00.000Z';
+      const own = { id: 1, runId: first.id, step: 'implement', stepStartedAt: null, startedAt: at, finishedAt: at };
+
+      expect(await runs.durationByRun([first.id], given)).toEqual(await runs.durationByRun([first.id]));
+      expect(await runs.durationByRun([first.id], { ...given, stats: [{ ...own, durationMs: 7 }] })).toEqual(
+        new Map([[first.id, 7]]),
+      );
     } finally {
       await db.close();
     }
