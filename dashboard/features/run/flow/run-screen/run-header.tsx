@@ -18,6 +18,7 @@ import { duration, money, tokens } from '../../../../lib/format';
 import { runWord } from '../../run-word';
 import { RunStateIcon, toneColor } from '../../run-state-word';
 import { RunIdentity } from './run-identity';
+import { RunDelivery } from './run-delivery';
 import { RunLinks } from './run-links';
 import { RelaunchNote } from './relaunch-note';
 import type { FlowView } from '@contract/api';
@@ -87,6 +88,7 @@ export function RunHeader({
       >
         <Box sx={{ minWidth: 0, overflow: 'hidden' }}>
           <RunLinks mergeRequests={flow.mergeRequests} commits={commits} />
+          <RunDelivery delivery={flow.delivery} />
           <Tooltip title={flow.title}>
             <Button
               color="inherit"

@@ -12,6 +12,8 @@ import { RunRepository } from '../history/run.repository';
 import { storedState } from '../history/run-state';
 import { MergeRequestLookup } from '../steps/merge-request/merge-request-lookup';
 import { parseMergeRequests } from '../steps/merge-request/merge-request-record';
+import { deliveryOf, stillPublishing } from '../steps/contract/delivery-list';
+import { storedDelivery } from './run-delivery';
 
 const DAY_MS = 86_400_000;
 /** How long a done run waits for its merge request to be merged or closed. */
@@ -66,7 +68,7 @@ export class MergeWatch {
       return false;
     }
     const body = await this.documents.latestBody(run.key, 'merge_request');
-    if (!body) return false;
+    if (!body || (await this.stillPublishing(run))) return false;
     let merge: MergeOutcome | null;
     try {
       merge = await this.read(run, parseMergeRequests(body));
@@ -93,7 +95,7 @@ export class MergeWatch {
   private async watchUnfinished(run: RunEntity): Promise<boolean> {
     if (this.clock.now() - Date.parse(run.updatedAt) > WAIT_DAYS * DAY_MS) return false;
     const body = await this.documents.latestBody(run.key, 'merge_request');
-    if (!body) return false;
+    if (!body || (await this.stillPublishing(run))) return false;
     let merge: MergeOutcome | null;
     try {
       merge = await this.read(run, parseMergeRequests(body), false);
@@ -113,6 +115,11 @@ export class MergeWatch {
       `The merge request was ${ended} on ${host} while the run was ${before}; the run is done.`,
     );
     return false;
+  }
+
+  /** A repository with work that has no request yet: the run delivers nothing complete, so no outcome can be settled. */
+  private async stillPublishing(run: RunEntity): Promise<boolean> {
+    return stillPublishing(deliveryOf(await storedDelivery(this.documents, run.key), [])).length > 0;
   }
 
   /** Null while a request is open. A request closed unmerged settles the run at once, unless `settleAtOnce` is off. */

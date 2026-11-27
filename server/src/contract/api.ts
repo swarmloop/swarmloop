@@ -8,6 +8,7 @@ import type { RunBacklog } from './backlog';
 import type { Role } from './people';
 import type { ConversationView } from './plan-chat';
 import type { RelaunchView } from './relaunch';
+import type { DeliveryView } from './delivery';
 
 export type { SettingsBody, StoredAgents } from './settings';
 export type { ConnectionView, ConnectionsView, TokenSignInView, ProvidersView } from './host-login';
@@ -141,6 +142,8 @@ export interface FlowView {
   eta?: RunEta;
   /** One merge request per repository, from the run's stored merge requests. */
   mergeRequests: MergeRequestView[];
+  /** One entry per repository of the run: only read, being published, or published. */
+  delivery: DeliveryView[];
   status: string;
   currentStep: string;
   updatedAt: string;

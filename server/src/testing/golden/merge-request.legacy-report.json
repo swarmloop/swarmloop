@@ -15,6 +15,10 @@
     {
       "body": "Ships the field.\n",
       "kind": "review_report"
+    },
+    {
+      "body": "demo published group/demo\n",
+      "kind": "delivery"
     }
   ],
   "events": [
@@ -32,22 +36,6 @@
     },
     {
       "kind": "input.received",
-      "step": "merge-request"
-    },
-    {
-      "kind": "command.started",
-      "step": "merge-request"
-    },
-    {
-      "kind": "command.finished",
-      "step": "merge-request"
-    },
-    {
-      "kind": "command.started",
-      "step": "merge-request"
-    },
-    {
-      "kind": "command.finished",
       "step": "merge-request"
     },
     {
@@ -187,6 +175,7 @@
       "ci_skip",
       "requirements",
       "repos",
+      "delivery",
       "implementation_result",
       "implementation",
       "review_report_result",

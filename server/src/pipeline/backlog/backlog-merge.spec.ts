@@ -152,6 +152,20 @@ describe('BacklogMerge', () => {
       expect((await h.task(id, 'a')).note).toBe('its run is done without a merge request; needs a person');
     }));
 
+  it('merges a task whose run only read one of its repositories on the same pass', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      h.setMain('server');
+      const id = (await h.seedBacklog('one', { repositories: ['web', 'server'] })).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1', repositories: ['web', 'server'] });
+      await h.seedDoneRun('a-1', [{ repo: 'web', iid: 5 }], undefined, 'web published acme/web\nserver read\n');
+      await h.tick();
+      const task = await h.task(id, 'a');
+      expect(task).toMatchObject({ status: 'merged', note: '', merged: { web: 'acme/web-merge-1' } });
+      expect(task.note).not.toContain('no merge request for');
+      expect(mergeCalls(h)).toHaveLength(1);
+    }));
+
   it('shows a refused merge and a refused rebase as waits, each event written once', () =>
     withHarness(async (h) => {
       const id = await doneTask(h);

@@ -7,6 +7,10 @@
     {
       "body": "demo\n",
       "kind": "repos"
+    },
+    {
+      "body": "demo publishing\n",
+      "kind": "delivery"
     }
   ],
   "events": [
@@ -147,6 +151,22 @@
       "step": "commit"
     },
     {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
       "kind": "artifact.produced",
       "step": "commit"
     },
@@ -176,7 +196,7 @@
   },
   "loopEvents": [],
   "reads": {
-    "commit": ["requirements", "repos", "commit", "handoff"]
+    "commit": ["requirements", "repos", "commit", "delivery", "handoff"]
   },
   "result": {
     "exitCode": 0,

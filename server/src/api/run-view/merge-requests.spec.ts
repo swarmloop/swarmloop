@@ -1,9 +1,11 @@
+import type { DeliveryEntry } from '../../contract/delivery';
+import { deliveryOf } from '../../steps/contract/delivery-list';
 import { mergeRequestViews } from './merge-requests';
 
 const github = 'project: acme/web\niid: 7\nurl: https://github.com/acme/web/pull/7\ndraft: true\n';
 const gitlab = 'project: acme/api\niid: 12\nurl: https://gitlab.com/acme/api/-/merge_requests/12\ndraft: false\n';
 const both = `${github}\n${gitlab}`;
-const repos = 'web\napi\n';
+const repos = deliveryOf(null, ['web', 'api']);
 
 describe('mergeRequestViews', () => {
   it('gives no links without a merge_request document or with an unreadable one', () => {
@@ -30,6 +32,20 @@ describe('mergeRequestViews', () => {
 
   it('falls back to the project when the repos do not match the records', () => {
     expect(mergeRequestViews(null, github, repos)[0]?.repo).toBe('acme/web');
-    expect(mergeRequestViews(null, both, 'web\n').map((view) => view.repo)).toEqual(['acme/web', 'acme/api']);
+    expect(mergeRequestViews(null, both, deliveryOf(null, ['web'])).map((view) => view.repo)).toEqual([
+      'acme/web',
+      'acme/api',
+    ]);
+  });
+
+  it('labels the one request of three repositories with its own repository', () => {
+    const delivery: DeliveryEntry[] = [
+      { repo: 'api', state: 'read' },
+      { repo: 'web', state: 'published', project: 'acme/web' },
+      { repo: 'docs', state: 'read' },
+    ];
+    expect(mergeRequestViews(null, github, delivery)).toEqual([
+      { repo: 'web', url: 'https://github.com/acme/web/pull/7', state: 'draft' },
+    ]);
   });
 });

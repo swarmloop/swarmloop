@@ -112,7 +112,7 @@
   },
   "loopEvents": [],
   "reads": {
-    "merge-request": ["ci_skip", "requirements", "repos"]
+    "merge-request": ["ci_skip", "requirements", "repos", "delivery"]
   },
   "result": {
     "exitCode": 1,

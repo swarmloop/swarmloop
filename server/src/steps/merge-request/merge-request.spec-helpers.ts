@@ -98,7 +98,7 @@ export async function boot(
 export async function seed(
   app: Awaited<ReturnType<typeof boot>>,
   key: string,
-  options: { implementation?: boolean; repos?: string } = {},
+  options: { implementation?: boolean; repos?: string; delivery?: string } = {},
 ): Promise<void> {
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);
@@ -120,6 +120,9 @@ export async function seed(
     })}\n`,
   );
   await documents.putDocument(seeded, 'repos', options.repos ?? 'demo\n');
+  if (options.delivery) {
+    await documents.putDocument(seeded, 'delivery', options.delivery);
+  }
   await documents.putDocument(seeded, 'pipeline_log', 'result: pass\n');
   if (options.implementation !== false) {
     await documents.putDocument(seeded, 'implementation', 'changed the field\n');

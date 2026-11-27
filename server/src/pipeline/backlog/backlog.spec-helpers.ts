@@ -249,8 +249,13 @@ export async function backlogHarness(parallel = 3) {
     refuseRebase(message: string | null) {
       rebase.refusal = message;
     },
-    /** A run for a task: done with a merge request in each of `requests`, or done by what MergeWatch saw. */
-    async seedDoneRun(key: string, requests: { repo: string; iid: number; branch?: string }[], outcome?: MergeOutcome) {
+    /** A run for a task: done with a merge request in each of `requests`, or done by what MergeWatch saw, with the `delivery` list when given. */
+    async seedDoneRun(
+      key: string,
+      requests: { repo: string; iid: number; branch?: string }[],
+      outcome?: MergeOutcome,
+      delivery?: string,
+    ) {
       const run = runs.newWaitingRun(key, null, 'ada');
       run.codeHost = fake.name;
       await storeRun(runs, run);
@@ -266,6 +271,7 @@ export async function backlogHarness(parallel = 3) {
       );
       if (lines.length > 0) await documents.putDocument(saved, 'merge_request', lines.join('\n'));
       if (refs.length > 0) await documents.putDocument(saved, 'pipeline_ref', refs.join('\n'));
+      if (delivery) await documents.putDocument(saved, 'delivery', delivery);
       return saved;
     },
     seedBacklog(

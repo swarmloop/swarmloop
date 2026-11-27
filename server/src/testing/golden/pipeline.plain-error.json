@@ -38,7 +38,7 @@
   "flows": [],
   "loopEvents": [],
   "reads": {
-    "pipeline": ["pipeline_ref", "ci_skip"]
+    "pipeline": ["pipeline_ref", "ci_skip", "delivery"]
   },
   "result": {
     "exitCode": 1,

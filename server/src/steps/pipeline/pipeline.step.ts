@@ -9,7 +9,6 @@ import { CodeHostRegistry } from '../../integrations/code-host/code-host.registr
 import { FlakyTestRepository } from '../../history/flaky-test.repository';
 import { EventRepository } from '../../history/event.repository';
 import { root } from '../../history/run-paths';
-import { delay } from '../../core/delay';
 import { AwakeTime } from '../../core/awake-time';
 import type { StepName } from '../../contract/steps';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
@@ -28,22 +27,21 @@ import {
   isRunning,
   pendingNote,
   runRows,
-  unstartedRuns,
   checkFacts,
   verdictOf,
   type Verdict,
   type InfraCode,
   type Seen,
 } from './pipeline-report';
-import { finishedRuns, rerunJobs } from './ci-host';
 import { ARTIFACTS } from '../contract/artifacts';
+import { deliveryOf, stillPublishing } from '../contract/delivery-list';
 import { mergeRequestDetails, parseMergeRequests } from '../merge-request/merge-request-record';
 import { cancelRunning } from './cancel-running';
 import { loadSeen } from './load-seen';
 import { atBranchHeads } from './branch-heads';
 import { flakyOnPass } from './flaky-tests';
 import { finish } from './pipeline-result';
-import { infraBlockedEnd } from './pipeline-infra-end';
+import { infraRoute } from './pipeline-infra';
 import { watchCi } from './pipeline-watch';
 import { dropNoCi, noCiLines, noCiReason, type CiScope, type NoCiProject } from './pipeline-no-ci';
 import { hasDraft, markReady } from './pipeline-draft';
@@ -57,10 +55,8 @@ const INPUTS = {
   ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional' },
   repos: { artifact: ARTIFACTS.repos, need: 'optional', late: true },
   mergeRequest: { artifact: ARTIFACTS.mergeRequest, need: 'optional', late: true },
+  delivery: { artifact: ARTIFACTS.delivery, need: 'optional', late: true },
 } as const satisfies InputSpec;
-
-/** The pauses before the two automatic re-runs of a run whose jobs never ran. */
-const RERUN_PAUSES_MS = [60_000, 300_000];
 
 @Injectable()
 export class PipelineStep extends BaseStep<typeof INPUTS> {
@@ -116,6 +112,12 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     const skipped = input.ciSkip?.trim() ?? '';
     if (recorded.length === 0 && skipped) {
       return finish('ok', report(opened, skipped), 'skipped', skipped);
+    }
+    // A run is done only when no repository is still publishing; a run with no list has none (see `deliveryOf`).
+    const publishing = stillPublishing(deliveryOf(await ctx.reread(ARTIFACTS.delivery), []));
+    if (publishing.length > 0) {
+      const names = publishing.map((entry) => entry.repo).join(', ');
+      throw new SwarmloopError(`${names} has work but no merge request yet: the merge request step did not publish it`);
     }
     const host = await this.registry.hostFor(opened.run);
     if (recorded.length === 0) {
@@ -325,11 +327,8 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     return this.route(ctx, env, scope, settled, verdictOf(settled), host, reruns);
   }
 
-  /**
-   * A finished run with no failed job: the cause is on the CI side, so nothing goes to an agent.
-   * Its jobs are re-run after each pause of RERUN_PAUSES_MS, then the run is routed again; when the last one ends the same way the run blocks.
-   */
-  private async infra(
+  /** A finished run with no failed job: see `infraRoute`. */
+  private infra(
     ctx: StepContext,
     env: SwarmloopEnv,
     scope: CiScope,
@@ -338,31 +337,11 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     host: CodeHost,
     reruns: number,
   ): Promise<StepResult> {
-    const { opened, calls } = ctx;
-    const finished = finishedRuns(seen);
-    const unstarted = unstartedRuns(seen);
-    const pause = unstarted.length > 0 ? undefined : RERUN_PAUSES_MS[reruns];
-    const errors: string[] = [];
-    if (pause !== undefined) {
-      await delay(pause);
-      assertNotStopped(this.runStop, opened.run.key);
-      errors.push(...(await rerunJobs(host, finished, calls)));
-      if (errors.length === 0) {
-        const watched = await this.watch(ctx, scope.records, env, host);
-        return this.route(ctx, env, scope, watched.seen, watched.verdict, host, reruns + 1);
-      }
-    }
-    return infraBlockedEnd({
-      opened,
-      calls,
-      host,
-      code,
-      seen,
-      unstarted,
-      finished,
-      reruns,
-      errors,
-      startTimeoutMs: env.PIPELINE_START_TIMEOUT_MS,
-    });
+    const deps = {
+      runStop: this.runStop,
+      watch: (c: StepContext, records: PipelineRef[], e: SwarmloopEnv, h: CodeHost) => this.watch(c, records, e, h),
+      route: (...args: Parameters<PipelineStep['route']>) => this.route(...args),
+    };
+    return infraRoute(deps, { ctx, env, scope, seen, code, host, reruns });
   }
 }
