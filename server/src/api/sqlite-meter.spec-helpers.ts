@@ -8,41 +8,51 @@ interface Handle {
   prepare(source: string): Statement;
 }
 
+interface Measure<T> {
+  result: T;
+  statements: number;
+  characters: number;
+  /** The SQL of every statement run, in order. */
+  sources: string[];
+  /** Every string value SQLite returned. */
+  strings: string[];
+}
+
 export interface SqliteMeter {
-  measure<T>(callback: () => Promise<T>): Promise<{ result: T; statements: number; characters: number }>;
+  measure<T>(callback: () => Promise<T>): Promise<Measure<T>>;
 }
 
 const READS = new Set(['all', 'get', 'iterate', 'run']);
 const CHAINS = new Set(['raw', 'pluck', 'expand', 'bind', 'safeIntegers']);
 
-/** The characters in the string values of one row: an object, an array from raw mode, or a plucked value. */
-function rowCharacters(row: unknown): number {
+/** The string values of one row: an object, an array from raw mode, or a plucked value. */
+function rowStrings(row: unknown): string[] {
   if (typeof row === 'string') {
-    return row.length;
+    return [row];
   }
   if (row === null || typeof row !== 'object') {
-    return 0;
+    return [];
   }
-  return Object.values(row).reduce<number>((sum, value) => sum + (typeof value === 'string' ? value.length : 0), 0);
+  return Object.values(row).filter((value): value is string => typeof value === 'string');
 }
 
-/** The characters in what `all` returns (a list of rows) or `get` returns (one row). */
-function rowsCharacters(rows: unknown): number {
-  return Array.isArray(rows) ? rows.reduce<number>((sum, row) => sum + rowCharacters(row), 0) : rowCharacters(rows);
+/** The string values in what `all` returns (a list of rows) or `get` returns (one row). */
+function rowsStrings(rows: unknown): string[] {
+  return Array.isArray(rows) ? rows.flatMap(rowStrings) : rowStrings(rows);
 }
 
 /**
  * Wraps the test database's better-sqlite3 handle so that, inside `measure`, every statement run and every string
- * character SQLite returns is counted. Install it before the first query: it stays on until the database closes.
+ * SQLite returns is recorded. Install it before the first query: it stays on until the database closes.
  */
 export function meterDatabase(data: DataSource): SqliteMeter {
   const handle = (data.driver as unknown as { databaseConnection: Handle }).databaseConnection;
   const realPrepare = handle.prepare.bind(handle);
   let counting = false;
-  let statements = 0;
-  let characters = 0;
+  let sources: string[] = [];
+  let strings: string[] = [];
 
-  function wrap(real: Statement): Statement {
+  function wrap(real: Statement, source: string): Statement {
     const proxy: Statement = new Proxy(real, {
       get(target, property) {
         const value = Reflect.get(target, property, target);
@@ -57,11 +67,11 @@ export function meterDatabase(data: DataSource): SqliteMeter {
           if (!READS.has(property) || !counting) {
             return result;
           }
-          statements += 1;
+          sources.push(source);
           if (property === 'iterate') {
             return counted(result as Iterable<unknown>);
           }
-          characters += rowsCharacters(result);
+          strings.push(...rowsStrings(result));
           return result;
         };
       },
@@ -71,21 +81,22 @@ export function meterDatabase(data: DataSource): SqliteMeter {
 
   function* counted(rows: Iterable<unknown>): Generator<unknown> {
     for (const row of rows) {
-      characters += rowCharacters(row);
+      strings.push(...rowStrings(row));
       yield row;
     }
   }
 
-  handle.prepare = (source: string) => wrap(realPrepare(source));
+  handle.prepare = (source: string) => wrap(realPrepare(source), source);
 
   return {
     async measure(callback) {
-      statements = 0;
-      characters = 0;
+      sources = [];
+      strings = [];
       counting = true;
       try {
         const result = await callback();
-        return { result, statements, characters };
+        const characters = strings.reduce((sum, value) => sum + value.length, 0);
+        return { result, statements: sources.length, characters, sources, strings };
       } finally {
         counting = false;
       }
