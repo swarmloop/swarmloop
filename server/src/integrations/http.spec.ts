@@ -1,3 +1,4 @@
+import { nextTryAt } from '../contract/outside-waits';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { HostUnavailable, type HttpCallDraft } from '../core/swarmloop-error';
 import { HOST_RETRY_MS, request } from './http';
@@ -86,10 +87,18 @@ describe('request retry policy', () => {
     expect(error).toMatchObject({
       host: 'api.example.com',
       detail: 'HTTP 503',
-      retryAt: new Date(clock.now() + HOST_RETRY_MS).toISOString(),
+      retryAt: nextTryAt(clock.now(), HOST_RETRY_MS),
     });
     expect(fetched).toHaveLength(5);
     expect(sleeps).toHaveLength(4);
+  });
+
+  it('names the same next try for two failures inside one try', async () => {
+    scriptedFetch([503]);
+    const first = (await call().catch((caught: unknown) => caught)) as HostUnavailable;
+    clock.advance(60_000);
+    const second = (await call().catch((caught: unknown) => caught)) as HostUnavailable;
+    expect(second.retryAt).toBe(first.retryAt);
   });
 
   it('reports a network error that never clears by its message', async () => {

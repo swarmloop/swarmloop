@@ -1,4 +1,5 @@
 import type { Clock } from '../core/clock';
+import { nextTryAt } from '../contract/outside-waits';
 import { recordStepEvent } from '../core/step-event-scope';
 import { HostUnavailable, type HttpCallDraft } from '../core/swarmloop-error';
 
@@ -190,12 +191,7 @@ export async function request(
     recordStepEvent({ kind: 'http.call', method, url: safe, statusCode: status, durationMs: clock.now() - started });
     if (isTransient(error)) {
       const detail = status === null ? message : `HTTP ${status}`;
-      throw new HostUnavailable(
-        new URL(url).hostname,
-        detail,
-        new Date(clock.now() + HOST_RETRY_MS).toISOString(),
-        calls,
-      );
+      throw new HostUnavailable(new URL(url).hostname, detail, nextTryAt(clock.now(), HOST_RETRY_MS), calls);
     }
     throw error;
   }
