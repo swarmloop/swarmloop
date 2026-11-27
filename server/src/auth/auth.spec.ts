@@ -21,6 +21,13 @@ const GITLAB_TOKENS = {
     'https://gitlab.com/-/user_settings/personal_access_tokens?name=swarmloop&scopes=read_user,api,write_repository',
 };
 
+const GITLAB_APPLICATION = {
+  provider: 'gitlab',
+  page: 'https://gitlab.com/-/user_settings/applications',
+  callback: expect.stringMatching(/\/auth\/gitlab\/callback$/) as string,
+  scopes: ['read_user', 'api', 'write_repository'],
+};
+
 describe('login and the auth guard', () => {
   let github: Awaited<ReturnType<typeof startFakeGithub>>;
   let app: TestApp;
@@ -82,6 +89,7 @@ describe('login and the auth guard', () => {
     expect(await (await fetch(`${app.url}/auth/providers`)).json()).toEqual({
       providers: ['github'],
       tokens: [GITLAB_TOKENS],
+      applications: [GITLAB_APPLICATION],
     });
     expect((await fetch(`${app.url}/auth/gitlab/login`, { redirect: 'manual' })).status).toBe(404);
   });
@@ -328,6 +336,7 @@ describe('without a login provider', () => {
       expect(await (await fetch(`${app.url}/auth/providers`)).json()).toEqual({
         providers: [],
         tokens: [GITLAB_TOKENS],
+        applications: [GITLAB_APPLICATION],
       });
     } finally {
       await app.close();
@@ -464,6 +473,14 @@ describe('login with a connecting app: who may log in when SWARMLOOP_ALLOW is em
     expect((await signIn('gitlab', 'carol')).status).toBe(302);
     const refused = await signIn('gitlab', 'dave');
     expect(redirectOf(refused).query).toEqual(pushRefusal('gitlab', 'dave'));
+  });
+
+  it('sends a GitLab that rejects the application to the login page as app, with no reason', async () => {
+    await start('gitlab');
+    fake.rejectedCodes.add('carol');
+    const { path, query } = redirectOf(await signIn('gitlab', 'carol'));
+    expect(path).toBe('/login');
+    expect(query).toEqual({ error: 'app', host: 'gitlab' });
   });
 
   it('works as today when SWARMLOOP_ALLOW is not empty', async () => {

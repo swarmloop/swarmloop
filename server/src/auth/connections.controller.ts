@@ -19,7 +19,7 @@ import { ConnectionsService } from './connections.service';
 import { startState, type CookieResponse } from './cookies';
 import { AuthService } from './auth.service';
 import { FIRST_RUN_MAKER } from './first-run-maker';
-import { PeopleService } from './people.service';
+import { AppReplacePolicy } from './app-replace-policy';
 import { appFlowApps, appFlowRoutes, routeHost } from './host-routes';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
@@ -38,7 +38,7 @@ export class ConnectionsController {
     private readonly auth: AuthService,
     private readonly states: LoginStates,
     private readonly repos: CheckoutRepos,
-    private readonly people: PeopleService,
+    private readonly policy: AppReplacePolicy,
   ) {}
 
   @Get()
@@ -81,7 +81,7 @@ export class ConnectionsController {
     }
     // An app nobody has signed in through yet has no maker to name.
     const maker = app.madeBy === FIRST_RUN_MAKER ? null : app.madeBy;
-    if (!actor || !(await this.mayReplace(actor, maker))) {
+    if (!actor || !(await this.policy.mayReplace(actor, maker))) {
       throw new ForbiddenException(
         maker ? `Only ${personLabel(maker)} or an admin can replace this app` : 'Only an admin can replace this app',
       );
@@ -96,10 +96,6 @@ export class ConnectionsController {
       await this.connections.disconnect(this.host(host), actor);
     }
     return { ok: true };
-  }
-
-  private async mayReplace(actor: string, madeBy: string | null | undefined): Promise<boolean> {
-    return actor === madeBy || (await this.people.isAdmin(actor));
   }
 
   private host(name: string): ProviderName {
@@ -144,7 +140,6 @@ export class ConnectionsController {
     const credentials = this.apps.credentials(host);
     const health = actor ? await this.connections.health(host, actor) : null;
     const { appLabel, installs } = this.connections.endpoints(host);
-    const mayReplace = Boolean(installs && stored && actor && (await this.mayReplace(actor, stored.madeBy)));
     const repositories = installs && health ? await this.connections.repositories(actor as string).catch(() => []) : [];
     return {
       host,
@@ -163,8 +158,24 @@ export class ConnectionsController {
       unreachable: installs && health ? await this.unreachable(host, repositories) : [],
       selection: health?.selection === 'selected' ? 'selected' : health?.selection === 'all' ? 'all' : null,
       health: health && { status: health.status, expiresAt: health.expiresAt, refreshedAt: health.refreshedAt },
-      mayReplace,
-      connected: mayReplace ? await this.connections.loginsOn(host) : [],
+      ...(await this.replaceView(host, actor, installs)),
+    };
+  }
+
+  /** Whether the viewer may replace the host's stored app, and the people a replace disconnects. */
+  private async replaceView(
+    host: ProviderName,
+    actor: string | null,
+    installs: boolean,
+  ): Promise<Pick<ConnectionView, 'mayReplace' | 'connected'>> {
+    const stored = this.apps.find(host);
+    const hasApp = installs || codeHostAdapter(host)?.storesApplication;
+    if (!hasApp || !stored || !actor || !(await this.policy.mayReplace(actor, stored.madeBy))) {
+      return { mayReplace: false, connected: [] };
+    }
+    return {
+      mayReplace: true,
+      connected: await (installs ? this.connections.loginsOn(host) : this.connections.grantLogins(host)),
     };
   }
 }

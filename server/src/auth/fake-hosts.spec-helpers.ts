@@ -1,6 +1,12 @@
 import { createServer, type IncomingMessage, type Server } from 'http';
 import type { AddressInfo } from 'net';
 
+/** The Application ID of the GitLab application this fake knows. */
+export const KNOWN_GITLAB_CLIENT = 'gl-id';
+
+/** The Application ID for which this fake answers the application check with an error that is neither of the two it knows. */
+export const ODD_GITLAB_CLIENT = 'odd-id';
+
 export interface Seen {
   method: string;
   path: string;
@@ -13,6 +19,8 @@ export interface FakeHost {
   seen: Seen[];
   /** Refresh tokens that no longer work: the next refresh answers `bad_refresh_token`. */
   revoked: Set<string>;
+  /** Login codes the GitLab token endpoint refuses with 401 `invalid_client`, as it does for an application it does not know. */
+  rejectedCodes: Set<string>;
   /** Every secret the fake handed out. */
   secrets: string[];
   /** `<login>:<owner>/<name>` of the repositories a person can push to. */
@@ -33,6 +41,7 @@ export async function startFakeHosts(): Promise<FakeHost> {
   const seen: Seen[] = [];
   const secrets: string[] = [];
   const revoked = new Set<string>();
+  const rejectedCodes = new Set<string>();
   const pushers = new Set<string>();
   const hidden = new Set<string>();
   const personal = new Map<string, string>();
@@ -70,8 +79,23 @@ export async function startFakeHosts(): Promise<FakeHost> {
           201,
         );
       } else if (path === '/login/oauth/access_token' || path === '/oauth/token') {
-        const sent = JSON.parse(body) as { code?: string; refresh_token?: string; grant_type: string };
-        if (sent.grant_type === 'refresh_token') {
+        const sent = JSON.parse(body) as {
+          client_id?: string;
+          code?: string;
+          refresh_token?: string;
+          grant_type: string;
+        };
+        if (path === '/oauth/token' && sent.code === 'swarmloop-check') {
+          // The application check: an invalid code is `invalid_grant` for the one client this host knows.
+          const known = sent.client_id === KNOWN_GITLAB_CLIENT;
+          if (sent.client_id === ODD_GITLAB_CLIENT) {
+            send({ error: 'server_error' }, 400);
+          } else {
+            send({ error: known ? 'invalid_grant' : 'invalid_client' }, known ? 400 : 401);
+          }
+        } else if (path === '/oauth/token' && rejectedCodes.has(String(sent.code))) {
+          send({ error: 'invalid_client' }, 401);
+        } else if (sent.grant_type === 'refresh_token') {
           const who = String(sent.refresh_token).replace('ghr_', '').split('_')[0];
           send(revoked.has(String(sent.refresh_token)) ? { error: 'bad_refresh_token' } : issue(who));
         } else {
@@ -132,6 +156,7 @@ export async function startFakeHosts(): Promise<FakeHost> {
     url: `http://127.0.0.1:${port}`,
     seen,
     revoked,
+    rejectedCodes,
     secrets,
     pushers,
     hidden,
