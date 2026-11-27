@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
 import { SERVER_INSTANCE } from '../core/server-instance';
 import { adoptRow, changedColumns, readValue } from './run-read';
-import { claimedColumns, storedState, stateColumns, titleColumns } from './run-state';
+import { claimedColumns, storedState, stateColumns, titleColumns, unseenStartWait } from './run-state';
 import { claimedRow, waitingRow } from './run-new-rows';
 import { conditionalUpdate } from './conditional-write';
 import { KeyedQueue } from './keyed-queue';
@@ -16,7 +16,7 @@ import { RunOpenItems } from './run-open-items';
 import { transaction } from './transaction';
 import { pidAlive } from './pid-alive';
 import { durationByRun } from './run-durations';
-import type { RunStateChange } from './run-state';
+import type { RunStateChange, StartWaitColumns } from './run-state';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { parseSubtasks, SUBTASKS_KIND } from '../contract/subtask';
@@ -331,16 +331,12 @@ export class RunRepository {
    * only when the columns differ, and leaves the revision: the wait is no change of the run. Tells the dashboard when written.
    */
   async recordStartWait(
-    seen: Pick<RunEntity, 'id' | 'key' | 'state' | 'stateReason'>,
-    columns: Pick<RunEntity, 'state' | 'stateReason'>,
+    seen: Pick<RunEntity, 'id' | 'key'> & StartWaitColumns,
+    columns: StartWaitColumns,
   ): Promise<boolean> {
-    if (seen.state === columns.state && seen.stateReason === columns.stateReason) return false;
-    const written = await this.runs
-      .createQueryBuilder()
-      .update(RunEntity)
-      .set({ ...columns })
-      .where("id = :id AND status = 'running'", { id: seen.id })
-      .execute();
+    const unseen = unseenStartWait(seen, columns);
+    if (Object.keys(unseen).length === 0) return false;
+    const written = await this.runs.update({ id: seen.id, status: 'running' }, unseen);
     if (!written.affected) return false;
     this.live?.changed(seen.key);
     return true;

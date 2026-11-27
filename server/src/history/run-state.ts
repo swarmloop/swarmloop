@@ -151,10 +151,21 @@ export function liveState(run: StoredRow, live: LiveFacts): { state: RunState; r
   return live.stopping ? { state: 'stopping', reason: null } : stored;
 }
 
+/** The state columns a run's agent start wait is stored in. */
+export type StartWaitColumns = Pick<RunEntity, 'state' | 'stateReason'>;
+
 /** The state columns of a running run whose agent start waits for `wait`, or waits for nothing. Persist with `recordStartWait`. */
-export function startWaitColumns(wait: StateReason | null): Pick<RunEntity, 'state' | 'stateReason'> {
+export function startWaitColumns(wait: StateReason | null): StartWaitColumns {
   const derived = deriveState({ status: 'running' }, wait ? { startWait: wait } : {});
   return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };
+}
+
+/** The state columns of `columns` that the row `seen` does not show yet: nothing when it shows them all. */
+export function unseenStartWait(seen: StartWaitColumns, columns: StartWaitColumns): Partial<StartWaitColumns> {
+  return {
+    ...(seen.state === columns.state ? {} : { state: columns.state }),
+    ...(seen.stateReason === columns.stateReason ? {} : { stateReason: columns.stateReason }),
+  };
 }
 
 /** The state a row's status, reason and merge outcome give with no facts. */

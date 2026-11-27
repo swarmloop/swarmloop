@@ -288,20 +288,50 @@ test('forbidOutside reports a write of the state columns outside the run state m
     'server/src/history/migrations/1797700000000-run-state-filled.ts': 'UPDATE runs SET state_reason = ?, state = ?\n',
     'server/src/history/run.entity.ts': "@Column({ name: 'state_reason', type: 'text', nullable: true })\n",
     'server/src/history/run-state.spec.ts': 'run.stateReason = null;\n',
-    'server/src/history/run-facts.ts': '.set({ state: derived.state, stateReason: derived.reason })\n',
+    'server/src/steps/shared/run-facts.ts': '.set({ state: derived.state, stateReason: derived.reason })\n',
     'server/src/steps/shared/refresh.ts': 'run.stateReason = JSON.stringify(reason);\n',
-    'server/src/history/run.repository.ts': '.set({ ...columns })\n',
-    'server/src/history/query.ts': "query('UPDATE runs SET state_reason = ?');\n",
-    'server/src/history/read.ts': 'if (run.stateReason === null) return;\n',
+    'server/src/steps/shared/query.ts': "query('UPDATE runs SET state_reason = ?');\n",
+    'server/src/steps/shared/read.ts': 'if (run.stateReason === null) return;\n',
   };
   const root = makeRoot(files);
 
   const violations = findViolations({ root, rules, files: Object.keys(files) });
 
   assert.equal(violations.length, 3);
-  assert.match(violations[0], /^server\/src\/history\/run-facts\.ts:1:/);
+  assert.match(violations[0], /^server\/src\/steps\/shared\/run-facts\.ts:1:/);
   assert.match(violations[1], /^server\/src\/steps\/shared\/refresh\.ts:1:/);
-  assert.match(violations[2], /^server\/src\/history\/query\.ts:1:/);
+  assert.match(violations[2], /^server\/src\/steps\/shared\/query\.ts:1:/);
+});
+
+test('forbidOutside reports a write of a run row that names the state in any form inside history and lets the readers and the command rows be', () => {
+  const failing = {
+    'server/src/history/set-spread.ts': '.set({ ...columns })\n',
+    'server/src/history/set-wrapped.ts': '.set({\n  state: derived.state,\n})\n',
+    'server/src/history/update-key.ts': "this.runs.update({ id }, { state: 'idle' });\n",
+    'server/src/history/update-reason.ts': 'await conditionalUpdate(runs, id, { stateReason: reason }, read);\n',
+    'server/src/history/assign.ts': 'Object.assign(run, { state });\n',
+    'server/src/history/sql.ts': "query(`UPDATE runs SET state = 'idle' WHERE id = ?`);\n",
+  };
+  const passing = {
+    'server/src/history/run-state.ts': '.set({ state: derived.state, stateReason: derived.reason })\n',
+    'server/src/history/migrations/1797700000000-run-state-filled.ts': "UPDATE runs SET state = 'idle'\n",
+    'server/src/history/run.entity.ts': 'stateReason!: string | null;\n',
+    'server/src/history/conditional-write.ts': '.set({ ...changed, ...extra })\n',
+    'server/src/history/command.repository.ts': "{ state: 'executing', updatedAt: now }\n",
+    'server/src/history/changed.ts': '.set({ ...changedColumns(run), updatedAt: at })\n',
+    'server/src/history/select.ts': 'select: { id: true, state: true, stateReason: true },\n',
+    'server/src/history/read.ts': 'const { state } = storedState(run);\n',
+    'server/src/history/set-spec.spec.ts': 'runs.update({ id }, { state: null });\n',
+  };
+  const files = { ...failing, ...passing };
+  const root = makeRoot(files);
+
+  const violations = findViolations({ root, rules, files: Object.keys(files) });
+
+  assert.deepEqual(
+    violations.map((violation) => violation.split(':')[0]),
+    Object.keys(failing),
+  );
 });
 
 test('forbidOutside keeps the old phase name in the migration and nowhere else', () => {

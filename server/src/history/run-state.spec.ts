@@ -12,6 +12,7 @@ import {
   stateColumns,
   stateOfStatus,
   storedState as readStored,
+  unseenStartWait,
   WRITTEN_WHOLE,
   writeOpenItemState,
   writeRunState,
@@ -153,6 +154,15 @@ describe('deriveState', () => {
       reason: null,
     });
     expect(startWaitColumns(null)).toEqual({ state: 'running', stateReason: null });
+  });
+
+  it('gives only the start wait columns the row does not show yet', () => {
+    const wait = startWaitColumns({ code: REASON.agentPlace, message: 'Waiting for a free agent place (4 of 4 busy)' });
+    const none = startWaitColumns(null);
+    expect(unseenStartWait(none, wait)).toEqual({ stateReason: wait.stateReason });
+    expect(unseenStartWait(wait, none)).toEqual({ stateReason: null });
+    expect(unseenStartWait({ state: 'idle', stateReason: null }, none)).toEqual({ state: 'running' });
+    expect(unseenStartWait(wait, wait)).toEqual({});
   });
 });
 
