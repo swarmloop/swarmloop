@@ -1,6 +1,9 @@
 import { withCommand } from '../../environment/check-failures';
+import { rebaseResolution } from '../../agent-result/definitions/rebase-resolution';
+import { resultPromptFor } from '../../agent-result/result-prompt';
 import { markedTail } from '../../core/run-logs';
 import {
+  hostConflictPrompt,
   implementImproveFollowUp,
   OWN_CONFLICT_LEAD,
   ownConflictPrompt,
@@ -83,5 +86,37 @@ describe('the planner’s answer in a conflict prompt', () => {
     for (const prompt of [rebaseConflictPrompt(rebase), ownConflictPrompt(own)]) {
       expect(prompt).not.toContain('Answer from the planner');
     }
+  });
+});
+
+describe('the prompt for a conflict only the code host reports', () => {
+  const input = {
+    repos: ['api', 'web'],
+    conflict: 'GitHub reports merge conflicts with the base branch',
+    requirements: 'Ship the field.',
+    base: 'api@aaa111, web@bbb222',
+  };
+
+  it('names the repositories, the host’s text and the base tips, and ends with the result prompt', () => {
+    const prompt = hostConflictPrompt(input);
+    expect(prompt).toContain('api, web');
+    expect(prompt).toContain(input.conflict);
+    expect(prompt).toContain('api@aaa111, web@bbb222');
+    expect(prompt).toContain('Do not run git.');
+    expect(prompt.endsWith(resultPromptFor(rebaseResolution, null))).toBe(true);
+    expect(prompt).not.toContain('Answer from the planner');
+  });
+
+  it('carries the planner’s answer before the result prompt', () => {
+    const answer = {
+      key: 'answer-1',
+      role: 'planner',
+      kind: 'answer',
+      from: 'implement',
+      text: 'Keep the base version.',
+      at: '2026-01-01T00:00:00.000Z',
+      state: 'pending',
+    } as const;
+    expect(hostConflictPrompt({ ...input, answer })).toContain('Keep the base version.');
   });
 });

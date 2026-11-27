@@ -74,6 +74,28 @@ export function ownConflictPrompt(input: {
   ].join('\n');
 }
 
+/** The prompt that resolves a conflict only the code host reports: git itself found none when the server moved the branch. */
+export function hostConflictPrompt(input: {
+  repos: string[];
+  conflict: string;
+  requirements: string;
+  base: string;
+  answer?: PlanChatEntry | null;
+}): string {
+  return [
+    `The code host reports a conflict for the merge request of this branch in ${input.repos.join(', ')}:`,
+    input.conflict,
+    `The server moved the branch onto the base (${input.base}) and nothing conflicted in git.`,
+    "Change only this branch's files so that the merge request merges cleanly into its base.",
+    'Requirements:',
+    input.requirements.trim(),
+    'Do not run git.',
+    'Do not push. Do not create a branch.',
+    ...answerLines(input.answer),
+    resultPromptFor(rebaseResolution, null),
+  ].join('\n');
+}
+
 const EDIT_TOOLS_RULE =
   "Change files with the runtime's own edit and write tools, and read them with its read tool. Use the shell to run commands, not to rewrite files.";
 const RERUN_RULE =
