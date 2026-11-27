@@ -24,6 +24,8 @@ export interface VisitInputParts {
   instruction: string;
   /** The fingerprint of the tree a review judges, work not yet committed included. Unset for a step that reads heads only. */
   tree?: string;
+  /** Implement's stored results, which a review judges with the tree. Unset for a step that does not read them. */
+  account?: string[];
 }
 
 const ISO_TIME = /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?/g;
@@ -66,6 +68,7 @@ export function visitInput(parts: VisitInputParts): string {
     listOf(parts.findings),
     normalizedText(parts.instruction),
     ...(parts.tree === undefined ? [] : [parts.tree]),
+    ...(parts.account === undefined ? [] : [listOf(parts.account)]),
   ].join(PART_END);
   return createHash('sha256').update(text).digest('hex');
 }
@@ -109,12 +112,14 @@ function findingsOf(body: string | null): string[] {
 }
 
 /**
- * The steps whose input is the tree and the brief only. The tree is each head plus a read-only fingerprint of the
- * uncommitted changes by their bytes, since implement's fix stays uncommitted until the commit step after review. What planners say between review rounds
- * is not a review's input: a round on the same tree, brief and instructions is the same round, whatever was answered
- * in between.
+ * The steps whose input is the tree, the brief and implement's account. The tree is each head plus a read-only
+ * fingerprint of the uncommitted changes by their bytes, since implement's fix stays uncommitted until the commit step
+ * after review. Implement's account is its stored results: an answer to a return that changes no file is judged by
+ * the review through them, so a new account is a new round. What planners say between review rounds is not a
+ * review's input: a round on the same tree, brief, instructions and account is the same round, whatever was
+ * answered in between.
  */
-const TREE_AND_BRIEF_STEPS: readonly string[] = ['code-review'];
+const TREE_BRIEF_AND_ACCOUNT_STEPS: readonly string[] = ['code-review'];
 
 /** Gathers the parts of the input of one step's visit from the run's documents, its plan chat and its worktrees. */
 export async function readVisitInput(
@@ -123,12 +128,18 @@ export async function readVisitInput(
   step: string,
   instruction = '',
 ): Promise<string> {
-  if (TREE_AND_BRIEF_STEPS.includes(step)) {
+  if (TREE_BRIEF_AND_ACCOUNT_STEPS.includes(step)) {
     const { heads, paths } = await headsOf(deps, run);
     const changes = await Promise.all(paths.map((path) => changeFingerprint(path)));
+    const account = await Promise.all(
+      [ARTIFACTS.implementationResult, ARTIFACTS.implementationImproveResult].map((artifact) =>
+        deps.documents.latestBody(run.key, artifact.kind),
+      ),
+    );
     return visitInput({
       heads,
       tree: heads.map((head, at) => `${normalizedText(head.repo)}=${changes[at]}`).join(ITEM_END),
+      account: account.filter((body): body is string => body !== null),
       checklist: [],
       handoff: '',
       answers: [],

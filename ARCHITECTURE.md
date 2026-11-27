@@ -193,7 +193,7 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 
 **Today.**
 - Steps one to seven hold for run agents through `steps/shared/agent-door.ts` (launch-door).
-- A visit that ended by its own answer (still invalid after its follow-ups) or by its own limit counts as finished in `steps/shared/same-input.ts`, so the next start of the machine or a planner on that input is refused as the same input and asked up the planners' chain once, with its answer errors. A visit cut by something outside the agent (an outage, a usage limit, an outside wait, a process that died, a person's Stop) runs again on its input.
+- A visit that ended by its own answer (still invalid after its follow-ups) or by its own limit counts as finished in `steps/shared/same-input.ts`, so the next start of the machine or a planner on that input is refused as the same input and asked up the planners' chain once, with its answer errors. A visit cut by something outside the agent (an outage, a usage limit, an outside wait, a process that died, a person's Stop) runs again on its input. A code review's input is the tree, the brief and implement's account (its stored results), so an answer given only in the account is a new input.
 - A model host that does not answer is a wait. Each runtime adapter reads it (`classifyOutage`), `AgentLauncher` ends such a launch as `HostUnavailable` with its next try, and this holds for a step's agent, a plan visit, a reviewer, the report, the implement chat, the planner's question turns and the backlog planner's turn. A model host outage of the chain asked after a same-input refusal is the host's wait of the table, resumed once per outage; the start stays refused.
 - `resultFollowUp` in `agent-result/result-follow-up.ts` builds the follow-up from the step's definition; `exchangeResult` and `withAnswerErrors` in `steps/shared/result-exchange.ts` and `correctCoverage` in `steps/shared/coverage-correction.ts` send it. The backlog turn's required and optional fields per action live in its definition (`needs` and `takes` of `agent-result/required-by.ts`): the check reads `needs`, and the follow-up and `choiceList` (`agent-result/result-choices.ts`) read both. The backlog skill's list of actions is written from that definition.
 - The backlog planner's turns start through their own `turn-runner.ts` and are not admitted by the door. Their rows are recorded at the launcher, with their ties from the moment each row opens, until planner-turn-door puts the turns through the door.
@@ -211,11 +211,12 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 **Target.**
 - Checks, code-review, commit and pipeline return to implement with the reason.
 - The return limits are `MAX_RETURNS` and `MAX_PIPELINE_RETURNS`. A loop that goes on past them, or the same input twice, stops in a wait for the planner, with the history of the returns.
-- After the reviewers' findings are fixed, the next round reviews again.
+- After a return is answered, the next round reviews again: by a fix, or by implement's account explaining why no change is needed. A code review's input includes implement's account, so only the same tree with the same account is refused as the same input.
 - A finding that implement refuses comes back to the reviewer with implement's reason. If the two still disagree, it goes to the planner and then to the person.
 
 **Today.**
 - The tables hold.
+- A code review's input is the tree, the brief and implement's account (`readVisitInput` in `steps/shared/visit-input.ts`), so a return that implement answers in its account with no file change gets one next round with no planner or person asked; the same tree with the same account is refused by the door.
 
 ## 3.6 Checks and the project environment
 
@@ -249,7 +250,7 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 5. A reviewer's question that it cannot settle goes up the chain (rule 8). A reviewer and the report read through a reader only when `READ_ROLES` names `code-review` or `code-review-report`; the reader is for searching and reading around the change, and the diff and the lines under review are read by the reviewer itself.
 6. A round interrupted by a restart resumes only its own reviewers' files.
 
-**Today.** Holds (`steps/code-review/`). A review reads each worktree's head commit plus a read-only fingerprint of its uncommitted changes, then the brief and the added instructions (`readVisitInput` in `steps/shared/visit-input.ts`, `changeFingerprint` in `git/change-fingerprint.ts`). Its prompt lists the files changed outside the plan through `MergeMarks`' rule (`outsideOwn`; a subtask's own files come from `StarterBriefing.ownFiles`), and the requirements reviewer returns each test among them that the plan or an answer does not approve.
+**Today.** Holds (`steps/code-review/`). A review reads each worktree's head commit plus a read-only fingerprint of its uncommitted changes, then the brief, the added instructions and implement's account (`implementation_result` and `implementation_improve_result`; `readVisitInput` in `steps/shared/visit-input.ts`, `changeFingerprint` in `git/change-fingerprint.ts`). Its prompt lists the files changed outside the plan through `MergeMarks`' rule (`outsideOwn`; a subtask's own files come from `StarterBriefing.ownFiles`), and the requirements reviewer returns each test among them that the plan or an answer does not approve.
 
 ## 3.8 Commit, merge request and CI
 
