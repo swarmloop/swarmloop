@@ -80,7 +80,7 @@ describe('run rebase service', () => {
   it('moves the open subtasks of an epic after a main move, naming its new tip and why, and starts it as the machine', async () => {
     const { service, seen, run } = splitEpic('resume');
     await service.rebase('PROJ-1', false, 'demo at abc123');
-    expect(seen.rebase[0]?.slice(2)).toEqual([false, true, false]);
+    expect(seen.rebase[0]?.slice(2)).toEqual([false, true, false, null]);
     expect(seen.moved).toEqual([run]);
     expect(seen.resume).toEqual({ by: 'machine', level: null });
   });
@@ -103,7 +103,7 @@ describe('run rebase service', () => {
   it("starts and resumes nothing for a subtask that keeps its wait through its parent's rebase", async () => {
     const { service, seen } = splitEpic('stay');
     expect(await service.rebase('PROJ-1', true, undefined, true)).toEqual({ key: 'PROJ-1', status: 'waiting' });
-    expect(seen.rebase[0]?.slice(2)).toEqual([true, false, true]);
+    expect(seen.rebase[0]?.slice(2)).toEqual([true, false, true, null]);
     expect(seen.start).toBeUndefined();
     expect(seen.resume).toBeUndefined();
   });

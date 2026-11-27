@@ -9,7 +9,8 @@ import { FlowRepository } from '../history/flow.repository';
 import { root } from '../history/run-paths';
 import { RunNames } from './shared/run-names';
 import { RunAuthor } from './shared/run-author';
-import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
+import { completeRebase, fetchedBaseTip, rebaseFeatureRepos } from '../git/rebase';
+import { hostConflictMarker } from './shared/host-conflict-marker';
 import { sameOwnDiff } from '../git/rebase/own-diff';
 import { git } from '../git/git';
 import { withWorktrees } from '../git/worktree-lock';
@@ -76,6 +77,7 @@ export class RunRebase {
     byParent = false,
     byMain = false,
     keepsWait = false,
+    hostConflict: string | null = null,
   ): Promise<'resume' | 'start' | 'stay' | 'resolve'> {
     const run = await this.requireRun(key);
     await this.assertOffered(run, byParent, byMain, keepsWait);
@@ -90,8 +92,8 @@ export class RunRebase {
     const bases = new Map<string, string>();
     const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
     const paths = this.worktreePaths(run, names);
-    const { heads, stop } = await withWorktrees(paths, async () => {
-      const heads = status === 'done' ? await this.heads(run) : new Map<string, string>();
+    const { heads, moved, stop } = await withWorktrees(paths, async () => {
+      const heads = status === 'done' || hostConflict !== null ? await this.heads(run) : new Map<string, string>();
       try {
         const stop = await this.rebaseWorktrees(run, bases, journal);
         await this.environments.refreshAfterRebase(
@@ -101,7 +103,8 @@ export class RunRebase {
         );
         await this.tips.recordMoved(run, journal);
         await completeRebase(journal, run.key);
-        return { heads, stop };
+        const moved = hostConflict !== null ? await this.heads(run) : heads;
+        return { heads, moved, stop };
       } catch (error) {
         if (isHostOutage(error)) throw error;
         const message = error instanceof SwarmloopError ? error.message : 'rebase failed';
@@ -122,6 +125,9 @@ export class RunRebase {
     await this.settleParkedMarker(run);
     if (byMain || run.split) await withWorktrees(paths, async () => this.publishRebased(key, run, names, stop.leases));
     if (stays) return 'stay';
+    if (hostConflict !== null && [...heads].every(([repo, before]) => moved.get(repo) === before)) {
+      return this.handHostConflict(key, hostConflict);
+    }
     if (await this.checklistUnfinished(run)) {
       return this.startAtImplement(run);
     }
@@ -132,6 +138,14 @@ export class RunRebase {
     }
     // Every review and CI result of the old generation is stale: a step that reads them goes back through code-review.
     return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
+  }
+
+  /** A conflict only the code host sees goes to the implement agent, as a conflict of the move does. */
+  async handHostConflict(key: string, text: string): Promise<'resolve'> {
+    const run = await this.requireRun(key);
+    await this.documents.putDocument(run, ARTIFACTS.rebaseConflict.kind, hostConflictMarker(text));
+    await this.startAtImplement(run);
+    return 'resolve';
   }
 
   /** A move that ended clean leaves no conflict parked: the one the marker names was settled by the move itself. */
@@ -194,6 +208,26 @@ export class RunRebase {
       .map(([repo, sha]) => `${repo}@${sha}`)
       .sort()
       .join(',');
+  }
+
+  /** The fetched base tip of every repository of the run, as `<repo>@<sha>` sorted and joined: what a move would go onto. */
+  async baseTips(key: string): Promise<string> {
+    const run = await this.requireRun(key);
+    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
+    const hosts = await this.hostsFor(run);
+    const tips = await withWorktrees(this.worktreePaths(run, names), async () =>
+      Promise.all(
+        names.map(
+          async (repo) =>
+            `${repo}@${await fetchedBaseTip(worktreePath(root(this.config), run.key, repo), repo, run.prompt, hosts)}`,
+        ),
+      ),
+    );
+    return tips.sort().join(',');
+  }
+
+  private async hostsFor(run: RunEntity) {
+    return { ...this.config.env, ...(await this.registry.tokensFor(run.startedBy, run.codeHost)), clock: this.clock };
   }
 
   /** An epic's Rebase that rebased clean puts the branch on origin before any subtask moves onto it. */
@@ -267,11 +301,7 @@ export class RunRebase {
       throw new SwarmloopError('requirements is missing');
     }
     const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
-    const hosts = {
-      ...this.config.env,
-      ...(await this.registry.tokensFor(run.startedBy, run.codeHost)),
-      clock: this.clock,
-    };
+    const hosts = await this.hostsFor(run);
     return rebaseFeatureRepos({
       root: root(this.config),
       key: run.key,
