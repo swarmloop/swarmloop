@@ -6,6 +6,9 @@ import { CheckCommandRepository } from '../../../history/check-command.repositor
 import { DocumentRepository } from '../../../history/document.repository';
 import { PlanChatStore } from '../../../history/plan-chat.store';
 import { RunRepository } from '../../../history/run.repository';
+import type { StepEvent } from '../../../contract/step-events';
+import { writeRunState } from '../../../history/run-state';
+import { StepEventLog } from '../../../history/step-event.log';
 import { VisitRepository } from '../../../history/visit.repository';
 import type { CodeHostRegistry } from '../../../integrations/code-host/code-host.registry';
 import { RepositoryHost } from '../../../steps/shared/repository-host';
@@ -15,6 +18,7 @@ import { FakeBacklogHost, pipelineOf } from '../../../testing/fake-backlog-host'
 import { EventFacts } from './event-facts';
 import { plannerDatabase } from './planner.spec-helpers';
 import { RunFacts } from './run-facts';
+import { RunReasons } from './run-reason';
 
 /** The facts of a turn's events, read from the real repositories of `app` and the code host `host`. */
 export function eventFactsOf(app: { get<T>(token: new (...args: never[]) => T): T }, host: RepositoryHost): EventFacts {
@@ -58,12 +62,40 @@ export async function plannerFacts() {
     fake,
     host,
     eventFacts: () => eventFactsOf(db.app, host),
+    runReasons: () => new RunReasons(db.app.get(StepEventLog)),
     chats: db.app.get(PlanChatStore),
     /** A run that holds the documents `kinds` names, each with its body. */
     async addRun(key: string, kinds: Record<string, string> = {}): Promise<void> {
       await storeRun(runs, runs.newWaitingRun(key, null, 'owner'));
       const run = (await runs.findRun(key)) as NonNullable<Awaited<ReturnType<RunRepository['findRun']>>>;
       for (const [kind, body] of Object.entries(kinds)) await documents.putDocument(run, kind, body);
+    },
+    /** A run that ended at `step` in `status`, with the summary its attempt ended with and the stored reason, when given. */
+    async endRun(
+      key: string,
+      status: 'failed' | 'blocked' | 'running',
+      step: string,
+      summary: string,
+      reason?: { code: string; message: string },
+    ): Promise<void> {
+      const run = (await runs.findRun(key)) as NonNullable<Awaited<ReturnType<RunRepository['findRun']>>>;
+      writeRunState(run, { status, currentStep: step, ...(reason ? { reason } : {}) });
+      await storeRun(runs, run);
+      await db.app.get(StepEventLog).append([
+        {
+          payloadVersion: 1,
+          eventId: `end-${key}`,
+          runId: run.id,
+          attemptId: 'attempt-1',
+          step,
+          seq: 1,
+          occurredAt: db.clock.iso(),
+          parentSpanId: null,
+          kind: 'attempt.finished',
+          route: status === 'failed' ? 'failed' : 'blocked',
+          summary,
+        } as StepEvent,
+      ]);
     },
     addTask(backlogId: number, slug: string, overrides: Partial<BacklogTaskRecord> = {}) {
       return db.backlogs.saveTask({

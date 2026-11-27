@@ -1,4 +1,4 @@
-import { withoutTimestamp } from '@contract/event-text';
+import { resultLine } from '@contract/event-text';
 import { localTime } from '../../../lib/format';
 import { interruptionSentence, type InterruptionNote } from '@contract/interruption';
 import type { StepEvent } from '@contract/step-events';
@@ -12,7 +12,7 @@ function outcomeWords(
   issues: number,
   note: InterruptionNote | undefined,
 ): string {
-  const line = withoutTimestamp(finish.summary).split('\n')[0]?.trim() ?? '';
+  const line = resultLine(finish.summary);
   if (finish.kind === 'attempt.interrupted') {
     if (note && finish.route === 'process died') {
       return interruptionSentence(note, localTime);

@@ -16,7 +16,7 @@ type Harness = Awaited<ReturnType<typeof plannerFacts>>;
 async function withPrompt(body: (h: Harness, prompt: BacklogTurnPrompt) => Promise<void>): Promise<void> {
   const h = await plannerFacts();
   try {
-    const state = new BacklogTurnState(h.backlogs, h.chat, h.runs, h.documents, h.eventFacts());
+    const state = new BacklogTurnState(h.backlogs, h.chat, h.runs, h.documents, h.eventFacts(), h.runReasons());
     await body(h, new BacklogTurnPrompt(state, h.config));
   } finally {
     await h.close();
@@ -112,6 +112,33 @@ describe('BacklogTurnPrompt', () => {
       expect(text).not.toContain('files: done.ts');
       expect(text).toContain('files: later.ts');
       expect(text).toContain('brief: 12 characters in /work/brief/tasks/later.md');
+    }));
+
+  it('shows the reason of a failed run in the brief, and in the changes of a chat that saw the task before it failed', () =>
+    withPrompt(async (h, prompt) => {
+      const id = await h.addBacklog();
+      await h.addTask(id, 'a', { runKey: 'a-1' });
+      await h.addRun('a-1');
+      const first = await prompt.build('alpha', 't1', mounts, ['web']);
+      await h.chat.saveTurn({
+        backlogId: id,
+        turnKey: 't1',
+        status: 'done',
+        reason: '',
+        nextTryAt: null,
+        createdAt: h.clock.iso(),
+        seenState: first.seen,
+      });
+      await h.endRun('a-1', 'failed', 'pipeline', 'the code host refuses to read pipelines (HTTP 403)');
+      const reason = '    reason: pipeline step: the code host refuses to read pipelines (HTTP 403)';
+
+      const { prompt: changes, fresh } = await prompt.build('alpha', 't2', mounts, ['web']);
+
+      expect(first.fresh).not.toContain('    reason: ');
+      expect(fresh).toContain('- a [blocked] run a-1: a');
+      expect(fresh).toContain(reason);
+      expect(changes).toContain('Changed tasks, milestones and requirements:\n- a [blocked]');
+      expect(changes).toContain(reason);
     }));
 
   it('writes the follow-up of a turn with a message as the brief writes it', () =>

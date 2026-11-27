@@ -75,6 +75,18 @@ describe('StepEventLog', () => {
     expect(branch.next).toBe(16);
   });
 
+  it('reads the newest end of a step, not an end of another step or an older attempt', async () => {
+    await log.append([
+      event(1, { step: 'pipeline', summary: 'old' }),
+      event(2, { step: 'pipeline', kind: 'attempt.interrupted', summary: 'newest' }),
+      event(3, { step: 'commit', summary: 'other step' }),
+      event(4, { step: 'pipeline', kind: 'agent.launched' }),
+    ]);
+    expect(await log.lastEnd(1, 'pipeline')).toMatchObject({ seq: 2, summary: 'newest' });
+    expect(await log.lastEnd(1, 'branch')).toBeNull();
+    expect(await log.lastEnd(2, 'pipeline')).toBeNull();
+  });
+
   it('refuses a second event with the same seq in a run', async () => {
     await log.append([event(1)]);
     await expect(log.append([event(1)])).rejects.toThrow();

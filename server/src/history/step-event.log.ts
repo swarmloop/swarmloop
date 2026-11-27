@@ -1,6 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, MoreThan, Repository } from 'typeorm';
+import { FindOptionsWhere, In, MoreThan, Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
 import type { StepEvent, StepEventKind, StepEventPage } from '../contract/step-events';
 import { Clock } from '../core/clock';
@@ -92,6 +92,16 @@ export class StepEventLog {
   async lastOfAttempt(runId: number, attemptId: string): Promise<StepEvent | null> {
     const last = await this.events.findOne({ where: { runId, attemptId }, order: { seq: 'DESC' } });
     return last ? toEvent(last) : null;
+  }
+
+  /** The newest end of an attempt of `step`, finished or interrupted, or null when none ended. */
+  async lastEnd(
+    runId: number,
+    step: string,
+  ): Promise<Extract<StepEvent, { kind: 'attempt.finished' | 'attempt.interrupted' }> | null> {
+    const kind = In<StepEventKind>(['attempt.finished', 'attempt.interrupted']);
+    const last = await this.events.findOne({ where: { runId, step, kind }, order: { seq: 'DESC' } });
+    return last ? (toEvent(last) as Extract<StepEvent, { kind: 'attempt.finished' | 'attempt.interrupted' }>) : null;
   }
 
   /** Events after `after`, oldest first. `next` is set when the page is full. */

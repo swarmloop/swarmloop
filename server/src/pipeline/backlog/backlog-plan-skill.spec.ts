@@ -82,6 +82,19 @@ describe('the backlog-plan skill', () => {
     expect(core).not.toContain('arrive while you work');
   });
 
+  it('says a failed or blocked task line carries its reason, which the planner decides on before it asks the person', () => {
+    const start = skill.split('\n\n').find((paragraph) => paragraph.startsWith('You keep one chat'));
+    expect(start).toContain(
+      'the reason of a failed or blocked run (its stored reason, or else the last line of the step it stopped at)',
+    );
+    expect(skill).toContain(
+      'A task line of a failed or blocked run carries its reason. Decide on that reason with the actions you have',
+    );
+    expect(skill).toContain(
+      'Ask the person only when no action of yours can act on it; the question names the reason and what was tried.',
+    );
+  });
+
   it('keeps decisions short and puts what a task must change into its brief', () => {
     const section = skill.slice(skill.indexOf('## Questions and decisions'));
     expect(section).toContain('A decision is one or two sentences: what was decided and why.');
