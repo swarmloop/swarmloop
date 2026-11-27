@@ -28,7 +28,8 @@ export function fieldLine(path: string, node: Described): string {
   return `- ${path} (${typeOf(node)}, ${required})${description}`;
 }
 
-function fieldLines(path: string, node: Described, lines: string[]): void {
+/** The line of a field and of every field nested in it, pushed into `lines`. */
+export function fieldLines(path: string, node: Described, lines: string[]): void {
   lines.push(fieldLine(path, node));
   const inner = node.type === 'array' ? node.items?.[0] : node;
   const prefix = node.type === 'array' ? `${path}[]` : path;

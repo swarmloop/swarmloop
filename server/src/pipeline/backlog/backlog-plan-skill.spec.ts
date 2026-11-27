@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
+import { BACKLOG_ACTIONS_MARK, backlogActionsText } from '../../steps/shared/backlog-actions-text';
 import { plannerCore } from '../../steps/shared/planner-core';
 import { READING_WITH_A_READER_MARK } from '../../steps/shared/reader-asking';
 import { skillPrompt } from '../../steps/shared/skill-prompt';
@@ -38,7 +39,16 @@ const GENERAL_RULES = [
   "In the summary, each `Check` item says `enforced by job <name>` or `checked by reading <file>`, never that a command passed; an item with neither is the summary's first line as `unmet: <item> - <reason>`.",
 ];
 
-const BRIEF_SECTIONS = ['Rules', 'Today', 'Do', 'Must keep', 'Behavior change', 'Pipeline', 'Check'];
+const BRIEF_SECTIONS = [
+  'Rules',
+  'Carries out',
+  'Do',
+  'Must keep',
+  'Out of scope',
+  'Behavior change',
+  'Pipeline',
+  'Check',
+];
 
 describe('the backlog-plan skill', () => {
   it.each(GENERAL_RULES)('holds the general rule: %s', (rule) => {
@@ -95,9 +105,43 @@ describe('the backlog-plan skill', () => {
     expect(section).toContain('every task of the backlog that has not started');
   });
 
-  it('writes a brief whose Today carries what the planner was given and leaves code research to the task', () => {
-    expect(skill).toContain('`Today`: what `A new task or a plan change` says a brief carries.');
-    expect(skill).not.toContain('with names and evidence');
+  it('writes a brief by the brief rule: goal, rule carried out, scope and check, by name and never by line', () => {
+    expect(skill).not.toMatch(/`Today`/);
+    expect(skill).toContain('never by line number');
+    expect(skill).toContain("because each run's research step reads the code as it is when the run starts");
+    expect(skill).toContain('are not rewritten');
+    expect(skill).toContain(
+      'the facts you were given are named by their file and mechanism without a line, and this replaces the file and line that `A new task or a plan change` asks for',
+    );
+    expect(skill).toContain('the rule it carries out, what is out of scope and how the result is checked');
+  });
+
+  it('says a turn has no git and that a proof is something its own run can check', () => {
+    const section = skill.slice(
+      skill.indexOf('## How a milestone is planned'),
+      skill.indexOf('## The brief of a task'),
+    );
+    expect(section).toContain(
+      'A turn has no git: you and your readers read the worktrees as files, without history, log or diff.',
+    );
+    expect(section).toContain(
+      "A task's proof is something its own run can check: a test, a check command or a CI job of its repository.",
+    );
+  });
+
+  it('starts a milestone only when the owner presses a button, and a proposal points at both buttons', () => {
+    expect(skill).toContain('starts only when the owner starts it (`Run milestone` or `Run backlog`)');
+    expect(skill).toContain(
+      'A proposal ends by pointing at `Run milestone` and `Run backlog`, which the conversation shows right under it; it does not ask whether to run it.',
+    );
+    expect(skill).not.toContain('one short question whether to run it');
+  });
+
+  it('keeps the waiting briefs as they are after a merge unless their goal, rule or scope changes', () => {
+    const section = skill.slice(skill.indexOf('## After a merge'), skill.indexOf('## Before anything starts'));
+    expect(section).not.toContain('Bring their `Today` up to date');
+    expect(section).toContain('A waiting brief changes only when what landed changes its goal, its rule or its scope.');
+    expect(section).toContain('Drop or merge a task the merge made unnecessary');
   });
 
   it('takes the shared text for reading with a reader by its mark, and holds no reading rule of its own', () => {
@@ -107,16 +151,23 @@ describe('the backlog-plan skill', () => {
     expect(skill).not.toContain('A fact checked by its quote');
   });
 
-  it('lists the pass-on action among the run actions it hands back', () => {
-    expect(skill).toContain("pass a run's question to the person");
+  it('takes the action list from the definition by its mark, once, and names no field the definition lacks', () => {
+    expect(skill.split('\n').filter((line) => line === BACKLOG_ACTIONS_MARK)).toHaveLength(1);
+    expect(prompt).toContain(backlogActionsText());
+    const section = skill.slice(skill.indexOf('## What you hand back'));
+    expect(section).not.toMatch(/\b(kind|slug|dependsOn)\b/);
   });
 
-  it('names the facts of a run and the run commands, with a replay instruction, a rebase and the runs below a task', () => {
+  it('lists the pass-on, replay and rebase actions and the runs below a task from the definition', () => {
+    expect(prompt).toContain("pass a run's question to the person");
+    expect(prompt).toContain('replay a run from a step with an instruction');
+    expect(prompt).toContain('- rebase needs: run (string)');
+    expect(prompt).toContain("a task's run or any run below it, such as a part of an epic");
+  });
+
+  it('names the facts of a run that the planner is given', () => {
     expect(skill).toContain('each failed check command with the end of its output');
     expect(skill).toContain('each failed CI job with the end of its log');
-    expect(skill).toContain('replay a run from a step with an instruction');
-    expect(skill).toContain('rebase a run');
-    expect(skill).toContain("on a task's run or any run below it, such as a part of an epic");
   });
 
   it('asks `Milestone or backlog?` and records the answer as a decision', () => {

@@ -81,6 +81,20 @@ const REQUIRED: Record<BacklogTurnAction['action'], string[]> = {
   stop: ['run'],
 };
 
+/** The fields an action may give of its own, besides `reason`, which every action takes. */
+const OPTIONAL: Partial<Record<BacklogTurnAction['action'], string[]>> = {
+  changeTask: ['title', 'description', 'repositories', 'covers', 'depends', 'files', 'proof', 'milestone'],
+  passQuestion: ['question'],
+};
+
+/** The fields each action may also give: its own optional ones, and `reason` where the action does not need it. */
+const TAKES = Object.fromEntries(
+  Object.entries(REQUIRED).map(([name, needs]) => [
+    name,
+    [...(OPTIONAL[name as BacklogTurnAction['action']] ?? []), ...(needs.includes('reason') ? [] : ['reason'])],
+  ]),
+) as Record<BacklogTurnAction['action'], string[]>;
+
 const text = (description: string): Joi.StringSchema => Joi.string().description(description);
 const list = (description: string): Joi.ArraySchema => Joi.array().items(Joi.string()).description(description);
 
@@ -91,7 +105,9 @@ const taskFields = {
   covers: list('The requirements the task covers, like M1.R2'),
   depends: list('The tasks or requirements it waits for'),
   files: list('The files it changes'),
-  proof: list('The tests that prove it'),
+  proof: list(
+    "The tests or checks that prove it, each one something the task's own run can check (a test, a check command or a CI job of its repository); never git, which a planner turn does not have",
+  ),
   milestone: Joi.number().integer().description('The number of the milestone'),
 };
 
@@ -110,10 +126,12 @@ const action = requiredBy(
     tasks: Joi.array()
       .items(
         Joi.object({
-          id: Joi.string().required().description('The task id: lowercase letters, digits and dashes'),
+          id: Joi.string().required().description("The task's slug: lowercase letters, digits and dashes"),
           fixesMain: text('The repository whose red main the task fixes'),
           manual: Joi.boolean().description('The task merges only on the owner OK'),
           ...taskFields,
+          title: text('The title; the server refuses a new task without it'),
+          description: text('The brief of the task; the server refuses a new task without it'),
         }).unknown(false),
       )
       .description('addTasks: the tasks to add'),
@@ -123,9 +141,11 @@ const action = requiredBy(
     id: text('addItem: the item id; closeRequirement: the requirement, like M1.R2'),
     text: text('recordDecision: the decision'),
     evidence: text('closeRequirement: what shows the requirement is met'),
-    run: text('answerRun, passQuestion, planChat, resume, replay, rebase, skipTask, stop: the run key'),
+    run: text(
+      "answerRun, passQuestion, planChat, resume, replay, rebase, skipTask, stop: the run by its key; a task's run or any run below it, such as a part of an epic",
+    ),
     question: text(
-      'passQuestion: the id of the question to pass to the person; leave out to pass every question of the run you hold',
+      "passQuestion: pass a run's question to the person; the id of the question, or leave it out to pass every question of the run you hold",
     ),
     answers: Joi.array()
       .items(Joi.object({ kind: Joi.string(), id: Joi.string(), body: Joi.string().required() }))
@@ -133,11 +153,12 @@ const action = requiredBy(
         'answerRun: one answer per open question with its kind and id, or one answer with only a body, which answers every open question of the run',
       ),
     message: text('planChat: the message for the planner of the run'),
-    step: text('replay: the step to run again'),
-    instruction: text('replay: the instruction the step starts with, as a person writes it in Replay'),
+    step: text('replay: replay a run from a step with an instruction; the step to start from'),
+    instruction: text('replay: what the step starts with, as a person writes it in Replay'),
   }).unknown(false),
   'action',
   REQUIRED,
+  TAKES,
 );
 
 export const backlogTurn = defineResult(
