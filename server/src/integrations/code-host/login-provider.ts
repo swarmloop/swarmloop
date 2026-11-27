@@ -105,6 +105,8 @@ export interface LoginProvider {
    * else each one the host answers 403 or 404 for. A repository whose read fails otherwise is left out: it is not known to be unreachable.
    */
   serverTokenMisses(repos: RepoRef[]): Promise<RepoRef[]>;
+  /** Asks the token endpoint with an invalid code: true when the host knows the client, false when it rejects it, and throws for any other answer. */
+  checkApp(app: AppCredentials, redirectUri: string): Promise<boolean>;
 }
 
 /** The facts of a host a login provider carries as they are. */
@@ -119,6 +121,8 @@ export interface Endpoints {
   token: string;
   api: string;
   scope: string;
+  /** The `error` the token endpoint answers an invalid code with, for a client it knows and for one it rejects. */
+  appCheck: { accepted: string; rejected: string };
   /** The call that names the person, and the field that holds the login. */
   user: { path: string; field: string };
   /** The call that lists orgs or groups, and the field that holds each name. */

@@ -13,6 +13,9 @@ const rootOf = (env: GitlabBase): string =>
 export const gitlabTokenPage = (env: GitlabBase): string =>
   `${rootOf(env)}/-/user_settings/personal_access_tokens?name=swarmloop&scopes=read_user,api,write_repository`;
 
+/** The page where a person registers the application of the login. */
+export const gitlabApplicationsPage = (env: GitlabBase): string => `${rootOf(env)}/-/user_settings/applications`;
+
 export function gitlabEndpoints(env: GitlabBase): Endpoints {
   const root = rootOf(env);
   return {
@@ -22,6 +25,7 @@ export function gitlabEndpoints(env: GitlabBase): Endpoints {
     token: `${root}/oauth/token`,
     api: `${root}/api/v4`,
     scope: 'read_user api write_repository',
+    appCheck: { accepted: 'invalid_grant', rejected: 'invalid_client' },
     userHeaders: (token) => ({ Authorization: `Bearer ${token}` }),
     user: { path: '/user', field: 'username' },
     groups: { path: '/groups?min_access_level=10&per_page=100', field: 'full_path' },

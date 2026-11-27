@@ -14,6 +14,7 @@ export function githubEndpoints(env: Pick<SwarmloopEnv, 'GITHUB_BASE_URL'>): End
     token: `${base.origin}/login/oauth/access_token`,
     api: hosted ? 'https://api.github.com' : `${base.origin}/api/v3`,
     scope: 'read:user read:org',
+    appCheck: { accepted: 'bad_verification_code', rejected: 'incorrect_client_credentials' },
     userHeaders: (token) => ({
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',

@@ -2,7 +2,7 @@ import type { CodeHostAdapter } from '../code-host-adapter';
 import { HttpOAuthProvider } from '../http-login-provider';
 import { GitlabCodeHost } from './gitlab-code-host';
 import { gitlabConnection } from './gitlab-connection';
-import { GITLAB_APP_LABEL, gitlabEndpoints, gitlabTokenPage } from './gitlab-login';
+import { GITLAB_APP_LABEL, gitlabApplicationsPage, gitlabEndpoints, gitlabTokenPage } from './gitlab-login';
 import { gitlabRules } from './gitlab-rules';
 
 export const adapter: CodeHostAdapter = {
@@ -26,6 +26,7 @@ export const adapter: CodeHostAdapter = {
   storesApplication: true,
   signsInWithToken: true,
   tokenPage: gitlabTokenPage,
+  applicationsPage: gitlabApplicationsPage,
   endpoints: gitlabEndpoints,
   login: (env, clock, apps, appFlow) =>
     new HttpOAuthProvider(adapter, adapter.endpoints(env), env[adapter.tokenKey], clock, apps, appFlow),
