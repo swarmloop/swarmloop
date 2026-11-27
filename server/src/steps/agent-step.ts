@@ -309,6 +309,7 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
           runtime: run.profile.runtime,
           model: run.profile.model,
           ...effortFields(run.profile),
+          helpers: run.profile.helpers,
           timeLimitMs: run.profile.timeLimitMs,
           auto: run.auto,
           prompt,

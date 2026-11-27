@@ -16,6 +16,8 @@ Check the plan against the size and complexity limits the project sets (its rule
 
 Do not edit source files. Do not run git. Do not implement the items.
 
+[reading with a reader]
+
 ## Split
 
 This section applies only because this run may split into subtasks. The prompt then holds the `Contract` and the `Tasks` the planner wrote, next to the `Plan` the server made from them.

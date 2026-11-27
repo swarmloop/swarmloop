@@ -10,6 +10,7 @@ import { runInStepScope } from '../../core/step-event-scope';
 import { sessionFileName } from '../../history/session-group';
 import { AgentLauncher } from './agent-launcher';
 import { LimitFailover } from './limit-failover';
+import { readerPrompt } from './skill-prompt';
 
 describe('AgentLauncher runtime of the agent', () => {
   it('starts a new chat with the full brief when the stored chat belongs to another runtime than the step agent', async () => {
@@ -194,6 +195,40 @@ describe('AgentLauncher runtime of the agent', () => {
       const started = setup(['claude']);
       await started.launch({});
       expect(started.runner.run.mock.calls[0][0].prompt).toContain('prompt for claude');
+    });
+  });
+
+  describe('with readers', () => {
+    const ran = { chatId: null, tokensIn: 0, tokensOut: 0, usd: 0, calls: 1, exitCode: 0, resumed: false, samples: [] };
+    const reader = { runtime: 'claude', model: 'h-claude', effort: 'low' } as const;
+
+    async function helperOf(tools: 'none' | 'read') {
+      const root = mkdtempSync(join(tmpdir(), 'swarmloop-launcher-readers-'));
+      const runner = { run: jest.fn().mockResolvedValue({ ...ran, responseText: 'done' }) };
+      await new AgentLauncher(runner as never, new RunStop()).launch({
+        root,
+        run: { agentCalls: 0, spentUsd: 0 } as never,
+        key: 'run',
+        step: 'implement',
+        mode: 'ask',
+        tools,
+        runtime: 'claude',
+        model: 'm-claude',
+        helpers: [reader],
+        timeLimitMs: 1,
+        prompt: 'prompt',
+        workspace: root,
+        mounts: [],
+      });
+      return runner.run.mock.calls[0][0].helper;
+    }
+
+    it('gives a launch that reads the first reader of its runtime with the reader skill', async () => {
+      expect(await helperOf('read')).toEqual({ model: 'h-claude', effort: 'low', prompt: readerPrompt() });
+    });
+
+    it('gives a launch with no tools none: it has nothing to read', async () => {
+      expect(await helperOf('none')).toBeUndefined();
     });
   });
 });

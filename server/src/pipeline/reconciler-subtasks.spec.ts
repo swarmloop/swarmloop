@@ -153,7 +153,12 @@ describe('the agents of an epic parent and of its subtasks', () => {
 
     const { env } = app.app.get(AppConfig);
 
-    expect(agentFor(env, child, 'plan')).toEqual({ runtime: 'claude', model: 'claude-sonnet-5-5', effort: 'medium' });
+    expect(agentFor(env, child, 'plan')).toEqual({
+      runtime: 'claude',
+      model: 'claude-sonnet-5-5',
+      effort: 'medium',
+      helpers: [{ runtime: 'claude', model: 'claude-haiku-5-5', effort: 'medium' }],
+    });
   });
 
   it("runs the parent's answer to a subtask question at the epic effort", async () => {

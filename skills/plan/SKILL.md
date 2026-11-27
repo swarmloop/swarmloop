@@ -28,6 +28,8 @@ A limit never decides which requirement goes. When a required change does not fi
 
 The checklist goes in the result block, and only there. A later pass replaces the plan with its own. Do not edit source files. Do not run git. Do not implement the items. `summary` says why this checklist.
 
+[reading with a reader]
+
 ## Split
 
 This section applies only because this run may split into subtasks.

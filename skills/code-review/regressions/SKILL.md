@@ -9,3 +9,7 @@ Do not edit files. Do not run git. Do not run tests, a service, a database, or t
 Give a `summary` list and the decision. `summary` says what you checked. On `decision: return`, name one broken behavior in this diff. On a later pass, check again every finding you returned before and everything the new changes touch. The later pass of a CI fix reads the failing test's log, not only the changed lines. `decision: ok` when the behavior is fixed, or when the tree is unchanged and the required behavior is already in it and the summary says where. "Nothing changed since my last decision" is never the reason on its own. "The plan said to stop" and "the plan asks nothing more" are never a reason. Do not ask for a new subsystem.
 
 The decision is ok when existing behavior still holds. The decision is return when a caller or a stored case would break.
+
+[reading with a reader]
+
+The reader is for searching and reading around the change; the diff, the lines under review and the lines being edited you read yourself.

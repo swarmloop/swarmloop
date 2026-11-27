@@ -56,7 +56,12 @@ describe('a run uses the starter settings', () => {
       await start('proj-1', 'alice');
       const run = await runs.findRun('proj-1');
       expect(run?.agents).toEqual(MINE.agents);
-      expect(agentFor(env, run, 'plan')).toEqual({ runtime: 'claude', model: 'mine-plan', effort: 'high' });
+      expect(agentFor(env, run, 'plan')).toEqual({
+        runtime: 'claude',
+        model: 'mine-plan',
+        effort: 'high',
+        helpers: [{ runtime: 'claude', model: 'claude-haiku-5-5', effort: 'medium' }],
+      });
     } finally {
       await app.close();
     }
@@ -69,7 +74,12 @@ describe('a run uses the starter settings', () => {
       await start('proj-2', 'alice');
       await settings.save('alice', THEIRS);
       const run = await runs.findRun('proj-2');
-      expect(agentFor(env, run, 'plan')).toEqual({ runtime: 'claude', model: 'mine-plan', effort: 'high' });
+      expect(agentFor(env, run, 'plan')).toEqual({
+        runtime: 'claude',
+        model: 'mine-plan',
+        effort: 'high',
+        helpers: [{ runtime: 'claude', model: 'claude-haiku-5-5', effort: 'medium' }],
+      });
     } finally {
       await app.close();
     }
@@ -86,6 +96,7 @@ describe('a run uses the starter settings', () => {
         runtime: 'codex',
         model: 'theirs-plan',
         effort: 'high',
+        helpers: [{ runtime: 'claude', model: 'claude-haiku-5-5', effort: 'medium' }],
       });
       expect(agentFor(env, await runs.findRun('proj-3'), 'plan').model).toBe('mine-plan');
     } finally {

@@ -1,3 +1,4 @@
+import type { Agent } from '../../config/agents';
 import type { EffortFields } from '../../contract/effort';
 import type { ErrorCode } from '../../contract/error-codes';
 import type { LimitState, REASON } from '../../contract/run-state';
@@ -108,6 +109,8 @@ export interface AgentProfile extends EffortFields {
   tools: AgentTools;
   timeLimitMs: number;
   session: 'resume' | 'fresh';
+  /** The readers of the step's use, when `READ_ROLES` names it. */
+  helpers?: readonly Agent[];
 }
 
 export interface StepDescriptor {

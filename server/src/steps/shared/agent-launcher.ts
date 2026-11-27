@@ -43,11 +43,12 @@ function withRules(prompt: string): string {
 }
 
 /**
- * The helper of the runtime that runs this launch, as the runtime interface takes it. Nothing when there is none. The agent
- * keeps all its read tools; the helper gets the reader's skill as its instructions.
+ * The helper of the runtime that runs this launch, as the runtime interface takes it. Nothing when there is none, and
+ * nothing for a launch with no tools: it answers from what it was told and has nothing to read. The agent keeps all its
+ * read tools; the helper gets the reader's skill as its instructions.
  */
 function helperInput(request: AgentLaunchRequest): Pick<AgentRunInput, 'helper'> {
-  const helper = helperFor(request.helpers, request.runtime);
+  const helper = request.tools === 'none' ? undefined : helperFor(request.helpers, request.runtime);
   if (!helper) {
     return {};
   }
@@ -101,7 +102,15 @@ export class AgentLauncher {
           current.model === request.model &&
           current.effort === request.effort
           ? result
-          : { ...result, agent: { runtime: current.runtime, model: current.model, ...effortFields(current) } };
+          : {
+              ...result,
+              agent: {
+                runtime: current.runtime,
+                model: current.model,
+                ...effortFields(current),
+                ...(current.helpers ? { helpers: current.helpers } : {}),
+              },
+            };
       }
       chain = result.callIds;
       replaces = launched.main;

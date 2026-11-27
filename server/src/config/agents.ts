@@ -4,18 +4,21 @@ import type { Effort } from '../contract/effort';
 import { effortsOfList, highestOf, isEffort, raisesEffort } from '../contract/effort';
 import { defaultLevelOf } from './default-levels';
 import { SwarmloopError } from '../core/swarmloop-error';
+import { assertReadRoles, readRoleOf, readRolesOf } from './read-roles';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 
 /**
  * An agent is a runtime, the model it runs and how hard it works. It is written `runtime:model[:effort]`.
- * `effortNote` says why a resolved effort is not the agent's own: `epic` or `capped:<wanted>`.
+ * `effortNote` says why a resolved effort is not the agent's own: `epic` or `capped:<wanted>`. `helpers` are the readers
+ * of the agent's use, read only, one per runtime: the agent has them only when `READ_ROLES` names its use.
  */
 export interface Agent {
   runtime: RuntimeName;
   model: string;
   effort?: Effort;
   effortNote?: string;
+  helpers?: readonly Agent[];
 }
 
 const ROLES = ['plan', 'implement', 'review'] as const;
@@ -37,7 +40,8 @@ interface AgentEnv {
   AGENTS_SUBTASK_IMPLEMENT: string;
   AGENTS_SUBTASK_REVIEW: string;
   AGENTS_BACKLOG_PLAN: string;
-  AGENTS_BACKLOG_READ: string;
+  AGENTS_READ: string;
+  READ_ROLES: string;
   EPIC_EFFORT: string;
 }
 
@@ -50,7 +54,12 @@ type AgentRun = object & {
 
 /** Everything that launches or prices an agent: the steps of a run, and the work done outside the pipeline. */
 type AgentUse =
-  StepName | 'code-review-report' | `code-review-${(typeof CODE_REVIEWERS)[number]}` | 'rebase' | 'backlog-plan';
+  | StepName
+  | 'code-review-report'
+  | `code-review-${(typeof CODE_REVIEWERS)[number]}`
+  | 'rebase'
+  | 'backlog-plan'
+  | 'plan-answers';
 
 /** The one table from a step to its role. A step without an agent has none. */
 export const ROLE_OF_STEP = {
@@ -76,6 +85,7 @@ export const ROLE_OF_STEP = {
   'code-review-performance': 'review',
   rebase: 'implement',
   'backlog-plan': 'plan',
+  'plan-answers': 'plan',
 } as const satisfies Record<AgentUse, Role | null>;
 
 /** The uses that have an agent. */
@@ -259,13 +269,13 @@ export function agentFor(env: AgentEnv, run: AgentRun | null, step: AgentUseName
 export function agentFor(env: AgentEnv, run: AgentRun | null, step: string): Agent | null;
 export function agentFor(env: AgentEnv, run: AgentRun | null, step: string): Agent | null {
   const role = roleFor(step);
-  return role ? agentsOf(env, role, tierOf(run), run)[0] : null;
+  return role ? withReaders(env, step, agentsOf(env, role, tierOf(run), run))[0] : null;
 }
 
 /** Every agent of a step's role and tier, in fallback order. Empty for a step without an agent. */
 export function agentsFor(env: AgentEnv, run: AgentRun | null, step: string): Agent[] {
   const role = roleFor(step);
-  return role ? agentsOf(env, role, tierOf(run), run) : [];
+  return role ? withReaders(env, step, agentsOf(env, role, tierOf(run), run)) : [];
 }
 
 /** The first agent of a list whose runtime is not cooling down, or null when every one is. */
@@ -294,19 +304,26 @@ export function namedAgentsFor(env: AgentEnv, run: AgentRun | null, step: string
  * plan role), with the effort resolved and capped and the fallback order kept.
  */
 export function backlogPlanAgents(env: AgentEnv, stored?: StoredAgents | null): Agent[] {
-  return agentsOf(env, 'plan', 'backlog', { agents: stored });
+  return withReaders(env, 'backlog', agentsOf(env, 'plan', 'backlog', { agents: stored }));
 }
 
 /**
- * The helpers a backlog planner turn hands reading to, read only. An empty list is no helper and never falls back to
- * another list. A level is resolved and capped as for every list.
+ * The readers of a use: the `AGENTS_READ` list, with a level resolved and capped as for every list, when `READ_ROLES`
+ * names the use. An empty list is no reader and never falls back to another list.
  */
-export function backlogReadAgents(env: AgentEnv): Agent[] {
-  if (env.AGENTS_BACKLOG_READ === '') {
+function readersOf(env: AgentEnv, use: string): Agent[] {
+  const role = readRoleOf(use);
+  if (env.AGENTS_READ === '' || !role || !readRolesOf(env.READ_ROLES).includes(role)) {
     return [];
   }
-  const agents = parseAgentList('AGENTS_BACKLOG_READ', env.AGENTS_BACKLOG_READ);
-  return resolveEfforts(agents, defaultLevelOf('AGENTS_BACKLOG_READ'), null, env, 'plan');
+  const agents = parseAgentList('AGENTS_READ', env.AGENTS_READ);
+  return resolveEfforts(agents, defaultLevelOf('AGENTS_READ'), null, env, 'plan');
+}
+
+/** The agents of a use with its readers as `helpers`; the key is left out when the use has none. */
+function withReaders(env: AgentEnv, use: string, agents: Agent[]): Agent[] {
+  const helpers = readersOf(env, use);
+  return helpers.length > 0 ? agents.map((agent) => ({ ...agent, helpers })) : agents;
 }
 
 /** The first helper of the runtime that runs, or none when the list has none or the runtime has no helpers. */
@@ -338,7 +355,7 @@ export function runtimesNamingEffort(env: AgentEnv): RuntimeName[] {
   const names = [
     ...TIERS.flatMap((tier) => ROLES.map((role) => LISTS[tier][role])),
     'AGENTS_BACKLOG_PLAN' as const,
-    'AGENTS_BACKLOG_READ' as const,
+    'AGENTS_READ' as const,
   ].filter((name) => env[name] !== '');
   const agents = names.flatMap((name) => env[name].split(',').map((item) => splitAgent(name, item)));
   return [...new Set(agents.map((agent) => agent.runtime))];
@@ -407,9 +424,10 @@ export function assertAgents(env: AgentEnv): void {
   for (const [role, tier] of [...lists, ['plan', 'backlog'] as [Role, ListTier]]) {
     assertList(listName(env, role, tier), env);
   }
-  if (env.AGENTS_BACKLOG_READ !== '') {
-    assertList('AGENTS_BACKLOG_READ', env);
+  if (env.AGENTS_READ !== '') {
+    assertList('AGENTS_READ', env);
   }
+  assertReadRoles(env.READ_ROLES);
 }
 
 function assertList(name: keyof AgentEnv, env: AgentEnv): void {

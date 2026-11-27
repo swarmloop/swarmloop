@@ -157,10 +157,14 @@ export class LimitFailover {
     return request.run.recordLimit?.(visit) ?? this.visits.finishVisit(request.run as RunEntity, visit);
   }
 
-  /** The request on the next agent, which brings its own effort: the old agent's level never stays on it. */
+  /**
+   * The request on the next agent, which brings its own effort: the old agent's level never stays on it. The readers
+   * stay the request's own: the list the next agent comes from is the step's, not always the use of this launch.
+   */
   private moveTo<T extends FailoverTarget>(request: T, next: Agent): T {
     const { effort: _effort, effortNote: _effortNote, ...rest } = request;
-    return { ...rest, ...next } as T;
+    const { helpers: _helpers, ...agent } = next;
+    return { ...rest, ...agent } as T;
   }
 
   /** The error of a step whose every agent of the role is limited. It says when the run goes on. */

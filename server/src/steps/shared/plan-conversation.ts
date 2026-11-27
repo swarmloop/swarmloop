@@ -143,7 +143,7 @@ export class PlanConversation {
   ): Promise<{ value: unknown } | { refused: StartRefused } | null> {
     const run = opened.run;
     const env = this.config.env;
-    const { runtime, model, ...effort } = agentFor(env, run, 'plan');
+    const { runtime, model, ...effort } = agentFor(env, run, 'plan-answers');
     const dir = root(this.config);
     const chat = await this.chatOf(run.key, runtime, startSession);
     if (!chat) return null;

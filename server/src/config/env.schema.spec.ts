@@ -249,7 +249,8 @@ describe('env schema', () => {
       AGENTS_SUBTASK_IMPLEMENT: shippedDefaults().AGENTS_SUBTASK_IMPLEMENT,
       AGENTS_SUBTASK_REVIEW: shippedDefaults().AGENTS_SUBTASK_REVIEW,
       AGENTS_BACKLOG_PLAN: shippedDefaults().AGENTS_BACKLOG_PLAN,
-      AGENTS_BACKLOG_READ: shippedDefaults().AGENTS_BACKLOG_READ,
+      AGENTS_READ: 'claude:claude-haiku-5-5:medium',
+      READ_ROLES: 'backlog,research,plan,plan-improve,plan-answers',
     });
     const listed = await compileWith({
       ...complete,
@@ -309,6 +310,24 @@ describe('env schema', () => {
       expect(old.env).toEqual(plain.env);
       expect(warnings).toEqual([
         'MAX_AGENT_CALLS and MAX_RUN_TOKENS are no longer read: a run has one budget, MAX_RUN_USD',
+      ]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('AGENTS_BACKLOG_READ changes nothing and produces one warning naming AGENTS_READ and READ_ROLES', async () => {
+    const warnings: string[] = [];
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message));
+    });
+    try {
+      const plain = await compileWith(complete);
+      expect(warnings).toEqual([]);
+      const old = await compileWith({ ...complete, AGENTS_BACKLOG_READ: 'claude:claude-haiku-5-5' });
+      expect(old.env).toEqual(plain.env);
+      expect(warnings).toEqual([
+        'AGENTS_BACKLOG_READ is no longer read: the reader list is AGENTS_READ and READ_ROLES names the roles that get it',
       ]);
     } finally {
       warn.mockRestore();

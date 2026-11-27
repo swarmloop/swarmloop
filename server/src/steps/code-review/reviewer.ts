@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { effortFields } from '../../contract/effort';
 import type { EffortFields } from '../../contract/effort';
+import type { Agent } from '../../config/agents';
 import type { SwarmloopEnv } from '../../config/env';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { PlanChatStore } from '../../history/plan-chat.store';
@@ -64,6 +65,8 @@ interface ReviewLaunch extends EffortFields {
   reviewer: Reviewer;
   runtime: RuntimeName;
   model: string;
+  /** The readers of the reviewer's use, when `READ_ROLES` names it. */
+  helpers?: readonly Agent[];
   prompt: string;
   mounts: SandboxMount[];
   briefFor: (runtime: RuntimeName) => string;
@@ -157,6 +160,7 @@ export async function runJob(
       runtime: job.runtime,
       model: job.model,
       ...effortFields(job),
+      helpers: job.helpers,
       prompt: chosen,
       mounts: job.mounts,
       briefFor: job.promptFor,
@@ -257,6 +261,7 @@ async function launchReview(
       runtime: job.runtime,
       model: job.model,
       ...effortFields(job),
+      helpers: job.helpers,
       timeLimitMs: env.CODE_REVIEW_TIMEOUT_MS,
       prompt: job.prompt,
       continuePrompt: reviewContinue(job.reviewer.name),
