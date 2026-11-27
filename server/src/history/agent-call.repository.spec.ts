@@ -280,6 +280,10 @@ describe('AgentCallRepository', () => {
       await log.addRequest(id, request({ input: 10, cacheRead: 100, cacheWrite: 20 }));
       await log.addRequest(id, request({ input: 1, cacheRead: 300, cacheWrite: 4 }));
       expect((await log.lastRowOfChat('chat-1'))?.lastPromptTokens).toBe(305);
+      await log.addRequest(id, request({ usd: 1 }), null);
+      expect((await log.lastRowOfChat('chat-1'))?.lastPromptTokens).toBe(305);
+      await log.addRequest(id, request({ output: 9 }), 400);
+      expect((await log.lastRowOfChat('chat-1'))?.lastPromptTokens).toBe(400);
     }));
 
   it('splits the tokens a turn read from the tokens it wrote', () =>

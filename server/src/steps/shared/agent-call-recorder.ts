@@ -106,21 +106,29 @@ export class OpenCall {
       return;
     }
     const none = this.counted.size === 0;
-    await this.calls.addRequest(this.id, {
-      model: this.draft.model,
-      input: none ? result.tokensIn : 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      output: none ? result.tokensOut : 0,
-      usd,
-      price: {},
-    });
+    await this.calls.addRequest(
+      this.id,
+      {
+        model: this.draft.model,
+        input: none ? result.tokensIn : 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        output: none ? result.tokensOut : 0,
+        usd,
+        price: {},
+      },
+      none ? undefined : null,
+    );
   }
 
   private async count(request: PricedRequest): Promise<void> {
     const row = await this.rowOf(request);
     const key = `${row}:${request.messageId}`;
-    await this.calls.addRequest(row, difference(request, this.counted.get(key)));
+    await this.calls.addRequest(
+      row,
+      difference(request, this.counted.get(key)),
+      request.input + request.cacheRead + request.cacheWrite,
+    );
     this.counted.set(key, request);
   }
 

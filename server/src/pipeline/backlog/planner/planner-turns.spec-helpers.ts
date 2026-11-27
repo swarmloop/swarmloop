@@ -138,7 +138,8 @@ export class ScriptedTurnAgent {
     if (next === 'outage') {
       return { ...base, usd: 0.25, responseText: '', outage: { host: 'api.anthropic.com', detail: 'API Error: 502' } };
     }
-    if (next === 'timeout') return { ...base, usd: 0.3, killReason: 'time', responseText: '' };
+    // A time kill ends the process by a signal (SIGTERM), so its answer is never read.
+    if (next === 'timeout') return { ...base, usd: 0.3, killReason: 'time', exitCode: 143, responseText: '' };
     if (next === 'crash') return { ...base, usd: 0.1, exitCode: 1, responseText: '' };
     return { ...base, usd: 0.5, responseText: resultAnswer('Done.', next) };
   }
@@ -314,6 +315,12 @@ export async function plannerTurnsHarness(
     /** A new planner over the same database that is not started, as the planner of a CLI process is. */
     restartWithoutStart(): void {
       harness.planner = planner();
+    },
+    /** The runtime's usage limit has been reached and ends in an hour. */
+    async cool(runtime: string): Promise<void> {
+      await db.app
+        .get(RuntimeCooldownRepository)
+        .set({ runtime, credential: 'env' }, db.clock.now() + 60 * 60_000, false);
     },
     /** A running turn of the backlog that has taken what waits, as the planner makes one before it runs the turn. */
     async openTurn(backlogId: number, turnKey: string): Promise<void> {

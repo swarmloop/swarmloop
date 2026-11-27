@@ -432,6 +432,21 @@ describe('BacklogTurnRunner', () => {
         { AGENTS_BACKLOG_PLAN: 'claude:claude-opus-5-5:high,codex:m-codex' },
       ));
 
+    it('sends the whole brief to the next agent when a turn starts on a runtime that is cooling', () =>
+      withTurn(
+        async (h, id) => {
+          await h.runner.run('one', 'turn-a');
+          await h.chat.addPersonMessage(id, 'and this', 'm2', []);
+          await h.openTurn(id, 'turn-b');
+          await h.cool('claude');
+          await h.runner.run('one', 'turn-b');
+
+          const [, started] = h.agent.launches;
+          expect(started).toMatchObject({ runtime: 'codex', prompt: expect.stringMatching(/plan one in turn-b$/) });
+        },
+        { AGENTS_BACKLOG_PLAN: 'claude:claude-opus-5-5:high,codex:m-codex' },
+      ));
+
     it('stores no seen state on a turn that fails', () =>
       withTurn(async (h) => {
         h.agent.script = ['crash'];
@@ -453,15 +468,16 @@ describe('BacklogTurnRunner', () => {
     it('fails with the time limit as the reason and keeps the cost and tokens of the killed call', () =>
       withTurn(
         async (h) => {
-          h.agent.script = ['timeout', 'timeout', 'timeout'];
+          h.agent.script = ['timeout'];
           await expect(h.runner.run('one', 'turn-a')).rejects.toThrow(
             'The planner stopped at its time limit of 2 minutes.',
           );
           expect(await h.chat.findTurn('turn-a')).toMatchObject({
             usd: await h.calls.spendOfTurn('turn-a'),
-            tokensIn: 30,
-            tokensOut: 15,
+            tokensIn: 10,
+            tokensOut: 5,
           });
+          expect(h.agent.launches).toHaveLength(1);
         },
         { BACKLOG_PLAN_TIMEOUT_MS: 120_000 },
       ));

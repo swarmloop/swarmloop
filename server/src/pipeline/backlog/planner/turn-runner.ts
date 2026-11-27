@@ -280,7 +280,7 @@ export class BacklogTurnRunner {
       } catch (error) {
         const tried = error instanceof ResultInvalid || isModelOutage(error) ? error.result : undefined;
         if (tried) await record(tried, agent);
-        throw (tried && timeLimitStop(tried, env.BACKLOG_PLAN_TIMEOUT_MS)) || error;
+        throw error;
       }
     };
   }
