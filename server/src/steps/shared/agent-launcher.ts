@@ -22,7 +22,7 @@ import { AgentCallRecorder } from './agent-call-recorder';
 import type { CallLink, OpenCall } from './agent-call-recorder';
 import { ResultInvalid } from './answer-errors';
 import { assertNotStopped } from '../../agent/step-stopped';
-import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE } from './skill-prompt';
+import { AGENT_FOREGROUND_RULE, AGENT_LANGUAGE_RULE, readerPrompt } from './skill-prompt';
 import { withAttachments } from './attachments-section';
 import { withLogReads } from './outside-reads';
 import { StartWaits } from './start-waits';
@@ -43,8 +43,8 @@ function withRules(prompt: string): string {
 }
 
 /**
- * The helper of the runtime that runs this launch, as the runtime interface takes it. Nothing when there is none. An agent
- * that has a helper reads the code only through it, so every launch that gets one asks for that.
+ * The helper of the runtime that runs this launch, as the runtime interface takes it. Nothing when there is none. The agent
+ * keeps all its read tools; the helper gets the reader's skill as its instructions.
  */
 function helperInput(request: AgentLaunchRequest): Pick<AgentRunInput, 'helper'> {
   const helper = helperFor(request.helpers, request.runtime);
@@ -52,7 +52,7 @@ function helperInput(request: AgentLaunchRequest): Pick<AgentRunInput, 'helper'>
     return {};
   }
   return {
-    helper: { model: helper.model, ...(helper.effort ? { effort: helper.effort } : {}), codeOnlyByHelper: true },
+    helper: { model: helper.model, ...(helper.effort ? { effort: helper.effort } : {}), prompt: readerPrompt() },
   };
 }
 

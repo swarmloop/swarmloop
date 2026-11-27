@@ -68,19 +68,34 @@ describe('ClaudeRuntime', () => {
   });
 
   describe('prompt cache', () => {
-    it('knows the 1-hour cache prices of Opus 5.5 and Sonnet 5.5', () => {
+    it('knows the 1-hour cache prices of Opus 5.5, Sonnet 5.5 and Haiku 5.5', () => {
       const opus = runtime.promptCache('claude-opus-5-5');
       expect(opus).toEqual({ ttlMinutes: 60, cacheReadPerMillion: 0.2, cacheWritePerMillion: 8 });
       expect(opus!.cacheWritePerMillion / opus!.cacheReadPerMillion).toBe(40);
       const sonnet = runtime.promptCache('claude-sonnet-5-5');
-      expect(sonnet).toEqual({ ttlMinutes: 60, cacheReadPerMillion: 0.2, cacheWritePerMillion: 4 });
-      expect(sonnet!.cacheWritePerMillion / sonnet!.cacheReadPerMillion).toBe(20);
+      expect(sonnet).toEqual({ ttlMinutes: 60, cacheReadPerMillion: 0.1, cacheWritePerMillion: 4 });
+      expect(sonnet!.cacheWritePerMillion / sonnet!.cacheReadPerMillion).toBe(40);
+      expect(runtime.promptCache('claude-haiku-5-5')).toEqual({
+        ttlMinutes: 60,
+        cacheReadPerMillion: 0.01,
+        cacheWritePerMillion: 0.2,
+      });
     });
 
     it('gives null for an unknown model', () => {
       expect(runtime.promptCache('claude-unknown')).toBeNull();
       expect(runtime.promptCache('constructor')).toBeNull();
       expect(runtime.promptCache('__proto__')).toBeNull();
+    });
+  });
+
+  describe('context window', () => {
+    it.each(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'])('knows the %s window', (model) => {
+      expect(runtime.contextTokens(model)).toBe(1_000_000);
+    });
+
+    it('gives null for an unknown model', () => {
+      expect(runtime.contextTokens('claude-unknown')).toBeNull();
     });
   });
 
@@ -105,12 +120,12 @@ describe('ClaudeRuntime', () => {
     };
 
     describe('with a helper', () => {
-      const launch = (tools: 'read' | 'plan', helper?: { model: string; effort?: 'low' }) =>
+      const launch = (tools: 'read' | 'plan', helper?: { model: string; effort?: 'low'; prompt: string }) =>
         runtime.printArgs({ model: 'm', prompt: 'p', mounts, resumeChatId: null, mode: 'plan', tools, helper });
       const flag = (args: string[], name: string) => args[args.indexOf(name) + 1] ?? '';
 
       it('lets the subagent tool through, runs the helper on its model and level with read tools', () => {
-        const args = launch('plan', { model: 'h-model', effort: 'low' });
+        const args = launch('plan', { model: 'h-model', effort: 'low', prompt: 'read it' });
         const deniedTools = flag(args, '--disallowedTools').split(',');
         expect(runtime.hasHelpers).toBe(true);
         expect(deniedTools).not.toContain('Task');
@@ -129,32 +144,26 @@ describe('ClaudeRuntime', () => {
       });
 
       it('leaves the level out when the helper has none', () => {
-        expect(JSON.parse(flag(launch('read', { model: 'h' }), '--agents')).reader).not.toHaveProperty('effort');
+        expect(
+          JSON.parse(flag(launch('read', { model: 'h', prompt: 'read it' }), '--agents')).reader,
+        ).not.toHaveProperty('effort');
       });
 
-      it('holds a launch that asks for it to its helper with a per-launch hook on the mounts, and leaves the rest', () => {
-        const two = [{ containerPath: '/work/web' }, { containerPath: '/work/api' }];
-        const args = runtime.printArgs({
-          model: 'm',
-          prompt: 'p',
-          mounts: two,
-          resumeChatId: null,
-          mode: 'plan',
-          tools: 'plan',
-          helper: { model: 'h', codeOnlyByHelper: true },
-        });
-        const hook = JSON.parse(flag(args, '--settings')).hooks.PreToolUse[0];
-        expect(hook.matcher).toBe('Read|Glob|Bash');
-        expect(hook.hooks[0].command).toBe('sh /home/sandbox/.claude/read-by-helper.sh /work/web /work/api');
+      it("gives the reader the helper's prompt, leaves the agent its search and sets no hook for it", () => {
+        const args = launch('plan', { model: 'h', prompt: 'the reader skill' });
         const deniedTools = flag(args, '--disallowedTools').split(',');
         expect(deniedTools).not.toContain('Grep');
+        expect(deniedTools).not.toContain('Read');
         expect(deniedTools).not.toContain('Agent');
-        expect(JSON.parse(flag(args, '--agents')).reader.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash']);
-        expect(runtime.homeFiles().map((file) => file.path)).toContain('.claude/read-by-helper.sh');
-      });
-
-      it('adds no hook to a launch with a helper that does not ask for it', () => {
-        expect(launch('plan', { model: 'h' })).not.toContain('--settings');
+        expect(JSON.parse(flag(args, '--agents')).reader).toMatchObject({
+          prompt: 'the reader skill',
+          tools: ['Read', 'Grep', 'Glob', 'Bash'],
+        });
+        expect(args).not.toContain('--settings');
+        expect(runtime.homeFiles().map((file) => file.path)).toEqual([
+          '.claude/settings.json',
+          '.claude/deny-background.sh',
+        ]);
       });
 
       it('keeps the subagent tool denied and passes no definition without a helper', () => {

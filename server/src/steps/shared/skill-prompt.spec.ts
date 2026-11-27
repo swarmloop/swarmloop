@@ -3,7 +3,8 @@ import { join } from 'path';
 import { checksStillRed, implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
 import { NEAR_TESTS_MARK, NEAR_TESTS_RULE } from './near-tests-rule';
 import { PLANNER_CORE_MARK, plannerCore } from './planner-core';
-import { skillPrompt, skillSection, skillText } from './skill-prompt';
+import { READING_WITH_A_READER_MARK, readingWithAReader } from './reader-asking';
+import { readerPrompt, skillPrompt, skillSection, skillText } from './skill-prompt';
 
 const skill = (name: string): string => readFileSync(join(__dirname, '../../../../skills', name, 'SKILL.md'), 'utf8');
 
@@ -303,6 +304,12 @@ describe('skillText', () => {
     expect(skillText(['a', PLANNER_CORE_MARK, 'b'].join('\n'), true)).toBe(['a', plannerCore(), 'b'].join('\n'));
   });
 
+  it('swaps the reading-with-a-reader mark for the asking text', () => {
+    expect(skillText(['a', READING_WITH_A_READER_MARK, 'b'].join('\n'), true)).toBe(
+      ['a', readingWithAReader(), 'b'].join('\n'),
+    );
+  });
+
   it('reads a part of the core by its heading through skillSection', () => {
     const part = skillSection('plan', 'Pass up what you do not hold');
     expect(part).not.toBe('');
@@ -312,6 +319,13 @@ describe('skillText', () => {
   it('gives the core to a reader of the backlog skill and to no reader of the implement skill', () => {
     expect(skillPrompt('backlog-plan', '{}', ['api'])).toContain(plannerCore());
     expect(skillPrompt('implement', '{}', ['api'])).not.toContain(plannerCore());
+  });
+
+  it('leaves the quote check out of the core and gives the asking text to the skill of a role with a reader only', () => {
+    expect(plannerCore()).not.toContain('A fact checked by its quote');
+    expect(skillPrompt('backlog-plan', '{}', ['api'])).toContain(readingWithAReader());
+    expect(skillPrompt('plan', '{}', ['api'])).not.toContain(readingWithAReader());
+    expect(skillPrompt('implement', '{}', ['api'])).not.toContain(readingWithAReader());
   });
 
   it('leaves a text without markers as it is', () => {
@@ -421,5 +435,45 @@ describe('the project base pointer', () => {
 
   it('plan names the project base file for a run that does not split', () => {
     expect(skillPrompt('plan', '{}', ['api'])).toContain(base);
+  });
+});
+
+describe('the reader', () => {
+  const named = /claude|codex|cursor|sonnet|opus|haiku|gpt/i;
+  const tools = /\b(Task|Agent|Grep|Glob|Bash|Explore)\b/;
+
+  it('is told to quote, read whole blocks, search and count lists, say not found, mark inferences and not advise', () => {
+    const prompt = readerPrompt();
+    expect(prompt).toContain('Answer only what was asked');
+    expect(prompt).toContain('quote the exact line');
+    expect(prompt).toContain('Read the whole function or block before you say what it does');
+    expect(prompt).toContain('Quote its guards and its branches instead of summing them up');
+    expect(prompt).toContain('search the whole tree. Give the search you used and the count');
+    expect(prompt).toContain('never cut the list silently');
+    expect(prompt).toContain('`not found` with the search that found nothing');
+    expect(prompt).toContain('as an inference');
+    expect(prompt).toContain('contradicts');
+    expect(prompt).toContain('Give no advice, no plan and no opinion');
+    expect(prompt).toContain('You never change a file');
+  });
+
+  it('names no runtime, model or tool', () => {
+    expect(readerPrompt()).not.toMatch(named);
+    expect(readerPrompt()).not.toMatch(tools);
+    expect(readingWithAReader()).not.toMatch(named);
+    expect(readingWithAReader()).not.toMatch(tools);
+  });
+
+  it('is asked narrowly, with the agent reading itself only to settle a doubt', () => {
+    const asking = readingWithAReader();
+    expect(asking).toContain('Ask narrow questions that name the files, the symbols and what you need');
+    expect(asking).toContain('Ask everything that is independent in one call');
+    expect(asking).toContain('ask for the full list with the search that made it');
+    expect(asking).toContain('ask again more narrowly. Never fill the gap yourself');
+    expect(asking).toContain('with one search for the quoted line, and never by rereading the file');
+    expect(asking).toContain(
+      "Hand the reading to the reader. Read yourself only to settle a doubt: a quote is missing, vague or marked as an inference, two facts disagree, or a decision rests on the fact and the reader's second, narrower answer did not settle it. Then read only the lines that settle it, the quoted range and the function around it, never a file or a search sweep the reader could do.",
+    );
+    expect(asking).toContain('The decisions, the actions and the result block are yours');
   });
 });

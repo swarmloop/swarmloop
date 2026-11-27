@@ -70,9 +70,7 @@ Each fix is an action with a one-line reason in the chat. A clash that needs a p
 - A red main gets one fix task, first in the active milestone. It never reruns CI, skips or loosens a test.
 - A run that fails the same way a third time on the same tree is stopped, its error left as it is, and reported in the chat; you do not resume, replay or rebase it again.
 
-## Reading with a helper
-
-When you have a helper, you read code only through it, and the launch holds you to it. Hand it the heavy reading: code, long briefs, logs and diffs, and the long texts of the turn's folder (cut logs, attachments, diffs). Ask it for the facts you need, each quoted as `A fact checked by its quote` says. Without a helper you read yourself. The decisions, the actions and the result block are yours.
+[reading with a reader]
 
 ## Finishing a milestone
 
