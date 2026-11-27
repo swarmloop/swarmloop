@@ -42,6 +42,7 @@ import { RunQueriesService } from './run-queries.service';
 import { RunListRows } from './run-list-rows';
 import { EtaSummary } from './eta-summary';
 import { RunRebaseService } from './run-rebase.service';
+import { RemoteListService } from './remote-list.service';
 import { RequestTiming } from './request-timing';
 
 @Module({
@@ -93,6 +94,7 @@ import { RequestTiming } from './request-timing';
     CommandHandlers,
     RunUsageReader,
     LiveGateway,
+    RemoteListService,
     RequestTiming,
   ],
 })

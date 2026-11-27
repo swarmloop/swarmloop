@@ -1,5 +1,5 @@
 import { Injectable, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common';
-import { AddProjectBody } from '../contract/api';
+import { AddProjectBody, CreateRepositoryBody } from '../contract/api';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
 import { startByOf } from '../pipeline/resume-sender';
@@ -10,6 +10,8 @@ import { RunSubtaskCommandsService } from './run-subtask-commands.service';
 import { RunRebaseService } from './run-rebase.service';
 import { AttachmentStore } from '../history/attachment-store';
 import type { SubtaskStart } from '../steps/shared/subtask-ops';
+import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
+import type { CodeHostName } from '../integrations/code-host/code-host.registry';
 import { PlanChatService } from './plan-chat.service';
 
 export interface ReplayPayload {
@@ -42,6 +44,7 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     private readonly subtasks: SubtaskPort,
     private readonly planChat: PlanChatService,
     private readonly files: AttachmentStore,
+    private readonly remote: RemoteRepositories,
   ) {}
 
   onModuleInit(): void {
@@ -72,6 +75,10 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     on('remove', (key) => this.runs.remove(key));
     on('skip', (key, payload) => this.taskCommands.skipTask(key, (payload.taskId as string | undefined) ?? ''));
     on('projects', (key, payload) => this.runs.addProject(key, (payload as AddProjectBody).name ?? ''));
+    on('create-repository', (_key, payload, context) =>
+      this.remote.create(payload as unknown as CreateRepositoryBody, context.actor),
+    );
+    on('remote-refresh', (_key, payload, context) => this.remote.refresh(context.actor, payload.host as CodeHostName));
     on('rebase', (key, payload) =>
       typeof payload.main === 'string'
         ? this.rebases.rebase(key, false, payload.main)

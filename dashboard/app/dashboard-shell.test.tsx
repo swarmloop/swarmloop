@@ -46,7 +46,14 @@ beforeEach(() => {
   vi.mocked(listRuns).mockImplementation(listRunsFrom([runSummary()]));
   vi.mocked(removeRun).mockResolvedValue({ key: 'run-1' });
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
-  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
+  vi.mocked(listRemote).mockResolvedValue({
+    repositories: [],
+    owners: [],
+    reason: null,
+    allowedNames: [],
+    loading: false,
+    error: null,
+  });
 });
 
 fakeIntersectionObserver();

@@ -19,6 +19,8 @@ const view = (repositories: RemoteEntry[], extra: Partial<RemoteListView> = {}):
   owners: [{ host: 'github', login: 'acme', kind: 'organization' }],
   reason: null,
   allowedNames: [],
+  loading: false,
+  error: null,
   ...extra,
 });
 

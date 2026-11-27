@@ -27,7 +27,14 @@ const main = (repository: string, state: 'green' | 'pending' | 'red', url: strin
 beforeEach(() => {
   vi.mocked(getRepositoryMain).mockResolvedValue(main('shop', 'green'));
   vi.mocked(listProjects).mockResolvedValue({ projects: ['shop', 'api'] });
-  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
+  vi.mocked(listRemote).mockResolvedValue({
+    repositories: [],
+    owners: [],
+    reason: null,
+    allowedNames: [],
+    loading: false,
+    error: null,
+  });
 });
 
 describe('BacklogHeader', () => {

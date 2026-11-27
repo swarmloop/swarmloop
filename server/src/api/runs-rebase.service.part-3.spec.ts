@@ -262,6 +262,7 @@ describe('runs api', () => {
           { register: jest.fn() } as never,
           {} as never,
           {} as never,
+          {} as never,
         ).onModuleInit();
         await app.get(CommandService).submit('rebase', 'proj-85', { hostConflict: text });
         expect((await runs.findRun('proj-85'))?.currentStep).toBe('implement');
