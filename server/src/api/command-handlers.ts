@@ -59,8 +59,8 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     );
     on('answer', (key, payload) =>
       typeof payload.message === 'string'
-        ? this.answering.fromMessage(key, payload.message)
-        : this.answering.answers(key, payload),
+        ? this.answering.fromMessage(key, payload.message, payload.waitsForMain as string | undefined)
+        : this.answering.answers(key, payload, payload.waitsForMain as string | undefined),
     );
     on('plan-chat', (key, payload, context) => this.planChat.record(key, payload, context.commandId));
     on('replay', async (key, payload) => {

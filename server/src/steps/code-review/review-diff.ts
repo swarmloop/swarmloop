@@ -21,18 +21,21 @@ export async function reviewDiffSection(
   mounts: SandboxMount[],
   denied: string[] = [],
   prompt: string | null = null,
-): Promise<{ heading: string; body: string; patch: string }> {
+): Promise<{ heading: string; body: string; patch: string; files: string[] }> {
   const listed: string[] = [];
   const patches: string[] = [];
+  const files: string[] = [];
   for (const mount of mounts) {
     const part = await one(mount, denied, prompt);
     listed.push(part.list);
     patches.push(part.patch);
+    files.push(...part.files.map((file) => (mounts.length > 1 ? `${repoName(mount)}/${file}` : file)));
   }
   return {
     heading: 'Diff',
     body: [preamble(), ...listed].join('\n\n'),
     patch: `${patches.join('\n\n')}\n`,
+    files,
   };
 }
 
@@ -69,15 +72,17 @@ function preamble(): string {
   ].join(' ');
 }
 
-async function one(
-  mount: SandboxMount,
-  denied: string[],
-  prompt: string | null,
-): Promise<{ list: string; patch: string }> {
+interface Part {
+  list: string;
+  patch: string;
+  files: string[];
+}
+
+async function one(mount: SandboxMount, denied: string[], prompt: string | null): Promise<Part> {
   const name = repoName(mount);
   if (!(await inside(mount.hostPath))) {
     const text = `## ${name}\n\nNot a git checkout. Read the source files in the working directory.`;
-    return { list: text, patch: text };
+    return { list: text, patch: text, files: [] };
   }
   const untracked = splitLines(await optional(mount.hostPath, ['ls-files', '--others', '--exclude-standard']));
   const dirtyNames = splitLines(await optional(mount.hostPath, ['diff', '--name-only', 'HEAD']));
@@ -93,7 +98,7 @@ async function one(
     return uncommittedOnly(mount.hostPath, name, allowedDirty, allowedUntracked, denied);
   }
   const text = `## ${name}\n\nThe worktree is clean and neither origin/main nor origin/master exists.`;
-  return { list: text, patch: text };
+  return { list: text, patch: text, files: [] };
 }
 
 /** The branch against its base, working tree included: commits, uncommitted edits and new files in one patch. */
@@ -103,7 +108,7 @@ async function wholeChange(
   from: { base: string; mergeBase: string; dirty: boolean },
   allowedUntracked: string[],
   denied: string[],
-): Promise<{ list: string; patch: string }> {
+): Promise<Part> {
   const log = (await optional(cwd, ['log', '--oneline', `${from.base}...HEAD`])) ?? '';
   const tracked = splitLines(await optional(cwd, ['diff', '--name-only', from.mergeBase])).filter(
     (path) => !isDenied(path, denied),
@@ -116,11 +121,12 @@ async function wholeChange(
     .filter((part) => part.length > 0)
     .join('\n\n');
   if (tracked.length === 0 && allowedUntracked.length === 0 && patch.trim().length === 0) {
-    return { list: block(name, status, EMPTY_DIFF), patch: block(name, status, EMPTY_DIFF) };
+    return { list: block(name, status, EMPTY_DIFF), patch: block(name, status, EMPTY_DIFF), files: [] };
   }
   return {
     list: block(name, status, fileList([...tracked, ...allowedUntracked])),
     patch: block(name, status, text),
+    files: uniqueNames([...tracked, ...allowedUntracked]),
   };
 }
 
@@ -130,7 +136,7 @@ async function uncommittedOnly(
   allowedDirty: string[],
   allowedUntracked: string[],
   denied: string[],
-): Promise<{ list: string; patch: string }> {
+): Promise<Part> {
   const dirty = allowedDirty.length > 0 ? withoutDenied(await optional(cwd, ['diff', 'HEAD']), denied) : '';
   const names = [...allowedDirty, ...allowedUntracked];
   const extra = await untrackedBodies(cwd, allowedUntracked);
@@ -138,6 +144,7 @@ async function uncommittedOnly(
   return {
     list: block(name, status, fileList(names)),
     patch: block(name, status, [dirty.trimEnd(), extra].filter((part) => part.length > 0).join('\n\n')),
+    files: uniqueNames(names),
   };
 }
 
@@ -218,8 +225,12 @@ function block(name: string, status: string, rest: string): string {
   return [`## ${name}`, '', status, '', rest].filter((part) => part.length > 0).join('\n');
 }
 
+function uniqueNames(names: string[]): string[] {
+  return [...new Set(names.filter((name) => name.length > 0))];
+}
+
 function fileList(names: string[]): string {
-  const unique = [...new Set(names.filter((name) => name.length > 0))];
+  const unique = uniqueNames(names);
   if (unique.length === 0) {
     return 'Changed files:\n(none)';
   }

@@ -32,6 +32,9 @@ import { BacklogTaskActions } from './backlog-task-actions';
 import { TaskRunSkip } from './task-run-skip';
 import { BacklogMerge } from './backlog-merge';
 import { EpicMainMoves } from './epic-main-moves';
+import { MainRebaseSend } from './main-rebase-send';
+import { MainWaitWake } from './main-wait-wake';
+import { RedMainWait } from './red-main-wait';
 import type { MainHeld } from './main-held';
 import type { RunRebase } from '../../steps/run-rebase';
 import { takesMain } from '../../steps/shared/epic-between-passes';
@@ -145,6 +148,7 @@ export async function backlogHarness(parallel = 3) {
   );
   const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands, events);
   const epics = { idle: true, held: new Set<string>() };
+  const rebases = new MainRebaseSend(commands, events, db.clock);
   const epicMoves = new EpicMainMoves(
     backlogs,
     runs,
@@ -156,10 +160,9 @@ export async function backlogHarness(parallel = 3) {
       holds: async (_key: string, repo: string, sha: string) => epics.held.has(`${repo}@${sha}`),
     } as unknown as MainHeld,
     host,
-    commands,
-    events,
-    db.clock,
+    rebases,
   );
+  const mainWake = new MainWaitWake(backlogs, runs, host, new RedMainWait(backlogs, runs, host), rebases);
   const starts: BacklogStart[] = [];
   const mode = { current: 'ok' as StartMode };
   const port = new BacklogStartPort();
@@ -190,6 +193,7 @@ export async function backlogHarness(parallel = 3) {
       db.app.get(BacklogChatRepository),
       epicMoves,
       taskRun,
+      mainWake,
     );
   let current = make();
 

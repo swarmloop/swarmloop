@@ -76,6 +76,15 @@ export class StarterBriefing {
     return state ? renderFull(state) : '';
   }
 
+  /** The files the task of a subtask lists in its parent's task map; none for a run that is not a subtask. */
+  async ownFiles(run: RunEntity): Promise<string[]> {
+    const parentId = run.parentRunId;
+    const parent = isSubtask(run) && typeof parentId === 'number' ? await this.runs.findById(parentId) : null;
+    if (!parent) return [];
+    const tasks = parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND));
+    return tasks.find((item) => item.id === run.taskId)?.files ?? [];
+  }
+
   private async state(run: RunEntity): Promise<BriefingState | null> {
     const parentId = run.parentRunId;
     const parent = isSubtask(run) && typeof parentId === 'number' ? await this.runs.findById(parentId) : null;

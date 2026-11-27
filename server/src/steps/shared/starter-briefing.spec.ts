@@ -159,4 +159,14 @@ describe('the starter briefing', () => {
       await db.close();
     }
   });
+
+  it('gives the files its task lists, and none for a run that is not a subtask', async () => {
+    const { db, run, parent, briefing } = await setup();
+    try {
+      expect(await briefing.ownFiles(run)).toEqual(['a.ts']);
+      expect(await briefing.ownFiles(parent)).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
 });

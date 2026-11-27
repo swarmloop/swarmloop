@@ -76,6 +76,9 @@ import { BacklogQueries } from './backlog/backlog-queries';
 import { BacklogEvents } from './backlog/backlog-events';
 import { BacklogMerge } from './backlog/backlog-merge';
 import { EpicMainMoves } from './backlog/epic-main-moves';
+import { MainRebaseSend } from './backlog/main-rebase-send';
+import { MainWaitWake } from './backlog/main-wait-wake';
+import { RedMainWait } from './backlog/red-main-wait';
 import { MainHeld } from './backlog/main-held';
 import { ServerStallWatch } from './server-stalls/server-stall-watch';
 import { BacklogScheduler } from './backlog/backlog-scheduler';
@@ -189,6 +192,9 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BacklogEvents,
     BacklogMerge,
     EpicMainMoves,
+    MainRebaseSend,
+    MainWaitWake,
+    RedMainWait,
     MainHeld,
     BacklogScheduler,
     ServerStallWatch,
@@ -228,6 +234,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     BacklogActions,
     BacklogQueries,
     BacklogScheduler,
+    RedMainWait,
     BacklogPlanner,
     BacklogActionSupport,
     BacklogStartPort,

@@ -52,13 +52,18 @@ export class MergeMarks {
 
   /** The marks of a merged backlog task: every unmet item of its run, its not built lines, and the files outside its files or its run's plan. */
   async taskMarks(runKey: string, task: { files: string[] }): Promise<string[]> {
-    const planned = task.files.length > 0 ? task.files : await this.plannedFiles(runKey);
-    const outside = planned.length > 0 ? outsidePlan(planned, await this.changedFiles(runKey)) : [];
+    const outside = await this.outsideOwn(runKey, task, await this.changedFiles(runKey));
     return [
       ...this.unmetMarks(await this.unmetItems(runKey)),
       ...(await this.notBuilt(runKey)),
       ...outsideMark(outside),
     ];
+  }
+
+  /** The changed files outside the task's listed files, else outside the files its run's plan names; none when nothing is planned. */
+  async outsideOwn(runKey: string, task: { files: string[] }, changed: string[]): Promise<string[]> {
+    const planned = task.files.length > 0 ? task.files : await this.plannedFiles(runKey);
+    return planned.length > 0 ? outsidePlan(planned, changed) : [];
   }
 
   private async latest<T>(runKey: string, artifact: { kind: string; parse(body: string): T }): Promise<T | null> {
