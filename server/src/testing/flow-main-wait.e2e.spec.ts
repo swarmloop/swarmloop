@@ -22,6 +22,8 @@ describe('a run that waits for a green main is rebased and resumed once main is 
   const boot = async (blocks?: BlockAgentRunner) => {
     sent = [];
     flow = await bootEpicFlow(sent, docker, undefined, blocks, false);
+    // A main with no pipeline reads as no CI and passes; the wait needs a main whose pipeline fails.
+    flow.host.ci.failBranch('main', 'main is red');
   };
   const rebaseKeys = () => sent.filter((command) => command.type === 'rebase').map((command) => command.key);
 
