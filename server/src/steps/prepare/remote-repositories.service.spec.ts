@@ -140,6 +140,8 @@ describe('RemoteRepositories', () => {
       owners: [],
       reason: 'GITHUB_TOKEN or GITLAB_TOKEN is missing',
       allowedNames: [],
+      loading: false,
+      error: null,
     });
     expect(github.list).not.toHaveBeenCalled();
   });
@@ -304,6 +306,65 @@ describe('RemoteRepositories', () => {
       failClone('fatal: Authentication failed for https://github.example/acme/demo.git', 1);
       await expect(service.clone('demo', null)).rejects.toThrow('clone of acme/demo failed: ');
       expect(existsSync(join(checkouts, 'demo'))).toBe(false);
+    });
+  });
+
+  describe('cached reads', () => {
+    it('says loading for a host with no snapshot, then lists the stored snapshot', async () => {
+      const { service, github } = harness({ github: [repo('github', 'acme', 'one')] });
+      expect(await service.cachedList(null)).toMatchObject({ repositories: [], loading: true, error: null });
+      expect(github.list).not.toHaveBeenCalled();
+      await service.refresh(null, 'github');
+      const view = await service.cachedList(null);
+      expect(view.repositories.map((entry) => entry.name)).toEqual(['one']);
+    });
+
+    it('claims each host without a snapshot once, until its refresh ends', async () => {
+      const { service } = harness({});
+      expect(await service.claimDue(null)).toEqual(['github', 'gitlab']);
+      expect(await service.claimDue(null)).toEqual([]);
+      await service.refresh(null, 'github');
+      expect(await service.claimDue(null)).toEqual([]);
+      service.clearPending(null, 'gitlab');
+      expect(await service.claimDue(null)).toEqual(['gitlab']);
+    });
+
+    it('claims a host once for two reads at the same time', async () => {
+      const { service } = harness({});
+      const claims = await Promise.all([service.claimDue(null), service.claimDue(null)]);
+      expect(claims.flat().sort()).toEqual(['github', 'gitlab']);
+    });
+
+    it('lists a stale snapshot at once and claims its refresh', async () => {
+      const { service, clock } = harness({ github: [repo('github', 'acme', 'one')] });
+      await service.refresh(null, 'github');
+      await service.refresh(null, 'gitlab');
+      expect(await service.claimDue(null)).toEqual([]);
+      clock.advance(60_000);
+      expect((await service.cachedList(null)).repositories).toHaveLength(1);
+      expect(await service.claimDue(null)).toEqual(['github', 'gitlab']);
+    });
+
+    it('keeps a failed refresh as an error named by the host, rethrows it and clears the pending mark', async () => {
+      const { service, github } = harness({});
+      github.list.mockRejectedValueOnce(new HostUnavailable('GitHub', 'is down', '2026-01-01T00:01:00.000Z'));
+      await service.claimDue(null);
+      await expect(service.refresh(null, 'github')).rejects.toThrow('is down');
+      const view = await service.cachedList(null);
+      expect(view.error).toBe('GitHub: GitHub did not answer: is down; next try at 2026-01-01T00:01:00.000Z');
+      expect(view.loading).toBe(true);
+      expect(await service.claimDue(null)).toEqual([]);
+      service.retry(null);
+      expect((await service.cachedList(null)).error).toBeNull();
+      expect(await service.claimDue(null)).toEqual(['github']);
+    });
+
+    it('lists a created repository in the cached list at once', async () => {
+      const { service } = harness({});
+      await service.refresh(null, 'github');
+      await service.create({ host: 'github', owner: 'acme', name: 'fresh', public: false }, null);
+      const view = await service.cachedList(null);
+      expect(view.repositories.map((entry) => entry.name)).toEqual(['fresh']);
     });
   });
 });

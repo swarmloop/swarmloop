@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { Injectable } from '@nestjs/common';
 import type { LiveBacklog } from '../contract/backlog-chat';
-import { LiveEvents, LiveLog, LiveSample, LiveUsage } from '../contract/live';
+import { LiveCommand, LiveEvents, LiveLog, LiveSample, LiveUsage } from '../contract/live';
 
 interface LivePeaks {
   cpuPeak: number;
@@ -57,6 +57,11 @@ export class LiveHub {
 
   backlog(entry: LiveBacklog): void {
     this.events.emit('backlog', entry);
+  }
+
+  /** A command of no run has ended. */
+  commandEnded(entry: LiveCommand): void {
+    this.events.emit('command', entry);
   }
 
   /** A person's backlog write is done; only the gateway listens, to work out Done lately again. */
@@ -119,6 +124,11 @@ export class LiveHub {
   onBacklog(listener: (entry: LiveBacklog) => void): () => void {
     this.events.on('backlog', listener);
     return () => this.events.off('backlog', listener);
+  }
+
+  onCommandEnded(listener: (entry: LiveCommand) => void): () => void {
+    this.events.on('command', listener);
+    return () => this.events.off('command', listener);
   }
 
   onBacklogWritten(listener: () => void): () => void {
