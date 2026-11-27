@@ -32,8 +32,13 @@ type MergeDecision =
 export const CLOSED_NOTE = 'its merge request was closed without a merge';
 
 /** What a request that is still behind after a rebase asks of a person. */
-export function stillBehind(branch: string): string {
+function stillBehind(branch: string): string {
   return `still behind ${branch} after a rebase; needs a person`;
+}
+
+/** What a request that still conflicts after a rebase says: the run's implement agent resolves it. */
+export function conflictSent(branch: string): string {
+  return `conflicts with ${branch} after a rebase; the implement agent resolves it`;
 }
 
 function mainNote(repository: string, main: MainReading | undefined): string | null {
@@ -52,6 +57,8 @@ export function decideMerge(facts: MergeFacts): MergeDecision {
   if (gate.state === 'merged') return { kind: 'merged', sha: gate.sha ?? gate.head };
   if (gate.draft) return { kind: 'wait', note: 'waits for its merge request to leave draft' };
   if (gate.mergeability === 'unknown') return { kind: 'wait', note: 'waits for the host to tell whether it merges' };
+  if (gate.mergeability === 'conflicting' && facts.rebaseSent)
+    return { kind: 'wait', note: conflictSent(facts.branch) };
   if (gate.mergeability === 'behind' || gate.mergeability === 'conflicting') {
     return facts.rebaseSent ? { kind: 'person', note: stillBehind(facts.branch) } : { kind: 'rebase' };
   }

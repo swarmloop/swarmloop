@@ -1,4 +1,4 @@
-import { CLOSED_NOTE, decideMerge, type MergeFacts } from './merge-rules';
+import { CLOSED_NOTE, conflictSent, decideMerge, type MergeFacts } from './merge-rules';
 
 function facts(overrides: Partial<MergeFacts> = {}, gate: Partial<MergeFacts['gate']> = {}): MergeFacts {
   return {
@@ -56,6 +56,13 @@ describe('decideMerge', () => {
     expect(decideMerge(facts({ rebaseSent: true }, { mergeability: 'behind' }))).toEqual({
       kind: 'person',
       note: 'still behind swarmloop/t1 after a rebase; needs a person',
+    });
+  });
+
+  it('waits for the implement agent when a request still conflicts after a rebase', () => {
+    expect(decideMerge(facts({ rebaseSent: true }, { mergeability: 'conflicting' }))).toEqual({
+      kind: 'wait',
+      note: conflictSent('swarmloop/t1'),
     });
   });
 

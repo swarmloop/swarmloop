@@ -14,7 +14,7 @@ import { CommandService } from '../command.service';
 import { BacklogEvents } from './backlog-events';
 import { readMains } from './main-readings';
 import { tryNote } from './try-note';
-import { CLOSED_NOTE, decideMerge, stillBehind, type MergeFacts } from './merge-rules';
+import { CLOSED_NOTE, conflictSent, decideMerge, type MergeFacts } from './merge-rules';
 import type { MainReading } from './task-readiness';
 
 type Backlog = Awaited<ReturnType<BacklogRepository['listBacklogs']>>[number];
@@ -149,7 +149,14 @@ export class BacklogMerge {
     };
     let decision = decideMerge(facts);
     if (decision.kind === 'rebase') {
-      const sent = await this.rebase(backlog, task, run, facts.gate.head, branch);
+      const conflicts = facts.gate.mergeability === 'conflicting';
+      const sent = await this.rebase(
+        backlog,
+        task,
+        run,
+        { repository, head: facts.gate.head, branch, conflicts },
+        mains,
+      );
       decision = sent === null ? decideMerge({ ...facts, rebaseSent: true }) : { kind: 'wait', note: sent };
     }
     if (decision.kind === 'merged') return this.record(task, repository, decision.sha);
@@ -173,8 +180,8 @@ export class BacklogMerge {
       return await this.record(task, repository, sha);
     } catch (error) {
       if (error instanceof MergeConflict) {
-        const sent = await this.rebase(backlog, task, run, head, branch);
-        return { task, note: sent ?? stillBehind(branch) };
+        const sent = await this.rebase(backlog, task, run, { repository, head, branch, conflicts: true }, mains);
+        return { task, note: sent ?? conflictSent(branch) };
       }
       if (!(error instanceof FetchFailed)) throw error;
       await this.events.mergeRefused(backlog.id as number, {
@@ -187,21 +194,25 @@ export class BacklogMerge {
     }
   }
 
-  /** Asks for a rebase of the run, once per head: null when this head was already asked, else the note that says it was sent or refused. */
+  /**
+   * Asks for a rebase of the run, once per head and main tip: null when that pair was already asked, else the note that
+   * says it was sent or refused. A conflicting request carries the conflict, so a move that leaves the head goes to implement.
+   */
   private async rebase(
     backlog: Backlog,
     task: BacklogTaskRecord,
     run: RunEntity,
-    head: string,
-    branch: string,
+    target: { repository: string; head: string; branch: string; conflicts: boolean },
+    mains: Map<string, MainReading>,
   ): Promise<string | null> {
+    const { repository, head, branch, conflicts } = target;
+    const main = mains.get(repository);
+    const tip = (main && 'head' in main ? main.head : undefined) ?? 'unknown';
+    const payload = conflicts ? { hostConflict: `the merge request of ${repository} conflicts with ${branch}` } : {};
     try {
-      const { replayed } = await this.commands.accept(
-        'rebase',
-        run.key,
-        {},
-        { idempotencyKey: `backlog-rebase-${task.slug}-${head}` },
-      );
+      const { replayed } = await this.commands.accept('rebase', run.key, payload, {
+        idempotencyKey: `backlog-rebase-${task.slug}-${head}-${tip}`,
+      });
       return replayed ? null : `rebased onto ${branch}; waits for its new head`;
     } catch (error) {
       await this.events.rebaseRefused(backlog.id as number, { task: task.slug, head, message: reasonOf(error) });

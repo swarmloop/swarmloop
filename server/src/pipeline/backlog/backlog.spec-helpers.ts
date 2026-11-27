@@ -108,16 +108,19 @@ export async function backlogHarness(parallel = 3) {
   const host = new RepositoryHost(repositoryOrigins, registry, { taskTitle: async () => null } as unknown as RunNames);
   const documents = db.app.get(DocumentRepository);
   const accepts: { type: string; key: string; idempotencyKey?: string }[] = [];
+  /** The payload of each accepted command, in the order of `accepts`. */
+  const payloads: unknown[] = [];
   const rebase = { refusal: null as string | null };
   /** The commands as stored: what each ended as is what the next ones are made with, until the spec changes it. */
   const stored: { id: string; runId: number; idempotencyKey: string; state: string; result: string | null }[] = [];
   const ending = { state: 'succeeded', result: null as string | null };
   const commands = {
-    accept: async (type: string, key: string, _payload: unknown, options: { idempotencyKey?: string }) => {
+    accept: async (type: string, key: string, payload: unknown, options: { idempotencyKey?: string }) => {
       if (rebase.refusal !== null) throw new Error(rebase.refusal);
       const seen = stored.find((command) => command.idempotencyKey === options.idempotencyKey);
       if (seen) return { replayed: true, command: seen };
       accepts.push({ type, key, idempotencyKey: options.idempotencyKey });
+      payloads.push(payload);
       const run = await runs.findRun(key);
       const command = {
         id: `command-${stored.length + 1}`,
@@ -206,6 +209,7 @@ export async function backlogHarness(parallel = 3) {
     stops,
     /** The commands the merge asked for, in order. */
     accepts,
+    payloads,
     /** The scheduler that tick() drives. */
     scheduler: () => current,
     /** A new scheduler over the same database, like a server that restarted. */

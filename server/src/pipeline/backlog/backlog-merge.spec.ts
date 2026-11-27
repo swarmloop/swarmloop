@@ -63,10 +63,32 @@ describe('BacklogMerge', () => {
       expect((await h.task(id, 'a')).note).toBe('rebased onto swarmloop/web; waits for its new head');
       await h.tick();
       expect((await h.task(id, 'a')).note).toBe('still behind swarmloop/web after a rebase; needs a person');
-      expect(h.accepts).toEqual([{ type: 'rebase', key: 'a-1', idempotencyKey: 'backlog-rebase-a-acme/web-pr-5' }]);
+      expect(h.accepts).toEqual([
+        { type: 'rebase', key: 'a-1', idempotencyKey: 'backlog-rebase-a-acme/web-pr-5-acme/web-head-0' },
+      ]);
+      expect(h.payloads).toEqual([{}]);
       h.fake.setGate('acme/web', 5, { head: 'newer' });
       await h.tick();
       expect(h.accepts).toHaveLength(2);
+    }));
+
+  it('sends the conflict of a conflicting request with its rebase, and a new rebase when the main tip moved', () =>
+    withHarness(async (h) => {
+      const id = await doneTask(h);
+      h.fake.setGate('acme/web', 5, { mergeability: 'conflicting' });
+      await h.tick();
+      expect(h.payloads).toEqual([{ hostConflict: 'the merge request of web conflicts with swarmloop/web' }]);
+      await h.tick();
+      expect((await h.task(id, 'a')).note).toBe(
+        'conflicts with swarmloop/web after a rebase; the implement agent resolves it',
+      );
+      expect(h.accepts).toHaveLength(1);
+      h.fake.setHead('acme/web', 'acme/web-head-1');
+      await h.tick();
+      expect(h.accepts.map((sent) => sent.idempotencyKey)).toEqual([
+        'backlog-rebase-a-acme/web-pr-5-acme/web-head-0',
+        'backlog-rebase-a-acme/web-pr-5-acme/web-head-1',
+      ]);
     }));
 
   it('names failing checks, then pending checks, then the reviews', () =>
@@ -175,6 +197,11 @@ describe('BacklogMerge', () => {
       await h.tick();
       expect((await h.task(id, 'a')).note).toBe('rebased onto swarmloop/web; waits for its new head');
       expect(h.accepts).toHaveLength(1);
+      expect(h.payloads).toEqual([{ hostConflict: 'the merge request of web conflicts with swarmloop/web' }]);
+      await h.tick();
+      expect((await h.task(id, 'a')).note).toBe(
+        'conflicts with swarmloop/web after a rebase; the implement agent resolves it',
+      );
     }));
 
   it('waits with the next try when the host does not answer', () =>
