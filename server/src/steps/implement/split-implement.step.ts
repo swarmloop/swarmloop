@@ -86,7 +86,8 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
 
   override async execute(key: string, options: StepOptions = {}, snapshot?: StepSnapshot): Promise<PipelineResult> {
     const parent = await this.runs.findRun(key);
-    if (parent && (await this.quiet(parent))) {
+    // A person's Resume or message always runs the pass: the parent's own edits may have changed with no task changing.
+    if (parent && options.startBy !== 'person' && (await this.quiet(parent))) {
       await this.runs.recordSubtaskFingerprint(parent, await this.runs.subtaskFingerprint(parent));
       return { exitCode: 0, message: `${key} has nothing new` };
     }
