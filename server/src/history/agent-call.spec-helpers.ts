@@ -1,4 +1,6 @@
+import type { DataSource } from 'typeorm';
 import type { AgentCallRepository } from './agent-call.repository';
+import { seedPastPing } from './past-ping.spec-helpers';
 
 const AT = '2026-11-26T10:00:00.000Z';
 
@@ -7,8 +9,6 @@ export interface SeededCall {
   runKey: string;
   step?: string;
   attemptId?: string;
-  /** Seeds a keep-warm ping instead of a call. */
-  ping?: boolean;
   usd?: number;
   /** The four kinds of token of the row, in this order of the contract. */
   input?: number;
@@ -22,23 +22,12 @@ export interface SeededCall {
 
 let nextChat = 0;
 
-/** Writes one finished row of the log through its repository, as the launcher writes it, and returns its id. */
-export async function seedCall(log: AgentCallRepository, call: SeededCall): Promise<number> {
-  const chatId = call.chatId ?? `chat-${(nextChat += 1)}`;
-  const common = { startedAt: AT, runtime: 'claude', model: 'claude-opus-5-5', requestText: 'ask' };
-  const id = call.ping
-    ? await pingRow(log, call, chatId, common)
-    : await log.open({
-        ...common,
-        kind: 'call',
-        resumed: false,
-        runKey: call.runKey,
-        step: call.step ?? 'implement',
-        chatId,
-        ...(call.attemptId ? { attemptId: call.attemptId } : {}),
-      });
+const COMMON = { startedAt: AT, runtime: 'claude', model: 'claude-opus-5-5', requestText: 'ask' };
+
+/** Counts, ends and links an opened row as the launcher does, and returns its id. */
+async function settle(log: AgentCallRepository, id: number, call: SeededCall): Promise<number> {
   await log.addRequest(id, {
-    model: common.model,
+    model: COMMON.model,
     input: call.input ?? 0,
     cacheRead: call.cacheRead ?? 0,
     cacheWrite: call.cacheWrite ?? 0,
@@ -53,22 +42,30 @@ export async function seedCall(log: AgentCallRepository, call: SeededCall): Prom
   return id;
 }
 
-async function pingRow(
-  log: AgentCallRepository,
-  call: SeededCall,
-  chatId: string,
-  common: { startedAt: string; runtime: string; model: string; requestText: string },
-): Promise<number> {
-  const id = await log.insertPing({
-    ...common,
-    dueAt: `due-${chatId}`,
+/** Writes one finished row of the log through its repository, as the launcher writes it, and returns its id. */
+export async function seedCall(log: AgentCallRepository, call: SeededCall): Promise<number> {
+  const id = await log.open({
+    ...COMMON,
+    kind: 'call',
+    resumed: false,
+    runKey: call.runKey,
+    step: call.step ?? 'implement',
+    chatId: call.chatId ?? `chat-${(nextChat += 1)}`,
+    ...(call.attemptId ? { attemptId: call.attemptId } : {}),
+  });
+  return settle(log, id, call);
+}
+
+/** Writes one finished row of a keep-warm ping, which the product no longer writes, and returns its id. */
+export async function seedPingCall(data: DataSource, log: AgentCallRepository, call: SeededCall): Promise<number> {
+  const chatId = call.chatId ?? `chat-${(nextChat += 1)}`;
+  const id = await seedPastPing(data, {
+    startedAt: AT,
     chatId,
     previousId: 0,
     runKey: call.runKey,
+    dueAt: `due-${chatId}`,
     ...(call.step ? { step: call.step } : {}),
   });
-  if (id === null) {
-    throw new Error(`the ping of ${chatId} is already seeded`);
-  }
-  return id;
+  return settle(log, id, call);
 }

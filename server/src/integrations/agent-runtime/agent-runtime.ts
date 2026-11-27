@@ -28,7 +28,7 @@ export interface AgentHelper {
   codeOnlyByHelper?: boolean;
 }
 
-/** How long a runtime keeps a chat's prompt prefix cached, and what reading and writing it costs per million tokens. */
+/** The prompt cache a runtime uses: its lifetime, and what reading and writing it costs per million tokens. Its rates are the price fallback when the price page lacks one, and its lifetime says which cache writes are priced at. */
 export interface PromptCache {
   ttlMinutes: number;
   cacheReadPerMillion: number;
@@ -43,8 +43,6 @@ export interface AgentPrintInput {
   mode?: string;
   tools: AgentTools;
   helper?: AgentHelper;
-  /** Resume the chat on a copy that is not saved, so the launch reads the cache and changes nothing. Only with `resumeChatId`. */
-  fork?: boolean;
 }
 
 /** A file a launch needs in the CLI home, relative to the state directory. */

@@ -1,4 +1,5 @@
 import type { StreamPiece } from './stream';
+import type { CacheWriteSplit } from './stream-usage';
 import { parseResultBlock } from '../contract/result-block';
 import { takeAnswer } from './stream';
 
@@ -122,11 +123,21 @@ export interface ModelPrice {
   inputPerMillion: number;
   outputPerMillion: number;
   cacheReadPerMillion: number | null;
+  /** The plain cache write price, or the price of the cache the runtime declares once the table is loaded. */
   cacheWritePerMillion: number | null;
+  /** The write price of the 5-minute cache, when the page has such a column. */
+  cacheWrite5mPerMillion?: number | null;
+  /** The write price of the 1-hour cache, when the page has such a column. */
+  cacheWrite1hPerMillion?: number | null;
 }
 
 const EFFORT = /-(extra-high|xhigh|high|medium|low|thinking|max)$/;
 
+/**
+ * The cost of tokens at a model's row. A cache rate the row lacks is priced at the input rate, never at 0. With the
+ * split of `cacheWrite` by cache length each part is priced at its own column; any rest, or all of it without a split,
+ * at the plain write rate.
+ */
 export function priceTokens(
   model: string,
   tokensIn: number,
@@ -134,15 +145,24 @@ export function priceTokens(
   table: Record<string, ModelPrice>,
   cacheRead = 0,
   cacheWrite = 0,
+  writes?: CacheWriteSplit,
 ): number | null {
   const row = findPrice(model, table);
   if (!row) {
     return null;
   }
-  const read = row.cacheReadPerMillion ?? 0;
-  const write = row.cacheWritePerMillion ?? 0;
+  const read = row.cacheReadPerMillion ?? row.inputPerMillion;
+  const write = row.cacheWritePerMillion ?? row.inputPerMillion;
+  const fiveMinute = writes?.fiveMinute ?? 0;
+  const oneHour = writes?.oneHour ?? 0;
+  const rest = Math.max(0, cacheWrite - fiveMinute - oneHour);
   return (
-    (tokensIn * row.inputPerMillion + cacheRead * read + cacheWrite * write + tokensOut * row.outputPerMillion) /
+    (tokensIn * row.inputPerMillion +
+      cacheRead * read +
+      fiveMinute * (row.cacheWrite5mPerMillion ?? write) +
+      oneHour * (row.cacheWrite1hPerMillion ?? write) +
+      rest * write +
+      tokensOut * row.outputPerMillion) /
     1_000_000
   );
 }
@@ -161,7 +181,7 @@ export function findPrice(model: string, table: Record<string, ModelPrice>): Mod
   return hits[0]?.[1] ?? null;
 }
 
-function canonical(value: string): string {
+export function canonical(value: string): string {
   return value
     .trim()
     .toLowerCase()

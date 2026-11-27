@@ -10,7 +10,7 @@ import { AppConfig } from '../config/env';
 import { agentFor } from '../config/agents';
 import { attemptOutputPath } from '../core/attempt-output';
 import { AgentCallRepository } from '../history/agent-call.repository';
-import { seedCall } from '../history/agent-call.spec-helpers';
+import { seedCall, seedPingCall } from '../history/agent-call.spec-helpers';
 import { storedState, writeRunState } from '../history/run-state';
 import { RunStop } from '../agent/run-stop';
 import { CommandRepository } from '../history/command.repository';
@@ -57,7 +57,14 @@ function assistantLine(id: string, usage: { input: number; output: number }): st
 /** A fresh price table for the runtime that runs the implement step, as `loadPriceTable` writes it. */
 async function cachePrices(world: TestApp): Promise<void> {
   const agent = agentFor(world.app.get(AppConfig).env, null, 'implement');
-  const row = { inputPerMillion: 10, outputPerMillion: 20, cacheReadPerMillion: 1, cacheWritePerMillion: 5 };
+  const row = {
+    inputPerMillion: 10,
+    outputPerMillion: 20,
+    cacheReadPerMillion: 1,
+    cacheWritePerMillion: 5,
+    cacheWrite5mPerMillion: null,
+    cacheWrite1hPerMillion: null,
+  };
   await mkdir(join(world.root, 'data'), { recursive: true });
   await writeFile(
     join(world.root, 'data', `price-cache-${agent.runtime}.json`),
@@ -457,7 +464,7 @@ describe('reconciler waits and automatic tries', () => {
       const calls = world.app.get(AgentCallRepository);
       const attemptId = begun.activeAttempt!;
       await seedCall(calls, { runKey: KEY, attemptId, usd: 0.5, input: 10, cacheRead: 100, cacheWrite: 20, output: 5 });
-      await seedCall(calls, { runKey: KEY, attemptId, usd: 0.25, output: 4, ping: true });
+      await seedPingCall(world.app.get(DataSource), calls, { runKey: KEY, attemptId, usd: 0.25, output: 4 });
       await seedCall(calls, { runKey: KEY, attemptId: 'other-attempt', usd: 9, output: 999 });
       await seedCall(calls, { runKey: KEY, attemptId, usd: 8, output: 888, statId: 4242 });
 

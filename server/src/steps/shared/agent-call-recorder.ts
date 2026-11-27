@@ -6,7 +6,7 @@ import { NO_USAGE } from '../../agent/since-recorded';
 import { Clock } from '../../core/clock';
 import type { AgentCallRow, CallStart, ModelUsage, OpenScope, RequestUsage, Tie } from '../../history/agent-call';
 import { AgentCallRepository } from '../../history/agent-call.repository';
-import type { AgentLaunchRequest, PingCall } from './agent-launch-request';
+import type { AgentLaunchRequest } from './agent-launch-request';
 import { CallContexts } from './call-context';
 import type { CallContext, CallSubject } from './call-context';
 import { endOf } from './call-end';
@@ -192,43 +192,6 @@ export class AgentCallRecorder {
     if (request.call?.ties) {
       await this.calls.setTies(id, await request.call.ties(undefined));
     }
-    return new OpenCall(id, before, draft, this.calls, this.clock, this.logger, spent);
-  }
-
-  /**
-   * Opens the row of a keep-warm ping, keyed by its chat and the time it was due. Null when that due time already has a
-   * row, so a second pass or a restart never pings it twice. The row belongs to the run and the chat's last step, with no attempt.
-   */
-  async beginPing(request: AgentLaunchRequest, ping: PingCall): Promise<OpenCall | null> {
-    const context = await this.contexts.resolve(request);
-    const last = await this.calls.lastCallOfChat(ping.chatId);
-    const draft = this.draft(request, context, {
-      chatId: ping.chatId,
-      resumed: true,
-      previousId: ping.previousId,
-      chatIdleMin: last ? this.idleMinutes(last) : undefined,
-      startReason: 'ping',
-      attemptId: undefined,
-    });
-    const id = await this.calls.insertPing({
-      startedAt: draft.startedAt,
-      dueAt: ping.dueAt,
-      chatId: ping.chatId,
-      previousId: ping.previousId,
-      runKey: context.key,
-      step: context.step,
-      backlog: context.backlog,
-      taskSlug: context.taskSlug,
-      epicKey: context.epicKey,
-      chatIdleMin: draft.chatIdleMin,
-      runtime: request.runtime,
-      model: request.model,
-      effort: request.effort,
-      requestText: request.prompt,
-    });
-    if (id === null) return null;
-    const before = await this.spendBefore(context, ping.chatId, last);
-    const spent = () => this.calls.spendOfRun(context.key);
     return new OpenCall(id, before, draft, this.calls, this.clock, this.logger, spent);
   }
 

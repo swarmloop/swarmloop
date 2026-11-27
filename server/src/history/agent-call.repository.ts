@@ -10,8 +10,6 @@ import type {
   ModelPrice,
   ModelUsage,
   OpenScope,
-  PingDraft,
-  PingStopReason,
   RequestUsage,
   Tie,
 } from './agent-call';
@@ -156,93 +154,12 @@ export class AgentCallRepository {
 
   /** Ends the rows of a scope that a dead process left open, as failed. Their cost stays as it was streamed. */
   async closeLeftOpen(scope: OpenScope, finishedAt: string): Promise<void> {
-    const [where, value] =
-      'attemptId' in scope
-        ? [`attempt_id = ?`, scope.attemptId]
-        : 'turnKey' in scope
-          ? [`turn_key = ?`, scope.turnKey]
-          : [`kind = 'ping'`, null];
+    const [where, value] = 'attemptId' in scope ? [`attempt_id = ?`, scope.attemptId] : [`turn_key = ?`, scope.turnKey];
     await this.dataSource.query(
       `UPDATE agent_exchanges SET end_kind = 'failed', error_text = 'process died', finished_at = ?
        WHERE end_kind = 'running' AND ${where}`,
-      value === null ? [finishedAt] : [finishedAt, value],
+      [finishedAt, value],
     );
-  }
-
-  /** The ping's row, or null when its chat already has a row for that due time. */
-  async insertPing(draft: PingDraft): Promise<number | null> {
-    return this.insert(
-      {
-        kind: 'ping',
-        step_stat_id: 0,
-        started_at: draft.startedAt,
-        finished_at: '',
-        duration_ms: 0,
-        response_text: '',
-        end_kind: 'running',
-        previous_id: draft.previousId,
-        run_key: draft.runKey,
-        step: draft.step ?? null,
-        backlog: draft.backlog ?? null,
-        task_slug: draft.taskSlug ?? null,
-        epic_key: draft.epicKey ?? null,
-        start_reason: 'ping',
-        chat_id: draft.chatId,
-        resumed: 1,
-        chat_idle_min: draft.chatIdleMin ?? null,
-        runtime: draft.runtime,
-        model: draft.model,
-        effort: draft.effort ?? null,
-        request_text: draft.requestText,
-        due_at: draft.dueAt,
-      },
-      true,
-    );
-  }
-
-  /** Marks where a chat's pings stopped, on the identity of the chat's last row. Null when the chat has no row. */
-  async addStop(chatId: string, reason: PingStopReason, at: string): Promise<number | null> {
-    const [last] = await this.dataSource.query<{ id: number }[]>(
-      `SELECT id FROM agent_exchanges WHERE chat_id = ? ORDER BY id DESC LIMIT 1`,
-      [chatId],
-    );
-    if (!last) {
-      return null;
-    }
-    const rows = await this.dataSource.query<{ id: number }[]>(
-      `INSERT INTO agent_exchanges (
-         kind, step_stat_id, started_at, finished_at, duration_ms, request_text, response_text, end_kind, stop_reason,
-         previous_id, chat_id, resumed, run_key, step, backlog, task_slug, epic_key, runtime, model, effort
-       )
-       SELECT 'ping-stop', 0, ?, ?, 0, '', '', 'done', ?, id, chat_id, 1, run_key, step, backlog, task_slug, epic_key,
-         runtime, model, effort
-       FROM agent_exchanges WHERE id = ? RETURNING id`,
-      [at, at, reason, last.id],
-    );
-    return rows[0]?.id ?? null;
-  }
-
-  /** How many pings a chat has had since its last call. */
-  async pingsSinceCall(chatId: string): Promise<number> {
-    const [row] = await this.dataSource.query<{ n: number }[]>(
-      `SELECT COUNT(*) AS n FROM agent_exchanges
-       WHERE chat_id = ? AND kind = 'ping'
-         AND id > COALESCE((SELECT MAX(id) FROM agent_exchanges WHERE chat_id = ? AND kind = 'call'), 0)`,
-      [chatId, chatId],
-    );
-    return Number(row?.n) || 0;
-  }
-
-  /** The last row of every chat whose last row is a ping: the chats that are being kept warm. */
-  chatsEndingInPing(): Promise<AgentCallRow[]> {
-    return this.dataSource
-      .getRepository(AgentExchangeEntity)
-      .createQueryBuilder('ping')
-      .where(
-        `ping.kind = 'ping' AND ping.chat_id IS NOT NULL
-         AND ping.id = (SELECT MAX(later.id) FROM agent_exchanges later WHERE later.chat_id = ping.chat_id)`,
-      )
-      .getMany();
   }
 
   async spendOfRun(runKey: string): Promise<number> {
@@ -308,12 +225,7 @@ export class AgentCallRepository {
       .find({ where: { stepStatId: statId }, order: { id: 'ASC' } });
   }
 
-  /** The last row of a chat, a ping-stop mark included: where the chat's pings stand. */
-  async lastRowOfChat(chatId: string): Promise<AgentCallRow | null> {
-    return this.dataSource.getRepository(AgentExchangeEntity).findOne({ where: { chatId }, order: { id: 'DESC' } });
-  }
-
-  /** The last call of a chat, a ping included and a ping-stop mark left out: the call the next one follows. */
+  /** The last call of a chat, a past ping row included and a past ping-stop mark left out: the call the next one follows. */
   async lastCallOfChat(chatId: string): Promise<AgentCallRow | null> {
     return this.dataSource
       .getRepository(AgentExchangeEntity)
@@ -329,17 +241,15 @@ export class AgentCallRepository {
     return { usd: Number(row?.usd) || 0, tokens: Number(row?.tokens) || 0 };
   }
 
-  /** Inserts a row from its columns. With `ignoreDuplicate` a row the unique index refuses gives null. */
-  private async insert(values: Values, ignoreDuplicate: true): Promise<number | null>;
-  private async insert(values: Values): Promise<number>;
-  private async insert(values: Values, ignoreDuplicate = false): Promise<number | null> {
+  /** Inserts a row from its columns. */
+  private async insert(values: Values): Promise<number> {
     const names = Object.keys(values);
     const rows = await this.dataSource.query<{ id: number }[]>(
-      `INSERT ${ignoreDuplicate ? 'OR IGNORE ' : ''}INTO agent_exchanges (${names.join(', ')})
+      `INSERT INTO agent_exchanges (${names.join(', ')})
        VALUES (${names.map(() => '?').join(', ')}) RETURNING id`,
       names.map((name) => values[name]),
     );
-    return rows[0]?.id ?? null;
+    return rows[0].id;
   }
 
   /** Runs a write after the writes already queued for the row. The failure of one write does not stop the next. */

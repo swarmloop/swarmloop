@@ -14,11 +14,11 @@ import { DocumentRepository } from '../history/document.repository';
 import type { RunEntity } from '../history/entities';
 import { FlowRepository } from '../history/flow.repository';
 import { RunRepository } from '../history/run.repository';
+import { runOver } from '../history/run-over';
 import { VisitRepository } from '../history/visit.repository';
 import type { RunWaitEntity } from '../history/run-wait.entity';
 import { RunWaitLog } from '../history/run-wait.log';
 import { LiveHub } from '../live/live.hub';
-import { overOf } from '../pipeline/keep-warm/ping-candidates';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { epicTotal } from '../steps/shared/epic-total';
 import { runName } from './run-view/flow';
@@ -125,11 +125,10 @@ export class RunListRows implements OnModuleDestroy {
   }
 
   /**
-   * A run whose chats can still be pinged or that can still run gains rows without a change of the run, so its cost is
-   * read again here. The cost of an ended run was read with the run, by the change that ended it.
+   * A run that can still run gains rows without a change of the run, so its cost is read again here. The cost of an ended run was read with the run, by the change that ended it.
    */
   private async refreshSpend(): Promise<void> {
-    const open = [...this.kept.values()].filter((entry) => overOf(entry.run) === null);
+    const open = [...this.kept.values()].filter((entry) => !runOver(entry.run));
     const sums = await this.calls.spendOfRuns(open.map((entry) => entry.run.key));
     for (const entry of open) entry.usd = sums.get(entry.run.key) ?? 0;
   }

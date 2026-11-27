@@ -1,11 +1,12 @@
 import 'reflect-metadata';
 import { mkdtemp } from 'fs/promises';
+import { DataSource } from 'typeorm';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { storeRun } from '../testing/store-run.spec-helpers';
 import { Clock } from '../core/clock';
 import { AgentCallRepository } from '../history/agent-call.repository';
-import { seedCall } from '../history/agent-call.spec-helpers';
+import { seedCall, seedPingCall } from '../history/agent-call.spec-helpers';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
 import { VisitRepository } from '../history/visit.repository';
@@ -39,7 +40,7 @@ describe('RunUsageReader', () => {
       const run = await save(runs, 'proj-u1', 'implement', 'running');
       const calls = app.get(AgentCallRepository);
       await seedCall(calls, { runKey: run.key, usd: 1.5, input: 60 });
-      await seedCall(calls, { runKey: run.key, usd: 0.25, cacheRead: 40, output: 20, ping: true });
+      await seedPingCall(app.get(DataSource), calls, { runKey: run.key, usd: 0.25, cacheRead: 40, output: 20 });
       hub.log({
         key: 'proj-u1',
         step: 'implement',

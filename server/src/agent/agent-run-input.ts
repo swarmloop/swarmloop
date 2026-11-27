@@ -21,11 +21,6 @@ export interface AgentRunInput {
   spentUsd: number;
   tokensInRun: number;
   resumeChatId: string | null;
-  /**
-   * Resumes the chat on a copy that is not saved, to read its prompt cache and change nothing. A fork takes no agent
-   * place, writes no session file, never starts a second launch, and keeps its output in `outputFile` only.
-   */
-  fork?: boolean;
   runKey: string;
   /** The key of the chat this launch continues when it is not its own key. Only the chat's files use it. */
   chatKey?: string;

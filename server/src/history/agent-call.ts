@@ -1,11 +1,9 @@
 import type { AgentExchangeEntity } from './agent-exchange.entity';
 
-/** What a row of the log is: a call, a helper a call started, a keep-warm ping, or the mark where a chat's pings stopped. */
+/** What a row of the log is: a call, or a helper a call started. A `ping` and a `ping-stop` are rows of keep-warm pings, which are no longer sent and stay as history. */
 export type AgentCallKind = 'call' | 'helper' | 'ping' | 'ping-stop';
 
 export type CallEndKind = 'done' | 'failed' | 'limit' | 'outage' | 'refused' | 'stopped' | 'timed-out';
-
-export type PingStopReason = 'run-closed' | 'person-stopped' | 'cap-reached' | 'epic-merged' | 'ping-failed';
 
 /** A row as it is stored. */
 export type AgentCallRow = AgentExchangeEntity;
@@ -62,24 +60,6 @@ export interface CallStart {
   requestText: string;
 }
 
-/** A keep-warm ping due at `dueAt` on a chat. It continues the chat's `previousId` row. */
-export interface PingDraft {
-  startedAt: string;
-  dueAt: string;
-  chatId: string;
-  previousId: number;
-  runKey: string;
-  step?: string;
-  backlog?: string;
-  taskSlug?: string;
-  epicKey?: string;
-  chatIdleMin?: number;
-  runtime: string;
-  model: string;
-  effort?: string;
-  requestText: string;
-}
-
 /** How a call ended. The CLI's own totals are kept as a cross-check, never as a cost. */
 export interface CallEnd {
   endKind: CallEndKind;
@@ -98,8 +78,8 @@ export interface CallEnd {
   reported?: { usd: number; tokensIn: number; tokensOut: number };
 }
 
-/** The rows a dead process left open: an attempt's, a backlog turn's, or every ping. */
-export type OpenScope = { attemptId: string } | { turnKey: string } | { pings: true };
+/** The rows a dead process left open: an attempt's or a backlog turn's. */
+export type OpenScope = { attemptId: string } | { turnKey: string };
 
 /** What rows of the log add up to, in the figures a visit shows: tokens in are input, cache read and cache write. */
 export function figuresOf(rows: readonly AgentCallRow[]): { tokensIn: number; tokensOut: number; usd: number } {

@@ -13,7 +13,6 @@ import { Housekeeping } from './pipeline/housekeeping';
 import { ServerStallWatch } from './pipeline/server-stalls/server-stall-watch';
 import { BacklogScheduler } from './pipeline/backlog/backlog-scheduler';
 import { BacklogPlanner } from './pipeline/backlog/planner/backlog-planner';
-import { KeepWarm } from './pipeline/keep-warm/keep-warm.service';
 import { Reconciler } from './pipeline/reconciler';
 import { WalCheckpoint } from './history/wal-checkpoint';
 import { bindRefusal } from './auth/bind-check';
@@ -60,7 +59,6 @@ async function bootstrap(): Promise<void> {
     await housekeeping.startup();
     housekeeping.schedule();
     app.get(Reconciler).schedule();
-    await app.get(KeepWarm).schedule();
     app.get(BacklogScheduler).schedule();
     await app.get(BacklogPlanner).start();
     app.get(WalCheckpoint).schedule();

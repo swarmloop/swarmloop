@@ -6,11 +6,14 @@ import { AgentCallRepository } from '../history/agent-call.repository';
 import { repositoryDatabase } from '../history/repository.spec-helpers';
 import { AgentCallsController } from './agent-calls.controller';
 
-async function withController(test: (controller: AgentCallsController, log: AgentCallRepository) => Promise<void>) {
+async function withController(
+  test: (controller: AgentCallsController, log: AgentCallRepository, data: DataSource) => Promise<void>,
+) {
   const db = await repositoryDatabase();
   try {
-    const controller = new AgentCallsController(new AgentCallQueries(db.app.get(DataSource)));
-    await test(controller, db.app.get(AgentCallRepository));
+    const data = db.app.get(DataSource);
+    const controller = new AgentCallsController(new AgentCallQueries(data));
+    await test(controller, db.app.get(AgentCallRepository), data);
   } finally {
     await db.close();
   }
@@ -18,13 +21,13 @@ async function withController(test: (controller: AgentCallsController, log: Agen
 
 describe('AgentCallsController', () => {
   it('answers the totals, the timeline and the keep-warm figures of the log', async () => {
-    await withController(async (controller, log) => {
+    await withController(async (controller, log, data) => {
       const first = await seedCall(log, {
         usd: 2,
         start: { taskSlug: 'a', step: 'implement', chatId: 'c1', startedAt: at(10) },
         end: { finishedAt: at(10, 5) },
       });
-      await seedPing(log, { chatId: 'c1', previousId: first, startedAt: at(10, 55), usd: 0.01, taskSlug: 'a' });
+      await seedPing(data, log, { chatId: 'c1', previousId: first, startedAt: at(10, 55), usd: 0.01, taskSlug: 'a' });
 
       const totals = await controller.totals('step');
       expect(totals.by).toBe('step');

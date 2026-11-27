@@ -59,7 +59,14 @@ async function visitsOfOneChat(lines: Reported[]): Promise<{ usd: number[]; toke
   const db = await repositoryDatabase();
   try {
     mkdirSync(join(db.root, 'data'), { recursive: true });
-    const price = { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 };
+    const price = {
+      inputPerMillion: 1,
+      outputPerMillion: 1,
+      cacheReadPerMillion: 0,
+      cacheWritePerMillion: 0,
+      cacheWrite5mPerMillion: null,
+      cacheWrite1hPerMillion: null,
+    };
     writeFileSync(
       join(db.root, 'data', 'price-cache-cursor.json'),
       JSON.stringify({ fetchedAt: new Date().toISOString(), prices: { m: price } }),

@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { runtimeFor, type RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
+import { withDeclaredCacheRates } from './declared-cache-rates';
 import type { ModelPrice } from './limits';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -35,8 +36,10 @@ export function parsePriceMarkdown(markdown: string): Record<string, ModelPrice>
       prices[key] = {
         inputPerMillion: input,
         outputPerMillion: output,
-        cacheReadPerMillion: money(cell(cells, header, /cache read/)),
-        cacheWritePerMillion: money(cell(cells, header, /cache write/)),
+        cacheReadPerMillion: money(cell(cells, header, /cache read|cache hit/)),
+        cacheWritePerMillion: money(cell(cells, header, /^cache write/)),
+        cacheWrite5mPerMillion: money(cell(cells, header, /5m cache write/)),
+        cacheWrite1hPerMillion: money(cell(cells, header, /1h cache write/)),
       };
     }
   }
@@ -53,27 +56,29 @@ export async function loadPriceTable(
   const cached = await readCache(file);
   const young = cached !== null && now - Date.parse(cached.fetchedAt) < DAY_MS;
   if (cached && young && hasCacheRates(cached.prices)) {
-    return cached.prices;
+    return withDeclaredCacheRates(cached.prices, runtime);
   }
   try {
     const response = await fetchPage(runtimeFor(runtime).priceSource, { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) {
-      return cached?.prices ?? {};
+      return withDeclaredCacheRates(cached?.prices ?? {}, runtime);
     }
     const prices = parsePriceMarkdown(await response.text());
     if (Object.keys(prices).length === 0) {
-      return cached?.prices ?? {};
+      return withDeclaredCacheRates(cached?.prices ?? {}, runtime);
     }
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, `${JSON.stringify({ fetchedAt: new Date(now).toISOString(), prices })}\n`);
-    return prices;
+    return withDeclaredCacheRates(prices, runtime);
   } catch {
-    return cached?.prices ?? {};
+    return withDeclaredCacheRates(cached?.prices ?? {}, runtime);
   }
 }
 
 function hasCacheRates(prices: Record<string, ModelPrice>): boolean {
-  return Object.values(prices).every((row) => 'cacheReadPerMillion' in row && 'cacheWritePerMillion' in row);
+  return Object.values(prices).every(
+    (row) => 'cacheReadPerMillion' in row && 'cacheWritePerMillion' in row && 'cacheWrite1hPerMillion' in row,
+  );
 }
 
 function cell(cells: string[], header: string[], pattern: RegExp): string | undefined {

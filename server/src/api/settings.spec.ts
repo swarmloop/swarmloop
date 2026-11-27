@@ -35,7 +35,14 @@ const MINE: SettingsBody = {
 
 /** A fresh price cache of one runtime, as `loadPriceTable` writes it. */
 async function cachePrices(root: string, runtime: string, models: string[]): Promise<void> {
-  const row = { inputPerMillion: 1, outputPerMillion: 2, cacheReadPerMillion: 0.1, cacheWritePerMillion: 1 };
+  const row = {
+    inputPerMillion: 1,
+    outputPerMillion: 2,
+    cacheReadPerMillion: 0.1,
+    cacheWritePerMillion: 1,
+    cacheWrite5mPerMillion: null,
+    cacheWrite1hPerMillion: null,
+  };
   await mkdir(join(root, 'data'), { recursive: true });
   await writeFile(
     join(root, 'data', `price-cache-${runtime}.json`),

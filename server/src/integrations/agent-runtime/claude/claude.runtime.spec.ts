@@ -84,20 +84,6 @@ describe('ClaudeRuntime', () => {
     });
   });
 
-  it('forks the chat next to --resume only when asked', () => {
-    const input = { model: 'm', prompt: 'p', mounts, resumeChatId: 'chat-1', tools: 'none' as const };
-    const plain = runtime.printArgs(input);
-    const forked = runtime.printArgs({ ...input, fork: true });
-    expect(plain).not.toContain('--fork-session');
-    expect(forked.slice(forked.indexOf('--resume'), forked.indexOf('--resume') + 4)).toEqual([
-      '--resume',
-      'chat-1',
-      '--fork-session',
-      '--no-session-persistence',
-    ]);
-    expect(forked.filter((arg) => arg !== '--fork-session' && arg !== '--no-session-persistence')).toEqual(plain);
-  });
-
   describe('tools', () => {
     const L00K = ['Monitor', 'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger'];
     const READ_ONLY = [

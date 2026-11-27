@@ -1,13 +1,17 @@
 import { AgentCallQueries } from './agent-call-queries';
 import { at, seedCall, seedPing } from './agent-call-queries.spec-helpers';
 import { AgentCallRepository } from './agent-call.repository';
+import { seedPastPing } from './past-ping.spec-helpers';
 import { repositoryDatabase } from './repository.spec-helpers';
 import { DataSource } from 'typeorm';
 
-async function withLog(test: (log: AgentCallRepository, queries: AgentCallQueries) => Promise<void>): Promise<void> {
+async function withLog(
+  test: (log: AgentCallRepository, queries: AgentCallQueries, data: DataSource) => Promise<void>,
+): Promise<void> {
   const db = await repositoryDatabase();
   try {
-    await test(db.app.get(AgentCallRepository), new AgentCallQueries(db.app.get(DataSource)));
+    const data = db.app.get(DataSource);
+    await test(db.app.get(AgentCallRepository), new AgentCallQueries(data), data);
   } finally {
     await db.close();
   }
@@ -85,9 +89,15 @@ describe('AgentCallQueries totals', () => {
   });
 
   it('does not count the mark where the pings of a chat stopped as a call', async () => {
-    await withLog(async (log, queries) => {
-      await seedCall(log, { usd: 1, start: { taskSlug: 'a', step: 'implement', chatId: 'c1' } });
-      await log.addStop('c1', 'run-closed', at(11));
+    await withLog(async (log, queries, data) => {
+      const call = await seedCall(log, { usd: 1, start: { taskSlug: 'a', step: 'implement', chatId: 'c1' } });
+      await seedPastPing(data, {
+        chatId: 'c1',
+        previousId: call,
+        startedAt: at(11),
+        runKey: 'run-1',
+        stopReason: 'run-closed',
+      });
       const [line] = await queries.totals('step');
       expect(line).toEqual(expect.objectContaining({ key: 'implement', calls: 1 }));
     });
@@ -114,14 +124,14 @@ describe('AgentCallQueries totals', () => {
 
 describe('AgentCallQueries timeline', () => {
   it('returns the rows of a task in order with their kind, end and links', async () => {
-    await withLog(async (log, queries) => {
+    await withLog(async (log, queries, data) => {
       const task = { taskSlug: 'a', runKey: 'run-1', step: 'implement' };
       const first = await seedCall(log, { usd: 1, start: { ...task, startedAt: at(10), chatId: 'c1' } });
       const resumed = await seedCall(log, {
         usd: 1,
         start: { ...task, startedAt: at(10, 30), chatId: 'c1', resumed: true, previousId: first },
       });
-      const ping = await seedPing(log, {
+      const ping = await seedPing(data, log, {
         chatId: 'c1',
         previousId: resumed,
         startedAt: at(11, 20),
@@ -145,7 +155,7 @@ describe('AgentCallQueries timeline', () => {
           replacesId: limited,
         },
       });
-      const lastPing = await seedPing(log, {
+      const lastPing = await seedPing(data, log, {
         chatId: 'c2',
         previousId: failover,
         startedAt: at(13),
@@ -183,14 +193,14 @@ describe('AgentCallQueries timeline', () => {
 
 describe('AgentCallQueries keep-warm', () => {
   it('counts hits, misses and a failed ping, and the saving of a call resumed after a kept-warm pause', async () => {
-    await withLog(async (log, queries) => {
+    await withLog(async (log, queries, data) => {
       const chat = { chatId: 'c1', runKey: 'run-1' };
       const first = await seedCall(log, {
         usd: 1,
         start: { ...chat, startedAt: at(10) },
         end: { finishedAt: at(10, 5) },
       });
-      await seedPing(log, {
+      await seedPing(data, log, {
         chatId: 'c1',
         previousId: first,
         startedAt: at(10, 55),
@@ -198,7 +208,7 @@ describe('AgentCallQueries keep-warm', () => {
         cacheRead: 1000,
         cacheWrite: 10,
       });
-      await seedPing(log, {
+      await seedPing(data, log, {
         chatId: 'c1',
         previousId: first,
         startedAt: at(11, 45),
@@ -206,7 +216,7 @@ describe('AgentCallQueries keep-warm', () => {
         cacheRead: 1000,
         cacheWrite: 500,
       });
-      await seedPing(log, { chatId: 'c1', previousId: first, startedAt: at(12, 20), usd: 0, end: 'failed' });
+      await seedPing(data, log, { chatId: 'c1', previousId: first, startedAt: at(12, 20), usd: 0, end: 'failed' });
       await seedCall(log, {
         usd: 0.5,
         cacheRead: 50_000,
@@ -221,9 +231,9 @@ describe('AgentCallQueries keep-warm', () => {
   });
 
   it('prices what the first request of a long resumed call read, not the sum of its requests', async () => {
-    await withLog(async (log, queries) => {
+    await withLog(async (log, queries, data) => {
       const first = await seedCall(log, { start: { chatId: 'c1', startedAt: at(10) }, end: { finishedAt: at(10, 5) } });
-      await seedPing(log, { chatId: 'c1', previousId: first, startedAt: at(10, 55), usd: 0 });
+      await seedPing(data, log, { chatId: 'c1', previousId: first, startedAt: at(10, 55), usd: 0 });
       await seedCall(log, {
         cacheRead: 50_000,
         laterCacheRead: 70_000,
@@ -234,9 +244,9 @@ describe('AgentCallQueries keep-warm', () => {
   });
 
   it('gives no saving when the pause is within the lifetime or no ping came between', async () => {
-    await withLog(async (log, queries) => {
+    await withLog(async (log, queries, data) => {
       const first = await seedCall(log, { start: { chatId: 'c1', startedAt: at(10) }, end: { finishedAt: at(10, 5) } });
-      await seedPing(log, { chatId: 'c1', previousId: first, startedAt: at(10, 55), usd: 0.01 });
+      await seedPing(data, log, { chatId: 'c1', previousId: first, startedAt: at(10, 55), usd: 0.01 });
       await seedCall(log, {
         cacheRead: 50_000,
         start: { chatId: 'c1', startedAt: at(12), resumed: true, previousId: first },
@@ -253,9 +263,9 @@ describe('AgentCallQueries keep-warm', () => {
   });
 
   it('counts the pings of a chat that closed without a call as spent with no saving', async () => {
-    await withLog(async (log, queries) => {
+    await withLog(async (log, queries, data) => {
       const first = await seedCall(log, { start: { chatId: 'c1', startedAt: at(10) }, end: { finishedAt: at(10, 5) } });
-      await seedPing(log, { chatId: 'c1', previousId: first, startedAt: at(10, 55), usd: 0.02, cacheRead: 1000 });
+      await seedPing(data, log, { chatId: 'c1', previousId: first, startedAt: at(10, 55), usd: 0.02, cacheRead: 1000 });
       const view = await queries.keepWarm(60);
       expect(view).toEqual(expect.objectContaining({ pings: 1, hits: 1, saving: 0 }));
       expect(view.cost).toBeCloseTo(0.02);

@@ -30,21 +30,12 @@ export interface LaunchOwner {
   recordStartWait?: (wait: StateReason | null) => Promise<void>;
 }
 
-/** A keep-warm ping: it continues `chatId` on a fork that is saved nowhere, and is due at `dueAt`, after the chat's row `previousId`. */
-export interface PingCall {
-  chatId: string;
-  dueAt: string;
-  previousId: number;
-}
-
 /** What a caller says of its call. Everything else the log records comes from the run key. */
 export interface CallContextHints {
   /** Why the call is made, when the step's name does not say: an answer to a part, a person or a reviewer, a merge look. */
   purpose?: string;
   /** The tasks, runs and epics the call is tied to. It gives the ties its events name when the call's row opens (no value), and adds the ones its validated result names. */
   ties?: (resultValue: unknown) => Promise<Tie[]>;
-  /** Set only on a keep-warm ping, which the launcher's ping path runs. */
-  ping?: PingCall;
 }
 
 export interface AgentLaunchRequest extends EffortFields {
