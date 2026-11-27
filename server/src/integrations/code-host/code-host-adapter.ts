@@ -47,6 +47,8 @@ export interface CodeHostAdapter {
   readonly signsInWithToken: boolean;
   /** The host page where a person makes that token, with its name and scopes filled in. */
   tokenPage?(env: CodeHostEnv): string;
+  /** The host page where a person registers the application of the login. */
+  applicationsPage?(env: CodeHostEnv): string;
   /** The Nest class of the host's app flow, when it has one. */
   readonly appFlow?: Type<AppFlow>;
   /** The urls and words of the host's login and api, built from the env. */

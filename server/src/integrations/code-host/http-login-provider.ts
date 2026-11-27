@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import type { Clock } from '../../core/clock';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { request } from '../http';
+import { AppRejectedError } from './app-rejected-error';
 import type {
   AppCredentials,
   AppFlow,
@@ -67,23 +68,17 @@ export class HttpOAuthProvider implements LoginProvider {
   }
 
   async identify(code: string, redirectUri: string, verifier: string): Promise<Identity> {
-    const granted = (await this.send(
-      this.endpoints.token,
-      { Accept: 'application/json', 'Content-Type': 'application/json' },
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          client_id: this.credentials().clientId,
-          client_secret: this.credentials().clientSecret,
-          code,
-          redirect_uri: redirectUri,
-          ...(verifier ? { code_verifier: verifier } : {}),
-          grant_type: 'authorization_code',
-        }),
-      },
-    )) as { access_token?: string; refresh_token?: string; expires_in?: number };
+    const response = await this.tokenCall(this.credentials(), code, redirectUri, verifier);
+    if (response.status === 401) {
+      throw new AppRejectedError(this.label, this.appLabel);
+    }
+    const granted = this.answerOf(response, 'the login token') as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
     if (!granted.access_token) {
-      throw new SwarmloopError(`${this.name} did not accept the login code`);
+      throw new SwarmloopError(`${this.label} did not accept the login code`);
     }
     const headers = this.endpoints.userHeaders(granted.access_token);
     return this.identityOf(
@@ -106,7 +101,7 @@ export class HttpOAuthProvider implements LoginProvider {
       return null;
     }
     if (response.status >= 400) {
-      throw new SwarmloopError(`${this.name} answered ${response.status}`);
+      throw this.failed(response.status, 'the person of this token');
     }
     const person = JSON.parse(response.body.toString('utf8')) as Record<string, unknown>;
     return this.identityOf(headers, person, { accessToken: token, refreshToken: '' });
@@ -128,7 +123,7 @@ export class HttpOAuthProvider implements LoginProvider {
         return false;
       }
       if (response.status >= 400) {
-        throw new SwarmloopError(`${this.name} answered ${response.status}`);
+        throw this.failed(response.status, 'a repository');
       }
       return this.endpoints.pushes(JSON.parse(response.body.toString('utf8')) as Record<string, unknown>);
     };
@@ -168,6 +163,26 @@ export class HttpOAuthProvider implements LoginProvider {
     return missed;
   }
 
+  async checkApp(app: AppCredentials, redirectUri: string): Promise<boolean> {
+    const response = await this.tokenCall(app, 'swarmloop-check', redirectUri, '');
+    const { accepted, rejected } = this.endpoints.appCheck;
+    let error: unknown;
+    try {
+      error = (JSON.parse(response.body.toString('utf8')) as { error?: unknown }).error;
+    } catch {
+      error = undefined;
+    }
+    if (error === accepted) {
+      return true;
+    }
+    if (error === rejected) {
+      return false;
+    }
+    throw new SwarmloopError(
+      `${this.label} answered HTTP ${response.status} when swarmloop checked the ${this.appLabel.toLowerCase()}`,
+    );
+  }
+
   private credentials(): AppCredentials {
     const app = this.apps.credentials(this.name);
     if (!app) {
@@ -186,21 +201,53 @@ export class HttpOAuthProvider implements LoginProvider {
     return {
       user: text(person[this.endpoints.user.field]),
       ...(text(person.avatar_url) ? { avatarUrl: text(person.avatar_url) } : {}),
-      groups: names(await this.send(`${this.endpoints.api}${groups.path}`, headers), groups.field),
+      groups: names(await this.send(`${this.endpoints.api}${groups.path}`, headers, 'the groups'), groups.field),
       ...(grant ? { grant } : {}),
     };
   }
 
   private async userOf(headers: Record<string, string>): Promise<Record<string, unknown>> {
-    return (await this.send(`${this.endpoints.api}${this.endpoints.user.path}`, headers)) as Record<string, unknown>;
+    return (await this.send(`${this.endpoints.api}${this.endpoints.user.path}`, headers, 'the person')) as Record<
+      string,
+      unknown
+    >;
   }
 
-  private async send(url: string, headers: Record<string, string>, init?: { method: string; body: string }) {
-    const response = await request(this.clock, url, headers, [], init);
+  private async send(url: string, headers: Record<string, string>, what: string): Promise<unknown> {
+    return this.answerOf(await request(this.clock, url, headers, []), what);
+  }
+
+  private answerOf(response: { status: number; body: Buffer }, what: string): unknown {
     if (response.status >= 400) {
-      throw new SwarmloopError(`${this.name} answered ${response.status}`);
+      throw this.failed(response.status, what);
     }
     return JSON.parse(response.body.toString('utf8')) as unknown;
+  }
+
+  /** A failed call of the host, in plain words with the host's label. */
+  private failed(status: number, what: string): SwarmloopError {
+    return new SwarmloopError(`${this.label} answered HTTP ${status} when swarmloop asked for ${what}`);
+  }
+
+  /** Posts the token endpoint with the app's client and the given code. */
+  private tokenCall(app: AppCredentials, code: string, redirectUri: string, verifier: string) {
+    return request(
+      this.clock,
+      this.endpoints.token,
+      { Accept: 'application/json', 'Content-Type': 'application/json' },
+      [],
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          client_id: app.clientId,
+          client_secret: app.clientSecret,
+          code,
+          redirect_uri: redirectUri,
+          ...(verifier ? { code_verifier: verifier } : {}),
+          grant_type: 'authorization_code',
+        }),
+      },
+    );
   }
 }
 

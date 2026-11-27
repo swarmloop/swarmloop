@@ -8,6 +8,7 @@ import type { AppFlow, AppSource } from './login-provider';
 import type { CodeHostAdapter } from './code-host-adapter';
 import { codeHostAdapters } from './code-host-adapters';
 import { fakeResponse, fakeThirdAdapter, fakeThirdScript, type HostScript } from './fake-third/fake-third.spec-helpers';
+import { AppRejectedError } from './app-rejected-error';
 import { instantBackoff } from '../instant-backoff.spec-helpers';
 
 const SCRIPTS: Record<string, HostScript> = {
@@ -71,11 +72,18 @@ function appsOf(configured: boolean, connects = false): AppSource {
 }
 
 /** Serves the script of a host over `fetch`; the repository answers with `repo`. */
-function serveScript(script: HostScript, repo: { status: number; push: boolean } = { status: 200, push: true }): void {
-  global.fetch = jest.fn((url: string) => {
+function serveScript(
+  script: HostScript,
+  repo: { status: number; push: boolean } = { status: 200, push: true },
+  token?: (code: string) => unknown,
+): void {
+  global.fetch = jest.fn((url: string, init?: { body?: string }) => {
     const { pathname } = new URL(String(url));
     const { paths } = script;
     if (pathname === paths.token) {
+      if (token) {
+        return Promise.resolve(token((JSON.parse(init?.body ?? '{}') as { code: string }).code));
+      }
       return Promise.resolve(
         fakeResponse(200, { access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 60 }),
       );
@@ -176,7 +184,68 @@ describe.each(subjects)('login provider contract: $name', (subject) => {
 
   it('rejects when the host answers a client error other than a refusal', async () => {
     serveScript(script, { status: 400, push: false });
-    await expect(login().canPush('person-token', repos)).rejects.toThrow(`${adapter.name} answered 400`);
+    await expect(login().canPush('person-token', repos)).rejects.toThrow(
+      `${adapter.label} answered HTTP 400 when swarmloop asked for a repository`,
+    );
+  });
+
+  it('rejects an application the token endpoint answers 401, with the label in the words', async () => {
+    serveScript(script, undefined, () => fakeResponse(401, {}));
+    const error: unknown = await login()
+      .identify('code-1', 'https://swarm.example/callback', 'verifier')
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AppRejectedError);
+    expect((error as Error).message).toBe(`${adapter.label} rejected the ${adapter.appLabel} ID or Secret`);
+  });
+
+  it('keeps the plain host error for a 401 of the user call', async () => {
+    serveScript(script);
+    const served = global.fetch;
+    global.fetch = jest.fn((url: string, init?: unknown) =>
+      new URL(String(url)).pathname === script.paths.user
+        ? Promise.resolve(fakeResponse(401, {}))
+        : (served as (url: string, init?: unknown) => Promise<unknown>)(url, init),
+    ) as unknown as typeof fetch;
+    await expect(login().identify('code-1', 'https://swarm.example/callback', 'verifier')).rejects.toThrow(
+      `${adapter.label} answered HTTP 401 when swarmloop asked for the person`,
+    );
+  });
+
+  describe('checkApp', () => {
+    const app = { clientId: 'client-id', clientSecret: 'client-secret' };
+    const check = () => login().checkApp(app, 'https://swarm.example/callback');
+    const { accepted, rejected } = adapter.endpoints(envOf(subject, TOKEN)).appCheck;
+
+    it('is true when the host knows the client and only dislikes the code', async () => {
+      serveScript(script, undefined, (code) => {
+        expect(code).toBe('swarmloop-check');
+        return fakeResponse(400, { error: accepted });
+      });
+      await expect(check()).resolves.toBe(true);
+    });
+
+    it.each([400, 401])('is false when the host rejects the client with %s', async (status) => {
+      serveScript(script, undefined, () => fakeResponse(status, { error: rejected }));
+      await expect(check()).resolves.toBe(false);
+    });
+
+    it.each([
+      ['another error', fakeResponse(400, { error: 'server_error' })],
+      ['an unknown endpoint', fakeResponse(404, {})],
+    ])('throws for %s', async (_, response) => {
+      serveScript(script, undefined, () => response);
+      await expect(check()).rejects.toThrow(
+        `${adapter.label} answered HTTP ${(response as { status: number }).status} when swarmloop checked the ${adapter.appLabel.toLowerCase()}`,
+      );
+    });
+
+    it('throws for a body that is not JSON', async () => {
+      serveScript(script, undefined, () => ({
+        ...(fakeResponse(404, {}) as object),
+        arrayBuffer: () => Promise.resolve(Buffer.from('<html>bad gateway</html>')),
+      }));
+      await expect(check()).rejects.toThrow('when swarmloop checked the');
+    });
   });
 
   it('misses every repository when no server token is set', async () => {
@@ -236,6 +305,15 @@ describe.each(subjects)('secrets contract: $name', (subject) => {
     stop = registerSecretSource(() => host.secrets());
     expect(redact(line)).toBe('git push failed for *** on the remote');
     expect(redact(`Authorization: Bearer ${TOKEN}`)).not.toContain(TOKEN);
+  });
+});
+
+describe('applications page', () => {
+  it('is the applications page of the GitLab host, and GitHub has none', () => {
+    const env = testEnv({ GITLAB_BASE_URL: 'https://gitlab.example/' });
+    const adapters = Object.fromEntries(codeHostAdapters().map((adapter) => [adapter.name, adapter]));
+    expect(adapters.gitlab.applicationsPage?.(env)).toBe('https://gitlab.example/-/user_settings/applications');
+    expect(adapters.github).not.toHaveProperty('applicationsPage');
   });
 });
 
