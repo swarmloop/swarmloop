@@ -24,13 +24,15 @@ export function logoFor(key: string): ElementType {
   return LOGOS[key] ?? Extension;
 }
 
-interface HostTexts {
+export interface HostTexts {
   key: string;
   label: string;
   /** The first-run form: a manifest for an app, or the application the person already made. */
   firstRun: { kind: 'manifest' | 'application'; title: string; description: string; submit: string };
   /** The words of the Replace dialog, for a host whose app the server creates. */
   replace?: { stays: string; settings: string };
+  /** The words of the application form, for a host whose application the person registers. */
+  application?: { idLabel: string; secretLabel: string; confidential: string };
   /** Whether the host's calls go to this hostname. */
   servesHost: (hostname: string) => boolean;
   /** The label of an HTTP call by its method and path, when the host's rules know it. */
@@ -69,9 +71,11 @@ export const HOST_TEXTS: readonly HostTexts[] = [
     firstRun: {
       kind: 'application',
       title: 'Connect GitLab',
-      description: 'The OAuth application of your GitLab, with scopes read_user, api and write_repository.',
+      description:
+        'Sign in with a personal access token: the quickest way. A team that wants OAuth registers an application below.',
       submit: 'Connect GitLab',
     },
+    application: { idLabel: 'Application ID', secretLabel: 'Secret', confidential: "Leave 'Confidential' ticked." },
     servesHost: () => true,
     action: (method: string, path: string): string | undefined => {
       const pipeline = /\/pipelines\/(\d+)/.exec(path);

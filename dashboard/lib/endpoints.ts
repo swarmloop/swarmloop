@@ -50,8 +50,8 @@ export const getManifest = (org: string): Promise<{ action: string; manifest: Re
 export const getOwner = (): Promise<{ owner: string; others: string[] }> => api('/auth/github/owner');
 /** The page where the app is installed on the repositories; asking sets the state cookie of the login. */
 export const getInstallUrl = (): Promise<{ url: string }> => api('/auth/github/install');
-export const saveGitlabApplication = (clientId: string, clientSecret: string): Promise<{ ok: true }> =>
-  api('/auth/gitlab/application', post({ clientId, clientSecret }));
+export const saveApplication = (host: string, clientId: string, clientSecret: string): Promise<{ ok: true }> =>
+  api(`/auth/${host}/application`, post({ clientId, clientSecret }));
 export const getConnections = (): Promise<ConnectionsView> => api<ConnectionsView>('/connections');
 /** The page where the person adds repositories to the GitHub installation. */
 export const installMore = (host: string): Promise<{ url: string }> => api(`/connections/${host}/install`, post());

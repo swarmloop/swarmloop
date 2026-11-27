@@ -11,6 +11,7 @@ import {
   getOwner,
   getProviders,
   replaceApp,
+  saveApplication,
   testIntegration,
 } from '../../lib/endpoints';
 import { connectionCard } from '../../test/fixtures';
@@ -21,6 +22,7 @@ vi.mock('../../lib/endpoints', () => ({
   getConnections: vi.fn(),
   disconnect: vi.fn(),
   replaceApp: vi.fn(),
+  saveApplication: vi.fn(),
   getOwner: vi.fn(),
   getProviders: vi.fn(),
   getIntegrationCards: vi.fn(),
@@ -388,6 +390,83 @@ describe('ConnectionsPage at 375 px', () => {
     }
     expect(within(github).getByRole('button', { name: 'Show' })).toBeInTheDocument();
     expect(await within(gitlab).findByLabelText('Personal access token')).toBeInTheDocument();
+  });
+
+  it('completes the GitLab card of the first-run screen with the token and the application form', async () => {
+    const gitlabSetup = {
+      provider: 'gitlab',
+      page: 'https://git.corp.example/-/user_settings/applications',
+      callback: 'https://swarm.example/auth/gitlab/callback',
+      scopes: ['read_user', 'api', 'write_repository'],
+    };
+    const gitlabToken = {
+      provider: 'gitlab',
+      base: 'https://git.corp.example',
+      tokenPage: 'https://git.corp.example/t',
+    };
+    vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [gitlabToken], applications: [gitlabSetup] });
+    vi.mocked(getConnections).mockResolvedValue({
+      connections: connected.connections.map((item) =>
+        item.host === 'github' ? { ...item, app: null, account: null, mayReplace: false } : item,
+      ),
+    });
+    render(<ConnectionsPage />);
+
+    const card = await screen.findByRole('region', { name: 'Connect GitLab' });
+    expect(within(card).getByLabelText('Personal access token')).toBeInTheDocument();
+    expect(within(card).getByRole('form', { name: 'GitLab application' })).toBeInTheDocument();
+  });
+
+  describe('Replace application', () => {
+    const setup = {
+      provider: 'gitlab',
+      page: 'https://git.corp.example/-/user_settings/applications',
+      callback: 'https://swarm.example/auth/gitlab/callback',
+      scopes: ['read_user', 'api', 'write_repository'],
+    };
+    const withGitlabApp: ConnectionsView = {
+      connections: connected.connections.map((item) =>
+        item.host === 'gitlab'
+          ? {
+              ...item,
+              app: { name: 'OAuth application', clientId: 'gl-id', madeBy: 'alice', settingsUrl: null },
+              mayReplace: true,
+              connected: ['alice'],
+            }
+          : item,
+      ),
+    };
+
+    beforeEach(() => {
+      vi.mocked(getConnections).mockResolvedValue(withGitlabApp);
+      vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [], applications: [setup] });
+    });
+
+    it('opens the form in place of the card, and Cancel brings the card back', async () => {
+      render(<ConnectionsPage />);
+      const user = userEvent.setup({ delay: null });
+      await user.click(await screen.findByRole('button', { name: 'Replace application' }));
+
+      expect(screen.getByRole('form', { name: 'GitLab application' })).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'GitLab' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(await screen.findByRole('region', { name: 'GitLab' })).toBeInTheDocument();
+    });
+
+    it('closes the form and reads the page again after a save', async () => {
+      vi.mocked(saveApplication).mockResolvedValue({ ok: true });
+      render(<ConnectionsPage />);
+      const user = userEvent.setup({ delay: null });
+      await user.click(await screen.findByRole('button', { name: 'Replace application' }));
+      await user.type(screen.getByLabelText(/Application ID/), 'new-id');
+      await user.type(screen.getByLabelText(/Secret/), 'new-secret');
+      await user.click(screen.getByRole('button', { name: 'Replace application' }));
+      await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Replace application' }));
+
+      await waitFor(() => expect(saveApplication).toHaveBeenCalledWith('gitlab', 'new-id', 'new-secret'));
+      expect(await screen.findByRole('region', { name: 'GitLab' })).toBeInTheDocument();
+      expect(getConnections).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('shows the placeholders in one column', () => {

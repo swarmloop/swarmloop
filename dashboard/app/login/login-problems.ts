@@ -1,6 +1,7 @@
+import { hostTexts } from '../../features/connections';
 import { hostOf } from './hosts';
 
-export type ProblemCode = 'refused' | 'expired' | 'host';
+export type ProblemCode = 'refused' | 'expired' | 'host' | 'app';
 
 export interface LoginProblem {
   code: ProblemCode;
@@ -9,7 +10,7 @@ export interface LoginProblem {
   reason: string;
 }
 
-const CODES: readonly string[] = ['refused', 'expired', 'host'];
+const CODES: readonly string[] = ['refused', 'expired', 'host', 'app'];
 
 const REASON_LINES: Record<string, string> = {
   'not listed in SWARMLOOP_ALLOW': 'Ask whoever runs this server to add you.',
@@ -42,5 +43,10 @@ export const PROBLEM_TEXTS: Record<ProblemCode, (problem: LoginProblem) => strin
     return lines;
   },
   expired: () => ['The login took too long or started somewhere else. Try again.'],
-  host: (problem) => [`${hostOf(problem.host).label} did not answer: ${problem.reason}`],
+  host: (problem) => [`Login with ${hostOf(problem.host).label} failed: ${problem.reason}`],
+  app: (problem) => {
+    const words = hostTexts(problem.host)?.application;
+    const fields = words ? `${words.idLabel} or ${words.secretLabel}` : 'client ID or secret';
+    return [`${hostOf(problem.host).label} rejected the ${fields}`];
+  },
 };

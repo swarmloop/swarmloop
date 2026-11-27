@@ -1,15 +1,18 @@
 'use client';
 
 import type { FormEvent, ReactElement } from 'react';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import type { TokenSignInView } from '@contract/api';
-import { getManifest, getOwner, saveGitlabApplication } from '../../lib/endpoints';
+import type { ApplicationSetupView } from '@contract/host-login';
+import { getManifest, getOwner } from '../../lib/endpoints';
+import { ApplicationForm } from './application-form';
 import { HOST_TEXTS } from './logos';
 import { TokenSignIn } from './token-sign-in';
 
@@ -32,19 +35,18 @@ export function ManifestPost({ form }: { form: ManifestForm }): ReactElement {
 /** The first screen of a server with no login yet: make the host app, or hand over the host application. */
 export function FirstRun({
   tokens = [],
+  applications = [],
   next = null,
 }: {
   tokens?: TokenSignInView[];
+  applications?: ApplicationSetupView[];
   next?: string | null;
 }): ReactElement {
   const [org, setOrg] = useState('');
   const [others, setOthers] = useState<string[]>([]);
   const typed = useRef(false);
   const [form, setForm] = useState<ManifestForm | null>(null);
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     // Without an owner the person types one.
@@ -69,19 +71,6 @@ export function FirstRun({
     }
   }
 
-  async function saveApplication(event: FormEvent, key: string): Promise<void> {
-    event.preventDefault();
-    setError(null);
-    setBusy(true);
-    try {
-      await saveGitlabApplication(clientId.trim(), clientSecret.trim());
-      window.location.assign(`/auth/${key}/login`);
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'the application was not saved');
-      setBusy(false);
-    }
-  }
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, mt: 8, px: 2 }}>
       <Box sx={{ textAlign: 'center' }}>
@@ -96,25 +85,29 @@ export function FirstRun({
       {/* A new key per manifest: a second click (after coming back from the host) posts again. */}
       {form ? <ManifestPost key={form.action} form={form} /> : null}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', width: '100%', maxWidth: 900 }}>
-        {HOST_TEXTS.map((entry) => (
-          <Paper
-            key={entry.key}
-            variant="outlined"
-            component="form"
-            aria-label={entry.firstRun.title}
-            onSubmit={(event) =>
-              void (entry.firstRun.kind === 'manifest' ? createApp(event) : saveApplication(event, entry.key))
-            }
-            sx={{ p: 3, flex: '1 1 340px', display: 'flex', flexDirection: 'column', gap: 2 }}
-          >
-            <Typography variant="h6" component="h2">
-              {entry.firstRun.title}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {entry.firstRun.description}
-            </Typography>
-            {entry.firstRun.kind === 'manifest' ? (
-              <>
+        {HOST_TEXTS.map((entry) => {
+          const heading = (
+            <>
+              <Typography variant="h6" component="h2">
+                {entry.firstRun.title}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {entry.firstRun.description}
+              </Typography>
+            </>
+          );
+          const cardSx = { p: 3, flex: '1 1 340px', display: 'flex', flexDirection: 'column', gap: 2 } as const;
+          if (entry.firstRun.kind === 'manifest') {
+            return (
+              <Paper
+                key={entry.key}
+                variant="outlined"
+                component="form"
+                aria-label={entry.firstRun.title}
+                onSubmit={(event) => void createApp(event)}
+                sx={cardSx}
+              >
+                {heading}
                 <TextField
                   label="Account that owns the app"
                   size="small"
@@ -133,42 +126,34 @@ export function FirstRun({
                 <Button type="submit" variant="contained">
                   {entry.firstRun.submit}
                 </Button>
-              </>
-            ) : (
-              <>
-                <TextField
-                  label="Application ID"
-                  size="small"
-                  required
-                  value={clientId}
-                  onChange={(event) => setClientId(event.target.value)}
+              </Paper>
+            );
+          }
+          const tokenEntry = tokens.find((item) => item.provider === entry.key);
+          const setup = applications.find((item) => item.provider === entry.key);
+          return (
+            <Paper key={entry.key} variant="outlined" component="section" aria-label={entry.firstRun.title} sx={cardSx}>
+              {heading}
+              {tokenEntry ? (
+                <>
+                  <Typography variant="subtitle2">Recommended</Typography>
+                  <TokenSignIn entry={tokenEntry} label={entry.label} next={next} />
+                </>
+              ) : null}
+              {tokenEntry && setup && entry.application ? (
+                <Divider flexItem>Or, for a team that wants OAuth</Divider>
+              ) : null}
+              {setup && entry.application ? (
+                <ApplicationForm
+                  setup={setup}
+                  label={entry.label}
+                  texts={entry.application}
+                  onSaved={() => window.location.assign(`/auth/${entry.key}/login`)}
                 />
-                <TextField
-                  label="Secret"
-                  size="small"
-                  type="password"
-                  required
-                  autoComplete="off"
-                  value={clientSecret}
-                  onChange={(event) => setClientSecret(event.target.value)}
-                />
-                <Button type="submit" variant="contained" disabled={busy}>
-                  {entry.firstRun.submit}
-                </Button>
-                {tokens
-                  .filter((tokenEntry) => tokenEntry.provider === entry.key)
-                  .map((tokenEntry) => (
-                    <Fragment key={tokenEntry.provider}>
-                      <Typography variant="body2" color="text.secondary" align="center">
-                        or
-                      </Typography>
-                      <TokenSignIn entry={tokenEntry} label={entry.label} next={next} />
-                    </Fragment>
-                  ))}
-              </>
-            )}
-          </Paper>
-        ))}
+              ) : null}
+            </Paper>
+          );
+        })}
       </Box>
     </Box>
   );
