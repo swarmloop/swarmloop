@@ -27,6 +27,11 @@ export function LoginProblemAlert(): ReactElement | null {
           {line}
         </Typography>
       ))}
+      {problem.code === 'app' ? (
+        <Typography variant="body2">
+          <Link href={`/login?replace=${problem.host}`}>Replace the application</Link>
+        </Typography>
+      ) : null}
       {problem.code === 'refused' ? (
         <Typography variant="body2">
           Signed in to {host.label} with another account?{' '}
