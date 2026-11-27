@@ -11,6 +11,7 @@ import { RunRepository } from '../../../history/run.repository';
 import { storedState } from '../../../history/run-state';
 import { backlogTasks, type RunFacts } from '../task-readiness';
 import { EventFacts } from './event-facts';
+import { RunReasons } from './run-reason';
 
 /** How many of the newest messages a turn reads. */
 const TURN_MESSAGES = 20;
@@ -52,6 +53,8 @@ export interface TaskState {
   depends: string[];
   files: string[];
   fixesMain: string | null;
+  /** Why the task's run failed or is blocked, or null when it is neither or gives no reason. */
+  reason: string | null;
   /** The tasks of a run that split, read from the run's stored task list. */
   subtasks: SubtaskState[];
 }
@@ -103,6 +106,7 @@ export class BacklogTurnState {
     private readonly runs: RunRepository,
     private readonly documents: DocumentRepository,
     private readonly facts: EventFacts,
+    private readonly reasons: RunReasons,
   ) {}
 
   async read(backlogName: string, turnKey: string): Promise<TurnState> {
@@ -174,9 +178,12 @@ export class BacklogTurnState {
   private async taskStates(milestones: MilestoneRecord[], records: BacklogTaskRecord[]) {
     const active = new Set(milestones.filter((milestone) => milestone.status === 'active').map((m) => m.id as number));
     const runFacts = new Map<string, RunFacts>();
+    const reasons = new Map<string, string | null>();
     for (const record of records) {
       const run = record.runKey === null ? null : await this.runs.findRun(record.runKey);
-      if (run) runFacts.set(run.key, { state: storedState(run).state, currentStep: run.currentStep });
+      if (!run) continue;
+      runFacts.set(run.key, { state: storedState(run).state, currentStep: run.currentStep });
+      reasons.set(run.key, await this.reasons.of(run));
     }
     const shown = new Map(backlogTasks(records, active, runFacts).map((task) => [task.id, task.status]));
     const states = [];
@@ -193,6 +200,7 @@ export class BacklogTurnState {
         depends: record.depends,
         files: record.files,
         fixesMain: record.fixesMain,
+        reason: (record.runKey && reasons.get(record.runKey)) || null,
         subtasks: await this.subtasksOf(record.runKey),
       };
       states.push({ milestoneId: record.milestoneId, state });

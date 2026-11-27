@@ -34,6 +34,7 @@ export function taskText(task: TaskState): string {
   ];
   if (task.fixesMain !== null) lines.push(`    fixes the main of ${task.fixesMain}`);
   if (task.wait) lines.push(`    waits: ${task.wait}`);
+  if (task.reason) lines.push(`    reason: ${task.reason}`);
   for (const subtask of task.subtasks) {
     lines.push(
       `    subtask ${subtask.id} [${subtask.status}]: ${subtask.title}; depends: ${list(subtask.depends)}; files: ${list(subtask.files)}`,

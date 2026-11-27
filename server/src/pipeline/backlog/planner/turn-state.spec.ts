@@ -9,7 +9,7 @@ type Harness = Awaited<ReturnType<typeof plannerFacts>>;
 async function withState(body: (h: Harness, state: BacklogTurnState) => Promise<void>): Promise<void> {
   const h = await plannerFacts();
   try {
-    await body(h, new BacklogTurnState(h.backlogs, h.chat, h.runs, h.documents, h.eventFacts()));
+    await body(h, new BacklogTurnState(h.backlogs, h.chat, h.runs, h.documents, h.eventFacts(), h.runReasons()));
   } finally {
     await h.close();
   }
@@ -175,6 +175,29 @@ describe('BacklogTurnState', () => {
       const read = (await state.read('alpha', 't2')).active?.tasks[0];
       expect(read?.description).toBe('Do a, by hand');
       expect(read?.status).not.toBe(waiting?.status);
+    }));
+
+  it("reads a failed run's reason from its step's last line, and no reason for a task with no run", () =>
+    withState(async (h, state) => {
+      const id = await h.addBacklog();
+      const active = await milestone(h, id, 1, 'active');
+      await h.addTask(id, 'a', { milestoneId: active, runKey: 'a-1' });
+      await h.addTask(id, 'b', { milestoneId: active });
+      await h.addRun('a-1');
+      await h.endRun(
+        'a-1',
+        'failed',
+        'pipeline',
+        '2026-01-01T10:00:00.000Z the code host refuses to read pipelines (HTTP 403)\nmore',
+      );
+
+      const [failed, none] = (await state.read('alpha', 't1')).active?.tasks ?? [];
+
+      expect(failed).toMatchObject({
+        status: 'blocked',
+        reason: 'pipeline step: the code host refuses to read pipelines (HTTP 403)',
+      });
+      expect(none.reason).toBeNull();
     }));
 
   it('fails with a plain reason for a backlog that is not there', () =>

@@ -14,6 +14,7 @@ function task(slug: string, overrides: Partial<TaskState> = {}): TaskState {
     depends: [],
     files: [],
     fixesMain: null,
+    reason: null,
     subtasks: [],
     ...overrides,
   };

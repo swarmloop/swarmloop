@@ -18,6 +18,7 @@ import { DocumentRepository } from '../../../history/document.repository';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import { VisitStartRepository } from '../../../history/visit-start.repository';
 import { RuntimeCooldownRepository } from '../../../history/runtime-cooldown.repository';
+import { StepEventLog } from '../../../history/step-event.log';
 import { VisitRepository } from '../../../history/visit.repository';
 import type { Clock } from '../../../core/clock';
 import { LiveHub } from '../../../live/live.hub';
@@ -38,6 +39,7 @@ import { PlannerRunPort, type PlannerRunCommand } from './planner-run-port';
 import { eventFactsOf } from './planner-facts.spec-helpers';
 import { BacklogTurnPrompt } from './turn-prompt';
 import { BacklogTurnRunner } from './turn-runner';
+import { RunReasons } from './run-reason';
 import { BacklogTurnState } from './turn-state';
 import { TurnTakes } from './turn-takes';
 import { TurnTies } from './turn-ties';
@@ -242,6 +244,7 @@ export async function plannerTurnsHarness(
     h.runs,
     db.app.get(DocumentRepository),
     eventFactsOf(db.app, h.host),
+    new RunReasons(db.app.get(StepEventLog)),
   );
   // The brief is a stand-in; the follow-up is written by the real prompt over the real state.
   const prompt = {

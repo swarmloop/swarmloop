@@ -97,6 +97,7 @@ import { BacklogTurnState } from './backlog/planner/turn-state';
 import { BacklogTurnWorkspace } from './backlog/planner/turn-workspace';
 import { EventFacts } from './backlog/planner/event-facts';
 import { RunFacts } from './backlog/planner/run-facts';
+import { RunReasons } from './backlog/planner/run-reason';
 import { StallWatch } from './stall-watch';
 import { StartWaits } from '../steps/shared/start-waits';
 import { QuestionHolds } from '../steps/shared/question-holds';
@@ -204,6 +205,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     LeftQuestions,
     EventFacts,
     RunFacts,
+    RunReasons,
     BacklogTurnState,
     BacklogTurnPrompt,
     BacklogTurnWorkspace,
