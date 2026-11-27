@@ -436,6 +436,19 @@ describe('sandbox launch', () => {
       expect(() => sandboxArgs(brief, home)).not.toThrow();
     });
 
+    it('lets exactly the empty work folder through at /work', () => {
+      const emptyWork = '/app/data/empty-work';
+      const mount = (hostPath: string, containerPath: string, daemonPath?: string) =>
+        launch({ emptyWork, mounts: [{ hostPath, containerPath, daemonPath }], envMasks: [] });
+      const plain = sandboxArgs(mount(emptyWork, '/work'), home);
+      expect(plain.join(' ')).toContain('dst=/work,');
+      const mapped = sandboxArgs(mount(emptyWork, '/work', '/Users/dev/www/swarmloop/data/empty-work'), home);
+      expect(mapped.join(' ')).toContain('src=/Users/dev/www/swarmloop/data/empty-work,dst=/work,');
+      expect(() => sandboxArgs(mount(emptyWork, '/work/demo'), home)).toThrow('sandbox mount is not allowed');
+      expect(() => sandboxArgs(mount(`${emptyWork}/sub`, '/work'), home)).toThrow('sandbox mount is not allowed');
+      expect(() => sandboxArgs(mount(`${emptyWork}-2`, '/work'), home)).toThrow('sandbox mount is not allowed');
+    });
+
     it('lets the read-only attachments folder of a run through and refuses it writable', () => {
       const files = (readonly: boolean) =>
         launch({

@@ -21,6 +21,8 @@ export interface SandboxLaunch {
   mounts: SandboxMount[];
   /** The folders a `/work` mount may come from: the repositories the server is given and `worktrees/`. */
   workRoots: string[];
+  /** The one empty folder a container with no checkout gets at /work; the mount check accepts exactly this host path. */
+  emptyWork: string;
   envMasks: EnvMask[];
   allowHosts: string[];
   /** The part of `allowHosts` that comes from the project manifest. */

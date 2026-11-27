@@ -25,6 +25,7 @@ import { hostName, isLocalHost, sandboxNetworkName } from './sandbox-hosts';
 import { attemptAwaited, attemptRunning, killAttempt, stopRun } from './run-containers';
 import type { DockerRunner } from './run-containers';
 import { workRootsAt } from './allowed-path';
+import { emptyWorkPath } from './empty-work-mount';
 import { Egress, egressMode } from './egress';
 import { imageMissing } from './image-resolver';
 import { withEgress } from './egress-launch';
@@ -148,7 +149,7 @@ export class SandboxService implements OnModuleDestroy {
    * Without it, the container starts at once and is not counted.
    */
   async spawn(
-    given: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'> & { envMasks?: EnvMask[] },
+    given: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots' | 'emptyWork'> & { envMasks?: EnvMask[] },
     held?: { onPaused: () => void; agent?: AgentHold; work?: 'check' | 'setup' },
   ): Promise<SandboxChild> {
     const egress = this.egress();
@@ -194,7 +195,7 @@ export class SandboxService implements OnModuleDestroy {
   }
 
   private async spawnLaunch(
-    launch: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'> & { envMasks?: EnvMask[] },
+    launch: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots' | 'emptyWork'> & { envMasks?: EnvMask[] },
   ): Promise<SandboxChild> {
     const mounts = await this.withDaemonPaths(launch.mounts);
     const tmp = launch.tmp ? (await this.withDaemonPaths([launch.tmp]))[0] : undefined;
@@ -206,16 +207,14 @@ export class SandboxService implements OnModuleDestroy {
     const envMasks = launch.envMasks ?? (await collectEnvMasks(mounts));
     const maskFile = await this.maskFor(launch.statePath, envMasks.length > 0);
     const env = rawEnv();
-    const workRoots = workRootsAt(
-      resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname),
-      env.CHECKOUTS_ROOT,
-      splitList(env.SWARMLOOP_REPOS),
-    );
+    const root = resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname);
+    const workRoots = workRootsAt(root, env.CHECKOUTS_ROOT, splitList(env.SWARMLOOP_REPOS));
     const full: SandboxLaunch = {
       ...launch,
       mounts,
       ...(tmp ? { tmp } : {}),
       workRoots,
+      emptyWork: emptyWorkPath(root),
       stateDaemonPath,
       envMasks,
       maskFile,

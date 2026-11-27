@@ -46,6 +46,7 @@ function setup() {
       attemptId: 'attempt-1',
       mounts: [workMount, ...launch.mounts],
       workRoots: [join(root, 'worktrees')],
+      emptyWork: join(root, 'data', 'empty-work'),
       envMasks: [],
       allowHosts: [],
       command: ['claude', ...launch.args],
