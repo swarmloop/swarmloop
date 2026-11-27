@@ -523,7 +523,7 @@ Adapters are found by folder. A fake of each kind serves the tests.
 ## 3.22 Sandbox and network
 
 **Target.**
-- **What a container sees.** It holds only its run's worktrees; reviewers get them read-only. A `.env` file in a worktree is masked. A container of no run (a sign-in, a connection test) gets only one empty folder at `/work`.
+- **What a container sees.** It holds only its run's worktrees; reviewers get them read-only. A worktree holds only what is in git and what the run wrote; secrets never enter it, they live in Connections and reach an agent as its environment. A container of no run (a sign-in, a connection test) gets only one empty folder at `/work`.
 - **How it runs.** It never runs as root. All capabilities are dropped, `no-new-privileges` is set, the root filesystem is read-only, and it has a process cap, a memory cap and its own `/tmp` on disk. It has no docker socket.
 - **Network.** The only route out is the egress proxy. It allows each container's hosts by policy: a model step reaches its vendor only, and implement and setup may also reach the package registries. DNS answers nothing inside.
 - **Model keys** are swapped in by the proxy where the vendor allows it.

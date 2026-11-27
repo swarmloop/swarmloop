@@ -1,8 +1,5 @@
-import { mkdtempSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { makeRepo, runGit, writeFiles } from './git-repo.spec-helpers';
-import { ignoredDirectories, isCheckout, trackedFiles } from './ignored-entries';
+import { makeRepo, writeFiles } from './git-repo.spec-helpers';
+import { ignoredDirectories } from './ignored-entries';
 
 describe('ignored entries', () => {
   it('lists ignored directories, top-level and nested, and not ignored files', async () => {
@@ -27,22 +24,5 @@ describe('ignored entries', () => {
     const repo = makeRepo({ '.gitignore': '*.log\n' });
     writeFiles(repo, { 'logs/a.log': 'x' });
     expect([...(await ignoredDirectories(repo))]).toEqual([]);
-  });
-
-  it('lists tracked files only', async () => {
-    const repo = makeRepo({ 'a.txt': 'x' });
-    writeFiles(repo, { 'b.txt': 'x' });
-    expect([...(await trackedFiles(repo))].sort()).toEqual(['a.txt']);
-  });
-
-  it('knows a repository and a worktree from a plain directory', async () => {
-    const repo = makeRepo();
-    const tree = join(mkdtempSync(join(tmpdir(), 'swarmloop-tree-')), 'wt');
-    runGit(repo, ['worktree', 'add', '-q', '-b', 'side', tree]);
-    expect([isCheckout(repo), isCheckout(tree), isCheckout(mkdtempSync(join(tmpdir(), 'plain-')))]).toEqual([
-      true,
-      true,
-      false,
-    ]);
   });
 });

@@ -1,11 +1,4 @@
-import { existsSync } from 'fs';
-import { join } from 'path';
 import { gitMissing, gitUnrecorded } from './git';
-
-/** True for a checkout and for a worktree, whose `.git` is a file. */
-export function isCheckout(dir: string): boolean {
-  return existsSync(join(dir, '.git'));
-}
 
 /**
  * The directories git ignores, as paths from `dir`. `gitDir` reads the rules of another git dir over
@@ -41,9 +34,4 @@ export async function ignoredDirectories(dir: string, gitDir?: string): Promise<
       .filter(Boolean)
       .map((entry) => entry.replace(/\/$/, '')),
   );
-}
-
-/** The files git tracks in the checkout at `dir`, as paths from it, in one git call. */
-export async function trackedFiles(dir: string): Promise<Set<string>> {
-  return new Set((await gitUnrecorded(['-C', dir, 'ls-files', '-z'])).split('\0').filter(Boolean));
 }

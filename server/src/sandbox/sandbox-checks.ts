@@ -3,7 +3,7 @@ import { RUN_LOGS_PATH } from '../core/run-logs';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { assertInsideWork } from './allowed-path';
-import type { EnvMask, ProjectLaunch } from './sandbox-types';
+import type { ProjectLaunch } from './sandbox-types';
 
 const WORKTREE = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?(?:\/\.git)?$/;
 const WORK_MOUNT = /^\/work(?:\/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$/;
@@ -111,13 +111,6 @@ export function assertDaemonPath(path: string, home: string): void {
     throw new SwarmloopError('sandbox mount is not allowed');
   }
   if (host.endsWith(`${sep}docker.sock`) || host.endsWith(`${sep}.env`)) {
-    throw new SwarmloopError('sandbox mount is not allowed');
-  }
-}
-
-export function assertMask(mask: EnvMask, mounts: SandboxMount[]): void {
-  const fits = mounts.some((mount) => mask.containerFile.startsWith(`${mount.containerPath}/`));
-  if (!fits || mask.containerFile.includes('..')) {
     throw new SwarmloopError('sandbox mount is not allowed');
   }
 }

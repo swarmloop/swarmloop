@@ -1,11 +1,6 @@
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import type { SandboxMount } from '../core/sandbox-mount';
 
-export interface EnvMask {
-  hostFile: string;
-  containerFile: string;
-}
-
 /** The hosts a project manifest added to `allowHosts`, and the hosts of the checkout's remotes. The guard checks them again. */
 export interface ManifestHosts {
   hosts: string[];
@@ -23,13 +18,11 @@ export interface SandboxLaunch {
   workRoots: string[];
   /** The one empty folder a container with no checkout gets at /work; the mount check accepts exactly this host path. */
   emptyWork: string;
-  envMasks: EnvMask[];
   allowHosts: string[];
   /** The part of `allowHosts` that comes from the project manifest. */
   manifestHosts?: ManifestHosts;
   command: string[];
   userId: number;
-  maskFile: string;
   /** Only the runtime model key. Other tokens stay out of the container. */
   env?: { name: string; value: string }[];
   /** Names the container gets with an empty value, to clear what the image or a profile would set. */

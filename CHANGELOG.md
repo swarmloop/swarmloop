@@ -7,6 +7,7 @@ This format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), an
 ## [Unreleased]
 
 ### Changed
+- no-env-mask: Sandboxes no longer cover a worktree's untracked `.env` files with an empty file, so a `.env` the run writes stays readable in its later steps. Secrets reach agents only as environment from Connections.
 - calls-limit: A run has one budget, money (`MAX_RUN_USD`), checked in the door for every automatic start. A person's Resume runs the step past it, and a run blocked at it goes on by itself once `MAX_RUN_USD` is above its spend. Code review asks once for its whole round. The shipped `EPIC_EFFORT` is `high`, so no agent runs at `xhigh` by default.
 - f111: Worktrees and checkouts now live in the Docker volumes `swarmloop-worktrees` and `swarmloop-checkouts`, not in folders of the host. An existing installation runs `scripts/move-to-volumes.sh` once with the server stopped (from a clone, or the one file fetched into the installation folder), then deletes `CHECKOUTS_ROOT` from `.env`, which the server no longer reads. A new installation needs nothing.
 
