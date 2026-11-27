@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import type { AgentRunResult } from '../../agent/agent-result';
 import { ERROR_CODES } from '../../contract/error-codes';
+import { nextTryAt } from '../../contract/outside-waits';
 import { HostUnavailable } from '../../core/swarmloop-error';
 import { storedState } from '../../history/run-state';
 import { HOST_RETRY_MS } from '../../integrations/http';
@@ -183,13 +184,13 @@ describe('a model host outage met twice while the chain is asked after a same-in
       expect(reason).toMatchObject({
         code: ERROR_CODES.HOST_UNAVAILABLE,
         message: expect.stringContaining('api.anthropic.com'),
-        retryAt: new Date(flow.app.clock.now() + HOST_RETRY_MS).toISOString(),
+        retryAt: nextTryAt(flow.app.clock.now(), HOST_RETRY_MS),
       });
       retryAts.push(reason!.retryAt!);
       expect(asks()).toBe(asked);
       const before = resumeKeys().length;
 
-      flow.app.clock.advance(HOST_RETRY_MS - 1);
+      flow.app.clock.advance(Date.parse(reason!.retryAt!) - 1 - flow.app.clock.now());
       await pass();
       expect(resumeKeys()).toHaveLength(before);
       expect(asks()).toBe(asked);

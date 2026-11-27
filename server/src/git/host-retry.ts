@@ -1,4 +1,5 @@
 import type { Clock } from '../core/clock';
+import { nextTryAt } from '../contract/outside-waits';
 import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import { HOST_RETRY_MS, withHostRetries, type HostRetryTiming } from '../integrations/http';
 import { redact } from '../config/redact';
@@ -50,6 +51,6 @@ export async function withGitHostRetries<T>(
       throw error;
     }
     const detail = redact(errorText(error), { secret: secret?.trim() }).split('\n')[0].slice(0, 200);
-    throw new HostUnavailable(hostOf(remote), detail, new Date(clock.now() + HOST_RETRY_MS).toISOString());
+    throw new HostUnavailable(hostOf(remote), detail, nextTryAt(clock.now(), HOST_RETRY_MS));
   }
 }

@@ -2,7 +2,7 @@ import type { SwarmloopEnv } from '../config/env';
 import type { Clock } from '../core/clock';
 import { ERROR_CODES, IMAGE_ERROR_CODES } from '../contract/error-codes';
 import { REASON } from '../contract/run-state';
-import { outsideWaitOf } from '../contract/outside-waits';
+import { nextTryAt, outsideWaitOf } from '../contract/outside-waits';
 import { GitAuthError, GitRulesError, isHostOutage, SwarmloopError } from '../core/swarmloop-error';
 import { ChecksStopped } from '../environment/check-pool';
 import { ContainerDropped } from '../sandbox/container-gate';
@@ -22,7 +22,7 @@ export function dockerWait(
   clock: Clock,
   env: Pick<SwarmloopEnv, 'RECONCILE_MS'>,
 ): { code: string; message: string; retryAt: string } {
-  const retryAt = new Date(clock.now() + env.RECONCILE_MS).toISOString();
+  const retryAt = nextTryAt(clock.now(), env.RECONCILE_MS);
   return { code: ERROR_CODES.DOCKER_UNAVAILABLE, message: `docker did not answer; next try at ${retryAt}`, retryAt };
 }
 

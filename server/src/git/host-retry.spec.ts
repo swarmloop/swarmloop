@@ -43,6 +43,20 @@ describe('withGitHostRetries', () => {
     expect(calls).toBe(2);
   });
 
+  it('names the same next try for two failures inside one try', async () => {
+    const fail = (now: number) =>
+      withGitHostRetries(
+        'https://github.com/x/y.git',
+        { now: () => now, iso: () => new Date(now).toISOString() },
+        () => Promise.reject(new SwarmloopError('fetch failed: Could not resolve host github.com')),
+        undefined,
+        timing,
+      ).catch((caught: unknown) => caught as HostUnavailable);
+    const first = await fail(clock.now());
+    const second = await fail(clock.now() + 60_000);
+    expect(second.retryAt).toBe(first.retryAt);
+  });
+
   it('passes an auth error through at the first try', async () => {
     let calls = 0;
     const failing = withGitHostRetries(

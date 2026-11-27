@@ -63,7 +63,7 @@ export class FakeBacklogHost implements CodeHost {
   readonly calls: FakeBacklogCall[] = [];
   private readonly projects = new Map<string, FakeProject>();
   private readonly requests = new Map<string, FakeRequest>();
-  private outageAt: string | null = null;
+  private outageAt: string | null | (() => string) = null;
   private trace = '';
 
   /** The url of a project on this host's domain, for a checkout's origin. */
@@ -130,8 +130,8 @@ export class FakeBacklogHost implements CodeHost {
     this.request(project, iid).conflict = message;
   }
 
-  /** Every call after this throws `HostUnavailable`. */
-  hostDown(retryAt: string | null): void {
+  /** Every call after this throws `HostUnavailable`; a function names the next try at each call. */
+  hostDown(retryAt: string | null | (() => string)): void {
     this.outageAt = retryAt;
   }
 
@@ -233,7 +233,13 @@ export class FakeBacklogHost implements CodeHost {
     this.calls.push({ name, args });
     return this.outageAt === null
       ? Promise.resolve()
-      : Promise.reject(new HostUnavailable(this.name, 'HTTP 503', this.outageAt));
+      : Promise.reject(
+          new HostUnavailable(
+            this.name,
+            'HTTP 503',
+            typeof this.outageAt === 'function' ? this.outageAt() : this.outageAt,
+          ),
+        );
   }
 
   private project(project: string): FakeProject {

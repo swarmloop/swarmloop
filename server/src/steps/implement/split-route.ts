@@ -1,4 +1,5 @@
 import { ERROR_CODES } from '../../contract/error-codes';
+import { nextTryAt } from '../../contract/outside-waits';
 import { HOST_RETRY_MS } from '../../integrations/http';
 import { storedState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
@@ -52,7 +53,7 @@ export class SplitRoute {
     const blocked = tasks.filter((task) => task.status === 'blocked');
     const action = blocked.length > 0 ? `${blockedNames(blocked)}; ${BLOCKED_ACTION}` : null;
     if (unfetched && !tasks.some((task) => task.status === 'running')) {
-      const retryAt = new Date(this.deps.clock.now() + HOST_RETRY_MS).toISOString();
+      const retryAt = nextTryAt(this.deps.clock.now(), HOST_RETRY_MS);
       const text = `${line}; ${unfetched}; next try at ${retryAt}${action ? `; ${action}` : ''}`;
       return {
         route: { to: 'wait', reason: text, code: ERROR_CODES.HOST_UNAVAILABLE, retryAt },

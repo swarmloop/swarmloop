@@ -1,5 +1,5 @@
 import { ERROR_CODES } from './error-codes';
-import { OUTSIDE_WAITS, outsideWaitOf, outsideWaitOfRun } from './outside-waits';
+import { OUTSIDE_WAITS, nextTryAt, outsideWaitOf, outsideWaitOfRun } from './outside-waits';
 
 describe('outsideWaitOf', () => {
   it('reads each code of the table with its next try', () => {
@@ -37,5 +37,20 @@ describe('outsideWaitOfRun', () => {
     expect(outsideWaitOfRun('waiting', 'toString')).toBeNull();
     expect(outsideWaitOfRun('waiting', null)).toBeNull();
     expect(outsideWaitOfRun('waiting', undefined)).toBeNull();
+  });
+});
+
+describe('nextTryAt', () => {
+  const every = 5 * 60_000;
+  const start = Date.parse('2026-11-12T10:00:00.000Z');
+
+  it('gives the same time for every now inside one interval', () => {
+    const times = [0, 1, 60_000, every - 1].map((offset) => nextTryAt(start + offset, every));
+    expect(new Set(times)).toEqual(new Set(['2026-11-12T10:05:00.000Z']));
+  });
+
+  it('gives the next boundary once the interval has passed', () => {
+    expect(nextTryAt(start + every, every)).toBe('2026-11-12T10:10:00.000Z');
+    expect(nextTryAt(start + every + 1, every)).toBe('2026-11-12T10:10:00.000Z');
   });
 });
