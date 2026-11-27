@@ -13,13 +13,15 @@ export function automaticRebase(input: {
   runs: RunRepository;
   rebase: Pick<RunRebase, 'rebase'>;
   halted: () => boolean;
+  /** What the code host said about the conflict; a head the move leaves in place goes to implement with it. */
+  hostConflict?: string;
 }): NonNullable<StepResult['afterClose']> {
   const { ctx, runs, rebase } = input;
   const run = ctx.opened.run;
   return async (ended) => {
     if (input.halted()) return { ...ended, message: 'automatic rebase cancelled by Stop' };
     try {
-      const next = await rebase.rebase(run.key);
+      const next = await rebase.rebase(run.key, false, false, false, false, input.hostConflict ?? null);
       return { ...ended, resume: next === 'resume' };
     } catch (error) {
       if (isHostOutage(error)) {
