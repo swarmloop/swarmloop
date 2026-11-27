@@ -85,7 +85,7 @@ The tables of allowed returns and jumps are the only place a route is decided.
 4. **Gates by generation.** A review, a check pass or a CI result counts only for the generation and the files it judged. Replay and Rebase raise the generation, so stale judgements stop counting by themselves.
 5. **Returns go to the step that can fix.** A defect found by checks, review, commit or CI returns the run to implement with the reason. A run is never left waiting for a fix that no step will make.
 6. **Base moves.** When a run's base moves, the run moves onto it. A conflict goes to that run's implement agent, and the resolution passes checks and review like any change. No conflict waits for a person.
-7. **One merge rule.** Work lands only in order, with green checks, reviews and CI on the very tree that merges. This applies to a child run merging into its parent's branch and to a run merging into `main`.
+7. **One merge rule.** Work lands only in order, with green checks, reviews and, when the repository has CI, CI on the very tree that merges. This applies to a child run merging into its parent's branch and to a run merging into `main`.
 8. **Questions go up one chain.** An agent that cannot decide asks its run's planner. A planner that cannot decide asks the next one up, and the last one asks the person. The answer comes back the same way. No question is dropped and none is asked twice.
 9. **A person steers through planners.** A person's message goes to a run's planner. The planner changes the plan, answers, or sends a command, and a person's command goes the same way.
 10. **Named waits, one wake rule.** A run waits only on a named thing. It says what that thing is and when the next try comes, and it wakes by one rule when the thing changes. A delay or outage of anything outside swarmloop is a wait, never a failure. A person is asked only when such a wait runs out.
@@ -264,7 +264,7 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 
 **Target.** One merge rule (rule 7) with one queue per target branch:
 - children into the epic's branch, one at a time as they turn green;
-- backlog tasks into `main`, in backlog order, by the backlog's merge mode: `green` merges on green, `ok` waits for the owner.
+- backlog tasks into `main`, in backlog order, by the backlog's merge mode: `green` merges on green, `ok` waits for the owner. Both wait for a green `main`; a `main` with no CI counts as green: the code host has no pipeline at all for its default branch, or it refuses the pipelines read with 403.
 
 A run that is not in a backlog is merged by a person on the host. The merge watch reads how every done run's merge requests ended, every `MERGE_WATCH_MIN`, and marks the run merged or closed. A merge method is tried in its order (squash, rebase, merge commit).
 
@@ -300,7 +300,7 @@ When `main` moves while the epic waits, the epic takes it (rule 6). A conflict g
   - a return of an epic does not always reach implement (f124);
   - the epic may read its tasks before their queued move has run (epic-round-moves, not in M1);
   - an epic's plan review may not change a task that has not started (plan-review-waiting-part, not in M1).
-- An epic whose pass waits on a question that its parts or its gaps raised takes a new green main too, with no part running (rule 6; `takesMain` in `steps/shared/epic-between-passes.ts`, read by the main move and by an epic's Rebase; a structure rule in `scripts/structure-rules.json` fails any other file that names `takesMain`). Every open part moves with its epic; a part that waits on a question or a sibling is moved and keeps its wait.
+- An epic whose pass waits on a question that its parts or its gaps raised takes a new green main (or a new main with no CI) too, with no part running (rule 6; `takesMain` in `steps/shared/epic-between-passes.ts`, read by the main move and by an epic's Rebase; a structure rule in `scripts/structure-rules.json` fails any other file that names `takesMain`). Every open part moves with its epic; a part that waits on a question or a sibling is moved and keeps its wait.
 - A question of a skipped task is not handed down, not carried and not shown as open: the pass drops it (`withoutSkipped` in `steps/shared/subtask-question-line.ts`, read by `SplitQuestions.deliver`, the pass's carried questions and `openItems`), and an answer given to it adds no decision to the contract. Each pass first sends every task the list already reads skipped through the one skip (`closeSkipped` in `steps/implement/split-pass.ts`), so an epic that failed at implement on such a task goes on by a Resume.
 - Child runs follow the flow, but several mechanisms have their own code for children (3.11, 3.12).
 
@@ -449,7 +449,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
   - events.
 - **Each tick, the scheduler:**
   1. merges the done tasks (3.9);
-  2. starts the ready ones: their dependencies have merged, the `main` of every repository they touch is green, and a place is free under `BACKLOG_PARALLEL`. Places go to the backlogs in turn;
+  2. starts the ready ones: their dependencies have merged, the `main` of every repository they touch is green or has no CI (no pipeline on its default branch at all, or the host refuses the pipelines read with 403: that refusal is this reading, logged once per repository and state change, never an error of the call), and a place is free under `BACKLOG_PARALLEL`. Places go to the backlogs in turn;
   3. says what every waiting task waits for.
 - **A merged task** closes the requirements it covers, and a milestone whose requirements are all closed asks for acceptance.
 - **When `main` moves,** epics take it (3.10), and other running tasks are rebased before they merge.

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { HostUnavailable } from '../../core/swarmloop-error';
 import type { PipelineCheck } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
@@ -29,6 +30,8 @@ function setup(title: string | null = null) {
 }
 
 describe('RepositoryHost', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it('reads a green main', async () => {
     const { fake, host } = setup();
     fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success', 4000)], 'https://ci/1'));
@@ -51,17 +54,57 @@ describe('RepositoryHost', () => {
     expect((await host.main('web', 'ada')).state).toBe('pending');
   });
 
-  it('reads a main with no pipeline for its head as pending', async () => {
+  it('reads a main whose branch has no pipeline at all as none', async () => {
     const { host } = setup();
 
-    await expect(host.main('web', 'ada')).resolves.toMatchObject({ state: 'pending', durationMs: null, url: null });
+    await expect(host.main('web', 'ada')).resolves.toMatchObject({ state: 'none', durationMs: null, url: null });
   });
 
-  it('reads a snapshot with no runs and no checks as pending', async () => {
+  it('reads a snapshot with no runs and no checks as none', async () => {
     const { fake, host } = setup();
     fake.setPipeline('acme/web', pipelineOf('success'));
 
+    expect((await host.main('web', 'ada')).state).toBe('none');
+  });
+
+  it('reads a head with no pipeline on a branch that has an earlier pipeline as pending', async () => {
+    const { fake, host } = setup();
+    fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success')]));
+    fake.setHead('acme/web', 'web-head-2');
+
     expect((await host.main('web', 'ada')).state).toBe('pending');
+  });
+
+  it('reads a main whose host refuses the pipelines as none, without throwing', async () => {
+    const { fake, host } = setup();
+    fake.refusePipelines('acme/web');
+
+    await expect(host.main('web', 'ada')).resolves.toMatchObject({ state: 'none', head: 'web-head' });
+  });
+
+  it('gives a gate no failing and no pending checks when the host refuses the pipelines', async () => {
+    const { fake, host } = setup();
+    fake.setGate('acme/web', 7, { mergeability: 'clean' });
+    fake.refusePipelines('acme/web');
+
+    await expect(host.gate(run, request, 'feature')).resolves.toMatchObject({ failing: [], pending: [] });
+  });
+
+  it('logs the reading of a main once, until its state changes', async () => {
+    const { fake, host } = setup();
+    const lines: string[] = [];
+    jest.spyOn(Logger.prototype, 'log').mockImplementation((message: unknown) => void lines.push(String(message)));
+    fake.refusePipelines('acme/web');
+
+    await host.main('web', 'ada');
+    await host.main('web', 'ada');
+    expect(lines).toEqual(['main of web reads none: the code host refuses to read pipelines (HTTP 403)']);
+
+    fake.refusePipelines('acme/web', false);
+    fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success')]));
+    await host.main('web', 'ada');
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe('main of web reads green');
   });
 
   it('reads a red main with its failing jobs and the duration', async () => {

@@ -1,6 +1,6 @@
 import type { MergeMode } from '../../contract/backlog';
 import type { RepositoryHost } from '../../steps/shared/repository-host';
-import type { MainReading } from './task-readiness';
+import { mainPasses, type MainReading } from './task-readiness';
 
 /** What the host says of a merge request, with the names of the checks that fail and that still run on its head. */
 type GateReading = Awaited<ReturnType<RepositoryHost['gate']>>;
@@ -37,7 +37,7 @@ export function stillBehind(branch: string): string {
 }
 
 function mainNote(repository: string, main: MainReading | undefined): string | null {
-  if (main?.state === 'green') return null;
+  if (mainPasses(main)) return null;
   const base = `waits for a green main of ${repository}`;
   return main?.state === 'unreadable' ? `${base}: ${main.note}` : base;
 }

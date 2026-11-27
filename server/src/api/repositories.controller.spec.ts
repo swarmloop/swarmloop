@@ -53,12 +53,24 @@ describe('RepositoriesController', () => {
     });
   });
 
-  it('reads a running pipeline and a head with no pipeline as pending', async () => {
+  it('reads a running pipeline as pending', async () => {
     const { fake, controller } = setup();
-    await expect(controller.main('ada', 'web')).resolves.toMatchObject({ state: 'pending', head: 'web-head' });
-
     fake.setPipeline('acme/web', pipelineOf('running', [check('test', 'running', 100)]));
-    await expect(controller.main('ada', 'web')).resolves.toMatchObject({ state: 'pending' });
+
+    await expect(controller.main('ada', 'web')).resolves.toMatchObject({ state: 'pending', head: 'web-head' });
+  });
+
+  it('reads a branch with no pipeline as no CI', async () => {
+    const { controller } = setup();
+
+    await expect(controller.main('ada', 'web')).resolves.toMatchObject({ state: 'none', head: 'web-head' });
+  });
+
+  it('answers its reading when the host refuses the pipelines, instead of throwing', async () => {
+    const { fake, controller } = setup();
+    fake.refusePipelines('acme/web');
+
+    await expect(controller.main('ada', 'web')).resolves.toMatchObject({ state: 'none', head: 'web-head' });
   });
 
   it('reads a red main with its failing jobs and duration', async () => {

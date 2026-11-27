@@ -2,7 +2,7 @@ import { testEnv } from '../../config/env.spec-helpers';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { fakeThirdAdapter, fakeThirdScript } from './fake-third/fake-third.spec-helpers';
 import { GitRuleRefused } from '../../core/git-rule-refused';
-import { FetchFailed } from '../../core/swarmloop-error';
+import { FetchFailed, PipelinesRefused } from '../../core/swarmloop-error';
 import type { CodeHost, MergeMethod, MergeRequestDraft } from './code-host';
 import { GithubCodeHost } from './github/github-code-host';
 import { GitlabCodeHost } from './gitlab/gitlab-code-host';
@@ -530,6 +530,53 @@ describe('gitlab host', () => {
     const result = await gitlabService().readBranchPipeline({ project: 'group/demo', ref: 'feature/PROJ-1' }, false);
     expect(result.snapshot?.jobs.map((job) => job.name)).toEqual(['unit']);
     expect(seen[2]?.url).toContain('/pipelines/9/jobs');
+  });
+});
+
+describe.each([
+  { name: 'github', host: githubService, token: 'GITHUB_TOKEN' },
+  { name: 'gitlab', host: gitlabService, token: 'GITLAB_TOKEN' },
+])('the pipelines read of $name', ({ host, token }) => {
+  /** The host answers every call with this status, from the url it was asked. */
+  function answerAll(status: number): void {
+    serve((_method, url) => ({ ...(answer(status, {}) as object), url }));
+  }
+
+  it('rejects a 403 as a refusal to read pipelines, not as a rejected token', async () => {
+    answerAll(403);
+    const refused = await host()
+      .readBranchPipeline({ project: PROJECT, ref: 'main' })
+      .catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(PipelinesRefused);
+    expect((refused as PipelinesRefused).message).not.toContain('was rejected');
+  });
+
+  it.each([
+    ['a spent limit', { 'x-ratelimit-remaining': '0' }],
+    ['a secondary limit with a retry-after', { 'retry-after': '60', 'x-ratelimit-remaining': '12' }],
+  ])('does not read a 403 of %s as a refusal', async (_name, limit: Record<string, string>) => {
+    serve((_method, url) => ({
+      ...(answer(403, {}) as object),
+      url,
+      headers: { get: (name: string) => limit[name] ?? null },
+    }));
+    const failed = await host()
+      .readBranchPipeline({ project: PROJECT, ref: 'main' })
+      .catch((error: unknown) => error);
+    expect(failed).toBeInstanceOf(FetchFailed);
+    expect(failed).not.toBeInstanceOf(PipelinesRefused);
+  });
+
+  it('reads a 403 on the whole-branch question as a refusal too', async () => {
+    answerAll(403);
+    await expect(host().readBranchHasPipeline({ project: PROJECT, ref: 'main' })).rejects.toBeInstanceOf(
+      PipelinesRefused,
+    );
+  });
+
+  it('still rejects a 401 as a rejected token', async () => {
+    answerAll(401);
+    await expect(host().readBranchPipeline({ project: PROJECT, ref: 'main' })).rejects.toThrow(`${token} was rejected`);
   });
 });
 

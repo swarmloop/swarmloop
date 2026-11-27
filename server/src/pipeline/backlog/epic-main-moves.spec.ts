@@ -48,6 +48,15 @@ describe('EpicMainMoves', () => {
       ]);
     }));
 
+  it('takes a new head of a main with no CI', () =>
+    withHarness(async (h) => {
+      const { key } = await epicBetweenPasses(h);
+      h.setMain('web', 'no-ci');
+      const head = h.fake.headOf('acme/web');
+      await h.tick();
+      expect(rebases(h)).toEqual([{ type: 'rebase', key, idempotencyKey: `epic-main-${key}-web@${head}` }]);
+    }));
+
   it.each(['red', 'pending'] as const)('does not take a %s head', (style) =>
     withHarness(async (h) => {
       await epicBetweenPasses(h);

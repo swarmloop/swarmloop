@@ -11,7 +11,16 @@ import { snapshotOf } from '../check-status';
 import { githubRepositories } from './github-repositories';
 import { githubAuthor } from './github-author';
 import { apiRoot, type GithubPull } from './github-pull';
-import { asJob, awaitedChecks, checkStatus, listJobs, readChecks, runsOf, type GithubRun } from './github-checks';
+import {
+  asJob,
+  awaitedChecks,
+  checkStatus,
+  listJobs,
+  parentHasChecks,
+  readChecks,
+  runsOf,
+  type GithubRun,
+} from './github-checks';
 import type {
   PipelineJob,
   PipelineRef,
@@ -80,6 +89,26 @@ export class GithubCodeHost extends GithubMergeRequests {
     };
   }
 
+  async readBranchHasPipeline(ref: PipelineRef): Promise<{ found: boolean; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root: api, headers } = this.credentials();
+      const repo = `${api}/repos/${repoPath(ref.project)}`;
+      const body = await this.readPipelineList(
+        `${repo}/actions/runs?branch=${encodeURIComponent(ref.ref)}&per_page=1`,
+        headers,
+        calls,
+        'github pipeline failed',
+      );
+      if (runsOf(body, '').length > 0) return { found: true, httpCalls: calls };
+      const read = (url: string): Promise<unknown> =>
+        this.readJson(url, headers, calls, undefined, 'github pipeline failed');
+      return { found: await parentHasChecks(read, repo, ref.sha || ref.ref), httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
   async readBranchPipeline(
     ref: PipelineRef,
     jobs = true,
@@ -88,11 +117,10 @@ export class GithubCodeHost extends GithubMergeRequests {
     try {
       const { root: api, headers } = this.credentials();
       const project = repoPath(ref.project);
-      const body = await this.readJson(
+      const body = await this.readPipelineList(
         `${api}/repos/${project}/actions/runs?branch=${encodeURIComponent(ref.ref)}&per_page=20`,
         headers,
         calls,
-        undefined,
         'github pipeline failed',
       );
       const runs = runsOf(body, ref.sha ?? '');

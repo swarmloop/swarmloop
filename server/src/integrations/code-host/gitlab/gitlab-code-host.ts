@@ -97,6 +97,22 @@ export class GitlabCodeHost extends GitlabMergeRequests {
     };
   }
 
+  async readBranchHasPipeline(ref: PipelineRef): Promise<{ found: boolean; httpCalls: HttpCallDraft[] }> {
+    const calls: HttpCallDraft[] = [];
+    try {
+      const { root: base, headers } = this.credentials();
+      const listed = await this.readPipelineList(
+        `${base}/api/v4/projects/${encodeURIComponent(ref.project)}/pipelines?ref=${encodeURIComponent(ref.ref)}&per_page=1`,
+        headers,
+        calls,
+        'gitlab pipeline failed',
+      );
+      return { found: pipelinesOf(listed, '').length > 0, httpCalls: calls };
+    } catch (error) {
+      this.rethrow(error, calls);
+    }
+  }
+
   async readBranchPipeline(
     ref: PipelineRef,
     jobs = true,
@@ -105,11 +121,10 @@ export class GitlabCodeHost extends GitlabMergeRequests {
     try {
       const { root: base, headers } = this.credentials();
       const project = encodeURIComponent(ref.project);
-      const newest = await this.readJson(
+      const newest = await this.readPipelineList(
         `${base}/api/v4/projects/${project}/pipelines?ref=${encodeURIComponent(ref.ref)}${ref.sha ? `&sha=${encodeURIComponent(ref.sha)}` : ''}&per_page=100&order_by=id&sort=desc`,
         headers,
         calls,
-        undefined,
         'gitlab pipeline failed',
       );
       const pipelines = pipelinesOf(newest, ref.sha ?? '');

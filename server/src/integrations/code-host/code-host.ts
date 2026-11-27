@@ -215,10 +215,16 @@ export interface CodeHost {
   closeMergeRequest(project: string, iid: number): Promise<{ httpCalls: HttpCallDraft[] }>;
   /** Deletes a branch on origin. A branch that is already gone is not an error. */
   deleteBranch(project: string, branch: string): Promise<{ httpCalls: HttpCallDraft[] }>;
+  /** The pipeline of a branch, or of one commit of it. A host that refuses to read pipelines (HTTP 403) rejects with a PipelinesRefused. */
   readBranchPipeline(
     ref: PipelineRef,
     jobs?: boolean,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
+  /**
+   * Whether the branch has a pipeline, a check or a status on any of its commits. It answers for a branch whose tip has
+   * none yet. A host that refuses to read pipelines (HTTP 403) rejects with a PipelinesRefused.
+   */
+  readBranchHasPipeline(ref: PipelineRef): Promise<{ found: boolean; httpCalls: HttpCallDraft[] }>;
   diagnoseMissingPipeline(ref: PipelineRef): Promise<PipelineDiagnosis>;
   /**
    * Nudges the host to start the CI of a request's head that never started, and puts `reason` on the request's

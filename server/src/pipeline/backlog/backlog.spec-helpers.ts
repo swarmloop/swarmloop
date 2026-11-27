@@ -58,7 +58,8 @@ function check(status: PipelineCheck['status']): PipelineCheck {
 /** How the recording start port answers: the run is made, made and then the request times out, or never made. */
 export type StartMode = 'ok' | 'timeout' | 'lost';
 
-export type MainStyle = 'green' | 'red' | 'pending' | 'no-pipeline';
+/** `no-ci` is a branch with no pipeline at all; `no-pipeline` is a new head with no pipeline yet on a branch that has CI. */
+export type MainStyle = 'green' | 'red' | 'pending' | 'no-pipeline' | 'no-ci';
 
 /** The action service over a database, with a command door that only records the stops it is asked for. */
 function actionParts(db: Awaited<ReturnType<typeof repositoryDatabase>>, config: AppConfig) {
@@ -226,9 +227,12 @@ export async function backlogHarness(parallel = 3) {
         green: pipelineOf('success', [check('success')]),
         red: pipelineOf('failed', [check('failed')]),
         pending: pipelineOf('running', [check('running')]),
-        'no-pipeline': null,
+        'no-ci': null,
+        'no-pipeline': pipelineOf('success', [check('success')]),
       };
       fake.setPipeline(project, snapshots[style]);
+      // The branch has CI, but its new head has no pipeline yet.
+      if (style === 'no-pipeline') fake.setHead(project, `${fake.headOf(project)}-next`);
     },
     /** What the epics' worktrees hold: whether their subtasks are idle, and the `<repo>@<head>` they already contain. */
     epics,

@@ -98,6 +98,14 @@ export class MergeConflict extends FetchFailed {
   }
 }
 
+/** The code host refuses to read a repository's pipelines (HTTP 403), for example because its CI is turned off. */
+export class PipelinesRefused extends FetchFailed {
+  constructor(httpCalls: HttpCallDraft[] = []) {
+    super('the code host refuses to read pipelines (HTTP 403)', httpCalls);
+    this.name = 'PipelinesRefused';
+  }
+}
+
 /** The code host refused to open a request because the branch has no commit its target does not have. */
 export class NothingToMerge extends FetchFailed {
   constructor(message: string, httpCalls: HttpCallDraft[] = []) {
