@@ -511,7 +511,7 @@ A limit stops the run in a wait that names it (rule 18). Every call is a row of 
 
 Adapters are found by folder. A fake of each kind serves the tests.
 
-**Today.** Holds (`integrations/`, `testing/fake-*`). Only Claude Code has helpers today (its subagent tool, on the helper's model and level, with the tools that read). Its adapter puts the reader's skill into the helper's definition and sets no hook on the launching agent, which reads itself when its skill says so. This change did not read Codex 0.167.0 or Cursor CLI 2025.11.25, so those adapters declare no helpers and launch as before.
+**Today.** Holds (`integrations/`, `testing/fake-*`). Only Claude Code has helpers today (its subagent tool, on the helper's model and level, with the tools that read). Its adapter puts the reader's skill into the helper's definition and sets no hook on the launching agent, which reads itself when its skill says so. This change did not read Codex 0.167.0 or Cursor CLI 2025.11.25, so those adapters declare no helpers and launch as before. A host call for a run goes through `CodeHostRegistry.hostFor(run)`, with the token of the run's person; a person's own action and the server's own token (`forRun(null)`) go through `forRun`, which gives a `RunHosts` (`run-hosts.ts`). The registry itself, with no person, names hosts and matches origins and gives no host to call. A structure rule in `scripts/structure-rules.json` fails any other path to a host API.
 
 ## 3.22 Sandbox and network
 

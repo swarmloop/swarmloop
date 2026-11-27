@@ -21,6 +21,7 @@ import { stampStored } from '../shared/gate.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { RunHosts } from '../../integrations/code-host/run-hosts';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { expectGolden, recordingDocuments, traceRun } from '../../testing/step-trace.spec-helpers';
 import { RunReport } from '../shared/run-report';
@@ -57,7 +58,7 @@ describe('merge-request step golden traces', () => {
     root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-golden-'));
     app = await boot(root);
     host = { findMergeRequest: jest.fn(), openMergeRequest: jest.fn(), updateMergeRequest: jest.fn() };
-    jest.spyOn(app.get(CodeHostRegistry), 'byName').mockReturnValue(host as never);
+    jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue(host as never);
     host.findMergeRequest.mockResolvedValue({ record: null, httpCalls: [call('GET')] });
     host.openMergeRequest.mockResolvedValue({
       record: { project: 'group/demo', iid: 12, url: MR_URL, summary: '', draft: true },

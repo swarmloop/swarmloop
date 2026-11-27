@@ -19,7 +19,7 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { CodeReviewStep } from '../steps/code-review/code-review.step';
 import { PipelineStep } from '../steps/pipeline/pipeline.step';
 import { withPlan } from '../steps/plan/plan-record';
-import { CodeHostRegistry } from '../integrations/code-host/code-host.registry';
+import { RunHosts } from '../integrations/code-host/run-hosts';
 import { FetchFailed } from '../core/swarmloop-error';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
 import { PipelineModule } from './pipeline.module';
@@ -145,7 +145,8 @@ describe('pipeline service', () => {
         renderMergeRequest([{ project: 'group/demo', iid: 3, url, draft: false, summary: 'Ships it.' }]),
       );
       const setDraft = jest.fn().mockResolvedValue({ httpCalls: [] });
-      jest.spyOn(app.get(CodeHostRegistry), 'byName').mockReturnValue({ setDraft } as never);
+      jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue({ setDraft } as never);
+      jest.spyOn(RunHosts.prototype, 'requiredCredentials').mockReturnValue({} as never);
       await pipeline.replay('PROJ-65', 'prepare', 'Narrow the scope');
       expect(setDraft).toHaveBeenCalledWith('group/demo', 3, true);
       const body = (await documents.latestBody('PROJ-65', 'merge_request')) ?? '';
@@ -175,7 +176,8 @@ describe('pipeline service', () => {
         renderMergeRequest([{ project: 'group/demo', iid: 3, url, draft: false, summary: '' }]),
       );
       const setDraft = jest.fn().mockRejectedValue(new FetchFailed('gitlab merge request failed', []));
-      jest.spyOn(app.get(CodeHostRegistry), 'byName').mockReturnValue({ setDraft } as never);
+      jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue({ setDraft } as never);
+      jest.spyOn(RunHosts.prototype, 'requiredCredentials').mockReturnValue({} as never);
       const result = await app.get(PipelineService).replay('PROJ-66', 'prepare', 'Narrow the scope');
       expect(result).toEqual({ exitCode: 1, message: 'gitlab merge request failed' });
       expect((await runs.findRun('PROJ-66'))?.status).toBe('done');

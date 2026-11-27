@@ -15,7 +15,7 @@ export async function closeRequests(
   logger: Logger,
 ): Promise<void> {
   try {
-    const host = (await registry.forRun(parent.startedBy, parent.codeHost)).byName(parent.codeHost);
+    const host = await registry.hostFor(parent);
     for (const request of await list()) {
       await host.closeMergeRequest(request.project, request.iid);
     }

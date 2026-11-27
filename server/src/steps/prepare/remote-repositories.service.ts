@@ -19,6 +19,7 @@ import { CheckoutRepository } from '../../history/checkout.repository';
 import { root } from '../../history/run-paths';
 import { codeHostAdapter, codeHostAdapters } from '../../integrations/code-host/code-host-adapters';
 import { CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
+import type { RunHosts } from '../../integrations/code-host/run-hosts';
 import { remoteProject } from '../../integrations/code-host/remote-project';
 
 const CACHE_MS = 60_000;
@@ -144,7 +145,7 @@ export class RemoteRepositories {
     return { ...repository, cloned: true };
   }
 
-  private async cloneInto(hosts: CodeHostRegistry, repository: RemoteRepository, actor: string | null): Promise<void> {
+  private async cloneInto(hosts: RunHosts, repository: RemoteRepository, actor: string | null): Promise<void> {
     const host = hosts.byName(repository.host);
     const project = `${repository.owner}/${repository.name}`;
     const url = host.cloneUrl(project);
@@ -174,7 +175,7 @@ export class RemoteRepositories {
     return path;
   }
 
-  private configured(hosts: CodeHostRegistry): CodeHostName[] {
+  private configured(hosts: RunHosts): CodeHostName[] {
     return hosts.names.filter((name) => hosts.credentials(name).token.trim() !== '');
   }
 
@@ -183,7 +184,7 @@ export class RemoteRepositories {
   }
 
   /** The repositories and owners of one host, kept for a minute. */
-  private async snapshot(hosts: CodeHostRegistry, name: string, actor: string | null): Promise<HostSnapshot> {
+  private async snapshot(hosts: RunHosts, name: string, actor: string | null): Promise<HostSnapshot> {
     const slot = `${actor ?? ''}:${name}`;
     const cached = this.cache.get(slot);
     if (cached && this.clock.now() - cached.at < CACHE_MS) {
@@ -227,7 +228,7 @@ export class RemoteRepositories {
   private sameRemote(repository: RemoteRepository, origin: string): boolean {
     try {
       return (
-        this.hosts.byName(repository.host).matchesOrigin(origin) &&
+        this.hosts.forOrigin(origin) === repository.host &&
         remoteProject(origin).project.toLowerCase() === `${repository.owner}/${repository.name}`.toLowerCase()
       );
     } catch {

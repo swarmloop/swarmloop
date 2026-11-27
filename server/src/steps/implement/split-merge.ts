@@ -35,8 +35,8 @@ export class SplitMerge {
   ) {}
 
   /** The host the person who started the run talks to. */
-  private async hostOf(parent: RunEntity): Promise<CodeHost> {
-    return (await this.hosts.forRun(parent.startedBy, parent.codeHost)).byName(parent.codeHost);
+  private hostOf(parent: RunEntity): Promise<CodeHost> {
+    return this.hosts.hostFor(parent);
   }
 
   async run(parent: RunEntity, tasks: Subtask[]): Promise<MergeOutcome> {

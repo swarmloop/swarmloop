@@ -31,6 +31,7 @@ import { PipelineModule } from '../../pipeline/pipeline.module';
 import type { PipelineCheck, PipelineRef, PipelineJob, PipelineSnapshot } from '../../integrations/code-host/code-host';
 
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { RunHosts } from '../../integrations/code-host/run-hosts';
 
 import { type HttpCallDraft } from '../../core/swarmloop-error';
 import { storeRun } from '../../testing/store-run.spec-helpers';
@@ -164,7 +165,7 @@ export async function boot(
     .useFactory({
       factory: (config: AppConfig, clock: Clock) => {
         const registry = CodeHostRegistry.create(config.env, clock);
-        jest.spyOn(registry, 'byName').mockReturnValue({
+        jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue({
           findMergeRequest: jest.fn(),
           openMergeRequest: jest.fn(),
           readBranchHead: jest.fn((ref: PipelineRef) => Promise.resolve({ sha: ref.sha ?? '', httpCalls: [] })),

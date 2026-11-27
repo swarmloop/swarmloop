@@ -86,8 +86,9 @@ describe('a host refusal of a name', () => {
     const run = await flow.begin(step);
     await storeRun(flow.app.app.get(RunRepository), { ...run, startedBy: null });
     const registry = flow.app.app.get(CodeHostRegistry);
-    jest.spyOn(registry, 'forRun').mockResolvedValue(registry);
-    jest.spyOn(registry, 'requiredCredentials').mockReturnValue(flow.host.selected());
+    const hosts = await registry.forRun(null);
+    jest.spyOn(registry, 'forRun').mockResolvedValue(hosts);
+    jest.spyOn(hosts, 'requiredCredentials').mockReturnValue(flow.host.selected());
   }
 
   /** The branch is new on the host: the harness pushed it before the hook was there. */

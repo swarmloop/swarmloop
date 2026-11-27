@@ -14,6 +14,7 @@ import type { AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { PipelineModule } from '../../pipeline/pipeline.module';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
+import { RunHosts } from '../../integrations/code-host/run-hosts';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import type { HttpCallDraft } from '../../core/swarmloop-error';
 import { storeRun } from '../../testing/store-run.spec-helpers';
@@ -76,7 +77,7 @@ export async function boot(
     .useFactory({
       factory: (config: AppConfig, clock: Clock) => {
         const registry = CodeHostRegistry.create(config.env, clock);
-        jest.spyOn(registry, 'byName').mockReturnValue({
+        jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue({
           findMergeRequest: host.find,
           openMergeRequest: host.open,
           updateMergeRequest: host.update ?? jest.fn(async () => ({ httpCalls: [] })),
