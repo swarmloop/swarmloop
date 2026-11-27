@@ -77,6 +77,7 @@ export async function withAnswerRoutes(test: (parts: AnswerRoutes) => Promise<vo
       app.get(SubtaskPort),
       chat,
       app.get(AttachmentStore),
+      {} as never,
     ).onModuleInit();
     const port = new PlannerRunPort();
     new PlannerRunCommands(

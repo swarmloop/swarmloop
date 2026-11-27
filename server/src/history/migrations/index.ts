@@ -4,6 +4,7 @@ import { AgentCallLog1797300000000 } from './1797300000000-agent-call-log';
 import { AgentCallFirstRead1797300000001 } from './1797300000001-agent-call-first-read';
 import { PlannerChat1797600000000 } from './1797600000000-planner-chat';
 import { RunStateFilled1797700000000 } from './1797700000000-run-state-filled';
+import { CommandsWithoutRun1797800000000 } from './1797800000000-commands-without-run';
 import { AgentExchangeChatIndex1797000000002 } from './1797000000002-agent-exchange-chat-index';
 import { BlockedCodes1797100000000 } from './1797100000000-blocked-codes';
 import { ExchangeReportedTotals1797200000000 } from './1797200000000-exchange-reported-totals';
@@ -117,4 +118,5 @@ export const migrations = [
   AgentCallFirstRead1797300000001,
   PlannerChat1797600000000,
   RunStateFilled1797700000000,
+  CommandsWithoutRun1797800000000,
 ];

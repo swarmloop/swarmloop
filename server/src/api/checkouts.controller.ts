@@ -1,16 +1,16 @@
-import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
-import type { CreateRepositoryBody, ProjectListView, RemoteEntry, RemoteListView } from '../contract/api';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Post } from '@nestjs/common';
+import type { CreateRepositoryBody, ProjectListView, RemoteListView } from '../contract/api';
+import type { CommandAccepted } from '../contract/command';
 import { Actor } from '../auth/actor.decorator';
-import { RemoteRepositories } from '../steps/prepare/remote-repositories.service';
+import { RemoteListService } from './remote-list.service';
 import { PrepareStep } from '../steps/prepare/prepare.step';
-import { codeHostAdapters } from '../integrations/code-host/code-host-adapters';
 import { SwarmloopError } from '../core/swarmloop-error';
 
 @Controller('checkouts')
 export class CheckoutsController {
   constructor(
     private readonly prepare: PrepareStep,
-    private readonly remote: RemoteRepositories,
+    private readonly remote: RemoteListService,
   ) {}
 
   @Get()
@@ -44,22 +44,23 @@ export class CheckoutsController {
 
   @Get('remote')
   listRemote(@Actor() actor: string | null): Promise<RemoteListView> {
-    return this.badRequest(() => this.remote.list(actor));
+    return this.badRequest(() => this.remote.view(actor));
+  }
+
+  @Post('remote/refresh')
+  @HttpCode(200)
+  refreshRemote(@Actor() actor: string | null): Promise<RemoteListView> {
+    return this.badRequest(() => this.remote.retry(actor));
   }
 
   @Post('repositories')
-  createRepository(@Body() body: Partial<CreateRepositoryBody>, @Actor() actor: string | null): Promise<RemoteEntry> {
-    return this.badRequest(() =>
-      this.remote.create(
-        {
-          host: body.host ?? codeHostAdapters().find((adapter) => adapter.createsByDefault)?.name ?? '',
-          owner: body.owner ?? '',
-          name: body.name ?? '',
-          public: body.public,
-        },
-        actor,
-      ),
-    );
+  @HttpCode(202)
+  createRepository(
+    @Body() body: Partial<CreateRepositoryBody>,
+    @Actor() actor: string | null,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<CommandAccepted> {
+    return this.badRequest(() => this.remote.create(body, idempotencyKey, actor));
   }
 
   private async badRequest<T>(work: () => Promise<T>): Promise<T> {

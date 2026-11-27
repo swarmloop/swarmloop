@@ -1,8 +1,19 @@
-import { render, screen } from '@testing-library/react';
+import { render as renderInto, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement, ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { RemoteEntry, RemoteListView } from '@contract/api';
+import { LiveBridgeProvider } from '../../shell';
 import { ProjectPicker } from './project-picker';
+
+vi.mock('../../../lib/endpoints', () => ({ createRepository: vi.fn(), getCommand: vi.fn() }));
+vi.mock('../../../lib/live', async () => (await import('../../../test/fake-socket')).fakeLive());
+
+function Wrapper({ children }: { children: ReactNode }) {
+  return <LiveBridgeProvider>{children}</LiveBridgeProvider>;
+}
+
+const render = (ui: ReactElement) => renderInto(ui, { wrapper: Wrapper });
 
 const entry = (owner: string, name: string, extra: Partial<RemoteEntry> = {}): RemoteEntry => ({
   host: 'github',
@@ -19,6 +30,8 @@ const view = (repositories: RemoteEntry[], extra: Partial<RemoteListView> = {}):
   owners: [{ host: 'github', login: 'acme', kind: 'organization' }],
   reason: null,
   allowedNames: [],
+  loading: false,
+  error: null,
   ...extra,
 });
 
@@ -126,5 +139,52 @@ describe('ProjectPicker', () => {
 
     expect(await screen.findByText('GITHUB_TOKEN or GITLAB_TOKEN is missing')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New repository' })).toBeDisabled();
+  });
+
+  it('says it is loading while the server reads the list', () => {
+    render(
+      <ProjectPicker
+        frozenProjects={false}
+        projectOptions={[]}
+        pickedProjects={[]}
+        onChange={vi.fn()}
+        remote={view([], { loading: true })}
+      />,
+    );
+
+    expect(screen.getByText('Loading repositories…')).toBeInTheDocument();
+  });
+
+  it('shows a failed read with a Retry, from the read or from the list', async () => {
+    const user = userEvent.setup({ delay: null });
+    const onRetry = vi.fn();
+    const { rerender } = renderInto(
+      <ProjectPicker
+        frozenProjects={false}
+        projectOptions={[]}
+        pickedProjects={[]}
+        onChange={vi.fn()}
+        remote={view([])}
+        remoteError="GitHub is down"
+        onRetry={onRetry}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Repositories could not be loaded: GitHub is down');
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ProjectPicker
+        frozenProjects={false}
+        projectOptions={[]}
+        pickedProjects={[]}
+        onChange={vi.fn()}
+        remote={view([], { error: 'gitlab: timed out' })}
+        onRetry={onRetry}
+      />,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Repositories could not be loaded: gitlab: timed out');
   });
 });

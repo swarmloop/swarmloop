@@ -14,20 +14,20 @@ import FormLabel from '@mui/material/FormLabel';
 import Radio from '@mui/material/Radio';
 import RadioGroup from '@mui/material/RadioGroup';
 import TextField from '@mui/material/TextField';
-import type { RemoteEntry, RemoteListView } from '@contract/api';
+import type { RemoteEntry } from '@contract/api';
 import type { MergeMode } from '@contract/backlog';
 import { backlogPath } from '../../lib/backlog-path';
 import { createBacklog } from '../../lib/backlog-endpoints';
-import { listProjects, listRemote } from '../../lib/endpoints';
+import { listProjects } from '../../lib/endpoints';
 import { mergeNames } from '../../lib/names';
-import { ProjectPicker } from '../new-run';
+import { ProjectPicker, useRemoteList } from '../new-run';
 
 export function NewBacklogDialog({ open, onClose }: { open: boolean; onClose: () => void }): ReactElement {
   const router = useRouter();
   const [name, setName] = useState('');
   const [available, setAvailable] = useState<string[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
-  const [remote, setRemote] = useState<RemoteListView | null>(null);
+  const { remote, error: remoteError, reload, retry } = useRemoteList(open);
   const [mergeMode, setMergeMode] = useState<MergeMode>('green');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,10 +36,6 @@ export function NewBacklogDialog({ open, onClose }: { open: boolean; onClose: ()
     if (!open) {
       return;
     }
-    // A failed remote load leaves local folders working and shows no remote entries.
-    listRemote()
-      .then(setRemote)
-      .catch(() => setRemote(null));
     listProjects()
       .then((body) => setAvailable(body.projects))
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'projects failed'));
@@ -73,6 +69,9 @@ export function NewBacklogDialog({ open, onClose }: { open: boolean; onClose: ()
           pickedProjects={picked}
           onChange={setPicked}
           remote={remote}
+          remoteError={remoteError}
+          onRetry={retry}
+          onRemoteLost={reload}
           onCreated={created}
         />
         <FormControl>

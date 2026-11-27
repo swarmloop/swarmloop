@@ -11,6 +11,7 @@ import { RepositoryOrigins } from '../steps/shared/repository-origins';
 import { ProvidersModule } from '../integrations/providers.module';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
+import { CommandsController } from './commands.controller';
 import { CommandHandlers } from './command-handlers';
 import { PlanChatController } from './plan-chat.controller';
 import { UploadsController } from './uploads.controller';
@@ -41,6 +42,7 @@ import { RunQueriesService } from './run-queries.service';
 import { RunListRows } from './run-list-rows';
 import { EtaSummary } from './eta-summary';
 import { RunRebaseService } from './run-rebase.service';
+import { RemoteListService } from './remote-list.service';
 import { RequestTiming } from './request-timing';
 
 @Module({
@@ -60,6 +62,7 @@ import { RequestTiming } from './request-timing';
     ServerController,
     ReadinessController,
     RunsController,
+    CommandsController,
     PlanChatController,
     UploadsController,
     BacklogsController,
@@ -91,6 +94,7 @@ import { RequestTiming } from './request-timing';
     CommandHandlers,
     RunUsageReader,
     LiveGateway,
+    RemoteListService,
     RequestTiming,
   ],
 })

@@ -13,6 +13,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { RemoteEntry, RemoteListView } from '@contract/api';
 import { NewRepositoryDialog } from './new-repository-dialog';
+import { RemoteStatus } from './remote-status';
 
 interface Option {
   name: string;
@@ -36,6 +37,9 @@ export function ProjectPicker({
   pickedProjects,
   onChange,
   remote = null,
+  remoteError = null,
+  onRetry,
+  onRemoteLost,
   onCreated,
 }: {
   frozenProjects: boolean;
@@ -43,12 +47,18 @@ export function ProjectPicker({
   pickedProjects: string[];
   onChange: (value: string[]) => void;
   remote?: RemoteListView | null;
+  /** The message of a failed read of the remote list. */
+  remoteError?: string | null;
+  onRetry?: () => void;
+  /** The list may be out of date: a create's answer was lost. */
+  onRemoteLost?: () => void;
   onCreated?: (entry: RemoteEntry) => void;
 }): ReactElement {
   const [creating, setCreating] = useState(false);
   const options = optionsOf(projectOptions, remote);
   const value = pickedProjects.map((name) => options.find((option) => option.name === name) ?? { name, label: name });
   const owners = remote?.owners ?? [];
+  const existingNames = [...projectOptions, ...(remote?.repositories ?? []).map((entry) => entry.name)];
   const createReason =
     owners.length > 0 ? null : (remote?.reason ?? 'No account or organization allows creating repositories');
 
@@ -108,6 +118,7 @@ export function ProjectPicker({
           listbox: { sx: { maxHeight: 220 } },
         }}
       />
+      <RemoteStatus remote={remote} error={remoteError} onRetry={onRetry} />
       <Box>
         <Tooltip title={createReason ?? ''}>
           <span>
@@ -126,6 +137,8 @@ export function ProjectPicker({
         open={creating}
         owners={owners}
         allowedNames={remote?.allowedNames ?? []}
+        existingNames={existingNames}
+        onLost={() => onRemoteLost?.()}
         onClose={() => setCreating(false)}
         onCreated={(entry) => onCreated?.(entry)}
       />

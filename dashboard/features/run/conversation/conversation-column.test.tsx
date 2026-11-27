@@ -66,7 +66,14 @@ beforeEach(() => {
   vi.mocked(getSession).mockResolvedValue({ user: 'alice' });
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
-  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
+  vi.mocked(listRemote).mockResolvedValue({
+    repositories: [],
+    owners: [],
+    reason: null,
+    allowedNames: [],
+    loading: false,
+    error: null,
+  });
   vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
   vi.mocked(uploadFile).mockImplementation((_file, name) => Promise.resolve({ id: `id-${name}`, name, size: 3 }));
 });
