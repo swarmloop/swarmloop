@@ -222,7 +222,7 @@ export class FakeCodeHost {
 
   readDefaultHead(): Answer<'readDefaultHead'> {
     this.guard();
-    git(this.clone, ['fetch', 'origin']);
+    this.fetchWhenReachable();
     const branch = this.defaultBranch ?? this.feature;
     const sha = git(this.clone, ['rev-parse', `origin/${branch}`]);
     if (this.mainPasses) this.ci.pass(sha);
@@ -278,6 +278,15 @@ export class FakeCodeHost {
       return git(this.clone, ['merge-tree', '--write-tree', `origin/${this.feature}`, `origin/${source}`]);
     } catch {
       return null;
+    }
+  }
+
+  /** A fetch of origin for a read of its head. The origin of a spec may name a host that nothing answers: the refs already known are read then. */
+  private fetchWhenReachable(): void {
+    try {
+      git(this.clone, ['fetch', 'origin']);
+    } catch {
+      // Unreachable origin: the known refs stand.
     }
   }
 

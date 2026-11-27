@@ -8,6 +8,7 @@ import { GitRuleRefused } from '../../core/git-rule-refused';
 import { RebasedPublisher } from './rebased-publisher';
 
 const branch = 'feature/proj-80-ship-the-field';
+const HOST_ORIGIN = 'https://gitlab.example/group/demo.git';
 
 async function setup() {
   const root = await mkdtemp(join(tmpdir(), 'swarmloop-publisher-'));
@@ -134,5 +135,94 @@ describe('RebasedPublisher host rule refusal', () => {
     const refused = await publisher.pushRef(tree, branch, null, run, origin, 'commit').catch((error: unknown) => error);
     expect(refused).not.toBeInstanceOf(GitRuleRefused);
     expect((refused as Error).message).toContain('push failed');
+  });
+});
+
+describe('RebasedPublisher changed projects only', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  /** A worktree on the run's branch with no commit beyond main, and a publisher that reads the worktrees under `root`. */
+  async function unchangedWorld() {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-publisher-unchanged-'));
+    const { tree } = featureWorktree(root, 'proj-80');
+    const origin = git(tree, ['remote', 'get-url', 'origin']);
+    const registry = { has: () => false, forRun: () => Promise.resolve(registry) };
+    const written: string[] = [];
+    const kernel = {
+      config: { env: { SWARMLOOP_ROOT: root } },
+      runs: { findRun: () => Promise.resolve({ key: 'proj-80', prompt: null, codeHost: '', startedBy: null }) },
+      documents: {
+        putDocument: (_run: unknown, _kind: string, body: string) => Promise.resolve(void written.push(body)),
+      },
+    };
+    const publisher = new RebasedPublisher(kernel as never, registry as never);
+    jest.spyOn(publisher, 'stampRefs').mockResolvedValue();
+    const remoteTip = () => git(tree, ['ls-remote', origin, `refs/heads/${branch}`]).split(/\s/)[0];
+    return { tree: { repo: 'demo', path: tree }, publisher, written, remoteTip };
+  }
+
+  it('records no pipeline ref for a tree whose head is its base', async () => {
+    const { tree, publisher } = await unchangedWorld();
+    git(tree.path, ['remote', 'set-url', 'origin', HOST_ORIGIN]);
+    const written: string[] = [];
+
+    const recorded = await publisher.rememberRefs({ prompt: null }, [tree], branch, (body) =>
+      Promise.resolve(void written.push(body)),
+    );
+
+    expect(recorded).toBe(false);
+    expect(written).toEqual([]);
+  });
+
+  it('records the pipeline ref of a tree with a commit beyond its base', async () => {
+    const { tree, publisher } = await setup();
+    git(tree.path, ['remote', 'set-url', 'origin', HOST_ORIGIN]);
+    const written: string[] = [];
+
+    const recorded = await publisher.rememberRefs({ prompt: null }, [tree], branch, (body) =>
+      Promise.resolve(void written.push(body)),
+    );
+
+    expect(recorded).toBe(true);
+    expect(written.join('')).toContain('project: group/demo');
+  });
+
+  it('measures a tree against the branch the prompt names', async () => {
+    const { tree, publisher } = await setup();
+    git(tree.path, ['push', 'origin', 'HEAD:refs/heads/feature/PARENT-1-epic']);
+    git(tree.path, ['fetch', 'origin']);
+
+    await expect(publisher.hasOwnWork(tree, null)).resolves.toBe(true);
+    await expect(publisher.hasOwnWork(tree, 'feature/PARENT-1-epic')).resolves.toBe(false);
+  });
+
+  it('does not push a tree with no commit beyond its base and no branch on origin', async () => {
+    const { tree, publisher, written, remoteTip } = await unchangedWorld();
+
+    await publisher.publishRebased('proj-80', branch, [{ repo: tree.repo, tip: null }]);
+
+    expect(remoteTip()).toBe('');
+    expect(written).toEqual([]);
+  });
+
+  it('pushes a tree with a commit beyond its base', async () => {
+    const { tree, publisher, remoteTip } = await unchangedWorld();
+    writeFileSync(join(tree.path, 'src', 'field.ts'), 'export const field = 1;\n');
+    git(tree.path, ['add', 'src/field.ts']);
+    git(tree.path, ['commit', '-m', 'field']);
+
+    await publisher.publishRebased('proj-80', branch, [{ repo: tree.repo, tip: null }]);
+
+    expect(remoteTip()).toBe(git(tree.path, ['rev-parse', 'HEAD']));
+  });
+
+  it('pushes a tree with no commit of its own when its branch is already on origin', async () => {
+    const { tree, publisher, remoteTip } = await unchangedWorld();
+    const early = git(tree.path, ['commit-tree', '-m', 'early', 'HEAD^{tree}']);
+    git(tree.path, ['push', git(tree.path, ['remote', 'get-url', 'origin']), `${early}:refs/heads/${branch}`]);
+
+    await publisher.publishRebased('proj-80', branch, [{ repo: tree.repo, tip: early }]);
+
+    expect(remoteTip()).toBe(git(tree.path, ['rev-parse', 'HEAD']));
   });
 });

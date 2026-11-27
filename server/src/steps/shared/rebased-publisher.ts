@@ -3,6 +3,7 @@ import { existsSync, statSync } from 'fs';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { pushRejectionOfAnyHost } from '../../integrations/code-host/code-host-rules';
 import { root } from '../../history/run-paths';
+import { baseBranch, originRef } from '../../git/base-ref';
 import { barrier } from '../../core/barrier';
 import { GitRuleRefused } from '../../core/git-rule-refused';
 import { GitRulesError, SwarmloopError } from '../../core/swarmloop-error';
@@ -15,12 +16,16 @@ import { remoteProject } from '../merge-request/merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import { StepKernel } from '../step-kernel';
 import { stampGate, worktreesFingerprint } from './gate';
+import { hasWorkToMerge } from './branch-work';
 import type { RunEntity } from '../../history/entities';
 import type { RebaseHosts } from '../../git/rebase/types';
 import { forRepo, type PerRepo } from '../../git/per-repo';
 
 /** The fields of a run a push needs: the host, and whose token it uses. */
 type PublishedBy = Pick<RunEntity, 'codeHost' | 'startedBy'>;
+
+/** The fields of a run that say which base its branches start from. */
+type BasedOn = Pick<RunEntity, 'prompt'>;
 
 /** Pushes a branch to its origin and records the refs pushed. Commit and implement both publish through it. */
 @Injectable()
@@ -59,7 +64,23 @@ export class RebasedPublisher {
     });
   }
 
-  /** Push a rewritten branch with the tip captured before the base fetch. Does not stage or commit. */
+  /** The base a branch is measured against: the named one, else origin's main, else its master. Null when none is known. */
+  async baseRev(tree: Tree, named: string | null): Promise<string | null> {
+    return named
+      ? await this.optionalRev(tree, `refs/remotes/${originRef(named)}`)
+      : ((await this.optionalRev(tree, 'refs/remotes/origin/main')) ??
+          (await this.optionalRev(tree, 'refs/remotes/origin/master')));
+  }
+
+  /** The one rule of what a run changed: a branch is the run's work only when it has a commit its base does not have. */
+  async hasOwnWork(tree: Tree, named: string | null): Promise<boolean> {
+    return hasWorkToMerge(tree, await this.baseRev(tree, named));
+  }
+
+  /**
+   * Push a rewritten branch with the tip captured before the base fetch. Does not stage or commit. A repository the run
+   * did not change is left alone, unless its branch is already on origin (an epic's early push) and must follow its base.
+   */
   async publishRebased(
     key: string,
     branch: PerRepo<string>,
@@ -79,9 +100,12 @@ export class RebasedPublisher {
         continue;
       }
       const captured = leases.find((lease) => lease.repo === tree.repo)?.tip ?? null;
+      if (captured === null && !(await this.hasOwnWork(tree, baseBranch(run.prompt)))) {
+        continue;
+      }
       await this.refusedAsRule(() => this.pushRef(tree, forRepo(branch, tree.repo), captured, run, origin, 'commit'));
     }
-    await this.rememberRefs(trees, branch, (body) =>
+    await this.rememberRefs(run, trees, branch, (body) =>
       this.kernel.documents.putDocument(run, ARTIFACTS.pipelineRef.kind, ARTIFACTS.pipelineRef.format(body)),
     );
     await this.stampRefs(run, trees);
@@ -250,10 +274,19 @@ export class RebasedPublisher {
     return withGitHostRetries(remote, this.kernel.clock, run, secret);
   }
 
-  /** True when this push recorded a host project. A filesystem origin does not. */
-  async rememberRefs(trees: Tree[], branch: PerRepo<string>, write: (body: string) => Promise<void>): Promise<boolean> {
+  /** True when this push recorded a host project. A filesystem origin does not, and neither does a repository the run did not change. */
+  async rememberRefs(
+    run: BasedOn,
+    trees: Tree[],
+    branch: PerRepo<string>,
+    write: (body: string) => Promise<void>,
+  ): Promise<boolean> {
     const blocks: string[] = [];
+    const named = baseBranch(run.prompt);
     for (const tree of trees) {
+      if (!(await this.hasOwnWork(tree, named))) {
+        continue;
+      }
       const block = await withWorktree(tree.path, async () => {
         const url = await originUrl(tree.path, tree.repo, 'origin failed');
         if (!url) {

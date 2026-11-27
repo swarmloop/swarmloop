@@ -63,11 +63,11 @@ export function featureTree(root: string, key: string): string {
 
 export { git };
 
-export function hostPush(bare: string, token: string): () => void {
+export function hostPush(bare: string, token: string, project = 'group/demo'): () => void {
   const entries = [
     ['protocol.file.allow', 'always'],
-    [`url.${bare}.insteadOf`, `https://oauth2:${token}@gitlab.example/group/demo.git`],
-    [`url.${bare}.insteadOf`, 'https://gitlab.example/group/demo.git'],
+    [`url.${bare}.insteadOf`, `https://oauth2:${token}@gitlab.example/${project}.git`],
+    [`url.${bare}.insteadOf`, `https://gitlab.example/${project}.git`],
   ];
   const start = Number(process.env.GIT_CONFIG_COUNT);
   const base = Number.isInteger(start) && start > 0 ? start : 0;

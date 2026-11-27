@@ -31,6 +31,7 @@ import type { Need } from '../steps/shared/needs';
 import { mergeSummaryOf } from '../steps/shared/merge-summary';
 import type { OpenedStep } from '../steps/step-run';
 import { DELIVERED_PREFIX } from '../steps/commit/commit-result';
+import { NO_CI_PREFIX } from '../steps/pipeline/pipeline-no-ci';
 import { ReportRefresh } from '../steps/shared/report-refresh';
 import type { RunAuthor } from '../steps/shared/run-author';
 import type { RunNames } from '../steps/shared/run-names';
@@ -220,7 +221,8 @@ export class SubtaskPort extends SubtaskOps {
   }
 
   override async withoutCi(run: RunEntity): Promise<boolean> {
-    return ((await this.documents.latestBody(run.key, 'pipeline_log')) ?? '').startsWith('result: none');
+    const log = (await this.documents.latestBody(run.key, 'pipeline_log')) ?? '';
+    return log.startsWith('result: none') || log.startsWith(NO_CI_PREFIX);
   }
 
   override async deliveredNote(run: RunEntity): Promise<string | null> {

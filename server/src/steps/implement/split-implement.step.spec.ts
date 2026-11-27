@@ -16,6 +16,7 @@ import { Reconciler } from '../../pipeline/reconciler';
 import { FAKE_MODEL_KEY } from '../../testing/env.spec-helpers';
 import { createTestApp, type TestApp } from '../../testing/test-app';
 import { NO_CI_NOTE } from './split-pass';
+import { noCiReason } from '../pipeline/pipeline-no-ci';
 import { git } from '../../testing/runs.spec-helpers';
 
 import {
@@ -176,6 +177,22 @@ describe('split implement', () => {
     await app.app
       .get(DocumentRepository)
       .putDocument(await child(app, 'a'), 'pipeline_log', 'result: none\nnothing started\nproject: demo\n');
+
+    await pass(app);
+
+    expect((await tasksOf(app))[0]).toMatchObject({ status: 'green', note: NO_CI_NOTE });
+  });
+
+  it('records no CI on the feature branch for a green subtask whose pipeline step ended skipped for no CI', async () => {
+    const built = await world();
+    app = built.app;
+    await seedParent(app, [task('a')]);
+    await pass(app);
+    await finish(app, 'a');
+    const skipped = noCiReason([
+      { project: 'group/demo', cause: 'the code host refuses to read pipelines', refused: true },
+    ]);
+    await app.app.get(DocumentRepository).putDocument(await child(app, 'a'), 'pipeline_log', skipped);
 
     await pass(app);
 

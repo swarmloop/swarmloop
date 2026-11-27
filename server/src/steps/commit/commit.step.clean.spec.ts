@@ -84,6 +84,9 @@ describe('commit step on a clean tree', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-rerun-'));
     const tree = featureTree(root, key);
     const branch = `feature/${key}-ship-the-field`;
+    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
+    git(tree, ['add', 'src/field.ts']);
+    git(tree, ['commit', '-m', 'field']);
     git(tree, ['push', '-u', 'origin', branch]);
     const head = git(tree, ['rev-parse', 'HEAD']);
     git(tree, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
@@ -117,7 +120,7 @@ describe('commit step on a clean tree', () => {
       const done = await app.get(PipelineService).step('commit', 'PROJ-130');
       expect(done.exitCode).toBe(0);
       expect(asked).toEqual(['group/demo 5']);
-      expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('1');
+      expect(git(tree, ['rev-list', '--count', 'HEAD'])).toBe('2');
       expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
       expect(await app.get(DocumentRepository).latestBody('PROJ-130', 'pipeline_ref')).toContain(`sha: ${head}`);
       expect(await app.get(DocumentRepository).latestBody('PROJ-130', 'commit')).toContain(`demo ${head}`);

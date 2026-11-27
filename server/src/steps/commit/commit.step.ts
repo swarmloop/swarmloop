@@ -3,7 +3,7 @@ import { StepKernel } from '../step-kernel';
 import { StepName } from '../../contract/steps';
 import { OpenedStep } from '../../steps/step-run';
 import { SwarmloopError } from '../../core/swarmloop-error';
-import { baseBranch, originRef } from '../../git/base-ref';
+import { baseBranch } from '../../git/base-ref';
 import { originUrl } from '../../git/git';
 import { commitResult, deliveredResult, undeliveredResult } from './commit-result';
 import { unchangedOutcome, type BranchOnOrigin } from './commit-delivered';
@@ -11,7 +11,6 @@ import { gitAt, status, Tree } from './commit-git';
 import { checkedRepoNames } from '../../git/repo-names';
 import { RunStop } from '../../agent/run-stop';
 import { assertNotStopped } from '../../agent/step-stopped';
-import { hasWorkToMerge } from '../shared/branch-work';
 import { RunNames } from '../shared/run-names';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { CommitPublish } from './commit-publish';
@@ -79,7 +78,9 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
       }
       if (!(await this.somethingToPush(trees, branch, named))) {
         if (await this.publishedHead(trees, branch)) {
-          await this.publisher.rememberRefs(trees, branch, (body) => ctx.write(ARTIFACTS.pipelineRef, body));
+          await this.publisher.rememberRefs(opened.run, trees, branch, (body) =>
+            ctx.write(ARTIFACTS.pipelineRef, body),
+          );
           await this.publisher.stampRefs(opened.run, trees);
           return commitResult('ok', `${opened.startedAt} commit done\n${label}`);
         }
@@ -112,7 +113,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     // An answered refusal may have renamed the branch while it was pushed.
     const pushedBranch = await this.runNames.branchOf(opened.run, names);
     const pushedLabel = [...new Set(names.map(pushedBranch))].join(', ');
-    const recorded = await this.publisher.rememberRefs(trees, pushedBranch, (body) =>
+    const recorded = await this.publisher.rememberRefs(opened.run, trees, pushedBranch, (body) =>
       ctx.write(ARTIFACTS.pipelineRef, body),
     );
     if (recorded) {
@@ -166,7 +167,8 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     const hosts = await this.publisher.hostsFor(opened.run);
     const branches: BranchOnOrigin[] = [];
     for (const tree of trees) {
-      const base = (await this.baseRev(tree, named)) ?? (await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'));
+      const base =
+        (await this.publisher.baseRev(tree, named)) ?? (await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'));
       branches.push({ tree, branch: branch(tree.repo), base, hosts });
     }
     const outcome = await unchangedOutcome(this.kernel.documents, opened.run.key, branches);
@@ -207,20 +209,13 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     if (remote) {
       return remote !== head;
     }
-    return (await this.baseRev(tree, named)) !== head;
-  }
-
-  private async baseRev(tree: Tree, named: string | null): Promise<string | null> {
-    return named
-      ? await this.publisher.optionalRev(tree, `refs/remotes/${originRef(named)}`)
-      : ((await this.publisher.optionalRev(tree, 'refs/remotes/origin/main')) ??
-          (await this.publisher.optionalRev(tree, 'refs/remotes/origin/master')));
+    return (await this.publisher.baseRev(tree, named)) !== head;
   }
 
   /** A branch is work only when it has a commit its target does not have. */
   private async hasWork(trees: Tree[], named: string | null): Promise<boolean> {
     for (const tree of trees) {
-      if (await hasWorkToMerge(tree, await this.baseRev(tree, named))) {
+      if (await this.publisher.hasOwnWork(tree, named)) {
         return true;
       }
     }

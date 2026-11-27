@@ -3,6 +3,7 @@ import {
   ciResult,
   checkFacts,
   checkTrace,
+  ciTitle,
   classify,
   parsePipelineRefs,
   renderNone,
@@ -205,5 +206,20 @@ describe('unchangedSincePipeline', () => {
     await expect(unchangedSincePipeline(record, [{ hostPath: nested, containerPath: '/work' }])).rejects.toThrow(
       `${basename(nested)}: no git tree at ${nested}`,
     );
+  });
+});
+
+describe('ciTitle', () => {
+  it('names each watched project with its own commit', () => {
+    expect(
+      ciTitle([
+        { project: 'group/app', ref: 'feature/x', sha: '82342ab1111' },
+        { project: 'group/lib', ref: 'feature/x', sha: '1d2e3f49999' },
+      ]),
+    ).toBe('Wait for CI on group/app 82342ab, group/lib 1d2e3f4');
+  });
+
+  it('names the ref of a project whose commit is not known', () => {
+    expect(ciTitle([{ project: 'group/app', ref: 'feature/x' }])).toBe('Wait for CI on group/app feature/x');
   });
 });

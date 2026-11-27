@@ -10,6 +10,7 @@ import { RunRepository } from '../../history/run.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { FlowRepository } from '../../history/flow.repository';
 import { CI_SKIPPED } from './commit.step';
+import { featureWorktree } from '../../testing/runs.spec-helpers';
 import { boot, featureTree, git, hostPush, seed } from './commit.step.spec-helpers';
 
 describe('commit step', () => {
@@ -448,6 +449,41 @@ describe('commit step', () => {
       expect(git(tree, ['diff', '--name-status', '--format=', 'HEAD^', 'HEAD'])).toContain('src/readme.ts');
     } finally {
       await app.close();
+    }
+  });
+
+  it('pushes only the repository it changed and records no pipeline ref for one it only read', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-read-only-'));
+    const branch = 'feature/PROJ-141-ship-the-field';
+    const changed = featureTree(root, 'PROJ-141');
+    const read = featureWorktree(root, 'PROJ-141', 'other').tree;
+    git(changed, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/demo.git']);
+    git(read, ['remote', 'set-url', 'origin', 'git@gitlab.example:group/other.git']);
+    writeFileSync(join(changed, 'src', 'field.ts'), 'export const field = 1;\n');
+    const token = 'read-only-token';
+    const restoreDemo = hostPush(join(root, 'demo.git'), token);
+    const restoreOther = hostPush(join(root, 'other.git'), token, 'group/other');
+    try {
+      const app = await boot(root, 'gitlab', { baseUrl: 'https://gitlab.example', token });
+      try {
+        await seed(app, 'PROJ-141', 'gitlab');
+        const seeded = await app.get(RunRepository).findRun('PROJ-141');
+        await app.get(DocumentRepository).putDocument(seeded!, 'repos', 'demo\nother\n');
+        const done = await app.get(PipelineService).step('commit', 'PROJ-141');
+        expect(done.exitCode).toBe(0);
+        expect(git(join(root, 'demo.git'), ['rev-parse', `refs/heads/${branch}`])).toBe(
+          git(changed, ['rev-parse', 'HEAD']),
+        );
+        expect(git(join(root, 'other.git'), ['branch', '--list', branch])).toBe('');
+        const refs = await app.get(DocumentRepository).latestBody('PROJ-141', 'pipeline_ref');
+        expect(refs).toContain('project: group/demo');
+        expect(refs).not.toContain('group/other');
+      } finally {
+        await app.close();
+      }
+    } finally {
+      restoreOther();
+      restoreDemo();
     }
   });
 });
