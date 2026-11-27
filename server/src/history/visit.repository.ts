@@ -366,12 +366,4 @@ export class VisitRepository {
     }
     return totals;
   }
-
-  async tokenTotal(runId: number): Promise<number> {
-    const rows: { total: number | string | null }[] = await this.stepStats.query(
-      'SELECT SUM(tokens_in + tokens_out) AS total FROM step_stats WHERE run_id = ?',
-      [runId],
-    );
-    return Number(rows[0]?.total) || 0;
-  }
 }

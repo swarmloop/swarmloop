@@ -88,8 +88,8 @@ export interface ReviewDeps {
   visits: VisitRepository;
   root: string;
   door: AgentDoor;
-  /** How the code-review visit was started, which every reviewer and the report start as. */
-  start: { by: StartBy; level: number | null; prompt: string };
+  /** How the code-review visit was started, which every reviewer and the report start as; `round` once the door admitted the round. */
+  start: { by: StartBy; level: number | null; prompt: string; round?: boolean };
   runReport: RunReport;
   chat?: PlanChatStore;
   /** What a subtask's chats are told of their starter; one instance, so its record writes go one after another. */
@@ -243,10 +243,10 @@ async function launchReview(
   admitted?: (startId: string) => void,
 ): Promise<LaunchResult> {
   const step = `code-review-${job.reviewer.name}`;
-  const { by, level, prompt } = deps.start;
+  const { by, level, prompt, round } = deps.start;
   const input = { visitOf: 'code-review' as const, prompt, texts: [job.reviewer.name] };
   return deps.door.outside(
-    { step, by, level, input, admitted },
+    { step, by, level, input, admitted, round },
     {
       root: deps.root,
       run: opened.run,

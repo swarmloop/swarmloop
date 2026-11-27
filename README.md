@@ -288,13 +288,11 @@ When CI does not start and GitHub or GitLab confirms a merge conflict for the pu
 
 | Setting | What it limits | `defaults.env` |
 | --- | --- | --- |
-| `MAX_RUN_USD` | Dollars per run. Once reached, the next step does not start. | `100` |
+| `MAX_RUN_USD` | Dollars per run, the run's one budget. Once reached, the next automatic start does not start; a Resume runs past it. | `100` |
 | `RETAIN_DONE_DAYS` | Days a done run keeps worktrees, agent state and outputs. `0` keeps all. | `3` |
 | `MIN_FREE_GB` | Free disk below which old runs are cleaned and then steps are blocked (`DISK_LOW`). | `10` |
 | `DOCKER_PRUNE` | Daily removal of dangling images and build cache older than 24 h. | `true` |
-| `MAX_RUN_TOKENS` | Tokens per run. Kills the step. | off |
 | `STEP_TOKEN_MAX` | Tokens per step. Kills the step. | off |
-| `MAX_AGENT_CALLS` | Model processes per run | `100` |
 | `MAX_RETURNS` | Review returns to implementation | `10` |
 | `MAX_PIPELINE_RETURNS` | Red pipelines sent back | `6` |
 | `CHECKS_PARALLEL` | Check commands that run at once on the whole server | `3` |
@@ -350,7 +348,7 @@ bin/swarmloop run PROJ-123 --prompt "what this ticket is"
 | `AGENTS_BACKLOG_READ` | Helpers of a backlog planner turn, read only, `runtime:model[:effort]`, comma-separated; the turn uses the first entry of its own runtime. Empty: no helper. |
 | `BACKLOG_PLAN_TIMEOUT_MS` | Time limit of one backlog planner turn in milliseconds; the default is `3600000`. |
 | `BACKLOG_CHAT_CONTEXT_SHARE` | Share of the model's context, from 0 to 1, past which a backlog planner chat starts anew from the state brief; the default is `0.5`. |
-| `EPIC_EFFORT` | The effort that lifts only the planning of the parent of a split run: `low`, `medium`, `high`, `xhigh` or `max`. It only raises an agent's own effort. Default `xhigh`; empty turns it off. |
+| `EPIC_EFFORT` | The effort that lifts only the planning of the parent of a split run: `low`, `medium`, `high`, `xhigh` or `max`. It only raises an agent's own effort. Default `high`; empty turns it off. |
 | `EPIC_REPLAN_EVERY_MERGE` | `true`: after every merged task the parent's planner looks at it before the tasks that depend on it start. `false`: only when the task differs from its plan. Default `true`. |
 | `SPLIT` | `auto`: the planner may split a big task into subtasks, `off`: it never does; set per server, not per run in the dashboard. Default `auto`. |
 | `ISSUE_TRACKER` | `jira` |

@@ -43,7 +43,6 @@ export async function boot(
     GITLAB_TOKEN: bases.gitlabToken ?? '',
     GITHUB_BASE_URL: bases.github ?? '',
     GITHUB_TOKEN: bases.githubToken ?? '',
-    MAX_AGENT_CALLS: '20',
     MAX_RETURNS: '3',
     MAX_RUN_USD: '25',
     AGENTS_PLAN: 'cursor:opus-5.5-extra-high',

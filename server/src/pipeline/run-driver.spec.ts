@@ -47,7 +47,9 @@ describe('run driver blocks', () => {
     );
     expect(state).toBe('blocked');
     expect(reason?.code).toBe('SPEND_LIMIT');
-    expect(reason?.message).toBe('spent $30.00 of MAX_RUN_USD $25.00; raise MAX_RUN_USD, then Resume');
+    expect(reason?.message).toBe(
+      'spent $30.00 of MAX_RUN_USD $25.00. Resume runs the step past the limit; a higher MAX_RUN_USD lets the run go on by itself',
+    );
     expect(result.message).toContain('is over the spend limit');
     expect(actions).toContain('resume');
   });

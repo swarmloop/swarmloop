@@ -51,7 +51,7 @@ function setup(env: Record<string, string>, epic: boolean, step: 'implement' | '
       },
     } as never,
   );
-  const launcher = new AgentLauncher(runner as never, { tokenTotal: async () => 0 } as never, new RunStop(), failover);
+  const launcher = new AgentLauncher(runner as never, new RunStop(), failover);
   const launch = () =>
     launcher.launch({
       root,

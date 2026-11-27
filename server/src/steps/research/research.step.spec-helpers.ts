@@ -13,19 +13,13 @@ import { resultAnswer } from '../../testing/result-answer';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { storeRun } from '../../testing/store-run.spec-helpers';
 
-export async function seed(
-  app: Awaited<ReturnType<typeof boot>>,
-  root: string,
-  key: string,
-  agentCalls = 0,
-): Promise<void> {
+export async function seed(app: Awaited<ReturnType<typeof boot>>, root: string, key: string): Promise<void> {
   mkdirSync(join(root, 'worktrees', key, 'billing-api'), { recursive: true });
   const runs = app.get(RunRepository);
   const documents = app.get(DocumentRepository);
   const seeded = await runs.begin(key, 'prepare');
   seeded.status = 'waiting';
   seeded.currentStep = 'research';
-  seeded.agentCalls = agentCalls;
   await storeRun(runs, seeded);
   await documents.putDocument(seeded, 'requirements', '{"prompt":"ship the field"}\n');
 }
@@ -89,7 +83,6 @@ export async function writeEnv(root: string, overrides: Record<string, string> =
     GITHUB_TOKEN: '',
     CURSOR_API_KEY: 'test-key',
     ANTHROPIC_API_KEY: '',
-    MAX_AGENT_CALLS: '20',
     MAX_RETURNS: '3',
     MAX_LAUNCHES: '3',
     MAX_RUN_USD: '25',

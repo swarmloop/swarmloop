@@ -77,7 +77,6 @@ export async function writeEnv(root: string, planTimeout = 1200000): Promise<voi
     GITLAB_BASE_URL: '',
     GITHUB_BASE_URL: '',
     CURSOR_API_KEY: 'test-key',
-    MAX_AGENT_CALLS: '20',
     MAX_RETURNS: '3',
     MAX_RUN_USD: '25',
     PLAN_TIMEOUT_MS: String(planTimeout),

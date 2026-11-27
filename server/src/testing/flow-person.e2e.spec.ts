@@ -65,16 +65,16 @@ describe('a run that needs a person ends in a state the person clears', () => {
     expect((await stateNow()).state).toBe('done');
   });
 
-  it('SPEND_LIMIT blocks before the step starts, and Resume runs it once the limit is raised', async () => {
+  it("SPEND_LIMIT blocks the machine's start, and a person's Resume runs the step past it", async () => {
     await flow.setEnv('MAX_RUN_USD', '25');
     await flow.begin('pipeline', { spentUsd: 30 });
     flow.host.ci.pass(head());
 
-    await flow.app.pipeline.runThrough(KEY);
-    expect(await expectBlockedOn(ERROR_CODES.SPEND_LIMIT)).toContain('raise MAX_RUN_USD, then Resume');
+    await flow.app.pipeline.runThrough(KEY, { auto: true, startBy: 'machine' });
+    const message = await expectBlockedOn(ERROR_CODES.SPEND_LIMIT);
+    expect(message).toContain('spent $30.00 of MAX_RUN_USD $25.00. Resume runs the step past the limit');
     expect(flow.host.ci.reads).toBe(0);
 
-    await flow.setEnv('MAX_RUN_USD', '50');
     await flow.person('resume');
     await tick();
     expect((await stateNow()).state).toBe('done');

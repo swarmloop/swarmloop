@@ -314,25 +314,36 @@ describe('StartGate admit', () => {
     }
   });
 
-  it('lets only a run still recorded running on the step skip the limits', async () => {
+  it("lets only a run still recorded running on the step skip the limit of a machine's start", async () => {
     const { app, run, runs, admit } = await admitting({ MAX_RUN_USD: '25' });
     try {
       await seedCall(app.get(AgentCallRepository), { runKey: run.key, step: 'implement', usd: 30 });
-      expect((await admit({})).kind).toBe('blocked');
+      const machine: StepOptions = { startBy: 'machine' };
+      expect((await admit(machine)).kind).toBe('blocked');
 
       for (const status of ['failed', 'waiting']) {
         writeRunState(run, { status, currentStep: 'implement' });
         await storeRun(runs, run);
-        expect((await admit({})).kind).toBe('blocked');
+        expect((await admit(machine)).kind).toBe('blocked');
       }
 
       writeRunState(run, { status: 'running', currentStep: 'implement' });
       await storeRun(runs, run);
-      expect((await admit({})).kind).toBe('admitted');
+      expect((await admit(machine)).kind).toBe('admitted');
 
       writeRunState(run, { status: 'running', currentStep: 'plan' });
       await storeRun(runs, run);
-      expect((await admit({})).kind).toBe('blocked');
+      expect((await admit(machine)).kind).toBe('blocked');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("admits a person's start over the limit", async () => {
+    const { app, run, admit } = await admitting({ MAX_RUN_USD: '25' });
+    try {
+      await seedCall(app.get(AgentCallRepository), { runKey: run.key, step: 'implement', usd: 30 });
+      expect((await admit({})).kind).toBe('admitted');
     } finally {
       await app.close();
     }

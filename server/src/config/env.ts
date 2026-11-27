@@ -22,7 +22,6 @@ export interface SwarmloopEnv extends CodeHostServerEnv, CodeHostLoginEnv {
   CLAUDE_CODE_OAUTH_TOKEN: string;
   CODEX_AUTH: string;
   CODEX_API_KEY: string;
-  MAX_AGENT_CALLS: number;
   MAX_RETURNS: number;
   MAX_PIPELINE_RETURNS: number;
   MAX_LAUNCHES: number;
@@ -38,7 +37,6 @@ export interface SwarmloopEnv extends CodeHostServerEnv, CodeHostLoginEnv {
   MIN_FREE_GB: number;
   DOCKER_PRUNE: boolean;
   MAX_RUN_USD: number;
-  MAX_RUN_TOKENS: number | null;
   STEP_USD_MAX: number | null;
   STEP_TOKEN_MAX: number | null;
   IDLE_TIMEOUT_MS: number;
@@ -117,6 +115,17 @@ function warnIgnoredAgentEnv(config: ConfigService): void {
   );
 }
 
+/** The run's count of agent calls and its token cap are gone: a run has one budget, MAX_RUN_USD. */
+function warnRetiredBudgets(config: ConfigService): void {
+  const set = ['MAX_AGENT_CALLS', 'MAX_RUN_TOKENS'].filter((name) => config.get(name) !== undefined);
+  if (set.length === 0) {
+    return;
+  }
+  new Logger('Config').warn(
+    `${set.join(' and ')} ${set.length > 1 ? 'are' : 'is'} no longer read: a run has one budget, MAX_RUN_USD`,
+  );
+}
+
 function readStrings<Key extends string>(config: ConfigService, keys: readonly Key[]): Record<Key, string> {
   return Object.fromEntries(keys.map((key) => [key, config.getOrThrow<string>(key)])) as Record<Key, string>;
 }
@@ -132,6 +141,7 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
     new Logger('Config').warn('MODEL_RESEARCH is set but was never read: research runs on AGENTS_PLAN');
   }
   warnIgnoredAgentEnv(config);
+  warnRetiredBudgets(config);
   const root = config.get<string>('SWARMLOOP_ROOT');
   const checkoutsRoot = config.get<string>('CHECKOUTS_ROOT');
   const env = {
@@ -147,7 +157,6 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
     CLAUDE_CODE_OAUTH_TOKEN: config.getOrThrow<string>('CLAUDE_CODE_OAUTH_TOKEN'),
     CODEX_AUTH: config.getOrThrow<string>('CODEX_AUTH'),
     CODEX_API_KEY: config.getOrThrow<string>('CODEX_API_KEY'),
-    MAX_AGENT_CALLS: config.getOrThrow<number>('MAX_AGENT_CALLS'),
     MAX_RETURNS: config.getOrThrow<number>('MAX_RETURNS'),
     MAX_PIPELINE_RETURNS: config.getOrThrow<number>('MAX_PIPELINE_RETURNS'),
     MAX_LAUNCHES: config.getOrThrow<number>('MAX_LAUNCHES'),
@@ -163,7 +172,6 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
     MIN_FREE_GB: config.getOrThrow<number>('MIN_FREE_GB'),
     DOCKER_PRUNE: config.getOrThrow<boolean>('DOCKER_PRUNE'),
     MAX_RUN_USD: config.getOrThrow<number>('MAX_RUN_USD'),
-    MAX_RUN_TOKENS: optionalLimit(config.get('MAX_RUN_TOKENS')),
     STEP_USD_MAX: optionalLimit(config.get('STEP_USD_MAX')),
     STEP_TOKEN_MAX: optionalLimit(config.get('STEP_TOKEN_MAX')),
     IDLE_TIMEOUT_MS: config.getOrThrow<number>('IDLE_TIMEOUT_MS'),

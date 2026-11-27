@@ -445,7 +445,6 @@ async function boot(root: string, clock?: Clock): Promise<TestingModule> {
     REQUIREMENTS_VIA: 'direct',
     GITLAB_BASE_URL: '',
     GITHUB_BASE_URL: '',
-    MAX_AGENT_CALLS: '20',
     MAX_RETURNS: '3',
     MAX_RUN_USD: '25',
     AGENTS_PLAN: 'cursor:opus-5.5-extra-high',

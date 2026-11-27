@@ -7,8 +7,6 @@ import { SwarmloopEnv } from '../../config/env';
 import { root } from '../../history/run-paths';
 import { resumableChat } from '../../agent/agent-session';
 import { CONTRACT_KIND, isSubtask } from '../../contract/subtask';
-import { StepOptions } from '../../core/pipeline-result';
-import { REASON } from '../../contract/run-state';
 import { StepName } from '../../contract/steps';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -84,14 +82,8 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     };
   }
 
-  protected async produce(
-    input: StepInput<typeof INPUTS>,
-    ctx: ModelStepContext,
-    options: StepOptions,
-  ): Promise<StepResult> {
-    const env = this.config.env;
+  protected async produce(input: StepInput<typeof INPUTS>, ctx: ModelStepContext): Promise<StepResult> {
     const { key } = ctx.opened.run;
-    const auto = options.auto;
     const current = await currentPlan(this.documents, key);
     const plan = requireApprovedPlan(current);
     const pass = await firstPass(ctx);
@@ -101,13 +93,6 @@ export class ImplementImproveStep extends AgentStep<typeof INPUTS> {
     const notes = renderImplementation(pass.implementation);
     const names = checkedRepoNames((await ctx.reread(ARTIFACTS.repos)) ?? []);
     const mounts = mountsForStep(root(this.config), key, names, ctx.opened.run.targetPath);
-    if (auto && ctx.opened.run.agentCalls + 1 > env.MAX_AGENT_CALLS) {
-      return {
-        route: { to: 'block', reason: 'implement-improve does not fit', code: REASON.didNotFit },
-        summary: `${ctx.opened.startedAt} implement-improve does not fit`,
-        outputs: [],
-      };
-    }
     const returned = await returnedNotes(this.documents, ctx.opened.run.id);
     const answer = await readAnswer(this.planChat, key, this.name);
     const sections = [

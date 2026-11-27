@@ -69,7 +69,6 @@ services:
       - JIRA_BASE_URL
       - JIRA_EMAIL
       - JIRA_API_TOKEN
-      - MAX_AGENT_CALLS
       - MAX_RETURNS
       - MAX_PIPELINE_RETURNS
       - MAX_LAUNCHES
@@ -85,7 +84,6 @@ services:
       - MIN_FREE_GB
       - DOCKER_PRUNE
       - MAX_RUN_USD
-      - MAX_RUN_TOKENS
       - STEP_USD_MAX
       - STEP_TOKEN_MAX
       - IDLE_TIMEOUT_MS

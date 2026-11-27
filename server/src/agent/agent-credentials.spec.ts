@@ -75,7 +75,6 @@ function launchInput(root: string, runKey: string): AgentRunInput {
     model: 'm',
     agentCalls: 0,
     spentUsd: 0,
-    tokensInRun: 0,
     resumeChatId: null,
     runKey,
     step: 'implement',

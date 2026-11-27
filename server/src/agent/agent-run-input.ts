@@ -19,7 +19,6 @@ export interface AgentRunInput {
   helper?: AgentHelper;
   agentCalls: number;
   spentUsd: number;
-  tokensInRun: number;
   resumeChatId: string | null;
   runKey: string;
   /** The key of the chat this launch continues when it is not its own key. Only the chat's files use it. */

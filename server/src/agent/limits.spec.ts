@@ -1,6 +1,5 @@
 import type { DecisionWatch, LimitSnapshot } from './limits';
 import {
-  callsExceeded,
   hasModelDecision,
   judgeLimits,
   noteDecision,
@@ -37,9 +36,7 @@ function snapshot(patch: Partial<LimitSnapshot> = {}): LimitSnapshot {
     stepUsd: 0,
     maxRunUsd: 25,
     stepUsdMax: null,
-    tokensInRun: 0,
     stepTokens: 0,
-    maxRunTokens: null,
     stepTokenMax: null,
     warned: false,
     ...patch,
@@ -58,7 +55,7 @@ describe('limits', () => {
     expect(judgeLimits(snapshot({ stepUsd: 25 })).kill).toBeNull();
     expect(judgeLimits(snapshot({ spentUsd: 25, stepUsd: 10 })).kill).toBeNull();
     expect(judgeLimits(snapshot({ stepUsd: 25, elapsedMs: 1000 })).kill).toBe('time');
-    expect(judgeLimits(snapshot({ stepTokens: 5, maxRunTokens: 5 })).kill).toBe('tokens');
+    expect(judgeLimits(snapshot({ stepTokens: 5, stepTokenMax: 5 })).kill).toBe('tokens');
     expect(overSpend(25, 25)).toBe(true);
     expect(overSpend(24.99, 25)).toBe(false);
     expect(overSpend(100, 0)).toBe(false);
@@ -73,8 +70,6 @@ describe('limits', () => {
       exitCode: 1,
       killReason: null,
       halted: false,
-      callsSoFar: 3,
-      maxCalls: 20,
       attempts: 1,
       maxLaunches: 3,
       decided: watched(prompt),
@@ -90,9 +85,7 @@ describe('limits', () => {
     expect(retryCrash({ ...under, killReason: 'time' })).toBe(false);
     expect(retryCrash({ ...under, killReason: 'idle' })).toBe(false);
     expect(retryCrash({ ...under, halted: true })).toBe(false);
-    expect(retryCrash({ ...under, callsSoFar: 20 })).toBe(false);
     expect(retryCrash({ ...under, decided: watched(`${prompt}\n${answer(BLOCK)}\n`) })).toBe(false);
-    expect(callsExceeded(20, 20)).toBe(true);
   });
 
   it('counts only a result block the step accepts', () => {
@@ -138,8 +131,6 @@ describe('limits', () => {
 
   it('counts tokens when the model has no price', () => {
     expect(priceTokens('composer-2.5', 10, 4, {})).toBeNull();
-    expect(callsExceeded(20, 20)).toBe(true);
-    expect(callsExceeded(19, 20)).toBe(false);
   });
 
   it('resumes once only after a crash with an empty file and a chat id', () => {

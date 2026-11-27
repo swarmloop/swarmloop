@@ -16,7 +16,7 @@ import { seedCall } from '../../history/agent-call.spec-helpers';
 import { AgentExchangeEntity, DocumentEntity, StepStatEntity } from '../../history/entities';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
-import { writeRunState } from '../../history/run-state';
+import { storedState, writeRunState } from '../../history/run-state';
 import { VisitRepository } from '../../history/visit.repository';
 import { VisitStartRepository } from '../../history/visit-start.repository';
 import { doorAround } from '../../testing/agent-door.spec-helpers';
@@ -273,6 +273,63 @@ describe('AgentDoor', () => {
       expect(refusedRoute(refused as StartRefused)).toMatchObject({ to: 'block', code: ERROR_CODES.SPEND_LIMIT });
       expect(launched).toEqual([]);
       expect(await app.get(DocumentRepository).latestBody(run.key, 'spend')).toContain('over the spend limit');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("lets a person's outside start and a start of an admitted round launch over the limit, and refuses the others", async () => {
+    const { app, run, runs, door, launched, request, start } = await setup({ MAX_RUN_USD: '25' });
+    try {
+      writeRunState(run, { status: 'running', currentStep: 'implement' });
+      await storeRun(runs, run);
+      await seedCall(app.get(AgentCallRepository), { runKey: run.key, step: 'implement', usd: 30 });
+
+      await door.outside(start('person'), request('read'));
+      await door.outside({ ...start('machine'), round: true }, request('read'));
+      expect(launched).toHaveLength(2);
+
+      const refused = await door.outside(start('planner'), request('read')).catch((error: unknown) => error);
+      expect(refused).toBeInstanceOf(StartRefused);
+      expect((refused as StartRefused).message).toContain('MAX_RUN_USD $25.00');
+      expect(launched).toHaveLength(2);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('asks the spend limit once for a round, and a person goes past it', async () => {
+    const { app, run, runs, door } = await setup({ MAX_RUN_USD: '25' });
+    try {
+      writeRunState(run, { status: 'running', currentStep: 'code-review' });
+      await storeRun(runs, run);
+      await door.admitRound(run, 'code-review', 'machine');
+      await seedCall(app.get(AgentCallRepository), { runKey: run.key, step: 'code-review', usd: 30 });
+
+      await door.admitRound(run, 'code-review', 'person');
+      const refused = await door.admitRound(run, 'code-review', 'machine').catch((error: unknown) => error);
+      expect(refused).toBeInstanceOf(StartRefused);
+      expect((refused as StartRefused).kind).toBe('limit');
+      expect(await app.get(DocumentRepository).latestBody(run.key, 'spend')).toContain('MAX_RUN_USD $25.00');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("blocks a hop of the machine over the limit with SPEND_LIMIT and its words, and admits a person's", async () => {
+    const { app, run, door } = await setup({ MAX_RUN_USD: '25' });
+    try {
+      await seedCall(app.get(AgentCallRepository), { runKey: run.key, step: 'implement', usd: 30 });
+
+      expect((await door.admitStep(run.key, 'implement', {}, false)).kind).toBe('admitted');
+      expect((await door.admitStep(run.key, 'implement', { startBy: 'machine' }, false)).kind).toBe('blocked');
+
+      const stored = (await app.get(RunRepository).findRun(run.key))!;
+      expect(storedState(stored).reason).toMatchObject({
+        code: ERROR_CODES.SPEND_LIMIT,
+        message:
+          'spent $30.00 of MAX_RUN_USD $25.00. Resume runs the step past the limit; a higher MAX_RUN_USD lets the run go on by itself',
+      });
     } finally {
       await app.close();
     }

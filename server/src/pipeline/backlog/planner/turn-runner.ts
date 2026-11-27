@@ -215,9 +215,6 @@ export class BacklogTurnRunner {
       spentUsd: row.usd ?? 0,
       activeAttempt: null,
       roleAgents: agents,
-      get tokensSoFar() {
-        return (row.tokensIn ?? 0) + (row.tokensOut ?? 0);
-      },
       recordLimit: async (visit) => {
         row = await this.withLogCost(withDuration(row, visit));
       },

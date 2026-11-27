@@ -15,7 +15,6 @@ const complete = {
   GITHUB_TOKEN: '',
   CURSOR_API_KEY: '',
   ANTHROPIC_API_KEY: '',
-  MAX_AGENT_CALLS: 50,
   MAX_RETURNS: 3,
   MAX_PIPELINE_RETURNS: 6,
   MAX_LAUNCHES: 3,
@@ -53,7 +52,7 @@ describe('env schema', () => {
       'GIT_AUTHOR_EMAIL',
       'PROJECT_HOSTS_ALLOW',
     ]);
-    const optionalLimits = new Set(['MAX_RUN_TOKENS', 'STEP_USD_MAX', 'STEP_TOKEN_MAX']);
+    const optionalLimits = new Set(['STEP_USD_MAX', 'STEP_TOKEN_MAX']);
     const expected = Object.fromEntries(
       Object.entries(shippedDefaults())
         .filter(([key]) => !rawOnly.has(key))
@@ -115,12 +114,14 @@ describe('env schema', () => {
   it('keeps the values from the file and names a missing limit', () => {
     const { error, value } = validateSettings(complete, { abortEarly: false, convert: true });
     expect(error).toBeUndefined();
-    expect(value.MAX_AGENT_CALLS).toBe(50);
     expect(value.MAX_PIPELINE_RETURNS).toBe(6);
     expect(value.AGENTS_PLAN).toBe('cursor:grok-4.7-high');
-    const missing = validateSettings({ ...complete, MAX_AGENT_CALLS: undefined }, { abortEarly: false, convert: true });
+    const missing = validateSettings(
+      { ...complete, MAX_PIPELINE_RETURNS: undefined },
+      { abortEarly: false, convert: true },
+    );
     expect(missing.error).toBeUndefined();
-    expect(missing.value.MAX_AGENT_CALLS).toBe(Number(shippedDefaults().MAX_AGENT_CALLS));
+    expect(missing.value.MAX_PIPELINE_RETURNS).toBe(Number(shippedDefaults().MAX_PIPELINE_RETURNS));
   });
 
   it('keeps a bare env valid and names a bad SWARMLOOP_ALLOW entry', () => {
@@ -187,8 +188,8 @@ describe('env schema', () => {
     expect(bad.error?.message).toContain('EPIC_REPLAN_EVERY_MERGE');
   });
 
-  it('defaults EPIC_EFFORT to xhigh, allows it empty and rejects any other word', () => {
-    expect(validateSettings(complete, { convert: true }).value.EPIC_EFFORT).toBe('xhigh');
+  it('defaults EPIC_EFFORT to high, allows it empty and rejects any other word', () => {
+    expect(validateSettings(complete, { convert: true }).value.EPIC_EFFORT).toBe('high');
     expect(validateSettings({ ...complete, EPIC_EFFORT: '' }, { convert: true }).value.EPIC_EFFORT).toBe('');
     expect(validateSettings({ ...complete, EPIC_EFFORT: 'max' }, { convert: true }).error).toBeUndefined();
     const bad = validateSettings({ ...complete, EPIC_EFFORT: 'extreme' }, { convert: true });
@@ -206,7 +207,6 @@ describe('env schema', () => {
     const config = await compileWith(complete);
     expect(config.env).toMatchObject({
       AGENTS_PLAN: 'cursor:grok-4.7-high',
-      MAX_AGENT_CALLS: 50,
       SWARMLOOP_API_PORT: 3920,
     });
   });
@@ -219,9 +219,9 @@ describe('env schema', () => {
     expect(narrowed.env.SWARMLOOP_REPOS).toEqual(['api', 'web']);
   });
 
-  it('reads an empty token limit as no cap', async () => {
-    const config = await compileWith({ ...complete, MAX_RUN_TOKENS: '' });
-    expect(config.env.MAX_RUN_TOKENS).toBeNull();
+  it('reads an empty step token limit as no cap', async () => {
+    const config = await compileWith({ ...complete, STEP_TOKEN_MAX: '' });
+    expect(config.env.STEP_TOKEN_MAX).toBeNull();
   });
 
   it('accepts codex with both keys empty', () => {
@@ -292,6 +292,24 @@ describe('env schema', () => {
         'RUNTIME and MODEL_PLAN are no longer read: the agents are AGENTS_PLAN, AGENTS_IMPLEMENT and AGENTS_REVIEW',
       );
       expect(text).not.toContain('MODEL_IMPLEMENT');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('MAX_AGENT_CALLS and MAX_RUN_TOKENS change nothing and produce one warning naming both and MAX_RUN_USD', async () => {
+    const warnings: string[] = [];
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message));
+    });
+    try {
+      const plain = await compileWith(complete);
+      expect(warnings).toEqual([]);
+      const old = await compileWith({ ...complete, MAX_AGENT_CALLS: '100', MAX_RUN_TOKENS: '5000' });
+      expect(old.env).toEqual(plain.env);
+      expect(warnings).toEqual([
+        'MAX_AGENT_CALLS and MAX_RUN_TOKENS are no longer read: a run has one budget, MAX_RUN_USD',
+      ]);
     } finally {
       warn.mockRestore();
     }

@@ -174,10 +174,6 @@ export class AgentCallRepository {
     return (await this.totals('turn_key', turnKey)).usd;
   }
 
-  async tokensOfTurn(turnKey: string): Promise<number> {
-    return (await this.totals('turn_key', turnKey)).tokens;
-  }
-
   /** What the calls of one backlog turn read (input plus cache read plus cache write) and wrote, in one query. */
   async turnTokens(turnKey: string): Promise<{ tokensIn: number; tokensOut: number }> {
     const [row] = await this.dataSource.query<{ tokensIn: number | null; tokensOut: number | null }[]>(

@@ -102,7 +102,6 @@ describe('AgentLaunchPrep skill briefs', () => {
         model: 'm',
         agentCalls: 0,
         spentUsd: 0,
-        tokensInRun: 0,
         resumeChatId: null,
         runKey: 'run1',
         step,

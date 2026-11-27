@@ -224,7 +224,6 @@ export async function writeEnv(
     GITLAB_BASE_URL: '',
     GITHUB_BASE_URL: '',
     CURSOR_API_KEY: 'test-key',
-    MAX_AGENT_CALLS: '20',
     MAX_RETURNS: '3',
     MAX_RUN_USD: '25',
     IMPLEMENT_TIMEOUT_MS: String(implementTimeout),

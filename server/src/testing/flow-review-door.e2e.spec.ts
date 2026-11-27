@@ -112,21 +112,27 @@ describe('a reviewer or the report starts only through the door', () => {
     expect(blocks.steps).toEqual([FIRST]);
   });
 
-  it('a limit reached between two reviewers starts no further reviewer', async () => {
+  it('a limit reached between two reviewers does not cut a round the machine started, and the next automatic start is blocked', async () => {
     const costly = new CostlyRunner();
     await boot({ MAX_RUN_USD: '1' }, costly);
     costly.calls = flow.app.app.get(AgentCallRepository);
     orderReviewers(() => undefined);
 
-    await review();
+    await review({ auto: true, startBy: 'machine' });
 
-    expect(blocks.steps).toEqual([FIRST]);
+    expect([...blocks.steps].sort()).toEqual(
+      [...CODE_REVIEWERS.map((name) => `code-review-${name}`), 'code-review-report'].sort(),
+    );
+    const admission = await flow.app.app
+      .get(AgentDoor)
+      .admitStep(KEY, 'commit', { auto: true, startBy: 'machine' }, true);
+    expect(admission.kind).toBe('blocked');
     const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
     expect(run.status).toBe('blocked');
     expect(storedState(run).reason?.code).toBe(ERROR_CODES.SPEND_LIMIT);
   });
 
-  it('a limit reached before the report starts no report and blocks the run on the limit', async () => {
+  it('a limit reached before the report does not stop the report of a round the machine started', async () => {
     await boot({ MAX_RUN_USD: '1' });
     const door = flow.app.app.get(AgentDoor);
     const outside = door.outside.bind(door);
@@ -137,13 +143,10 @@ describe('a reviewer or the report starts only through the door', () => {
       return outside(start, request);
     });
 
-    await review();
+    await review({ auto: true, startBy: 'machine' });
 
-    expect(blocks.steps).not.toContain('code-review-report');
-    expect(blocks.steps).toHaveLength(CODE_REVIEWERS.length);
-    const run = (await flow.app.app.get(RunRepository).findRun(KEY))!;
-    expect(run.status).toBe('blocked');
-    expect(storedState(run).reason?.code).toBe(ERROR_CODES.SPEND_LIMIT);
+    expect(blocks.steps).toContain('code-review-report');
+    expect(blocks.steps).toHaveLength(CODE_REVIEWERS.length + 1);
   });
 
   it('a reviewer whose model host did not answer makes the run wait with its next try, and the round goes on at the next try through the door', async () => {

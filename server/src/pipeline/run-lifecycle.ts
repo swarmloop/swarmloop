@@ -134,8 +134,6 @@ export class RunLifecycle implements OnApplicationBootstrap {
     ) {
       return { exitCode: 1, message: 'prompt is missing' };
     }
-    const blocked = await this.gate.limits(key, step);
-    if (blocked) return { exitCode: 1, message: blocked };
     if (options.projects?.length && target?.capabilities.projects)
       await this.instructions.pinProjects(key, options.projects);
     return step;

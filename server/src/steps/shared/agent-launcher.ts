@@ -16,7 +16,6 @@ import { outputFileFor } from '../../core/attempt-output';
 import { bindToStepScope, recordStepEvent } from '../../core/step-event-scope';
 import { AttachmentStore } from '../../history/attachment-store';
 import { sessionFileName } from '../../history/session-group';
-import { VisitRepository } from '../../history/visit.repository';
 import { NO_USAGE } from '../../agent/since-recorded';
 import type { OpenScope } from '../../history/agent-call';
 import { AgentCallRecorder } from './agent-call-recorder';
@@ -73,7 +72,6 @@ interface LaunchOwn {
 export class AgentLauncher {
   constructor(
     @Inject(AGENT_RUNNER) private readonly agent: AgentProcessRunner,
-    private readonly visits: VisitRepository,
     private readonly runStop: RunStop,
     @Optional() private readonly failover?: LimitFailover,
     @Optional() private readonly config?: AppConfig,
@@ -216,7 +214,7 @@ export class AgentLauncher {
       recordWork(safe);
       loop?.note(safe);
     };
-    const input = await this.agentInput(request, { sessionFile, chatId, call, loop, ending, feed, work });
+    const input = this.agentInput(request, { sessionFile, chatId, call, loop, ending, feed, work });
     const result = await this.ran(request, input, call);
     feed.finish().forEach(work);
     recordStepEvent({
@@ -236,7 +234,7 @@ export class AgentLauncher {
   }
 
   /** What the runner is given for one launch of the request: its prompt, its chat, and the spend counters of its owner. */
-  private async agentInput(request: AgentLaunchRequest, own: LaunchOwn): Promise<RunnerInput> {
+  private agentInput(request: AgentLaunchRequest, own: LaunchOwn): RunnerInput {
     const { sessionFile, chatId, call, loop, ending, feed, work } = own;
     const names = this.files?.names(request.key) ?? [];
     const startWaits = this.startWaits;
@@ -260,8 +258,6 @@ export class AgentLauncher {
       ...helperInput(request),
       agentCalls: request.run.agentCalls,
       spentUsd: request.run.spentUsd,
-      tokensInRun:
-        call?.before.tokensInRun ?? request.run.tokensSoFar ?? (await this.visits.tokenTotal(request.run.id)),
       resumeChatId: chatId,
       prior: call?.before.prior ?? NO_USAGE,
       chatSpentUsd: call?.before.chatSpentUsd ?? 0,

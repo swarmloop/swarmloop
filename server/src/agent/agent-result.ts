@@ -40,26 +40,6 @@ export interface AgentRunResult {
   finishedAt: string;
 }
 
-/** A result for a launch that never started. */
-export function emptyResult(killReason: KillReason, exitCode: number, calls: number, now: string): AgentRunResult {
-  return {
-    responseText: '',
-    chatId: null,
-    tokensIn: 0,
-    tokensOut: 0,
-    usd: 0,
-    killReason,
-    exitCode,
-    output: '',
-    resumed: false,
-    calls,
-    samples: [],
-    durationMs: 0,
-    startedAt: now,
-    finishedAt: now,
-  };
-}
-
 /** Whether exit 137 of a container with a memory cap is the cap's kill: it is swarmloop's own limit, an out-of-memory failure and no stop from outside. */
 function killedByMemoryCap(exitCode: number, container: { memoryCapBytes?: number }): boolean {
   return exitCode === 137 && container.memoryCapBytes !== undefined;

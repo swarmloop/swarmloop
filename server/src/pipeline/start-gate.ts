@@ -31,9 +31,9 @@ export class StartGate {
     private readonly door: AgentDoor,
   ) {}
 
-  /** Why the step may not start on the spend and token limits, or null. */
-  limits(key: string, step: StepName): Promise<string | null> {
-    return this.guards.spendStop(key, step);
+  /** Whether the run's spend is under MAX_RUN_USD, so a run blocked at the limit may go on by itself. */
+  underSpendLimit(run: Pick<RunEntity, 'id'>): Promise<boolean> {
+    return this.guards.underSpendLimit(run);
   }
 
   /** The one check before every hop's agent start: the door decides, with whether the step launches an agent. */

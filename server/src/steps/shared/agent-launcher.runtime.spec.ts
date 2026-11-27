@@ -46,7 +46,7 @@ describe('AgentLauncher runtime of the agent', () => {
         return Promise.resolve();
       },
     };
-    const launcher = new AgentLauncher(runner as never, { tokenTotal: async () => 0 } as never, new RunStop());
+    const launcher = new AgentLauncher(runner as never, new RunStop());
     const launch = (runtime: 'cursor' | 'claude') =>
       runInStepScope(scope, 0, () =>
         launcher.launch({
@@ -90,12 +90,7 @@ describe('AgentLauncher runtime of the agent', () => {
         Promise.resolve({ ...request, runtime: 'codex', model: 'm-codex', resume: false, prompt: 'the full brief' }),
     };
     const projectFor = jest.fn((runtime: string) => Promise.resolve({ cliVolume: `cli-${runtime}` }));
-    const launcher = new AgentLauncher(
-      runner as never,
-      { tokenTotal: async () => 0 } as never,
-      new RunStop(),
-      failover as never,
-    );
+    const launcher = new AgentLauncher(runner as never, new RunStop(), failover as never);
     const result = await launcher.launch({
       root,
       run: { agentCalls: 0, spentUsd: 0 } as never,
@@ -158,12 +153,7 @@ describe('AgentLauncher runtime of the agent', () => {
         } as never,
         { finishVisit: async () => undefined } as never,
       );
-      const launcher = new AgentLauncher(
-        runner as never,
-        { tokenTotal: async () => 0 } as never,
-        new RunStop(),
-        failover,
-      );
+      const launcher = new AgentLauncher(runner as never, new RunStop(), failover);
       const launch = (extra: object) =>
         launcher.launch({
           root,

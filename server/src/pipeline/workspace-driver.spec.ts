@@ -78,7 +78,7 @@ describe('RunDriver before a step', () => {
         return { chatId: 'new-chat', exitCode: 0, resumed: false, calls: 1 } as unknown as AgentRunResult;
       }),
     };
-    const launcher = new AgentLauncher(runner as never, app.get(VisitRepository), new RunStop());
+    const launcher = new AgentLauncher(runner as never, new RunStop());
     const events: StepEvent[] = [];
     const seen: { worktree: boolean; setup: unknown }[] = [];
     const execute = jest.fn(async () => {

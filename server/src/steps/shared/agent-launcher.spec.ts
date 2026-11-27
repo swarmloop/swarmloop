@@ -13,7 +13,6 @@ import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../../core/step-event-scope';
 import type { RunEntity } from '../../history/entities';
 import type { VisitDraft } from '../../history/visit';
-import type { VisitRepository } from '../../history/visit.repository';
 import type { SandboxService } from '../../sandbox/sandbox.service';
 import { AgentLauncher } from './agent-launcher';
 import { controlled, type Child, until } from './agent-launcher.spec-helpers';
@@ -83,8 +82,7 @@ describe('AgentLauncher relaunch', () => {
       testEnv({ CURSOR_API_KEY: 'k', ANTHROPIC_API_KEY: 'k', AGENTS_IMPLEMENT: 'cursor:m', SWARMLOOP_ROOT: root }),
     );
     const runner = new AgentProcessRunner(config, clock, sandbox, new RunStop());
-    const visits = { tokenTotal: () => Promise.resolve(0) } as unknown as VisitRepository;
-    const launcher = new AgentLauncher(runner, visits, new RunStop());
+    const launcher = new AgentLauncher(runner, new RunStop());
     const run = { id: 1, runtime: 'cursor', agentCalls: 0, spentUsd: 0, activeAttempt: 'attempt-1' } as RunEntity;
     const events: StepEvent[] = [];
     const scope = {
@@ -199,8 +197,7 @@ describe('AgentLauncher loop', () => {
       testEnv({ CURSOR_API_KEY: 'k', AGENTS_IMPLEMENT: 'cursor:m', SWARMLOOP_ROOT: root, LOOP_REPEAT: 2 }),
     );
     const runner = new AgentProcessRunner(config, clock, sandbox, new RunStop());
-    const visits = { tokenTotal: () => Promise.resolve(0) } as unknown as VisitRepository;
-    const launcher = new AgentLauncher(runner, visits, new RunStop(), undefined, config);
+    const launcher = new AgentLauncher(runner, new RunStop(), undefined, config);
     const run = { id: 1, runtime: 'cursor', agentCalls: 0, spentUsd: 0, activeAttempt: 'attempt-1' } as RunEntity;
     const events: StepEvent[] = [];
     const scope = {
@@ -286,8 +283,7 @@ describe('AgentLauncher host sleep', () => {
     } as unknown as SandboxService;
     const config = new AppConfig(testEnv({ CURSOR_API_KEY: 'k', AGENTS_IMPLEMENT: 'cursor:m', SWARMLOOP_ROOT: root }));
     const runner = new AgentProcessRunner(config, clock, sandbox, new RunStop());
-    const visits = { tokenTotal: () => Promise.resolve(0) } as unknown as VisitRepository;
-    const launcher = new AgentLauncher(runner, visits, new RunStop());
+    const launcher = new AgentLauncher(runner, new RunStop());
     const run = { id: 1, runtime: 'cursor', agentCalls: 0, spentUsd: 0, activeAttempt: 'attempt-1' } as RunEntity;
     const events: StepEvent[] = [];
     const scope = {
@@ -377,7 +373,7 @@ describe('AgentLauncher effort', () => {
         return Promise.resolve();
       },
     };
-    const launcher = new AgentLauncher(runner as never, { tokenTotal: async () => 0 } as never, new RunStop());
+    const launcher = new AgentLauncher(runner as never, new RunStop());
     await runInStepScope(scope, 0, () =>
       launcher.launch({
         root,
@@ -447,14 +443,12 @@ describe('AgentLauncher for an owner that is not a run', () => {
       } as never,
       { finishVisit } as never,
     );
-    const tokenTotal = jest.fn(async () => 999);
-    const launcher = new AgentLauncher({ run } as never, { tokenTotal } as never, new RunStop(), failover);
+    const launcher = new AgentLauncher({ run } as never, new RunStop(), failover);
     const owner = {
       id: 7,
       agentCalls: 0,
       spentUsd: 1,
       activeAttempt: null,
-      tokensSoFar: 12,
       roleAgents: [
         { runtime: 'claude', model: 'm-claude' },
         { runtime: 'codex', model: 'm-codex' },
@@ -480,14 +474,13 @@ describe('AgentLauncher for an owner that is not a run', () => {
         mounts: [],
         failover: true,
       });
-    return { run, launch, recorded, finishVisit, tokenTotal, owner };
+    return { run, launch, recorded, finishVisit, owner };
   }
 
   it('launches with the login and the owner spend, and counts the calls on the owner', async () => {
-    const { run, launch, tokenTotal, owner } = setup([{ ...ran, responseText: 'done' }]);
+    const { run, launch, owner } = setup([{ ...ran, responseText: 'done' }]);
     await launch();
-    expect(run.mock.calls[0][0]).toMatchObject({ login: 'ada', tokensInRun: 12, spentUsd: 1, attemptId: '' });
-    expect(tokenTotal).not.toHaveBeenCalled();
+    expect(run.mock.calls[0][0]).toMatchObject({ login: 'ada', spentUsd: 1, attemptId: '' });
     expect(owner).toMatchObject({ agentCalls: 1, spentUsd: 1.5 });
   });
 
@@ -566,8 +559,7 @@ describe('AgentLauncher log folder', () => {
         });
       },
     } as unknown as AgentProcessRunner;
-    const visits = { tokenTotal: () => Promise.resolve(0) } as unknown as VisitRepository;
-    const launcher = new AgentLauncher(runner, visits, new RunStop());
+    const launcher = new AgentLauncher(runner, new RunStop());
     const run = { id: 1, runtime: 'cursor', agentCalls: 0, spentUsd: 0, activeAttempt: 'attempt-1' } as RunEntity;
     await launcher.launch({
       root,
@@ -640,20 +632,12 @@ describe('AgentLauncher chat key', () => {
         };
       },
     );
-    const launcher = new AgentLauncher(
-      { run } as never,
-      { tokenTotal: async () => 0 } as never,
-      new RunStop(),
-      undefined,
-      undefined,
-      undefined,
-      {
-        begin: async (request: { key: string }) => {
-          begun.push({ key: request.key });
-          return undefined;
-        },
-      } as never,
-    );
+    const launcher = new AgentLauncher({ run } as never, new RunStop(), undefined, undefined, undefined, {
+      begin: async (request: { key: string }) => {
+        begun.push({ key: request.key });
+        return undefined;
+      },
+    } as never);
     const launch = (key: string, patch: object = {}) =>
       launcher.launch({
         root,

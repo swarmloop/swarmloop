@@ -37,7 +37,7 @@ function stopped(): Block {
   return { step: 'implement', code: end?.code ?? '', text: end?.line ?? '' };
 }
 
-/** The route the fit gate of a step writes inline; the step itself needs an agent to reach it. */
+/** The block an older server stored when a step did not fit its call budget; no step writes it any more. */
 const FIT_GATE: Block = { step: 'code-review', code: REASON.didNotFit, text: 'code-review does not fit' };
 
 const WRITERS: [string, () => Block][] = [

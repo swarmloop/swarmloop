@@ -445,7 +445,7 @@ describe('a level that needs a model list that is not loaded', () => {
 });
 
 describe('the shipped defaults', () => {
-  it("parses every shipped agent list and runs subtasks at medium, main roles at high and only an epic parent's planning at xhigh", () => {
+  it("parses every shipped agent list and runs subtasks at medium, main roles and an epic parent's planning at high", () => {
     const { error, value } = validateSettings({}, { convert: true });
     expect(error).toBeUndefined();
     assertAgents({ ...value, ...KEYS });
@@ -460,11 +460,8 @@ describe('the shipped defaults', () => {
       ['plan', 'implement', 'code-review'].map((step) => agentFor(env, run, step)?.effort);
     expect(efforts({ parentRunId: 2 })).toEqual(['medium', 'medium', 'medium']);
     expect(efforts({})).toEqual(['high', 'high', 'high']);
-    expect(efforts({ epicAt: '2026-11-13T10:00:00Z' })).toEqual(['xhigh', 'high', 'high']);
-    expect(agentFor(env, { epicAt: '2026-11-13T10:00:00Z' }, 'plan-improve')).toMatchObject({
-      effort: 'xhigh',
-      effortNote: 'epic',
-    });
+    expect(efforts({ epicAt: '2026-11-13T10:00:00Z' })).toEqual(['high', 'high', 'high']);
+    expect(agentFor(env, { epicAt: '2026-11-13T10:00:00Z' }, 'plan-improve')?.effort).toBe('high');
   });
 });
 

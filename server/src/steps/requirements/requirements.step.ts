@@ -161,7 +161,6 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
         issueKeys: loadedKeys,
         agentCalls: opened.run.agentCalls,
         spentUsd: await this.calls.spendOfRun(opened.run.key),
-        tokensInRun: await this.calls.tokensOfRun(opened.run.key),
       });
       samples.push(...written.samples, sampleSelf(this.clock.iso()));
       const stopped = stopReason(key, written);

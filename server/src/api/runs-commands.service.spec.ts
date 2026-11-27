@@ -286,7 +286,7 @@ describe('runs api', () => {
     }
   });
 
-  it('resumes a blocked code-review that did not fit', async () => {
+  it('still resumes a code-review that an older server blocked as not fitting the call budget', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-fit-'));
     const pipeline = {
       startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: 'started' }),
@@ -303,7 +303,7 @@ describe('runs api', () => {
       await app.get(RunStateRefresh).settled();
       const flow = await app.get(RunQueriesService).flow('proj-fit');
       expect(flow.resume).toBe('ready');
-      expect(flow.sentence).toContain('agent-call budget');
+      expect(flow.sentence).not.toContain('agent-call budget');
       await app.get(RunCommandsService).resume('proj-fit');
       expect(pipeline.startDetached).toHaveBeenCalled();
     } finally {

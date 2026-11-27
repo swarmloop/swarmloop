@@ -76,7 +76,7 @@ function codeSentence(run: RunEntity, maxReturns: number): string | null {
     return `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`;
   }
   if (reason.code === ERROR_CODES.SPEND_LIMIT) {
-    return 'The run spent as much as MAX_RUN_USD allows. Raise MAX_RUN_USD, then Resume.';
+    return 'The run spent as much as MAX_RUN_USD allows. Resume runs the step past the limit; a higher MAX_RUN_USD lets the run go on by itself.';
   }
   if (reason.code === ERROR_CODES.PIPELINE_UNFIXED) {
     return 'The failed pipeline job failed twice on the same commit and the agent changed nothing. Check the CI settings, the secrets, or a failure outside the change, then Resume.';
@@ -91,11 +91,6 @@ function blockedSentence(run: RunEntity, maxReturns: number, parkedConflict: boo
   }
   if (code === REASON.checkFailed) {
     return 'A required check failed again on unchanged files. Resume returns to implementation with the stored notes.';
-  }
-  if (code === REASON.didNotFit) {
-    return run.currentStep === 'code-review'
-      ? 'This step cannot start with the remaining agent-call budget. Resume retries from stored reviews.'
-      : 'This step cannot start with the remaining agent-call budget. Resume runs it anyway.';
   }
   return isLoopStep(run.currentStep)
     ? `Automatic retries stopped after ${maxReturns} attempts. Resume starts another.`

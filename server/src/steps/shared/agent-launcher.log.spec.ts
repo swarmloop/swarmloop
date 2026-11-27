@@ -4,7 +4,6 @@ import { join } from 'path';
 import Joi from 'joi';
 import { DataSource } from 'typeorm';
 import { defineResult } from '../../agent-result/result-definition';
-import { emptyResult } from '../../agent/agent-result';
 import type { AgentRunResult } from '../../agent/agent-result';
 import type { AgentProcessRunner, AgentRunInput } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
@@ -17,11 +16,10 @@ import { BacklogRepository } from '../../history/backlog.repository';
 import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 import { sessionHome } from '../../history/session-group';
-import { VisitRepository } from '../../history/visit.repository';
 import { seedPastPing } from '../../history/past-ping.spec-helpers';
 import { VisitStartRepository } from '../../history/visit-start.repository';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
-import { resultAnswer } from '../../testing/result-answer';
+import { emptyResult, resultAnswer } from '../../testing/result-answer';
 import { AgentCallRecorder } from './agent-call-recorder';
 import type { AgentLaunchRequest } from './agent-launch-request';
 import { AgentLauncher } from './agent-launcher';
@@ -97,15 +95,7 @@ async function harness(script: Behavior[], failover?: unknown) {
       return result;
     },
   } as unknown as AgentProcessRunner;
-  const launcher = new AgentLauncher(
-    agent,
-    db.app.get(VisitRepository),
-    runStop,
-    failover as never,
-    undefined,
-    undefined,
-    recorder,
-  );
+  const launcher = new AgentLauncher(agent, runStop, failover as never, undefined, undefined, recorder);
   const run = await db.app.get(RunRepository).openWaiting('run-1', '/target');
   const request = (over: Partial<AgentLaunchRequest> = {}): AgentLaunchRequest => ({
     root,

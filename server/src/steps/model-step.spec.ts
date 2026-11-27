@@ -117,7 +117,6 @@ describe('working directory block', () => {
           return emptyAgent();
         },
       } as never,
-      { tokenTotal: async () => 0 } as never,
       new RunStop(),
     ).launch({
       root,
@@ -148,7 +147,6 @@ describe('working directory block', () => {
           return emptyAgent();
         },
       } as never,
-      { tokenTotal: async () => 0 } as never,
       new RunStop(),
     ).launch({
       root,

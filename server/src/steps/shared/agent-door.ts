@@ -58,6 +58,8 @@ export interface OutsideStart {
   input: StartInputParts;
   /** Called with the start's id before the launch, so a caller that stores the visit can link it with `linkVisit`. */
   admitted?: (startId: string) => void;
+  /** The round this start belongs to was admitted whole by `admitRound`: the spend limit is not asked again. */
+  round?: boolean;
 }
 
 /** The visit a same-input check found: its number and its stored stat. */
@@ -71,8 +73,9 @@ interface StepVisit {
 }
 
 /**
- * The one door every agent start of a run passes: a person's Stop, the spend and token limits, the refusal of a
- * start of the machine or a planner on the input its last visit had, and the one rule for write tools.
+ * The one door every agent start of a run passes: a person's Stop, the spend limit (MAX_RUN_USD, the run's one budget,
+ * for every start but a person's), the refusal of a start of the machine or a planner on the input its last visit had,
+ * and the one rule for write tools.
  */
 @Injectable()
 export class AgentDoor {
@@ -92,15 +95,15 @@ export class AgentDoor {
   ) {}
 
   /**
-   * The check before a hop's agent start. A limit holds every start back. A person's start goes on. A start of the
-   * machine or a planner is not made on a run a person stopped, nor on the input the step's last finished visit
-   * had: the run waits, and the step's last words go up the planners' chain as a question.
+   * The check before a hop's agent start. A person's start goes on, past the spend limit too. A start of the machine
+   * or a planner is held back by the spend limit, is not made on a run a person stopped, nor on the input the step's
+   * last finished visit had: the run waits, and the step's last words go up the planners' chain as a question.
    */
   async admitStep(key: string, step: StepName, options: StepOptions, agent: boolean): Promise<Admission> {
-    const limited = await this.limit.spendStop(key, step);
+    const by = options.startBy ?? 'person';
+    const limited = by === 'person' ? null : await this.limit.spendStop(key, step);
     if (limited) return { kind: 'blocked', message: limited };
     const run = await this.runs.findRun(key);
-    const by = options.startBy ?? 'person';
     const reason = run ? (storedState(run).reason?.code ?? null) : null;
     if (run && by !== 'person' && (await this.stopped(run))) {
       return {
@@ -166,7 +169,7 @@ export class AgentDoor {
    */
   async outside(start: OutsideStart, request: AgentLaunchRequest): Promise<LaunchResult> {
     if (request.tools === 'write') throw await this.refused(request, StartRefused.write());
-    const run = await this.checked(request, start.step, start.by);
+    const run = await this.checked(request, start.step, start.by, start.round);
     const digest = run
       ? await startInput({ documents: this.documents, worktrees: this.worktreesOf(run) }, run, start.input)
       : null;
@@ -191,6 +194,18 @@ export class AgentDoor {
     return this.launcher.launch(request);
   }
 
+  /**
+   * The ask of a round of starts that must not begin half, once before its first start: the Stop, and for a start that
+   * is not a person's the spend limit on the run. Over it the round is refused whole. The starts of an admitted round
+   * pass `round: true` and skip the spend limit; their Stop and same-input checks stay.
+   */
+  async admitRound(run: Pick<RunEntity, 'id' | 'key'>, step: string, by: StartBy): Promise<void> {
+    const stored = await this.storedRun(run.key, by);
+    if (!stored || by === 'person') return;
+    const limited = await this.spendRefusal(stored, run, step);
+    if (limited) throw limited;
+  }
+
   /** Links the start to the visit stored for it. */
   async linkVisit(startId: string, statId: number): Promise<void> {
     await this.starts.link(startId, statId);
@@ -204,27 +219,45 @@ export class AgentDoor {
   }
 
   /**
-   * The Stop and the limits, once for every start that is not a hop's. A person's Stop refuses every start; a stored
-   * Stop refuses a start of the machine or a planner. While a step holds the run, the limits are read on the launch's
-   * own run; otherwise the run is blocked as a hop's start over a limit blocks it. Returns the stored run.
+   * The Stop and the spend limit, once for every start that is not a hop's. A person's Stop refuses every start; a
+   * stored Stop refuses a start of the machine or a planner, and so does the spend limit, unless the start belongs to
+   * a round `admitRound` admitted. A person's start goes past the limit. Returns the stored run.
    */
-  private async checked(request: AgentLaunchRequest, step: string, by: StartBy): Promise<RunEntity | null> {
-    const { key, run: owner } = request;
+  private async checked(
+    request: AgentLaunchRequest,
+    step: string,
+    by: StartBy,
+    round = false,
+  ): Promise<RunEntity | null> {
+    const run = await this.storedRun(request.key, by);
+    if (!run || by === 'person' || round) return run;
+    const limited = await this.spendRefusal(run, request.run, step);
+    if (limited) throw await this.refused(request, limited);
+    return run;
+  }
+
+  /** The stored run of a start, after the Stop: a person's Stop holds every start, a stored one every start but a person's. */
+  private async storedRun(key: string, by: StartBy): Promise<RunEntity | null> {
     if (this.runStop.halted(key)) throw new StepStopped();
     const run = await this.runs.findRun(key);
-    if (!run) return null;
-    if (by !== 'person' && (await this.stopped(run))) throw new StepStopped();
-    if (run.status === 'running') {
-      if (await this.limit.overLimit(owner)) {
-        const message = `${key} is over the spend limit. ${step} was not started`;
-        await this.documents.putDocument(run, 'spend', `${message}\n`);
-        throw await this.refused(request, StartRefused.limit(message));
-      }
-    } else {
-      const limited = await this.limit.spendStop(key, run.currentStep as StepName);
-      if (limited) throw await this.refused(request, StartRefused.limit(limited));
-    }
+    if (run && by !== 'person' && (await this.stopped(run))) throw new StepStopped();
     return run;
+  }
+
+  /**
+   * The refusal of a start on a run over MAX_RUN_USD, or null. While a step holds the run the limit is read on the
+   * launch's own run; otherwise the run is blocked as a hop's start over the limit blocks it.
+   */
+  private async spendRefusal(run: RunEntity, owner: Pick<RunEntity, 'id'>, step: string): Promise<StartRefused | null> {
+    if (run.status !== 'running') {
+      const limited = await this.limit.spendStop(run.key, run.currentStep as StepName);
+      return limited ? StartRefused.limit(limited) : null;
+    }
+    const why = await this.limit.overLimit(owner);
+    if (!why) return null;
+    const message = `${run.key} is over the spend limit. ${step} was not started: ${why}`;
+    await this.documents.putDocument(run, 'spend', `${message}\n`);
+    return StartRefused.limit(message);
   }
 
   /** Whether the start has the input of the same step's last visit that a hop started. */

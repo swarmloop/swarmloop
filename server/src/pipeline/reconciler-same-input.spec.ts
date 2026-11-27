@@ -183,7 +183,7 @@ describe('sameInput', () => {
     it('is the same input after an answer that stayed invalid or the agent’s own limit', () => {
       const same = { kind: 'same', visit: 1, statId: 1 };
       expect(sameInput(ended({ status: 'failed', answerErrors: ['keep line unknown'] }))).toEqual(same);
-      expect(sameInput(ended({ status: 'interrupted', killReason: 'process killed: calls' }))).toEqual(same);
+      expect(sameInput(ended({ status: 'interrupted', killReason: 'process killed: tokens' }))).toEqual(same);
       expect(sameInput(ended({ status: 'interrupted', killReason: 'process killed: time' }))).toEqual(same);
     });
 

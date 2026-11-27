@@ -22,8 +22,6 @@ export interface LaunchOwner {
   parentRunId?: number | null;
   /** The agents to use, in fallback order, instead of the role list of the run's tier. */
   roleAgents?: Agent[];
-  /** The tokens spent so far, instead of the total of the run's visits. */
-  tokensSoFar?: number;
   /** Records a launch that hit a provider limit, instead of a visit row of the run. */
   recordLimit?: (visit: VisitDraft) => Promise<void>;
   /** Stores what an agent start of this owner waits for (null: nothing), instead of the state of a run. */

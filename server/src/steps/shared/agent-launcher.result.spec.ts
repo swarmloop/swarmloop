@@ -8,16 +8,14 @@ import { defineResult } from '../../agent-result/result-definition';
 import type { AgentProcessRunner, AgentRunInput } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
 import type { RunEntity } from '../../history/entities';
-import type { VisitRepository } from '../../history/visit.repository';
 import { AgentLauncher } from './agent-launcher';
 import type { AgentLaunchRequest } from './agent-launch-request';
 import { ResultInvalid } from './answer-errors';
 import { ModelHostUnavailable } from './model-host-unavailable';
-import { emptyResult } from '../../agent/agent-result';
 import type { AgentRunResult } from '../../agent/agent-result';
 import type { KillReason } from '../../agent/limits';
 import { HOST_RETRY_MS } from '../../integrations/http';
-import { BlockAgentRunner } from '../../testing/result-answer';
+import { BlockAgentRunner, emptyResult } from '../../testing/result-answer';
 import type { ScriptedAnswer } from '../../testing/result-answer';
 
 const definition = defineResult(
@@ -34,10 +32,9 @@ const prose: ScriptedAnswer = { text: 'I wrote the plan.' };
 function launcherOf(answers: ScriptedAnswer[], step = 'plan') {
   const runner = new BlockAgentRunner({ [step]: answers });
   const agent = { run: (input: AgentRunInput) => runner.run(input) } as unknown as AgentProcessRunner;
-  const visits = { tokenTotal: jest.fn().mockResolvedValue(0) } as unknown as VisitRepository;
   const prompts = (): string[] => runner.prompts.map((entry) => entry.prompt);
   return {
-    launcher: new AgentLauncher(agent, visits, new RunStop()),
+    launcher: new AgentLauncher(agent, new RunStop()),
     prompts,
     fresh: () => runner.prompts[0].freshPrompt,
   };
@@ -184,8 +181,7 @@ function launcherOfResults(results: AgentRunResult[]) {
       return next ? Promise.resolve(next) : Promise.reject(new Error('unexpected launch'));
     },
   } as unknown as AgentProcessRunner;
-  const visits = { tokenTotal: jest.fn().mockResolvedValue(0) } as unknown as VisitRepository;
-  return { launcher: new AgentLauncher(agent, visits, new RunStop()), prompts };
+  return { launcher: new AgentLauncher(agent, new RunStop()), prompts };
 }
 
 describe('AgentLauncher model host outage', () => {

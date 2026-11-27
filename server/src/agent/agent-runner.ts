@@ -9,9 +9,8 @@ import type { AgentTools } from '../integrations/agent-runtime/agent-runtime';
 import { runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SandboxService } from '../sandbox/sandbox.service';
 import type { AgentRunInput as BaseAgentRunInput } from './agent-run-input';
-import { emptyResult, stoppedFromOutside, type AgentRunResult } from './agent-result';
+import { stoppedFromOutside, type AgentRunResult } from './agent-result';
 export type { AgentRunResult } from './agent-result';
-import { callsExceeded } from './limits';
 import { NO_USAGE, type ChatUsage } from './since-recorded';
 import { RunStop } from './run-stop';
 import { AgentLaunch } from './agent-launch';
@@ -84,9 +83,6 @@ export class AgentProcessRunner {
   async run(input: AgentRunInput): Promise<AgentRunResult> {
     try {
       const env = this.config.env;
-      if (input.auto === true && callsExceeded(input.agentCalls, env.MAX_AGENT_CALLS)) {
-        return emptyResult('calls', 1, 0, this.clock.iso());
-      }
       const runtime = runtimeFor(input.runtime);
       await this.sandbox.assertReady(input.runtime);
       const carried = await carriedOutput(input);
@@ -133,8 +129,6 @@ export class AgentProcessRunner {
         prior = `${carried}${merged.output ?? ''}`;
         const budget = {
           halted: this.runStop.halted(input.runKey),
-          callsSoFar: input.agentCalls + calls,
-          maxCalls: env.MAX_AGENT_CALLS,
           attempts: tries,
           maxLaunches: env.MAX_LAUNCHES,
         };

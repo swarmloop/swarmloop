@@ -4,7 +4,7 @@ import { join } from 'path';
 import { recordStepEvent } from '../core/step-event-scope';
 import { sessionFileName, sessionHome } from '../history/session-group';
 import { agentStateDir } from '../sandbox/sandbox-launch';
-import { callsExceeded, retryCrash } from './limits';
+import { retryCrash } from './limits';
 import type { KillReason, SessionState } from './limits';
 import type { AgentRunResult } from './agent-result';
 
@@ -108,11 +108,9 @@ export async function carriedOutput(input: { resumeChatId: string | null; output
   return readFile(input.outputFile, 'utf8').catch(() => '');
 }
 
-/** How many launches and calls the run has used so far, and whether it was halted. */
+/** How many launches the run has used so far, and whether it was halted. */
 interface LaunchBudget {
   halted: boolean;
-  callsSoFar: number;
-  maxCalls: number;
   attempts: number;
   maxLaunches: number;
 }
@@ -124,7 +122,7 @@ interface Relaunch {
   prompt: string | null;
 }
 
-/** Another launch after time or idle, in the same loop as a crash retry. usd, tokens, and calls stay down. */
+/** Another launch after time or idle, in the same loop as a crash retry. usd and tokens stay down. */
 function continueAfterLimit(input: {
   killReason: KillReason | null;
   chatId: string | null;
@@ -138,7 +136,7 @@ function continueAfterLimit(input: {
 }
 
 function withinBudget(budget: LaunchBudget): boolean {
-  return !budget.halted && budget.attempts < budget.maxLaunches && !callsExceeded(budget.callsSoFar, budget.maxCalls);
+  return !budget.halted && budget.attempts < budget.maxLaunches;
 }
 
 /** A resumed chat that only reported orphaned tasks gets the follow-up once, without counting as an attempt. */

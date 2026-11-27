@@ -122,10 +122,10 @@ export async function writeReport(
     mkdirSync(directory, { recursive: true });
     writeFileSync(join(directory, runFileName(key, 'code-review-report', 'output')), 'starting\n');
     deps.onReportStart?.();
-    const { by, level } = deps.start;
+    const { by, level, round: admittedRound } = deps.start;
     const input = { visitOf: 'code-review' as const, prompt: deps.start.prompt, texts: [brief] };
     const result = await deps.door.outside(
-      { step: 'code-review-report', by, level, input, admitted: (id) => (startId = id) },
+      { step: 'code-review-report', by, level, input, admitted: (id) => (startId = id), round: admittedRound },
       {
         root: deps.root,
         run: opened.run,

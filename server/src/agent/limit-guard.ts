@@ -15,8 +15,6 @@ export class LimitGuard {
       spentUsd: number;
       maxRunUsd: number;
       stepUsdMax: number | null;
-      tokensInRun: number;
-      maxRunTokens: number | null;
       stepTokenMax: number | null;
       auto: boolean;
     },
@@ -40,9 +38,7 @@ export class LimitGuard {
       stepUsd: step.usd ?? 0,
       maxRunUsd: this.input.maxRunUsd,
       stepUsdMax: this.input.stepUsdMax,
-      tokensInRun: this.input.tokensInRun,
       stepTokens: step.tokensIn + step.tokensOut,
-      maxRunTokens: this.input.maxRunTokens,
       stepTokenMax: this.input.stepTokenMax,
       warned: this.warned,
       enforceSpend: this.input.auto,
