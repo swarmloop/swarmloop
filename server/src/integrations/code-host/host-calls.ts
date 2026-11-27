@@ -1,7 +1,13 @@
 import type { CodeHostServerEnv } from '../../config/env';
 import type { Clock } from '../../core/clock';
 import { GitRuleRefused } from '../../core/git-rule-refused';
-import { FetchFailed, isHostOutage, SwarmloopError, type HttpCallDraft } from '../../core/swarmloop-error';
+import {
+  FetchFailed,
+  isHostOutage,
+  PipelinesRefused,
+  SwarmloopError,
+  type HttpCallDraft,
+} from '../../core/swarmloop-error';
 import { request } from '../http';
 import { configuredHost } from './provider-message';
 import { remoteProject } from './remote-project';
@@ -14,6 +20,13 @@ export interface HostCall {
   url: string;
   method: string;
   payload?: string;
+}
+
+function rateLimited(headers: { get(name: string): string | null }): boolean {
+  return (
+    headers.get('retry-after') !== null ||
+    ['x-ratelimit-remaining', 'ratelimit-remaining'].some((name) => headers.get(name) === '0')
+  );
 }
 
 /** The HTTP plumbing every code host shares: credentials, calls, status checks and error mapping. */
@@ -58,18 +71,30 @@ export abstract class HostCalls {
   ): Promise<unknown> {
     const response = await this.hostRequest(url, headers, calls, body === undefined ? {} : { method: 'POST', body });
     this.assertStatus(response, calls, failure);
-    try {
-      return JSON.parse(response.body.toString('utf8')) as unknown;
-    } catch {
-      throw new FetchFailed(failure, calls);
-    }
+    return this.parse(response.body, calls, failure);
   }
 
-  protected parse(body: Buffer, calls: HttpCallDraft[]): unknown {
+  /**
+   * Reads the list of a branch's pipelines: a 403 is a refusal to read pipelines, not a rejected token. A 403 that a rate
+   * limit gave is no refusal: it is not read as a repository with no CI.
+   */
+  protected async readPipelineList(
+    url: string,
+    headers: Record<string, string>,
+    calls: HttpCallDraft[],
+    failure: string,
+  ): Promise<unknown> {
+    const response = await this.hostRequest(url, headers, calls);
+    if (response.status === 403 && !rateLimited(response.headers)) throw new PipelinesRefused(calls);
+    this.assertStatus(response, calls, failure);
+    return this.parse(response.body, calls, failure);
+  }
+
+  protected parse(body: Buffer, calls: HttpCallDraft[], failure = this.failure): unknown {
     try {
       return JSON.parse(body.toString('utf8')) as unknown;
     } catch {
-      throw new FetchFailed(this.failure, calls);
+      throw new FetchFailed(failure, calls);
     }
   }
 

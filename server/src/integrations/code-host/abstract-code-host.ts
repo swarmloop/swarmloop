@@ -130,6 +130,8 @@ export abstract class AbstractCodeHost extends AbstractMergeRequests implements 
     jobs?: boolean,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
 
+  abstract readBranchHasPipeline(ref: PipelineRef): Promise<{ found: boolean; httpCalls: HttpCallDraft[] }>;
+
   abstract readJobTrace(project: string, jobId: number): Promise<{ trace: string; httpCalls: HttpCallDraft[] }>;
 
   abstract cancelPipeline(project: string, id: number): Promise<{ httpCalls: HttpCallDraft[] }>;

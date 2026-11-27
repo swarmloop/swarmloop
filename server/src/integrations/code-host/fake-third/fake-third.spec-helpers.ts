@@ -137,6 +137,9 @@ class FakeThirdCodeHost extends AbstractCodeHost {
   readBranchPipeline(): never {
     return unsupported();
   }
+  readBranchHasPipeline(): never {
+    return unsupported();
+  }
   readJobTrace(): never {
     return unsupported();
   }

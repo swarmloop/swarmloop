@@ -147,6 +147,14 @@ describe('gitlab host', () => {
     expect(JSON.stringify(result.httpCalls)).not.toContain(TOKEN);
   });
 
+  it('finds a pipeline of the branch on any commit, and none on a branch without one', async () => {
+    const seen = mockFetch([[{ id: 3, sha: 'older', status: 'success' }]]);
+    expect((await service().readBranchHasPipeline({ project: 'group/demo', ref: 'main' })).found).toBe(true);
+    expect(seen[0]?.url).toContain('/pipelines?ref=main');
+    mockFetch([[]]);
+    expect((await service().readBranchHasPipeline({ project: 'group/demo', ref: 'main' })).found).toBe(false);
+  });
+
   it('reads the newest pipeline and keeps a yellow job off the trace', async () => {
     const seen = mockFetch([
       [

@@ -328,6 +328,11 @@ export class FakeCodeHost {
     return Promise.resolve({ snapshot: this.ci.snapshot(ref.sha, ref.ref), httpCalls: [] });
   }
 
+  readBranchHasPipeline(ref: { ref?: string }): Answer<'readBranchHasPipeline'> {
+    this.guard();
+    return Promise.resolve({ found: this.ci.snapshot(undefined, ref.ref) !== null, httpCalls: [] });
+  }
+
   /** What a host says when no run started: a closed request or a merge conflict, else nothing. */
   diagnoseMissingPipeline(): Promise<PipelineDiagnosis> {
     this.guard();

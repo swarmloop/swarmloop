@@ -119,6 +119,15 @@ describe('mainWait', () => {
     expect(mainWait(tasks[2], tasks, mains)).toBe('waits for a green main of web');
   });
 
+  it('does not hold a task for a main with no CI', () => {
+    const mains = new Map<string, MainReading>([
+      ['web', { state: 'none' }],
+      ['server', green],
+    ]);
+    expect(mainWait(tasks[0], tasks, mains)).toBeNull();
+    expect(mainWait(tasks[2], tasks, mains)).toBeNull();
+  });
+
   it('holds a task for a main it could not read, with the reason', () => {
     const mains = new Map<string, MainReading>([
       ['web', { state: 'unreadable', note: 'host did not answer; next try at 10:05' }],

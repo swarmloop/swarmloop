@@ -213,6 +213,34 @@ describe('github host', () => {
     ]);
   });
 
+  describe('whether a branch has a pipeline', () => {
+    const ref = { project: 'acme/demo', ref: 'main', sha: 'tip' };
+
+    it('is found by an Actions run of the branch', async () => {
+      mockFetch([{ workflow_runs: [{ id: 9, status: 'completed', conclusion: 'success' }] }]);
+      expect((await service().readBranchHasPipeline(ref)).found).toBe(true);
+    });
+
+    it('is found by a commit status of the parent of a tip that has none yet', async () => {
+      const seen = mockFetch([
+        { workflow_runs: [] },
+        { parents: [{ sha: 'before' }] },
+        { check_runs: [] },
+        { statuses: [{ id: 1, state: 'success', context: 'ci' }] },
+      ]);
+      expect((await service().readBranchHasPipeline(ref)).found).toBe(true);
+      expect(seen[1]?.url).toContain('/commits/tip');
+      expect(seen[2]?.url).toContain('/commits/before/check-runs');
+    });
+
+    it('is not found when no run and no check of the branch exists', async () => {
+      mockFetch([{ workflow_runs: [] }, { parents: [{ sha: 'before' }] }, ...QUIET]);
+      expect((await service().readBranchHasPipeline(ref)).found).toBe(false);
+      mockFetch([{ workflow_runs: [] }, { parents: [] }]);
+      expect((await service().readBranchHasPipeline(ref)).found).toBe(false);
+    });
+  });
+
   it('skips the job list while a run is still going', async () => {
     const seen = mockFetch([
       { workflow_runs: [{ id: 9, status: 'in_progress', html_url: 'https://github.com/acme/demo/actions/runs/9' }] },

@@ -21,10 +21,15 @@ export interface BacklogTask extends Subtask {
   unreadMerge?: string;
 }
 
-/** What a repository's main reads as; `unreadable` carries the words for why it could not be read. */
+/** What a repository's main reads as; `none` is a main with no CI, and `unreadable` carries the words for why it could not be read. */
 export type MainReading =
   | (Pick<RepositoryMainView, 'state'> & Partial<Pick<RepositoryMainView, 'head'>>)
   | { state: 'unreadable'; note: string };
+
+/** Whether a main lets work start and merge: it is green, or it has no CI. */
+export function mainPasses(reading: MainReading | undefined): boolean {
+  return reading?.state === 'green' || reading?.state === 'none';
+}
 
 /** The state of a task's own run, as far as its shown status needs it. */
 export interface RunFacts {
@@ -95,7 +100,7 @@ export function mainWait(
     if (task.fixesMain === repo) continue;
     const reading = mains.get(repo);
     if (reading?.state === 'unreadable') return `waits for a green main of ${repo}: ${reading.note}`;
-    if (reading?.state !== 'green') return `waits for a green main of ${repo}`;
+    if (!mainPasses(reading)) return `waits for a green main of ${repo}`;
   }
   return null;
 }

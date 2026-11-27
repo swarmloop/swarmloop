@@ -1,4 +1,4 @@
-import { FetchFailed, HostUnavailable, MergeConflict, SwarmloopError } from '../core/swarmloop-error';
+import { FetchFailed, HostUnavailable, MergeConflict, PipelinesRefused, SwarmloopError } from '../core/swarmloop-error';
 import type {
   CodeHost,
   MergeGate,
@@ -26,6 +26,8 @@ interface FakeProject {
   /** The pipeline per commit: a commit with none has no entry. */
   pipelines: Map<string, PipelineSnapshot>;
   merges: number;
+  /** Whether the host refuses to read the project's pipelines. */
+  refusesPipelines: boolean;
   methods: readonly MergeMethod[];
   /** How each merge of the project was made. */
   merged: MergeHow[];
@@ -70,7 +72,15 @@ export class FakeBacklogHost implements CodeHost {
   }
 
   addProject(project: string, branch = 'main', head = `${project}-head-0`): void {
-    this.projects.set(project, { branch, head, pipelines: new Map(), merges: 0, methods: DEFAULT_METHODS, merged: [] });
+    this.projects.set(project, {
+      branch,
+      head,
+      pipelines: new Map(),
+      merges: 0,
+      refusesPipelines: false,
+      methods: DEFAULT_METHODS,
+      merged: [],
+    });
   }
 
   /** The merge methods the project allows, in order; a merge by another method is refused. */
@@ -92,6 +102,11 @@ export class FakeBacklogHost implements CodeHost {
     const found = this.project(project);
     if (snapshot) found.pipelines.set(found.head, snapshot);
     else found.pipelines.delete(found.head);
+  }
+
+  /** Every read of the project's pipelines throws `PipelinesRefused`, as a host with CI turned off does. */
+  refusePipelines(project: string, refuse = true): void {
+    this.project(project).refusesPipelines = refuse;
   }
 
   headOf(project: string): string {
@@ -150,6 +165,7 @@ export class FakeBacklogHost implements CodeHost {
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
     await this.record('readBranchPipeline', ref);
     const project = this.project(ref.project);
+    if (project.refusesPipelines) throw new PipelinesRefused();
     const request = [...this.requests.entries()].find(
       ([key, found]) => key.startsWith(`${ref.project}#`) && found.gate.head === ref.sha,
     )?.[1];
@@ -157,6 +173,15 @@ export class FakeBacklogHost implements CodeHost {
       return { snapshot: { ...pipelineOf('running'), checks: request.checks }, httpCalls: [] };
     }
     return { snapshot: project.pipelines.get(ref.sha ?? project.head) ?? null, httpCalls: [] };
+  }
+
+  /** Whether any commit of the project has a stored pipeline with a run or a check. */
+  async readBranchHasPipeline(ref: PipelineRef): Promise<{ found: boolean; httpCalls: HttpCallDraft[] }> {
+    await this.record('readBranchHasPipeline', ref);
+    const project = this.project(ref.project);
+    if (project.refusesPipelines) throw new PipelinesRefused();
+    const found = [...project.pipelines.values()].some((one) => one.runs.length > 0 || one.checks.length > 0);
+    return { found, httpCalls: [] };
   }
 
   async readMergeGate(project: string, iid: number): Promise<MergeGate & { httpCalls: HttpCallDraft[] }> {

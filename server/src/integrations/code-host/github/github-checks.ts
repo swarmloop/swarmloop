@@ -179,6 +179,13 @@ export async function readChecks(read: Read, repo: string, sha: string, runs: Gi
   return [...checks, ...statuses.map(commitStatus)];
 }
 
+/** Whether the first parent of a commit has a check run or a commit status: CI that reports without Actions runs. */
+export async function parentHasChecks(read: Read, repo: string, sha: string): Promise<boolean> {
+  const commit = (await read(`${repo}/commits/${encodeURIComponent(sha)}`)) as { parents?: { sha?: string }[] } | null;
+  const parent = commit?.parents?.[0]?.sha;
+  return parent ? (await readChecks(read, repo, parent, [])).length > 0 : false;
+}
+
 export function listJobs(status: string, jobs: boolean): boolean {
   if (status === 'running') {
     return jobs;

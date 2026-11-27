@@ -30,6 +30,11 @@ describe('decideMerge', () => {
     expect(decideMerge(facts())).toEqual({ kind: 'merge', head: 'h1' });
   });
 
+  it('merges on a main with no CI in mode green, and waits for the OK in mode ok', () => {
+    expect(decideMerge(facts({ main: { state: 'none' } }))).toEqual({ kind: 'merge', head: 'h1' });
+    expect(decideMerge(facts({ main: { state: 'none' }, mode: 'ok' })).kind).toBe('wait');
+  });
+
   it('names a request closed without a merge', () => {
     expect(decideMerge(facts({}, { state: 'closed' }))).toEqual({ kind: 'person', note: CLOSED_NOTE });
   });

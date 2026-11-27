@@ -12,18 +12,18 @@ import { CommandService } from '../command.service';
 import { BacklogEvents } from './backlog-events';
 import { MainHeld } from './main-held';
 import { readMains } from './main-readings';
-import type { MainReading } from './task-readiness';
+import { mainPasses, type MainReading } from './task-readiness';
 
 type Backlog = Awaited<ReturnType<BacklogRepository['listBacklogs']>>[number];
 
-/** A repository whose main is green at a head an epic does not hold yet. */
+/** A repository whose main is green, or has no CI, at a head an epic does not hold yet. */
 interface NewHead {
   repository: string;
   head: string;
 }
 
 /**
- * Brings a new green main into the running epics of the backlogs. An epic whose subtasks are idle is sent the same
+ * Brings a new green main, or a new main with no CI, into the running epics of the backlogs. An epic whose subtasks are idle is sent the same
  * `rebase` a person's Rebase sends; the key names the epic and the heads, so each head moves an epic once.
  */
 @Injectable()
@@ -59,8 +59,9 @@ export class EpicMainMoves {
     const heads: NewHead[] = [];
     for (const repository of task.repositories) {
       const reading = mains.get(repository);
-      if (reading?.state !== 'green' || !reading.head) continue;
-      if (!(await this.held.holds(epic.key, repository, reading.head))) heads.push({ repository, head: reading.head });
+      const head = reading && 'head' in reading ? reading.head : null;
+      if (!mainPasses(reading) || !head) continue;
+      if (!(await this.held.holds(epic.key, repository, head))) heads.push({ repository, head });
     }
     return heads;
   }
