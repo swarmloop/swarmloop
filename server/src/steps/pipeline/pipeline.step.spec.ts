@@ -21,6 +21,10 @@ import { DocumentRepository } from '../../history/document.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 
 import { RunRebase } from '../run-rebase';
+import { CommandService } from '../../pipeline/command.service';
+import { PERSON_RESUME } from '../../pipeline/resume-sender';
+import { writeRunState } from '../../history/run-state';
+import { REASON } from '../../contract/reason-words';
 
 import { RunStop } from '../../agent/run-stop';
 
@@ -73,6 +77,15 @@ describe('pipeline step', () => {
           code: 'merge-conflict' as const,
           httpCalls: [],
         }));
+        jest.spyOn(app.get(RunRebase), 'baseTips').mockResolvedValue('demo@tip1');
+        jest.spyOn(app.get(RunRebase), 'subtasksIdle').mockResolvedValue(true);
+        const handed = jest.spyOn(app.get(RunRebase), 'handHostConflict').mockImplementation(async () => {
+          const run = (await runs.findRun(key))!;
+          run.currentStep = 'implement';
+          run.status = 'waiting';
+          await storeRun(runs, run);
+          return 'resolve';
+        });
         const action = jest.spyOn(app.get(RunRebase), 'rebase').mockImplementation(async () => {
           if (mode === 'failure') throw new Error('fetch failed');
           const run = (await runs.findRun(key))!;
@@ -94,7 +107,7 @@ describe('pipeline step', () => {
           expect((await runs.findRun(key))?.status).toBe('blocked');
           return;
         }
-        expect(action).toHaveBeenCalledWith(key);
+        expect(action).toHaveBeenCalledWith(key, false, false, false, false, 'MR has conflicts');
         if (mode === 'failure') {
           expect(result.exitCode).toBe(1);
           expect((await runs.findRun(key))?.status).toBe('blocked');
@@ -108,13 +121,79 @@ describe('pipeline step', () => {
         await storeRun(runs, again);
         action.mockClear();
         const repeated = await app.get(PipelineService).step('pipeline', key);
-        expect(repeated.message).toContain('already attempted');
+        expect(repeated.message).toContain('merge conflict sent to the implement agent');
+        expect(handed).toHaveBeenCalledWith(key, 'MR has conflicts');
         expect(action).not.toHaveBeenCalled();
+        const parked = (await runs.findRun(key))!;
+        expect([parked.status, parked.currentStep]).toEqual(['waiting', 'implement']);
       } finally {
         await app.close();
       }
     },
   );
+
+  it('goes on after a person resumes a run blocked with the old already-attempted text', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-auto-resume-'));
+    const app = await boot(
+      root,
+      jest.fn(async () => ({ snapshot: null, httpCalls: [] })),
+      jest.fn(),
+    );
+    try {
+      const key = 'PROJ-322';
+      const cwd = join(root, 'worktrees', key, 'demo');
+      gitRepo(cwd, 'https://gitlab.example/group/demo.git');
+      mkdirSync(join(cwd, '.github', 'workflows'), { recursive: true });
+      await writeFile(join(cwd, '.github', 'workflows', 'ci.yml'), 'name: CI\non: pull_request\n');
+      git(cwd, ['checkout', '-b', 'feature/task']);
+      const sha = commitAll(cwd, 'base');
+      await seed(app, key, `project: group/demo\nref: feature/task\nsha: ${sha}\n`);
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      await documents.putDocument((await runs.findRun(key))!, 'repos', 'demo\n');
+      await documents.putDocument(
+        (await runs.findRun(key))!,
+        'pipeline_rebases',
+        JSON.stringify([`group/demo@${sha}`]),
+      );
+      app.get(CodeHostRegistry).byName('gitlab').diagnoseMissingPipeline = jest.fn(async () => ({
+        reason: 'MR has conflicts',
+        code: 'merge-conflict' as const,
+        httpCalls: [],
+      }));
+      jest.spyOn(app.get(RunRebase), 'baseTips').mockResolvedValue('demo@tip1');
+      jest.spyOn(app.get(RunRebase), 'subtasksIdle').mockResolvedValue(true);
+      const move = jest.spyOn(app.get(RunRebase), 'rebase').mockImplementation(async () => {
+        const run = (await runs.findRun(key))!;
+        run.currentStep = 'implement';
+        run.status = 'waiting';
+        await storeRun(runs, run);
+        return 'start';
+      });
+      const blocked = (await runs.findRun(key))!;
+      writeRunState(blocked, {
+        status: 'blocked',
+        reason: {
+          code: REASON.loopLimit,
+          message: 'merge conflicts; automatic rebase was already attempted for this SHA',
+        },
+      });
+      await storeRun(runs, blocked);
+
+      await app.get(CommandService).accept('resume', key, { ...PERSON_RESUME });
+      const resumed = (await runs.findRun(key))!;
+      resumed.currentStep = 'pipeline';
+      await storeRun(runs, resumed);
+      await app.get(PipelineService).step('pipeline', key);
+
+      expect(move).toHaveBeenCalledTimes(1);
+      const after = (await runs.findRun(key))!;
+      expect(after.status).not.toBe('blocked');
+      expect(after.currentStep).toBe('implement');
+    } finally {
+      await app.close();
+    }
+  });
 
   it('goes through the journal and the generation when the merge request conflicts with its target', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-auto-journal-'));

@@ -153,6 +153,8 @@ describe('pipeline step while the host is down', () => {
         code: 'merge-conflict' as const,
         httpCalls: [],
       }));
+      jest.spyOn(app.get(RunRebase), 'baseTips').mockResolvedValue('demo@tip1');
+      jest.spyOn(app.get(RunRebase), 'subtasksIdle').mockResolvedValue(true);
       jest.spyOn(app.get(RunRebase), 'rebase').mockRejectedValue(down());
       await app.get(PipelineService).step('pipeline', key);
       await expectWaiting(app, key);

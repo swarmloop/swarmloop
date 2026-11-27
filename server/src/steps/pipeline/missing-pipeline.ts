@@ -10,14 +10,15 @@ import { withWorktree } from '../../git/worktree-lock';
 import { originProject, type Seen } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
 import { automaticRebase } from './pipeline-rebase';
-import { waitForCi } from './ci-not-started';
+import { CI_LOOK_MS, waitForCi } from './ci-not-started';
+import { ERROR_CODES } from '../../contract/error-codes';
 
 /** Only the trigger is automatic. Rebase itself is the action used by the API button. */
 export async function missingPipeline(input: {
   ctx: StepContext;
   runs: RunRepository;
   events: EventRepository;
-  rebase: Pick<RunRebase, 'rebase'>;
+  rebase: Pick<RunRebase, 'rebase' | 'subtasksIdle' | 'baseTips' | 'handHostConflict'>;
   halted: () => boolean;
   root: string;
   limit: number;
@@ -30,6 +31,7 @@ export async function missingPipeline(input: {
   const run = ctx.opened.run;
   const notes = [input.missing.map((repo) => `${repo} CI did not start`).join(', ')];
   const conflicts: PipelineRef[] = [];
+  const reasons: string[] = [];
   const unexplained: PipelineRef[] = [];
   let closed = false;
   for (const ref of records.filter((ref) =>
@@ -40,7 +42,10 @@ export async function missingPipeline(input: {
     if (!diagnosis.code) unexplained.push(ref);
     ctx.calls.push(...diagnosis.httpCalls);
     if (diagnosis.reason) notes.push(diagnosis.reason);
-    if (diagnosis.code === 'merge-conflict') conflicts.push(ref);
+    if (diagnosis.code === 'merge-conflict') {
+      conflicts.push(ref);
+      if (diagnosis.reason) reasons.push(diagnosis.reason);
+    }
     if (diagnosis.code === 'closed') closed = true;
   }
   const end = (outcome: 'failed' | 'blocked', detail?: string): StepResult => {
@@ -58,24 +63,51 @@ export async function missingPipeline(input: {
     return unexplained.length === 0 ? end('failed') : waitForCi({ ctx, events, host, refs: unexplained, notes });
   }
   const history = JSON.parse((await ctx.reread(ARTIFACTS.pipelineRebases)) ?? '[]') as string[];
-  const sources = conflicts.map((ref) => `${ref.project}@${ref.sha ?? 'unknown'}`);
-  if (history.some((source) => sources.includes(source)))
-    return end('blocked', 'automatic rebase was already attempted for this SHA');
-  if (run.attemptsPipeline >= input.limit) return end('blocked', 'automatic rebase limit reached');
+  if (run.attemptsPipeline >= input.limit) {
+    return end('blocked', `automatic rebase limit reached; tried: ${triedText(history)}`);
+  }
   const changed = await changedWorktree(input.root, run.key, ctx, records);
   if (changed) return end('blocked', changed);
+  const retryAt = new Date(ctx.clock.now() + CI_LOOK_MS).toISOString();
+  const wait = (text: string, outputs: StepResult['outputs'], afterClose?: StepResult['afterClose']): StepResult => ({
+    route: { to: 'wait', reason: text, code: ERROR_CODES.CI_NOT_STARTED, retryAt },
+    summary: `${ctx.opened.startedAt} ${text}\n${notes.join('\n')}`,
+    outputs,
+    visit: { status: 'waiting' },
+    afterClose,
+  });
+  const log = [{ artifact: ARTIFACTS.pipelineLog, value: `result: rebase\n${notes.join('\n')}\n` }];
+  if (!(await rebase.subtasksIdle(run))) {
+    return wait(`the epic's parts are still running; next try at ${retryAt}`, log);
+  }
+  const tips = await rebase.baseTips(run.key);
+  const keys = conflicts.map((ref) => `${ref.project}@${ref.sha ?? 'unknown'}@${tips}`);
+  const hostConflict = reasons.join('\n');
+  if (keys.every((key) => history.includes(key))) {
+    const text = `merge conflict sent to the implement agent; next look at ${retryAt}`;
+    return wait(text, log, async (ended) => {
+      await rebase.handHostConflict(run.key, hostConflict);
+      return ended;
+    });
+  }
   run.attemptsPipeline += 1;
   await events.recordLoop(run, 'pipeline', run.attemptsPipeline, 'merge conflict: automatic rebase');
-  return {
-    route: { to: 'wait', reason: 'automatic rebase' },
-    summary: `${ctx.opened.startedAt} automatic rebase\n${notes.join('\n')}`,
-    outputs: [
-      { artifact: ARTIFACTS.pipelineRebases, value: JSON.stringify([...history, ...sources]) },
-      { artifact: ARTIFACTS.pipelineLog, value: `result: rebase\n${notes.join('\n')}\n` },
-    ],
-    visit: { status: 'waiting' },
-    afterClose: automaticRebase({ ctx, runs, rebase, halted: input.halted }),
-  };
+  return wait(
+    `automatic rebase; next look at ${retryAt}`,
+    log,
+    automaticRebase({ ctx, runs, rebase, halted: input.halted, hostConflict, record: { history, keys } }),
+  );
+}
+
+/** Each recorded try as `<project> at <head> onto <tips>`; an old entry has no tips. */
+function triedText(history: string[]): string {
+  if (history.length === 0) return 'none';
+  return history
+    .map((entry) => {
+      const [project, head, ...tips] = entry.split('@');
+      return tips.length > 0 ? `${project} at ${head} onto ${tips.join('@')}` : `${project} at ${head}`;
+    })
+    .join('; ');
 }
 
 async function changedWorktree(

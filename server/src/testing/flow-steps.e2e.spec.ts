@@ -140,11 +140,10 @@ describe('the real merge-request and pipeline steps on the fake host', () => {
     git(flow.tree, ['reset', '--hard', stuck]);
     await flow.app.pipeline.step('pipeline', KEY);
     await tick();
-    const { state, reason } = await stateNow();
-    expect(state).toBe('blocked');
-    expect(reason?.message).toContain('automatic rebase was already attempted for this SHA');
-    expect(actionsFor(state, reason?.code ?? null)).toContain(NEEDS_PERSON[reason?.code ?? '']);
-    expect((await find()).attemptsPipeline).toBe(1);
+    const run = await find();
+    expect([run.status, run.currentStep]).toEqual(['waiting', 'implement']);
+    expect(await flow.app.app.get(DocumentRepository).latestBody(KEY, 'rebase_conflict')).toContain('host-conflict');
+    expect(run.attemptsPipeline).toBe(1);
   });
 });
 

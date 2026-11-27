@@ -11,8 +11,9 @@ import { CI_INFRA_SOURCE, issueOf } from '../shared/handoff';
 import { blockedEnd } from './pipeline-result';
 import { report } from './pipeline-red';
 
-/** How long after a look the next one happens. */
-const CI_LOOK_MS = 2 * 60_000;
+import { CI_LOOK_MS } from './ci-look';
+
+export { CI_LOOK_MS };
 /** How long a commit has no run before the host is nudged, once. */
 const CI_NUDGE_AFTER_MS = 10 * 60_000;
 /** How long a commit has no run before a person is asked. */
