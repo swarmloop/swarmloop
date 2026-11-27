@@ -123,7 +123,18 @@ describe('AgentLauncher result', () => {
     await launcher.launch(requestOf());
     expect(prompts()[1]).not.toContain('FULL PROMPT');
     expect(prompts()[1]).toContain('- items (array of string, required)');
-    expect(prompts()[1]).toContain('Send the result block again and change nothing else.');
+    expect(prompts()[1]).toContain(
+      'Answer with the result block only, with nothing before or after it, and change nothing else in it.',
+    );
+  });
+
+  it('takes a follow-up answered with only the block', async () => {
+    const { launcher } = launcherOf([
+      { block: { items: 'x', decision: 'maybe' } },
+      { text: '```json\n{"items":["b"],"decision":"ok"}\n```' },
+    ]);
+    const launched = await launcher.launch(requestOf());
+    expect(launched.resultValue).toEqual({ items: ['b'], decision: 'ok' });
   });
 
   it('shows the part of a wrong field in the follow-up', async () => {

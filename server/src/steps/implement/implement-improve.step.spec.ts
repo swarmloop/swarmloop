@@ -38,7 +38,7 @@ describe('implement-improve step', () => {
 
     expect(done.exitCode).toBe(0);
     expect(await agentCalls(app, 'PROJ-69')).toBe(2);
-    expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).toContain('End with the result block as before.');
+    expect((agent.mock.calls[1]?.[0] as AgentRunInput).prompt).toContain('Answer with the result block only');
   });
 
   it('stores a second implementation note and waits for code review', async () => {

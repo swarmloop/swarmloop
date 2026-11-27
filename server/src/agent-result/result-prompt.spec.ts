@@ -31,7 +31,7 @@ describe('resultFollowUp', () => {
     const text = resultFollowUp(['a: bad', 'b: worse'], sample);
     expect(text).toContain('- a: bad');
     expect(text).toContain('- b: worse');
-    expect(text).toContain(RESULT_AS_BEFORE);
+    expect(text).toContain('Answer with the result block only');
     expect(text).not.toContain('(string');
   });
 
@@ -73,6 +73,36 @@ describe('resultFollowUp', () => {
     it('names the fields an action needs, with their types', () => {
       const text = follow({ action: 'addItem', title: 't' });
       expect(text).toMatch(/- addItem needs: id \(string\), title \(string\), description \(string\)/);
+    });
+
+    it('groups the refusal of one key in many actions into one line with every place', () => {
+      const actions = [0, 1, 2].map(() => ({ action: 'pause', slug: 'x' }));
+      const read = readResult(backlogTurn, `\`\`\`json\n${JSON.stringify({ actions })}\n\`\`\``);
+      const text = resultFollowUp(read.ok ? [] : read.errors, backlogTurn);
+      expect(text).toContain(
+        '- actions[].slug: "actions[].slug" is not allowed (3 places: actions.0.slug, actions.1.slug, actions.2.slug)',
+      );
+      expect(text).not.toContain('- actions.0.slug');
+      expect(text.split('- actions[] takes only these keys: action, reason,')).toHaveLength(2);
+      expect(text).toContain('  - addItem needs: id (string), title (string), description (string)');
+    });
+
+    it('lists the keys of the result for an unknown key at the root', () => {
+      const read = readResult(backlogTurn, '```json\n{"kind":"x"}\n```');
+      const text = resultFollowUp(read.ok ? [] : read.errors, backlogTurn);
+      expect(text).toContain('- the result takes only these keys: say, actions');
+    });
+
+    it('keeps every place and every line whole for many errors with long keys', () => {
+      const key = 'a'.repeat(120);
+      const errors = Array.from(
+        { length: 200 },
+        (_, index) => `actions.${index}.${key}: "actions[${index}].${key}" is not allowed`,
+      );
+      const text = resultFollowUp(errors, backlogTurn);
+      errors.forEach((error) => expect(text).toContain(error.slice(0, error.indexOf(': '))));
+      expect(text).toContain(`- actions[].${key}: "actions[].${key}" is not allowed (200 places: `);
+      expect(text.split('\n').every((line) => line === '' || /^( {2})?- |^The result|^Answer/.test(line))).toBe(true);
     });
 
     it('shows the action field once for an action given as an object', () => {

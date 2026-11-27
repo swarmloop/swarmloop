@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
+import { BACKLOG_ACTIONS_MARK, backlogActionsText } from './backlog-actions-text';
 import { NEAR_TESTS_MARK, NEAR_TESTS_RULE } from './near-tests-rule';
 import { PLANNER_CORE_MARK, plannerCore } from './planner-core';
 import { READING_WITH_A_READER_MARK, readingWithAReader } from './reader-asking';
@@ -66,13 +67,17 @@ function markedText(line: string): string {
   if (line === PLANNER_CORE_MARK) {
     return plannerCore();
   }
+  if (line === BACKLOG_ACTIONS_MARK) {
+    return backlogActionsText();
+  }
   return line === READING_WITH_A_READER_MARK ? readingWithAReader() : line;
 }
 
 /**
  * Keeps a `[plan tool] ` line only for a runtime with a plan tool and a `[no plan tool] ` line only for one without.
  * A `[near tests rule]` line becomes the near-tests rule, a `[planner core]` line the planners' core text and a
- * `[reading with a reader]` line the text of the agents that have a reader.
+ * `[reading with a reader]` line the text of the agents that have a reader, and a `[backlog actions]` line the list of
+ * the actions of a backlog turn.
  */
 export function skillText(raw: string, planTool: boolean): string {
   const kept: string[] = [];

@@ -8,6 +8,10 @@ describe('result block', () => {
     expect(parseResultBlock(`Done.\n\n${block('{"a": 1}')}`)).toEqual({ ok: true, value: { a: 1 } });
   });
 
+  it('reads an answer that is only the block', () => {
+    expect(parseResultBlock(block('{"a":1}'))).toEqual({ ok: true, value: { a: 1 } });
+  });
+
   it('reports an answer with no block', () => {
     const parsed = parseResultBlock('Only prose.');
     expect(parsed).toEqual({ ok: false, error: expect.stringContaining('no result block') });

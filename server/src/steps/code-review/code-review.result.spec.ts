@@ -102,7 +102,7 @@ describe('code-review step result blocks', () => {
     expect(quality).toHaveLength(2);
     expect(quality[1].prompt).toContain('The result block of your last answer was not accepted');
     expect(quality[1].prompt).toContain('no result block');
-    expect(quality[1].prompt).toContain(RESULT_AS_BEFORE);
+    expect(quality[1].prompt).toContain('Answer with the result block only');
   });
 
   it('fails the step after a third invalid answer and names the errors', async () => {

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { checksStillRed, implementFollowUp, implementImproveFollowUp } from '../implement/implement.prompts';
+import { BACKLOG_ACTIONS_MARK, backlogActionsText } from './backlog-actions-text';
 import { NEAR_TESTS_MARK, NEAR_TESTS_RULE } from './near-tests-rule';
 import { PLANNER_CORE_MARK, plannerCore } from './planner-core';
 import { READING_WITH_A_READER_MARK, readingWithAReader } from './reader-asking';
@@ -304,6 +305,12 @@ describe('skillText', () => {
     expect(skillText(['a', PLANNER_CORE_MARK, 'b'].join('\n'), true)).toBe(['a', plannerCore(), 'b'].join('\n'));
   });
 
+  it('swaps the backlog actions mark for the action list', () => {
+    expect(skillText(['a', BACKLOG_ACTIONS_MARK, 'b'].join('\n'), true)).toBe(
+      ['a', backlogActionsText(), 'b'].join('\n'),
+    );
+  });
+
   it('swaps the reading-with-a-reader mark for the asking text', () => {
     expect(skillText(['a', READING_WITH_A_READER_MARK, 'b'].join('\n'), true)).toBe(
       ['a', readingWithAReader(), 'b'].join('\n'),
@@ -455,6 +462,8 @@ describe('the reader', () => {
     expect(prompt).toContain('contradicts');
     expect(prompt).toContain('Give no advice, no plan and no opinion');
     expect(prompt).toContain('You never change a file');
+    expect(prompt).toContain('In a planner turn git is unavailable');
+    expect(prompt).toContain("A task's proof must be something its own run can check");
   });
 
   it('names no runtime, model or tool', () => {

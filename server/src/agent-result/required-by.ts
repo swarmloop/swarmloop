@@ -4,13 +4,20 @@ import type Joi from 'joi';
 export interface RequiredBy {
   field: string;
   needs: Record<string, string[]>;
+  /** The fields each choice may also give; for the prompt and the follow-up only, the check does not read it. */
+  takes?: Record<string, string[]>;
 }
 
 /**
  * An object whose `field` is a choice, and each choice needs the fields listed for it. The object refuses a value that
- * misses one, and keeps the list in its description for `requiredByOf`.
+ * misses one, and keeps the lists in its description for `requiredByOf`; `takes` lists the fields a choice may also give.
  */
-export function requiredBy(schema: Joi.ObjectSchema, field: string, needs: Record<string, string[]>): Joi.ObjectSchema {
+export function requiredBy(
+  schema: Joi.ObjectSchema,
+  field: string,
+  needs: Record<string, string[]>,
+  takes?: Record<string, string[]>,
+): Joi.ObjectSchema {
   return schema
     .custom((value: Record<string, unknown>, helpers) => {
       const missing = needs[value[field] as string].filter((key) => value[key] === undefined);
@@ -18,7 +25,7 @@ export function requiredBy(schema: Joi.ObjectSchema, field: string, needs: Recor
         ? helpers.message({ custom: `${String(value[field])} needs ${missing.join(', ')}` })
         : value;
     })
-    .meta({ requiredBy: { field, needs } satisfies RequiredBy });
+    .meta({ requiredBy: { field, needs, takes } satisfies RequiredBy });
 }
 
 /** The list `requiredBy` put into a described schema, or undefined. */

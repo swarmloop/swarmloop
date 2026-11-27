@@ -72,7 +72,7 @@ describe('implement step result block', () => {
     expect(out.calls).toBe(2);
     expect(out.prompts[1]).toContain('implementation');
     expect(out.prompts[1]).toContain('summary');
-    expect(out.prompts[1]).toContain(RESULT_AS_BEFORE);
+    expect(out.prompts[1]).toContain('Answer with the result block only');
     expect(out.body('implementation')).toBe('- fixed it\n');
   });
 
