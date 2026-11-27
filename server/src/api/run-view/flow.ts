@@ -19,6 +19,7 @@ import { knownAttempts, OutputFiles } from '../../core/attempt-output';
 import { chipStatus, chipAttempts, reportChip, reviewPreparing, reviewerRound } from './chips';
 import type { OpenReviewRound } from '../../steps/shared/open-review-rounds';
 import { awaitsRelaunch } from './relaunch';
+import { lastOutcome } from './last-outcome';
 export { latest } from './status';
 import { PHASES } from './run-view.types';
 
@@ -67,22 +68,28 @@ export function metrics(
   };
 }
 
-/** A reviewer chip, or the report, of a code review the open relaunch runs again reads idle until the review starts. */
+/**
+ * A reviewer chip, or the report, of a code review the open relaunch runs again reads `again` when it has run before and
+ * idle when it has not, until the review starts.
+ */
 function reviewChip(
   status: string,
   parentStat: StepStatEntity | undefined,
   relaunch: RelaunchView | undefined,
 ): string {
   const started = status === 'running' || status === 'preparing';
-  return !started && awaitsRelaunch('code-review', parentStat, relaunch) ? 'idle' : status;
+  if (started || !awaitsRelaunch('code-review', parentStat, relaunch)) return status;
+  return status === 'idle' ? 'idle' : 'again';
 }
 
 function reportOf(
   chip: ReturnType<typeof reportChip>,
   latestStats: Map<string, StepStatEntity>,
   relaunch: RelaunchView | undefined,
+  sentBack: () => string | undefined,
 ): ReturnType<typeof reportChip> {
-  return { ...chip, status: reviewChip(chip.status, latestStats.get('code-review'), relaunch) };
+  const status = reviewChip(chip.status, latestStats.get('code-review'), relaunch);
+  return { ...chip, status, ...lastOutcome(status, chip.status, sentBack) };
 }
 
 export function phases(
@@ -94,6 +101,7 @@ export function phases(
   open?: OpenReviewRound,
   rows: CheckCommandView[] = [],
   relaunch?: RelaunchView,
+  serverSteps: ReadonlySet<string> = new Set(),
 ): FlowView['phases'] {
   const latestStats = new Map<string, StepStatEntity>();
   for (const stat of stats) {
@@ -101,6 +109,11 @@ export function phases(
   }
   const outputs = new OutputFiles(root, { attempts: knownAttempts(run.activeAttempt, stats) });
   const preparing = reviewPreparing(outputs, run);
+  const edges = returns(run, loops, rows);
+  // How a step that went back is said: its own note, else its return edge in words.
+  const sentBack = (name: string) => (): string | undefined =>
+    returnNote(name, latestStats.get(pipelineStepOf(name)), documents, loops, rows).returnNote ??
+    edges.find((edge) => edge.from === pipelineStepOf(name))?.words;
   return PHASES.map((phase) => {
     const steps = phase.steps.map((name) => {
       const parent = pipelineStepOf(name);
@@ -110,13 +123,15 @@ export function phases(
       const log = isReviewStep(name) && !own && !round ? outputs.read(run.key, name, run.activeAttempt) : '';
       const chip = chipStatus(name, run, stat, documents, round, log, relaunch);
       const status = isReviewStep(name) ? reviewChip(chip, latestStats.get(parent), relaunch) : chip;
+      const before = status === 'again' ? chipStatus(name, run, stat, documents, round, log) : status;
       return {
         name,
         status,
         current: isReviewStep(name) ? status === 'running' || status === 'preparing' : parent === run.currentStep,
-        attempts: chipAttempts(name, run, stats, documents, outputs, round),
+        attempts: chipAttempts(name, run, stats, documents, outputs, round, serverSteps),
         ...(status === 'skipped' && name === 'implement-improve' ? { note: IMPROVE_SKIPPED_NOTE } : {}),
         ...(status === 'returned' ? returnNote(name, latestStats.get(parent), documents, loops, rows) : {}),
+        ...lastOutcome(status, before, sentBack(name)),
       };
     });
     if (phase.phase !== 'code-review') {
@@ -127,7 +142,12 @@ export function phases(
       phase: phase.phase,
       steps: [
         ...steps,
-        reportOf(reportChip(run, stats, documents, outputs, preparing, open, working), latestStats, relaunch),
+        reportOf(
+          reportChip(run, stats, documents, outputs, preparing, open, working),
+          latestStats,
+          relaunch,
+          sentBack('code-review'),
+        ),
       ],
     };
   });

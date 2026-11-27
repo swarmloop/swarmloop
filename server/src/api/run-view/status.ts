@@ -20,7 +20,7 @@ export function stepStatus(
     return run.status === 'done' ? 'done' : run.status;
   }
   if (awaitsRelaunch(name, stat, relaunch)) {
-    return 'idle';
+    return stat ? 'again' : 'idle';
   }
   if (stat?.status === 'skipped') {
     return 'skipped';

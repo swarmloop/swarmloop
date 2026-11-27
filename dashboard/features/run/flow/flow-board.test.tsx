@@ -190,11 +190,12 @@ describe('FlowBoard', () => {
     expect(screen.getByRole('button', { name: 'implement-improve' })).not.toHaveAttribute('aria-current');
   });
 
-  it('draws no return line, and no raw id or command in the board text', () => {
+  it('draws one quiet row per return after the work passed, and ties implement ×2 to it', async () => {
+    const user = userEvent.setup({ delay: null });
     const board: FlowView['phases'] = [
-      { phase: 'implementation', steps: [{ name: 'implement', status: 'waiting', current: true, attempts: 2 }] },
-      { phase: 'checks', steps: [{ name: 'checks', status: 'returned', current: false, attempts: 1 }] },
-      { phase: 'code-review', steps: [{ name: 'code-review', status: 'idle', current: false, attempts: 0 }] },
+      { phase: 'implementation', steps: [{ name: 'implement', status: 'done', current: false, attempts: 2 }] },
+      { phase: 'checks', steps: [{ name: 'checks', status: 'done', current: false, attempts: 1 }] },
+      { phase: 'code-review', steps: [{ name: 'code-review', status: 'done', current: false, attempts: 2 }] },
     ];
     const { container } = render(
       <FlowBoard
@@ -215,8 +216,65 @@ describe('FlowBoard', () => {
       />,
     );
 
-    expect(container.textContent).not.toMatch(/→|review_|npm test|times|once/);
-    expect(within(screen.getByRole('button', { name: /checks/ })).getByTestId('UndoIcon')).toBeInTheDocument();
+    expect(
+      screen.getByText('code review → implement · once · Code review sent it back: requirements, quality'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('checks → implement · 2 times')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/review_|npm test/);
+    await user.hover(screen.getByRole('button', { name: /implement/ }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      '2 visits: code review sent it back once, checks sent it back 2 times',
+    );
+  });
+
+  it('keeps the last outcome and the visit count of a step that will run again, and shows the return that moved the run', () => {
+    const board: FlowView['phases'] = [
+      { phase: 'implementation', steps: [{ name: 'implement', status: 'running', current: true, attempts: 4 }] },
+      {
+        phase: 'checks',
+        steps: [{ name: 'checks', status: 'again', current: false, attempts: 3, lastOutcome: 'done' }],
+      },
+      {
+        phase: 'code-review',
+        steps: [{ name: 'code-review', status: 'again', current: false, attempts: 7, lastOutcome: 'done' }],
+      },
+      {
+        phase: 'ci',
+        steps: [
+          {
+            name: 'pipeline',
+            status: 'again',
+            current: false,
+            attempts: 6,
+            lastOutcome: 'CI sent it back: merge conflict: automatic rebase → implement',
+          },
+          { name: 'merge-request', status: 'idle', current: false, attempts: 0 },
+        ],
+      },
+    ];
+    const returns: FlowView['returns'] = [
+      {
+        counter: 'pipeline',
+        count: 3,
+        from: 'pipeline',
+        to: 'implement',
+        words: 'CI sent it back: merge conflict: automatic rebase',
+      },
+    ];
+    render(<FlowBoard phases={board} returns={returns} selected={null} onSelect={vi.fn()} />);
+
+    expect(
+      screen.getByText('pipeline → implement · 3 times · CI sent it back: merge conflict: automatic rebase'),
+    ).toBeInTheDocument();
+    const pipeline = screen.getByRole('button', { name: /pipeline/ });
+    expect(within(pipeline).getByText('will run again')).toBeInTheDocument();
+    expect(
+      within(pipeline).getByText('CI sent it back: merge conflict: automatic rebase → implement'),
+    ).toBeInTheDocument();
+    expect(within(pipeline).getByText('×6')).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: /checks/ })).getByText('will run again')).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: /report/ })).getByText('will run again')).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: /merge-request/ })).queryByText('will run again')).toBeNull();
   });
 
   describe('the checks card', () => {

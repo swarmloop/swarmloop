@@ -23,6 +23,7 @@ const BY_STATUS: Readonly<Record<string, StepState>> = {
   failed: FAILED,
   blocked: FAILED,
   skipped: { word: 'Skipped', tone: 'neutral', icon: 'skipped' },
+  again: { word: 'Will run again', tone: 'neutral', icon: 'idle' },
 };
 
 /** The state of a step card from its status and, for the current step, the run's reason. A step that waits is paused by a limit or idle. */

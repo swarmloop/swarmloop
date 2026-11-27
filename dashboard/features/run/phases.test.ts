@@ -68,6 +68,21 @@ void describe('liveLogStep', () => {
     assert.equal(kept[0]?.steps[0]?.status, 'done');
   });
 
+  void it('treats an open reviewer that will run again like an idle one', () => {
+    const snapshot = [
+      {
+        phase: 'code review',
+        steps: [
+          { name: 'code-review-quality', status: 'again', current: false, attempts: 2 },
+          { name: 'code-review-security', status: 'again', current: false, attempts: 1 },
+        ],
+      },
+    ];
+    const steps = keepOpenReviews(snapshot, new Set(['code-review-quality']))[0]?.steps ?? [];
+    assert.equal(steps[0]?.status, 'running');
+    assert.equal(steps[1]?.status, 'again');
+  });
+
   void it('keeps open review chips running when a snapshot says idle or failed', () => {
     assert.equal(reviewChipName('code-review-report'), 'code-review');
     assert.equal(reviewChipName('code-review-quality'), 'code-review-quality');

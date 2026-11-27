@@ -198,6 +198,8 @@ export interface FlowView {
       note?: string;
       /** Why the step was sent back, as `2 notes` or the check that failed. Set on a returned step only. */
       returnNote?: string;
+      /** What a step that will run again did last, in a few words such as `done` or `CI sent it back: merge conflict → implement`. Set on a step with status `again` only. */
+      lastOutcome?: string;
       /** When the server restarted while this step's agent kept running, as an ISO time. Set only during that wait. */
       restartedAt?: string;
     }[];
