@@ -32,6 +32,11 @@ const REQUIREMENTS = `${JSON.stringify({
   plan: { name: 'plan', overview: '', items: ['do it'], decision: 'approve' },
 })}\n`;
 const FINDING = 'The parser drops a row.';
+const account = block({
+  implementation: ['No file changed: the reader keeps every row'],
+  summary: ['The reader keeps every row, so the finding does not apply.'],
+  rejected: [{ reviewer: 'quality', finding: FINDING, reason: 'The reader keeps every row.' }],
+});
 
 const merged = (id: string): Subtask => ({
   id,
@@ -130,18 +135,27 @@ describe('a return to a split parent whose tasks are merged', () => {
     await assertInvariants(flow.app);
   });
 
-  it('starts no second round on the same head: the refusal goes up the chain to the person', async () => {
-    await start({ 'code-review-quality': [returns(FINDING)], plan: [block({ reply: 'The return stands.' })] }, false);
+  it('reviews once more after implement’s answer with no file change, and the refusal of the same tree and account goes up the chain to the person', async () => {
+    await start(
+      {
+        'code-review-quality': [returns(FINDING), asks(FINDING, 'Should rows be kept in order?')],
+        implement: [account, account],
+        'implement-improve': [account, account],
+        plan: [answers('holds', 'The finding holds.'), block({ reply: 'The return stands.' })],
+      },
+      false,
+    );
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 
-    expect(launches('implement')).toHaveLength(1);
-    expect(launches('code-review-quality')).toHaveLength(1);
+    expect(launches('implement')).toHaveLength(2);
+    expect(launches('code-review-quality')).toHaveLength(2);
     const entries = (await flow.app.app.get(PlanChatStore).read(KEY)).entries;
-    expect(entries.find((entry) => entry.kind === 'question')?.text).toContain(
-      'Not started again: same input as visit 1',
-    );
-    expect(launches('plan')).toHaveLength(1);
+    expect(entries.filter((entry) => entry.kind === 'question').map((entry) => entry.text)).toEqual([
+      expect.stringContaining('Should rows be kept in order?'),
+      expect.stringContaining('Not started again: same input as visit 3'),
+    ]);
+    expect(launches('plan')).toHaveLength(2);
     expect(entries.map((entry) => entry.kind)).toContain('answer');
     const run = await flow.app.app.get(RunRepository).findRun(KEY);
     expect([run?.currentStep, run?.status]).toEqual(['code-review', 'waiting']);

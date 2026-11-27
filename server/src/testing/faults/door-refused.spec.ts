@@ -22,7 +22,13 @@ const REQUIREMENTS = `${JSON.stringify({
 })}\n`;
 const block = (value: unknown): ScriptedAnswer => ({ block: value });
 const returns = block({ decision: 'return', review: 'The parser drops the last row.', summary: ['one finding'] });
-const nothing = block({ implementation: [], summary: ['nothing to change'] });
+const account = block({
+  implementation: ['No file changed: the parser keeps the last row'],
+  summary: ['The reader keeps the last row, so the finding does not apply.'],
+  rejected: [
+    { reviewer: 'quality', finding: 'The parser drops the last row.', reason: 'The last row is kept by the reader.' },
+  ],
+});
 
 describe('a start refused at the door of an agent start inside the code-review step', () => {
   let flow: Awaited<ReturnType<typeof createFlowHarness>>;
@@ -69,19 +75,21 @@ describe('a start refused at the door of an agent start inside the code-review s
     await flow.close();
   });
 
-  it('a reviewer refused for the same input starts no review again, and the run waits with its question', async () => {
+  it('a reviewer refused for the same tree and the same account starts no review again, and the run waits with its question', async () => {
     const blocks = new BlockAgentRunner({
       'code-review-quality': [returns, returns],
-      implement: [nothing, nothing],
+      implement: [account, account],
+      'implement-improve': [account, account],
     });
     await boot(blocks);
     await atReview(true);
 
     const ended = await flow.app.pipeline.runThrough(KEY, { auto: true });
+    const reviewed = blocks.steps.length;
     await settle(flow.app);
 
-    expect(ended.message).toContain('Not started again: same input as visit 1');
-    expect(blocks.steps.filter((step) => step === 'code-review-quality')).toHaveLength(1);
+    expect(ended.message).toContain('Not started again: same input as visit 3');
+    expect(blocks.steps).toHaveLength(reviewed);
     expect((await find()).status).toBe('waiting');
     const asked = (await flow.app.app.get(PlanChatStore).read(KEY)).entries.filter(
       (entry) => entry.kind === 'question',

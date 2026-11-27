@@ -6,6 +6,7 @@ import { PLAN_CHAT_KIND, type PlanChatEntry } from '../../contract/plan-chat';
 import { copyMainWithOrigin, git } from '../../testing/git-fixture';
 import { ARTIFACTS } from '../contract/artifacts';
 import { withPlan } from '../plan/plan-record';
+import { sameInput } from './same-input';
 import { normalizedText, readVisitInput, visitInput, type VisitInputParts } from './visit-input';
 
 const PARTS: VisitInputParts = {
@@ -50,6 +51,7 @@ describe('visitInput', () => {
     ['return', { returns: ['## code-review\nFix the other name.'] }],
     ['finding', { findings: ['checks\nLint\nunused export'] }],
     ['instruction', { instruction: 'replay it differently' }],
+    ['account', { account: ['{"implementation":["No file changed"]}'] }],
   ])('gives a new digest for a changed %s', (_name, change) => {
     expect(visitInput({ ...PARTS, ...change })).not.toBe(visitInput(PARTS));
   });
@@ -171,6 +173,50 @@ describe('readVisitInput', () => {
     expect(await readVisitInput(deps, target, 'code-review')).not.toBe(untracked);
     expect(await readVisitInput(deps, target, 'checks')).toBe(checks);
   });
+
+  it.each([ARTIFACTS.implementationResult.kind, ARTIFACTS.implementationImproveResult.kind])(
+    'changes the code-review input for a new implement account in %s, keeps it for the same account, and no other step reads it',
+    async (kind) => {
+      const { clone } = copyMainWithOrigin(root, 'main');
+      const deps = { documents, worktrees: root };
+      const target = { ...run, targetPath: clone };
+      const review = await readVisitInput(deps, target, 'code-review');
+      const checks = await readVisitInput(deps, target, 'checks');
+      const roundOne = {
+        step: 'code-review',
+        stats: [{ id: 1, step: 'code-review', attempt: 1, attemptId: 'a1', status: 'done', killReason: null }],
+        starts: [{ step: 'code-review', attemptId: 'a1', inputDigest: review }],
+        reasonCode: null,
+      };
+
+      // Implement answers the return with no file change: only its account is new.
+      stored.set(
+        kind,
+        JSON.stringify({
+          implementation: ['No file changed: the parser keeps the last row'],
+          summary: ['The reader keeps the last row, so the finding does not apply.'],
+          rejected: [
+            { reviewer: 'quality', finding: 'The parser drops the last row.', reason: 'The reader keeps it.' },
+          ],
+        }),
+      );
+      const answered = await readVisitInput(deps, target, 'code-review');
+      expect(answered).not.toBe(review);
+      expect(sameInput({ ...roundOne, digest: answered })).toEqual({ kind: 'new', rerunUnfinished: false });
+
+      // The same tree with the same account is the same input as the round that judged it.
+      const again = await readVisitInput(deps, target, 'code-review');
+      expect(again).toBe(answered);
+      expect(
+        sameInput({
+          ...roundOne,
+          starts: [{ step: 'code-review', attemptId: 'a1', inputDigest: answered }],
+          digest: again,
+        }).kind,
+      ).toBe('same');
+      expect(await readVisitInput(deps, target, 'checks')).toBe(checks);
+    },
+  );
 
   it('reads a run with no prompt as an empty prompt, not the word null', async () => {
     const { clone } = copyMainWithOrigin(root, 'main');
