@@ -1,8 +1,8 @@
 import { agentFor } from '../config/agents';
 import type { StoredAgents } from '../contract/api';
 import { Injectable, Optional } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
 import { randomUUID } from 'crypto';
 import { Clock } from '../core/clock';
@@ -12,6 +12,8 @@ import { claimedColumns, storedState, stateColumns, titleColumns } from './run-s
 import { claimedRow, waitingRow } from './run-new-rows';
 import { conditionalUpdate } from './conditional-write';
 import { KeyedQueue } from './keyed-queue';
+import { RunOpenItems } from './run-open-items';
+import { transaction } from './transaction';
 import { pidAlive } from './pid-alive';
 import { durationByRun } from './run-durations';
 import type { RunStateChange } from './run-state';
@@ -37,6 +39,10 @@ import {
   CommandEntity,
 } from './entities';
 
+/** SQLite refuses to write on a read that another connection wrote under: the try lost, as a conditional update does. */
+const SNAPSHOT_BUSY = 'database is locked';
+const LOST = Symbol('lost');
+
 @Injectable()
 export class RunRepository {
   private readonly changes = new KeyedQueue();
@@ -56,6 +62,8 @@ export class RunRepository {
     @InjectRepository(CommandEntity) private readonly commands: Repository<CommandEntity>,
     @InjectRepository(CheckCommandEntity) private readonly checkCommands: Repository<CheckCommandEntity>,
     @InjectRepository(RunWaitEntity) private readonly waits: Repository<RunWaitEntity>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly openItems: RunOpenItems,
     private readonly documentRepository: DocumentRepository,
     private readonly visitRepository: VisitRepository,
     @Optional() private readonly live?: LiveHub,
@@ -117,32 +125,60 @@ export class RunRepository {
     return this.changes.run(key, async () => (await this.write(key, apply, false)) as RunEntity);
   }
 
-  /** The write of `change`. Quiet: no update time and no notice, and a run that is gone changes nothing. */
+  /**
+   * The write of `change`, with the state its open items give. Each try is one transaction: the read, the conditional
+   * update and the state. A try that lost, or whose read another process wrote under, goes again on the row as it is
+   * now. Quiet: no update time and no notice, and a run that is gone changes nothing.
+   */
   private async write(key: string, apply: (run: RunEntity) => void, quiet: boolean): Promise<RunEntity | null> {
-    const gone = () => new SwarmloopError(`${key}: the run is gone; nothing was written`);
-    let lost: string[] = [];
+    const seen = { columns: [] as string[] };
     for (let tries = 0; tries < 3; tries++) {
-      const run = await this.findRun(key);
+      const done = await this.attempt(key, apply, quiet, seen).catch((error: unknown): typeof LOST => {
+        if (String(error).includes(SNAPSHOT_BUSY)) return LOST;
+        throw error;
+      });
+      if (done === LOST) continue;
+      if (done?.changed && !quiet) this.live?.changed(key);
+      return done?.run ?? null;
+    }
+    throw new SwarmloopError(
+      `${key}: ${seen.columns.join(', ')} changed under every one of three tries; nothing was written`,
+    );
+  }
+
+  private attempt(
+    key: string,
+    apply: (run: RunEntity) => void,
+    quiet: boolean,
+    seen: { columns: string[] },
+  ): Promise<{ run: RunEntity; changed: boolean } | typeof LOST | null> {
+    return transaction(this.dataSource, async (manager) => {
+      const gone = () => new SwarmloopError(`${key}: the run is gone; nothing was written`);
+      const runs = manager.getRepository(RunEntity);
+      const run = await runs.findOne({ where: { key } });
       if (!run) {
         if (quiet) return null;
         throw gone();
       }
       apply(run);
       const changed = changedColumns(run);
-      lost = Object.keys(changed);
-      if (lost.length === 0) return run;
+      seen.columns = Object.keys(changed);
       const extra = quiet ? {} : { updatedAt: this.clock.iso() };
-      if (!(await conditionalUpdate(this.runs, run.id, changed, (column) => readValue(run, column), extra))) continue;
-      const stored = await this.runs.findOneBy({ id: run.id });
+      if (
+        seen.columns.length > 0 &&
+        !(await conditionalUpdate(runs, run.id, changed, (column) => readValue(run, column), extra))
+      )
+        return LOST;
+      const held = await this.openItems.hold(manager, { id: run.id });
+      if (seen.columns.length === 0 && !held) return { run, changed: false };
+      const stored = await runs.findOneBy({ id: run.id });
       if (!stored) {
         if (quiet) return null;
         throw gone();
       }
       adoptRow(run, stored);
-      if (!quiet) this.live?.changed(key);
-      return run;
-    }
-    throw new SwarmloopError(`${key}: ${lost.join(', ')} changed under every one of three tries; nothing was written`);
+      return { run, changed: true };
+    });
   }
 
   /** Stores the title in a single statement and tells the dashboard. */
@@ -250,12 +286,16 @@ export class RunRepository {
       stateColumns(run, { ...state, activeAttempt: null }),
       stepStartedAt === undefined ? {} : { stepStartedAt },
     );
-    await this.runs
-      .createQueryBuilder()
-      .update(RunEntity)
-      .set({ ...changedColumns(run), updatedAt: this.clock.iso(), revision: () => 'revision + 1' })
-      .where('id = :id AND active_attempt IS :attempt', { id: run.id, attempt })
-      .execute();
+    await transaction(this.dataSource, async (manager) => {
+      await manager
+        .getRepository(RunEntity)
+        .createQueryBuilder()
+        .update()
+        .set({ ...changedColumns(run), updatedAt: this.clock.iso(), revision: () => 'revision + 1' })
+        .where('id = :id AND active_attempt IS :attempt', { id: run.id, attempt })
+        .execute();
+      await this.openItems.hold(manager, { id: run.id });
+    });
     adoptRow(run, await this.runs.findOneByOrFail({ id: run.id }));
     this.notify(run.key);
     return run;

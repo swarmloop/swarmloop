@@ -5,6 +5,7 @@ import { DocumentRepository } from './document.repository';
 import { root, runDir } from './run-paths';
 import { repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
+import { storedState, writeRunState } from './run-state';
 import { storeRun } from '../testing/store-run.spec-helpers';
 import { VisitRepository } from './visit.repository';
 
@@ -196,6 +197,37 @@ describe('RunRepository', () => {
       );
       expect(copy).toEqual(row);
       expect(released).toEqual(row);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('stores the state of the open questions in the write that releases the run to waiting', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting('run-1', '/target');
+      const held = await runs.begin('run-1', 'research');
+      await db.app.get(DocumentRepository).putDocument(held, 'questions', '- Which store?\n');
+      const released = await runs.release(held, { status: 'waiting' });
+      expect(storedState((await runs.findRun('run-1'))!).reason?.code).toBe('NEEDS_ANSWERS');
+      expect(released.state).toBe('waiting');
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('stores the state of the open questions in the write of a change to waiting', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting('run-1', '/target');
+      const held = await runs.begin('run-1', 'research');
+      await db.app.get(DocumentRepository).putDocument(held, 'questions', '- Which store?\n');
+      const changed = await runs.change('run-1', (run) => {
+        writeRunState(run, { status: 'waiting' });
+      });
+      expect(storedState(changed).reason?.code).toBe('NEEDS_ANSWERS');
     } finally {
       await db.close();
     }

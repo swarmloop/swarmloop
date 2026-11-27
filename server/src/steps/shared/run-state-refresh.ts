@@ -2,12 +2,9 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { RunFactsRepository } from '../../history/run-facts.repository';
 import { RunRepository } from '../../history/run.repository';
-import { factColumns } from '../../history/run-state';
+import { WRITTEN_WHOLE, factColumns } from '../../history/run-state';
 import { LiveHub } from '../../live/live.hub';
 import { QuestionHolds } from './question-holds';
-
-/** Statuses whose writers store the whole state: the facts of the documents do not change it. */
-const WRITTEN_WHOLE = ['running', 'done', 'failed'];
 
 /**
  * Keeps the `state` and `state_reason` columns of a run right when a fact the row does not hold changes: its open
