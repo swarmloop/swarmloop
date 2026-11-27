@@ -37,7 +37,7 @@ export function backgroundKilledContinue(ending: string | undefined): string {
 }
 
 /** The session a file holds, whatever runtime opened its chat. */
-export async function readStoredSession(path: string): Promise<SessionState | null> {
+async function readStoredSession(path: string): Promise<SessionState | null> {
   try {
     return JSON.parse(await readFile(path, 'utf8')) as SessionState;
   } catch {

@@ -24,12 +24,16 @@ function priceRequest(
 ): PricedRequest {
   const model = raw.model ?? launchModel;
   const priced = findPrice(model, prices) ? model : launchModel;
-  const { input, output, cacheRead, cacheWrite } = raw;
+  const { input, output, cacheRead, cacheWrite, cacheWriteSplit, ...request } = raw;
   return {
-    ...raw,
+    ...request,
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
     messageId,
     model,
-    usd: priceTokens(priced, input, output, prices, cacheRead, cacheWrite) ?? 0,
+    usd: priceTokens(priced, input, output, prices, cacheRead, cacheWrite, cacheWriteSplit ?? undefined) ?? 0,
     price: findPrice(priced, prices),
   };
 }

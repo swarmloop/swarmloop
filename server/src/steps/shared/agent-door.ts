@@ -6,7 +6,6 @@ import { RunStop } from '../../agent/run-stop';
 import { StepStopped } from '../../agent/step-stopped';
 import { AppConfig } from '../../config/env';
 import { REASON } from '../../contract/run-state';
-import type { RunState } from '../../contract/run-state';
 import type { StepName } from '../../contract/steps';
 import { Clock } from '../../core/clock';
 import type { StartBy, StepOptions } from '../../core/pipeline-result';
@@ -18,7 +17,7 @@ import { storedState } from '../../history/run-state';
 import { VisitRepository } from '../../history/visit.repository';
 import { VisitStartRepository } from '../../history/visit-start.repository';
 import type { OpenedStep } from '../step-run';
-import type { AgentLaunchRequest, PingCall } from './agent-launch-request';
+import type { AgentLaunchRequest } from './agent-launch-request';
 import { AgentLauncher } from './agent-launcher';
 import type { LaunchResult } from './result-exchange';
 import { answerErrorsByVisit } from './stored-answer-errors';
@@ -46,9 +45,6 @@ export type Admission =
   | { kind: 'admitted'; start: AdmittedStart }
   | { kind: 'blocked'; message: string }
   | ({ kind: 'refused' } & ChainRefusal);
-
-/** The states of a run nothing comes back to: a ping to its chats is refused. */
-const NO_RETURN: readonly RunState[] = ['merged', 'closed', 'skipped'];
 
 /** A start that is not a step's visit: a planner turn, a reviewer, a chat. */
 export interface OutsideStart {
@@ -193,31 +189,6 @@ export class AgentDoor {
     });
     start.admitted?.(startId);
     return this.launcher.launch(request);
-  }
-
-  /**
-   * A keep-warm ping, the start of its own kind. It reads a chat's prompt cache and changes nothing, so it records no
-   * visit start, makes no same-input check, takes no agent place, and writes no row when it is refused. A run a person
-   * stopped, a run nothing comes back to, a halted run and a run over its spend or token limit are refused.
-   */
-  async ping(chat: PingCall, request: AgentLaunchRequest): Promise<'sent' | 'refused'> {
-    const run = await this.runs.findRun(request.key);
-    if (
-      !run ||
-      this.runStop.halted(request.key) ||
-      (await this.stopped(run)) ||
-      NO_RETURN.includes(storedState(run).state) ||
-      (await this.limit.overLimit(request.run))
-    ) {
-      return 'refused';
-    }
-    await this.launcher.ping({ ...request, call: { ...request.call, ping: chat } });
-    return 'sent';
-  }
-
-  /** Ends the pings a dead process left open. Only the server's keep-warm service calls it, when it starts. */
-  closeOpenPings(): Promise<void> {
-    return this.launcher.closeLeftOpen({ pings: true });
   }
 
   /** Links the start to the visit stored for it. */

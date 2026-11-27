@@ -17,7 +17,6 @@ import type { VisitRepository } from '../../history/visit.repository';
 import type { SandboxService } from '../../sandbox/sandbox.service';
 import { AgentLauncher } from './agent-launcher';
 import { controlled, type Child, until } from './agent-launcher.spec-helpers';
-import { pingInput } from './launch-ping';
 import { LimitFailover } from './limit-failover';
 
 const CHAT = JSON.stringify({ session_id: 'chat-9' });
@@ -48,7 +47,14 @@ describe('AgentLauncher relaunch', () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-launcher-'));
     mkdirSync(join(root, 'data'), { recursive: true });
     for (const runtime of ['cursor', 'claude']) {
-      const price = { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 };
+      const price = {
+        inputPerMillion: 1,
+        outputPerMillion: 1,
+        cacheReadPerMillion: 0,
+        cacheWritePerMillion: 0,
+        cacheWrite5mPerMillion: null,
+        cacheWrite1hPerMillion: null,
+      };
       writeFileSync(
         join(root, 'data', `price-cache-${runtime}.json`),
         JSON.stringify({ fetchedAt: new Date().toISOString(), prices: { m: price } }),
@@ -164,7 +170,14 @@ describe('AgentLauncher loop', () => {
   async function loop() {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-loop-'));
     mkdirSync(join(root, 'data'), { recursive: true });
-    const price = { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 };
+    const price = {
+      inputPerMillion: 1,
+      outputPerMillion: 1,
+      cacheReadPerMillion: 0,
+      cacheWritePerMillion: 0,
+      cacheWrite5mPerMillion: null,
+      cacheWrite1hPerMillion: null,
+    };
     writeFileSync(
       join(root, 'data', 'price-cache-cursor.json'),
       JSON.stringify({ fetchedAt: new Date().toISOString(), prices: { m: price } }),
@@ -246,7 +259,14 @@ describe('AgentLauncher host sleep', () => {
   async function launched() {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-sleep-'));
     mkdirSync(join(root, 'data'), { recursive: true });
-    const price = { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 };
+    const price = {
+      inputPerMillion: 1,
+      outputPerMillion: 1,
+      cacheReadPerMillion: 0,
+      cacheWritePerMillion: 0,
+      cacheWrite5mPerMillion: null,
+      cacheWrite1hPerMillion: null,
+    };
     writeFileSync(
       join(root, 'data', 'price-cache-cursor.json'),
       JSON.stringify({ fetchedAt: new Date().toISOString(), prices: { m: price } }),
@@ -670,25 +690,5 @@ describe('AgentLauncher chat key', () => {
     await launch('turn-1');
     await launch('turn-2');
     expect(run.mock.calls.map((call) => call[0].resumeChatId)).toEqual([null, null]);
-  });
-
-  it('hands the chat key to the runner input of a ping', () => {
-    const call = { before: { spentUsd: 0, tokensInRun: 0, prior: {}, chatSpentUsd: 0 }, onRequest: jest.fn() };
-    const request = {
-      root: '/r',
-      run: { agentCalls: 0 },
-      key: 'turn-1',
-      chatKey: 'chat-a',
-      step: 'implement',
-      mode: 'agent',
-      runtime: 'claude',
-      model: 'm',
-      timeLimitMs: 1,
-      prompt: 'ping',
-      workspace: '/w',
-      mounts: [],
-    };
-    const input = pingInput(request as never, { chatId: 'chat-9' } as never, call as never, '/o');
-    expect([input.runKey, input.chatKey]).toEqual(['turn-1', 'chat-a']);
   });
 });

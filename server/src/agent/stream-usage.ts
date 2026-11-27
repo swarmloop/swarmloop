@@ -1,3 +1,9 @@
+/** What a request wrote to the cache, by the length of the cache it went to. */
+export interface CacheWriteSplit {
+  fiveMinute: number;
+  oneHour: number;
+}
+
 export interface OwnUsage {
   input: number;
   output: number;
@@ -98,7 +104,21 @@ export interface RawRequest {
   input: number;
   cacheRead: number;
   cacheWrite: number;
+  /** The cache writes by cache length, when the line reports them; null for a Codex turn and a line without the split. */
+  cacheWriteSplit: CacheWriteSplit | null;
   output: number;
+}
+
+/** The cache writes of a usage block by the length of the cache they went to, or null when it reports neither. */
+function cacheWriteSplitOf(usage: Record<string, unknown>): CacheWriteSplit | null {
+  const created = usage.cache_creation;
+  if (!created || typeof created !== 'object') {
+    return null;
+  }
+  const split = created as Record<string, unknown>;
+  const fiveMinute = numberFrom(split, ['ephemeral_5m_input_tokens']);
+  const oneHour = numberFrom(split, ['ephemeral_1h_input_tokens']);
+  return fiveMinute === null && oneHour === null ? null : { fiveMinute: fiveMinute ?? 0, oneHour: oneHour ?? 0 };
 }
 
 /** A Claude assistant message or a Codex turn as one request. Null for every other line. */
@@ -133,6 +153,7 @@ function requestOf(
     input: uncachedInput(record, usage) ?? 0,
     cacheRead: cacheReadOf(record, usage) ?? 0,
     cacheWrite: numberFrom(usage, ['cacheWriteTokens', 'cache_write_tokens', 'cache_creation_input_tokens']) ?? 0,
+    cacheWriteSplit: record.type === 'turn.completed' ? null : cacheWriteSplitOf(usage),
     output: numberFrom(usage, ['output_tokens', 'outputTokens', 'completion_tokens']) ?? 0,
   };
 }

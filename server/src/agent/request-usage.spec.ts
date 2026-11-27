@@ -97,6 +97,33 @@ describe('RequestLedger', () => {
     expect(ledger.totals().usd).toBeCloseTo((100 * 10 + 1700 * 2) / 1e6);
   });
 
+  it('prices cache reads at the read rate and each write part at its own cache length rate', () => {
+    const split = {
+      opus: { ...prices.opus, cacheWrite5mPerMillion: 2, cacheWrite1hPerMillion: 7 },
+    };
+    const ledger = new RequestLedger(split, 'opus');
+    const line = JSON.stringify({
+      type: 'assistant',
+      message: {
+        id: 'm1',
+        model: 'opus',
+        usage: {
+          cache_read_input_tokens: 2000,
+          cache_creation_input_tokens: 3000,
+          cache_creation: { ephemeral_5m_input_tokens: 1000, ephemeral_1h_input_tokens: 2000 },
+        },
+      },
+    });
+    const taken = ledger.add(readStreamLine(line)!.request!);
+    expect(taken?.cacheWrite).toBe(3000);
+    expect(taken?.usd).toBeCloseTo((2000 * 1 + 1000 * 2 + 2000 * 7) / 1e6);
+  });
+
+  it('prices the writes of a message without a cache split at the plain write rate', () => {
+    const { priced } = takenFrom(assistant('m1', 'opus', { read: 2000, write: 3000 }));
+    expect(priced[0]?.usd).toBeCloseTo((2000 * 1 + 3000 * 5) / 1e6);
+  });
+
   it('reads a Codex turn as one request of the launch model, without its cached tokens in the input', () => {
     const turn = JSON.stringify({
       type: 'turn.completed',

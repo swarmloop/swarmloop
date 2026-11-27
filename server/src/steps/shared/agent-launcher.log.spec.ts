@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import Joi from 'joi';
@@ -18,6 +18,7 @@ import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { RunRepository } from '../../history/run.repository';
 import { sessionHome } from '../../history/session-group';
 import { VisitRepository } from '../../history/visit.repository';
+import { seedPastPing } from '../../history/past-ping.spec-helpers';
 import { VisitStartRepository } from '../../history/visit-start.repository';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { resultAnswer } from '../../testing/result-answer';
@@ -85,7 +86,7 @@ async function harness(script: Behavior[], failover?: unknown) {
     run: async (input: AgentRunInput) => {
       inputs.push(input);
       const result = await (script.shift() ?? streams([]))(input);
-      if (result.chatId && !input.fork) {
+      if (result.chatId) {
         // What the runner leaves after a launch that is a visit: the chat the next launch of the step resumes.
         mkdirSync(agentStateDir(root, input.runKey, sessionHome(input.step)), { recursive: true });
         writeFileSync(
@@ -314,7 +315,13 @@ describe('the log the launcher writes', () => {
       await h.launcher.launch(h.request());
       const [first] = await h.rows();
       h.db.clock.advance(30 * 60_000);
-      await h.calls.addStop('chat-1', 'cap-reached', h.db.clock.iso());
+      await seedPastPing(h.db.app.get(DataSource), {
+        chatId: 'chat-1',
+        previousId: first.id,
+        startedAt: h.db.clock.iso(),
+        runKey: 'run-1',
+        stopReason: 'cap-reached',
+      });
       await h.launcher.launch(h.request());
       const second = (await h.rows()).find((row) => row.kind === 'call' && row.id !== first.id);
       expect(second).toMatchObject({ previousId: first.id, resumed: 1 });
@@ -525,89 +532,6 @@ describe('the log the launcher writes', () => {
         expect(new Set((await tiesOf(rows)).map((row) => JSON.stringify(row)))).toEqual(
           new Set([JSON.stringify(general)]),
         );
-      });
-    });
-  });
-
-  describe('a keep-warm ping', () => {
-    const DUE = '2026-01-01T00:50:00.000Z';
-    /** A first call in chat-1, then the ping request for it. */
-    async function chatWithPing(h: Harness, over: Partial<AgentLaunchRequest> = {}) {
-      await h.launcher.launch(h.request());
-      const [first] = await h.rows();
-      const ping = h.request({
-        tools: 'none',
-        prompt: 'one word',
-        run: { id: h.run.id, agentCalls: 0, spentUsd: 0, activeAttempt: null },
-        call: { ping: { chatId: 'chat-1', dueAt: DUE, previousId: first.id } },
-        ...over,
-      });
-      return { first, ping };
-    }
-
-    it('is one row of kind ping, keeps the chat id the fork reported another for, and runs on a fork with no tools', async () => {
-      const ping = streams([modelRequest('p1', { usd: 0.02 })], ended({ chatId: 'fork-9', responseText: 'ok' }));
-      await withHarness([streams([modelRequest('m1')]), ping], async (h) => {
-        const { first, ping: request } = await chatWithPing(h);
-        await h.launcher.ping(request);
-        const [, row, ...others] = await h.rows();
-        expect(others).toEqual([]);
-        expect(row).toMatchObject({
-          kind: 'ping',
-          startReason: 'ping',
-          chatId: 'chat-1',
-          previousId: first.id,
-          dueAt: DUE,
-          runKey: 'run-1',
-          step: 'implement',
-          attemptId: null,
-          runtime: 'claude',
-          model: 'opus',
-          effort: 'high',
-          endKind: 'done',
-          ownUsd: 0.02,
-          requestText: 'one word',
-        });
-        expect(h.inputs[1]).toMatchObject({ fork: true, tools: 'none', resumeChatId: 'chat-1', prompt: 'one word' });
-        expect(existsSync(h.inputs[1].outputFile)).toBe(false);
-        expect(h.inputs[1].outputFile).not.toBe(h.inputs[0].outputFile);
-      });
-    });
-
-    it('records no visit start and leaves no spend on the run it was given', async () => {
-      await withHarness([streams([modelRequest('m1')]), streams([modelRequest('p1')])], async (h) => {
-        const { ping } = await chatWithPing(h);
-        await h.launcher.ping(ping);
-        expect(await h.db.app.get(VisitStartRepository).forRun(h.run.id)).toEqual([]);
-        expect(ping.run.spentUsd).toBe(0);
-      });
-    });
-
-    it('is one row for a due time, however often it is asked', async () => {
-      await withHarness([streams([modelRequest('m1')]), streams([]), streams([])], async (h) => {
-        const { ping } = await chatWithPing(h);
-        await h.launcher.ping(ping);
-        await h.launcher.ping(ping);
-        expect((await h.rows()).filter((row) => row.kind === 'ping')).toHaveLength(1);
-        expect(h.inputs).toHaveLength(2);
-      });
-    });
-
-    it.each([
-      ['a limit', () => ended({ limit: { window: 'five-hour', resetsAt: AT }, chatId: null }), 'limit'],
-      ['an outage', () => ended({ outage: { host: 'api.example', detail: 'down' } }), 'outage'],
-      ['an error', () => ended({ exitCode: 2 }), 'failed'],
-      ['a thrown error', () => Promise.reject(new RangeError('gone')), 'failed'],
-    ])('ends its row on %s with the cost it streamed, and does not throw', async (_name, end, endKind) => {
-      const failing: Behavior = (input) => {
-        input.onRequest?.(modelRequest('p1', { usd: 0.03 }));
-        return (end as () => AgentRunResult | Promise<AgentRunResult>)();
-      };
-      await withHarness([streams([modelRequest('m1')]), failing], async (h) => {
-        const { ping } = await chatWithPing(h);
-        await expect(h.launcher.ping(ping)).resolves.toBeUndefined();
-        const row = (await h.rows()).find((found) => found.kind === 'ping');
-        expect(row).toMatchObject({ endKind, chatId: 'chat-1', ownUsd: 0.03 });
       });
     });
   });

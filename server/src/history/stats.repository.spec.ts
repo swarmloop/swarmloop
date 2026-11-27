@@ -1,6 +1,6 @@
 import { DataSource } from 'typeorm';
 import { AgentCallRepository } from './agent-call.repository';
-import { seedCall } from './agent-call.spec-helpers';
+import { seedCall, seedPingCall } from './agent-call.spec-helpers';
 import { BacklogMessageEntity } from './backlog-planner.entities';
 import { CommandEntity, DocumentEntity, LoopEventEntity, RunEntity, StepStatEntity } from './entities';
 import { ServerStallEntity } from './server-stall.entities';
@@ -107,7 +107,7 @@ describe('StatsRepository', () => {
       await seedCall(calls, { runKey: 'one', statId: visit.id, usd: 0.25, input: 1, output: 4 });
       // Left out: an unlinked row, a ping of a run nobody stored, and a turn of the backlog planner.
       await seedCall(calls, { runKey: 'one', usd: 7, output: 1000 });
-      await seedCall(calls, { runKey: 'gone', ping: true, usd: 3 });
+      await seedPingCall(data, calls, { runKey: 'gone', usd: 3 });
       const turn = await calls.open({
         kind: 'call',
         startedAt: '2026-11-05T00:00:00.000Z',
@@ -118,7 +118,7 @@ describe('StatsRepository', () => {
         turnKey: 'turn-1',
       });
       await calls.addRequest(turn, { model: 'm', input: 1, cacheRead: 0, cacheWrite: 0, output: 1, usd: 5, price: {} });
-      await seedCall(calls, { runKey: 'one', ping: true, step: 'implement', usd: 0.125, cacheRead: 300, output: 2 });
+      await seedPingCall(data, calls, { runKey: 'one', step: 'implement', usd: 0.125, cacheRead: 300, output: 2 });
 
       const { steps } = await db.app.get(StatsRepository).rows(null);
 

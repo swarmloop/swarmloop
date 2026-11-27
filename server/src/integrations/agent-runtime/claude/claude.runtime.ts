@@ -96,7 +96,7 @@ function helperAgents(helper: AgentHelper): string {
   return JSON.stringify({ reader });
 }
 
-/** The 1-hour cache prices in USD per million tokens of the models Claude is known for; https://platform.claude.com/docs/en/build-with-claude/prompt-caching */
+/** The 1-hour cache Claude Code writes, with its prices in USD per million tokens, for the models Claude is known for. These are the price fallback when the price page lacks a rate, and the cache that writes are priced at; https://platform.claude.com/docs/en/build-with-claude/prompt-caching */
 const CLAUDE_PROMPT_CACHES: ReadonlyMap<string, PromptCache> = new Map([
   ['claude-opus-5-5', { ttlMinutes: 60, cacheReadPerMillion: 0.2, cacheWritePerMillion: 8 }],
   ['claude-sonnet-5-5', { ttlMinutes: 60, cacheReadPerMillion: 0.2, cacheWritePerMillion: 4 }],
@@ -227,9 +227,6 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   }
 
   protected override appendPrintFlags(args: string[], input: AgentPrintInput): void {
-    if (input.fork) {
-      args.push('--fork-session', '--no-session-persistence');
-    }
     const denied = input.helper ? helperDisallowedTools(input.tools) : claudeDisallowedTools(input.tools);
     args.push('--verbose', '--disallowedTools', denied);
     if (input.helper) {

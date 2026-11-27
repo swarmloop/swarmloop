@@ -33,7 +33,6 @@ import { AgentStoppedFromOutside } from './stopped-from-outside';
 import { stoppedFromOutside } from '../../agent/agent-result';
 import type { AgentRunInput } from '../../agent/agent-run-input';
 import type { AgentLaunchRequest } from './agent-launch-request';
-import { pingInput, withThrowawayOutput } from './launch-ping';
 import { loopWatch, recordStart, recordWork } from './launch-work';
 import { answerIsReadable, exchangeResult, resultFollowUpRequest, withAnswerErrors } from './result-exchange';
 import type { LaunchResult } from './result-exchange';
@@ -115,26 +114,6 @@ export class AgentLauncher {
   /** Writes the row of a start the door refused, with its reason. */
   async refused(request: AgentLaunchRequest, reason: string): Promise<void> {
     await this.calls?.refused(request, reason);
-  }
-
-  /**
-   * Runs a keep-warm ping: the chat resumed on a fork that is saved nowhere, to read its prompt cache. It takes no agent
-   * place, writes no session file and never starts a second launch. Its row ends on every path with what it streamed,
-   * and keeps the chat's own id. A ping whose due time already has a row does not run.
-   */
-  async ping(request: AgentLaunchRequest): Promise<void> {
-    const ping = request.call?.ping;
-    const call = ping ? await this.calls?.beginPing(request, ping) : null;
-    if (!ping || !call) return;
-    try {
-      const result = await withThrowawayOutput((outputFile) =>
-        this.agent.run(pingInput(request, ping, call, outputFile)),
-      );
-      // The fork reports a chat id of its own; the row keeps the chat it read.
-      await call.finish({ result: { ...result, chatId: null } }, this.runStop.halted(request.key));
-    } catch (error) {
-      await call.finish({ error }, false);
-    }
   }
 
   /** Ends the rows a dead process left open in the scope, keeping their streamed cost. The caller settles the dead work; nothing runs on boot. */

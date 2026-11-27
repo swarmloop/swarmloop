@@ -51,7 +51,16 @@ function priceCache(root: string): void {
     join(root, 'data', 'price-cache-claude.json'),
     JSON.stringify({
       fetchedAt: new Date().toISOString(),
-      prices: { m: { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 } },
+      prices: {
+        m: {
+          inputPerMillion: 1,
+          outputPerMillion: 1,
+          cacheReadPerMillion: 0,
+          cacheWritePerMillion: 0,
+          cacheWrite5mPerMillion: null,
+          cacheWrite1hPerMillion: null,
+        },
+      },
     }),
   );
 }

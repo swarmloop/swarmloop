@@ -245,6 +245,7 @@ describe("a visit's own usage", () => {
       input: 3,
       cacheRead: 4,
       cacheWrite: 5,
+      cacheWriteSplit: null,
       output: 6,
     });
     expect(readStreamLine(JSON.stringify({ type: 'result', usage: { input_tokens: 1 } }))?.request).toBeNull();

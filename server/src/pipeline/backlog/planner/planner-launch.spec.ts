@@ -42,7 +42,14 @@ describe('the launch of a planner turn', () => {
         GITLAB_TOKEN: 'host-token',
       },
       (config, clock) => {
-        const price = { inputPerMillion: 1, outputPerMillion: 1, cacheReadPerMillion: 0, cacheWritePerMillion: 0 };
+        const price = {
+          inputPerMillion: 1,
+          outputPerMillion: 1,
+          cacheReadPerMillion: 0,
+          cacheWritePerMillion: 0,
+          cacheWrite5mPerMillion: null,
+          cacheWrite1hPerMillion: null,
+        };
         mkdirSync(join(root(config), 'data'), { recursive: true });
         writeFileSync(
           join(root(config), 'data', 'price-cache-cursor.json'),

@@ -1,5 +1,7 @@
+import type { DataSource } from 'typeorm';
 import type { CallEnd, CallStart, ModelPrice } from './agent-call';
 import type { AgentCallRepository } from './agent-call.repository';
+import { seedPastPing } from './past-ping.spec-helpers';
 
 export const PRICE: ModelPrice = { cacheReadPerMillion: 0.2, cacheWritePerMillion: 8 };
 
@@ -64,8 +66,9 @@ export async function seedCall(log: AgentCallRepository, seeded: Seeded): Promis
   return id;
 }
 
-/** Writes one ping on a chat through `insertPing`, counted and ended. */
+/** Writes one past ping on a chat, counted and ended. The product no longer writes pings; the log still reads them. */
 export async function seedPing(
+  data: DataSource,
   log: AgentCallRepository,
   ping: {
     chatId: string;
@@ -78,20 +81,13 @@ export async function seedPing(
     taskSlug?: string;
   },
 ): Promise<number> {
-  const id = await log.insertPing({
+  const id = await seedPastPing(data, {
     startedAt: ping.startedAt,
-    dueAt: ping.startedAt,
     chatId: ping.chatId,
     previousId: ping.previousId,
     runKey: 'run-1',
-    taskSlug: ping.taskSlug,
-    runtime: 'claude',
-    model: 'claude-opus-5-5',
-    requestText: 'ping',
+    ...(ping.taskSlug ? { taskSlug: ping.taskSlug } : {}),
   });
-  if (id === null) {
-    throw new Error('the ping was already written');
-  }
   await log.addRequest(id, {
     model: 'claude-opus-5-5',
     input: 0,

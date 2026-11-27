@@ -104,6 +104,38 @@ describe('limits', () => {
     expect(hasModelDecision({ text: BLOCK, locked: true }, undefined)).toBe(false);
   });
 
+  describe('cache pricing', () => {
+    const row = {
+      inputPerMillion: 4,
+      outputPerMillion: 20,
+      cacheReadPerMillion: 0.4,
+      cacheWritePerMillion: 8,
+      cacheWrite5mPerMillion: 5,
+      cacheWrite1hPerMillion: 8,
+    };
+
+    it('prices cache reads at the input rate when the row has no read rate, never at 0', () => {
+      const table = { m: { ...row, cacheReadPerMillion: null } };
+      expect(priceTokens('m', 0, 0, table, 1_000_000, 0)).toBe(4);
+      expect(priceTokens('m', 0, 0, { m: { ...row, cacheWritePerMillion: null } }, 0, 1_000_000)).toBe(4);
+    });
+
+    it('prices a 5-minute and a 1-hour write at their own columns, and a rest at the plain write rate', () => {
+      expect(priceTokens('m', 0, 0, { m: row }, 0, 3_000_000, { fiveMinute: 1_000_000, oneHour: 1_000_000 })).toBe(
+        5 + 8 + 8,
+      );
+    });
+
+    it('prices all writes at the declared write rate without a split', () => {
+      expect(priceTokens('m', 0, 0, { m: row }, 250_000, 1_000_000)).toBe(0.1 + 8);
+    });
+
+    it('prices a split part with no column of its own at the plain write rate', () => {
+      const table = { m: { ...row, cacheWrite5mPerMillion: null } };
+      expect(priceTokens('m', 0, 0, table, 0, 1_000_000, { fiveMinute: 1_000_000, oneHour: 0 })).toBe(8);
+    });
+  });
+
   it('counts tokens when the model has no price', () => {
     expect(priceTokens('composer-2.5', 10, 4, {})).toBeNull();
     expect(callsExceeded(20, 20)).toBe(true);
