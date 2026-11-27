@@ -9,6 +9,7 @@ import { BranchCheckout } from '../shared/branch-checkout';
 import { CheckoutService } from '../shared/checkout.service';
 import { appendProjectNames } from './append-projects';
 import { CHECKOUT_NAME, renderProjects, storedProjects } from '../../config/checkout-path';
+import { repositoryPick } from '../../config/repository-pick';
 import { PrepareStep } from './prepare.step';
 import { RemoteRepositories } from './remote-repositories.service';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -29,7 +30,7 @@ export class ProjectAppendService {
 
   async add(key: string, name: string): Promise<{ projects: string[]; applied: boolean }> {
     const trimmed = name.trim();
-    if (!CHECKOUT_NAME.test(trimmed)) {
+    if (repositoryPick(trimmed) === null && !CHECKOUT_NAME.test(trimmed)) {
       throw new SwarmloopError('checkout name is invalid');
     }
     const known = this.prepare.listProjects().projects;
@@ -47,16 +48,17 @@ export class ProjectAppendService {
     if (current.includes(trimmed)) {
       return { projects: current, applied: true };
     }
-    if (!known.includes(trimmed)) {
-      await this.remote.clone(trimmed, run.startedBy);
+    const folder = known.includes(trimmed) ? trimmed : await this.remote.clone(trimmed, run.startedBy);
+    if (current.includes(folder)) {
+      return { projects: current, applied: true };
     }
     if (run.status === 'running') {
       const pending = storedProjects((await this.documents.latestBody(key, PENDING)) ?? '');
-      const queued = storedProjects(renderProjects([...pending, trimmed]));
+      const queued = storedProjects(renderProjects([...pending, folder]));
       await this.documents.putDocument(run, PENDING, renderProjects(queued));
       return { projects: storedProjects(renderProjects([...current, ...queued])), applied: false };
     }
-    const projects = await this.apply(run, [trimmed]);
+    const projects = await this.apply(run, [folder]);
     return { projects, applied: true };
   }
 

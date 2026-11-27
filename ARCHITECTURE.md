@@ -169,8 +169,11 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 | pipeline | server | Waits for CI on the head commit of each project that has CI. A red job goes back to implement with its trace (3.8). | next (done); return to implement; back to code-review |
 | done | — | The run waits for its merge (3.9). | — |
 
+**Where a repository lives.** A remote repository is picked by owner and name (`acme/team/app`, the label the picker shows) and placed in the checkout folder of its bare name, or in `<name>-<owner>` (the owner path with `/` turned into `-`) when another repository holds the bare name. `RemoteRepositories.clone` is the one clone path: it takes an `owner/name`, or a bare name that one repository has, and returns the folder (`steps/prepare/checkout-placement.ts` chooses it). A run's projects and a backlog's repositories end up holding folder names: the requirements step clones the picks and stores the folders, and creating a backlog (3.17) does the same through the same call.
+
 **Today.**
 - The step list, the routes and the tables live in `contract/steps.ts` and `steps/contract/` (`returns.ts`, `route.ts`).
+- Picks and folders hold as above: `POST /runs` takes `owner/name` projects, the requirements step clones them (`requirements-clones.ts`) and stores the folders, and the picker offers every not-cloned repository by owner and name, a fork whose upstream is a local folder included. Adding a project to a running run takes an `owner/name` too, clones it the same way and adds the folder. Gap: adding a repository to a backlog's scope still takes a checkout folder only.
 - There is an extra route, **block**, which the target replaces with *wait on a person* or *fail*.
 
 ## 3.3 An agent visit
@@ -464,8 +467,9 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 - **A merged task** closes the requirements it covers, and a milestone whose requirements are all closed asks for acceptance.
 - **When `main` moves,** epics take it (3.10), and other running tasks are rebased before they merge.
 - **Writes.** The planner (3.12) and the person write through one writer (`backlog-actions`), which validates the change, writes it in one transaction and records who did it.
+- **Creating a backlog** first clones the picked repositories that are not cloned yet, by the same `RemoteRepositories.clone` a new run uses (3.2), then stores their folders. A repository that cannot be cloned is named with the reason and no backlog is written; a code host outage is a wait as everywhere else.
 
-**Today.** Holds (`pipeline/backlog/`). Gaps:
+**Today.** Holds (`pipeline/backlog/`; the clone on create is `backlog-clones.ts`, called from `backlog-scope-actions.ts`). Gaps:
 - a task that waits for another task's merge still holds a place (wait-frees-place);
 - a milestone proposed while another runs does not wait behind it (queue-behind-active).
 

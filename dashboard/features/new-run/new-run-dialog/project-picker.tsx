@@ -22,12 +22,15 @@ interface Option {
   remote?: RemoteEntry;
 }
 
-/** Local folders first, then the host repositories that are not cloned yet. */
+/** Local folders first, then the host repositories that are not cloned yet. A remote one is picked by owner and name, which is its label. */
 function optionsOf(local: readonly string[], remote: RemoteListView | null): Option[] {
-  const pending = (remote?.repositories ?? []).filter((entry) => !entry.cloned && !local.includes(entry.name));
+  const pending = (remote?.repositories ?? []).filter((entry) => !entry.cloned);
   return [
     ...local.map((name) => ({ name, label: name })),
-    ...pending.map((entry) => ({ name: entry.name, label: `${entry.owner}/${entry.name}`, remote: entry })),
+    ...pending.map((entry) => {
+      const label = `${entry.owner}/${entry.name}`;
+      return { name: label, label, remote: entry };
+    }),
   ];
 }
 

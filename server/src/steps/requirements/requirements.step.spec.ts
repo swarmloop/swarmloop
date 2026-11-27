@@ -1,3 +1,4 @@
+import { storedProjects } from '../../config/checkout-path';
 import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
 import { resultAnswer } from '../../testing/result-answer';
@@ -446,22 +447,29 @@ describe('requirements step', () => {
     await writeEnv(root, '', 'direct', { CHECKOUTS_ROOT: checkouts, SWARMLOOP_REPOS: '' });
     const app = await boot(root, '', 'direct', jest.fn(), jest.fn(), false);
     try {
-      const clone = jest
-        .spyOn(app.get(RemoteRepositories), 'clone')
-        .mockImplementation(async (name) => void mkdirSync(join(checkouts, name)));
+      const clone = jest.spyOn(app.get(RemoteRepositories), 'clone').mockImplementation(async (value) => {
+        const folder = value.slice(value.lastIndexOf('/') + 1);
+        mkdirSync(join(checkouts, folder));
+        return folder;
+      });
       const runs = app.get(RunRepository);
       const created = await runs.openWaiting('widget', '');
-      created.projects = 'fresh\nlocal\n';
+      created.projects = 'acme/demo\nfresh\nlocal\n';
       created.startedBy = 'ana';
       await storeRun(runs, created);
       const result = await app.get(PipelineService).step('requirements', 'widget', { prompt: 'Do it' });
       expect(result.exitCode).toBe(0);
-      expect(clone.mock.calls).toEqual([['fresh', 'ana']]);
+      expect(clone.mock.calls).toEqual([
+        ['acme/demo', 'ana'],
+        ['fresh', 'ana'],
+      ]);
       const run = await app.get(RunRepository).findRun('widget');
       const page = await app.get(StepEventLog).page(run?.id ?? 0, { limit: 500 });
       expect(page.events.filter((event) => event.kind === 'activity.finished')).toMatchObject([
+        { title: 'Clone acme/demo', result: 'cloned', failed: false },
         { title: 'Clone fresh', result: 'cloned', failed: false },
       ]);
+      expect(storedProjects(run?.projects)).toEqual(['demo', 'fresh', 'local']);
     } finally {
       await app.close();
     }

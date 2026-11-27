@@ -1,4 +1,10 @@
-import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { actionsHarness } from './backlog.spec-helpers';
 
 async function withActions(body: (harness: Awaited<ReturnType<typeof actionsHarness>>) => Promise<void>) {
@@ -30,6 +36,25 @@ describe('BacklogActions', () => {
       expect(view).toMatchObject({ name: 'shop', owner: 'ada', repositories: ['web', 'server'], paused: false });
       expect((await harness.queries.list()).map((backlog) => backlog.name)).toEqual(['shop']);
       await expect(harness.queries.view('none')).rejects.toThrow(NotFoundException);
+    }));
+
+  it('clones the picked repositories that are not folders yet, and stores their folders', () =>
+    withActions(async (harness) => {
+      const view = await harness.actions.createBacklog('ada', {
+        ...NEW,
+        repositories: ['web', 'acme/demo', 'acme/demo'],
+      });
+      expect(view.repositories).toEqual(['web', 'demo']);
+    }));
+
+  it('names a repository that cannot be cloned with the reason, and writes nothing', () =>
+    withActions(async (harness) => {
+      await expect(harness.actions.createBacklog('ada', { ...NEW, repositories: ['acme/missing'] })).rejects.toThrow(
+        new BadRequestException(
+          'acme/missing cannot be cloned: acme/missing is not a repository of the connected code hosts',
+        ),
+      );
+      expect(await harness.backlogs.findBacklog('shop')).toBeNull();
     }));
 
   it('tells the live hub after a person accepts a milestone, once its write is done', () =>
