@@ -82,6 +82,10 @@ export class BacklogTurnEntity {
   @Column({ type: 'text', default: '' })
   transcript!: string;
 
+  /** What the planner chat had seen of the backlog when this turn was answered; the text is the prompt builder's own. Null until a turn sets it. */
+  @Column({ name: 'seen_state', type: 'text', nullable: true })
+  seenState!: string | null;
+
   @Column({ name: 'created_at', type: 'text' })
   createdAt!: string;
 }

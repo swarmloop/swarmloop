@@ -285,6 +285,14 @@ describe('the log the launcher writes', () => {
     });
   });
 
+  it('keeps the whole prompt size of the last request when its message id is reported again', async () => {
+    const requests = [modelRequest('m1', { output: 5, usd: 0.01 }), modelRequest('m1', { output: 50, usd: 0.05 })];
+    await withHarness([streams(requests)], async ({ launcher, request, rows }) => {
+      await launcher.launch(request());
+      expect((await rows())[0].lastPromptTokens).toBe(110);
+    });
+  });
+
   it("records a resumed call's own cost, not the running total the runtime reports", async () => {
     const total = (usd: number, reported: number) =>
       ended({ usd, reported: { usd: reported, tokensIn: 1, tokensOut: 1 } });
@@ -318,7 +326,9 @@ describe('the log the launcher writes', () => {
     const unpriced = streams([modelRequest('m1', { usd: 0, price: null })], ended({ usd: 0.5 }));
     await withHarness([unpriced], async ({ launcher, request, rows }) => {
       await launcher.launch(request());
-      expect((await rows())[0].ownUsd).toBeCloseTo(0.5, 9);
+      const [row] = await rows();
+      expect(row.ownUsd).toBeCloseTo(0.5, 9);
+      expect(row.lastPromptTokens).toBe(110);
     });
   });
 

@@ -60,11 +60,23 @@ describe('the backlog-plan skill', () => {
   });
 
   it('says that what arrives while a turn runs comes once, in the same chat, and asks for the whole answer again', () => {
-    const start = skill.split('\n\n').find((paragraph) => paragraph.startsWith('Each turn starts from'));
+    const start = skill.split('\n\n').find((paragraph) => paragraph.startsWith('You keep one chat'));
     expect(start).toContain(
       'Messages and events that arrive while you work come to you once, in the same chat, before your answer is applied; give your whole answer again, taking them in.',
     );
     expect(core).not.toContain('arrive while you work');
+  });
+
+  it('keeps decisions short and puts what a task must change into its brief', () => {
+    const section = skill.slice(skill.indexOf('## Questions and decisions'));
+    expect(section).toContain('A decision is one or two sentences: what was decided and why.');
+    expect(section).toContain("What a task must change goes into that task's brief, not into a decision.");
+  });
+
+  it('says the planner keeps one chat, and where the full briefs and all decisions are', () => {
+    const start = skill.split('\n\n').find((paragraph) => paragraph.startsWith('You keep one chat'));
+    expect(start).toContain('/work/brief/tasks/<slug>.md');
+    expect(start).toContain('/work/brief/decisions.md');
   });
 
   it('reads the marks of every merge, whether or not the task covers a requirement, and adds a fix task for a real miss', () => {

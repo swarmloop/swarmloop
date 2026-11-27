@@ -477,14 +477,14 @@ describe('the backlog tier', () => {
 
   it('has its own list, with the fallback order', () => {
     expect(backlogPlanAgents(env)).toEqual([
-      { runtime: 'claude', model: 'backlog-a', effort: 'xhigh' },
-      { runtime: 'codex', model: 'backlog-b', effort: 'xhigh' },
+      { runtime: 'claude', model: 'backlog-a', effort: 'high' },
+      { runtime: 'codex', model: 'backlog-b', effort: 'high' },
     ]);
   });
 
   it('gives a stored choice before env', () => {
     const stored = { backlog: { plan: [{ runtime: 'codex', model: 'mine' }] } };
-    expect(backlogPlanAgents(env, stored)).toEqual([{ runtime: 'codex', model: 'mine', effort: 'xhigh' }]);
+    expect(backlogPlanAgents(env, stored)).toEqual([{ runtime: 'codex', model: 'mine', effort: 'high' }]);
   });
 
   it('falls back to the main plan role when its list is empty', () => {

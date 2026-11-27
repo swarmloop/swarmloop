@@ -42,7 +42,13 @@ describe('BacklogTurnState', () => {
 
       const read = await state.read('alpha', 'turn-1');
 
-      expect(read.backlog).toEqual({ name: 'alpha', repositories: ['web', 'api'], mergeMode: 'green', paused: false });
+      expect(read.backlog).toEqual({
+        id,
+        name: 'alpha',
+        repositories: ['web', 'api'],
+        mergeMode: 'green',
+        paused: false,
+      });
       expect(read.active).toMatchObject({
         number: 1,
         goal: 'goal 1',
@@ -85,6 +91,44 @@ describe('BacklogTurnState', () => {
       expect(read.messages[0].text).toBe('message 6');
       expect(read.messages.at(-1)?.text).toBe('message 25');
       expect(read.olderMessages).toBe(5);
+    }));
+
+  it('reads the newest 20 decisions with their ids, the older count and every decision newest first', () =>
+    withState(async (h, state) => {
+      const id = await h.addBacklog();
+      for (let number = 1; number <= 25; number += 1) {
+        await h.backlogs.addDecision({ backlogId: id, text: `d${number}`, who: 'owner', createdAt: h.clock.iso() });
+      }
+
+      const read = await state.read('alpha', 'turn-1');
+
+      expect(read.decisions.map((item) => item.text)).toEqual(Array.from({ length: 20 }, (_, i) => `d${i + 6}`));
+      expect(read.decisions[0].id).toBeLessThan(read.decisions[1].id);
+      expect(read.olderDecisions).toBe(5);
+      expect(read.allDecisions.map((item) => item.text)).toEqual(Array.from({ length: 25 }, (_, i) => `d${25 - i}`));
+    }));
+
+  it('reads the messages the turn holds and the state its chat last saw', () =>
+    withState(async (h, state) => {
+      const id = await h.addBacklog();
+      await h.addMessage(id, 'taken');
+      await h.chat.takeInto(id, 'turn-1');
+      await h.addMessage(id, 'waiting');
+      expect((await state.read('alpha', 'turn-1')).lastSeen).toBeNull();
+      await h.chat.saveTurn({
+        backlogId: id,
+        turnKey: 'turn-0',
+        status: 'done',
+        reason: '',
+        nextTryAt: null,
+        createdAt: h.clock.iso(),
+        seenState: 'seen',
+      });
+
+      const read = await state.read('alpha', 'turn-1');
+
+      expect(read.messagesOfTurn.map((item) => item.text)).toEqual(['taken']);
+      expect(read.lastSeen).toBe('seen');
     }));
 
   it('reads the events of the turn with their facts, and no others', () =>

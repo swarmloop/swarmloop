@@ -21,6 +21,9 @@ export class CursorRuntime extends AbstractAgentRuntime {
   promptCache(_model: string): PromptCache | null {
     return null;
   }
+  contextTokens(_model: string): number | null {
+    return null;
+  }
 
   protected readonly limits = CURSOR_LIMITS;
   protected readonly outages = CURSOR_OUTAGES;

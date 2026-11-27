@@ -420,7 +420,7 @@ describe('BacklogPlanner', () => {
 
         expect(h.agent.launches.map((launch) => launch.runtime)).toEqual(['claude', 'codex']);
         const [waiting] = await h.turnsOf(id);
-        expect(waiting).toMatchObject({ status: 'waiting', tokensIn: 30, tokensOut: 0, usd: 0.5 });
+        expect(waiting).toMatchObject({ status: 'waiting', tokensIn: 20, tokensOut: 10, usd: 0.5 });
         expect(waiting.nextTryAt).toBe(new Date(h.db.clock.now() + 60 * 60_000).toISOString());
         expect(waiting.reason).toContain('limit');
         expect(h.shown.at(-1)?.turn).toMatchObject({ status: 'waiting', nextTryAt: waiting.nextTryAt });

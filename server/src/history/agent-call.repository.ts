@@ -63,8 +63,8 @@ export class AgentCallRepository {
     });
   }
 
-  /** Adds one model request to the row's own sums and to its per-model usage, in the same write. The first request also sets what the row's first request read from the cache, once. */
-  addRequest(id: number, request: RequestUsage): Promise<void> {
+  /** Adds one model request to the row's own sums and to its per-model usage, in the same write. The first request also sets what the row's first request read from the cache, once. `promptTokens` is the whole prompt of the request (its input and cache tokens), which a caller that adds only a part of the request passes; it is the request's own sum when left out, and null leaves the row's last prompt size as it is. */
+  addRequest(id: number, request: RequestUsage, promptTokens?: number | null): Promise<void> {
     return this.queued(id, async () => {
       const [row] = await this.dataSource.query<{ usage: string | null; prices: string | null }[]>(
         `SELECT usage, prices FROM agent_exchanges WHERE id = ?`,
@@ -88,7 +88,7 @@ export class AgentCallRepository {
         `UPDATE agent_exchanges SET
            input_tokens = input_tokens + ?, cache_read_tokens = cache_read_tokens + ?,
            cache_write_tokens = cache_write_tokens + ?, output_tokens = output_tokens + ?,
-           first_cache_read_tokens = COALESCE(first_cache_read_tokens, ?),
+           first_cache_read_tokens = COALESCE(first_cache_read_tokens, ?), last_prompt_tokens = COALESCE(?, last_prompt_tokens),
            own_usd = own_usd + ?, usage = ?, prices = ? WHERE id = ?`,
         [
           own.input,
@@ -96,6 +96,7 @@ export class AgentCallRepository {
           own.cacheWrite,
           own.output,
           own.cacheRead,
+          promptTokens === undefined ? own.input + own.cacheRead + own.cacheWrite : promptTokens,
           own.usd,
           JSON.stringify(usage),
           JSON.stringify(prices),
@@ -258,6 +259,16 @@ export class AgentCallRepository {
 
   async tokensOfTurn(turnKey: string): Promise<number> {
     return (await this.totals('turn_key', turnKey)).tokens;
+  }
+
+  /** What the calls of one backlog turn read (input plus cache read plus cache write) and wrote, in one query. */
+  async turnTokens(turnKey: string): Promise<{ tokensIn: number; tokensOut: number }> {
+    const [row] = await this.dataSource.query<{ tokensIn: number | null; tokensOut: number | null }[]>(
+      `SELECT SUM(input_tokens + cache_read_tokens + cache_write_tokens) AS tokensIn, SUM(output_tokens) AS tokensOut
+       FROM agent_exchanges WHERE turn_key = ?`,
+      [turnKey],
+    );
+    return { tokensIn: Number(row?.tokensIn) || 0, tokensOut: Number(row?.tokensOut) || 0 };
   }
 
   async spendOfChat(chatId: string): Promise<number> {
