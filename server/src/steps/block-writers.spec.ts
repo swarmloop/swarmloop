@@ -384,6 +384,7 @@ const WRITER_FILES = [
   'steps/implement/implement-record.ts',
   'steps/implement/implement.step.ts',
   'steps/implement/split-pass.ts',
+  'steps/implement/split-route.ts',
   'steps/pipeline/ci-not-started.ts',
   'steps/pipeline/missing-pipeline.ts',
   'steps/pipeline/pipeline-rebase.ts',
