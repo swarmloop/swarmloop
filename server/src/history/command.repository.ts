@@ -28,6 +28,15 @@ interface AcceptInput {
   admit: (run: RunEntity | null) => void;
 }
 
+interface AcceptScopedInput {
+  type: CommandType;
+  /** What the command is for, such as `repositories:<login>`. */
+  scope: string;
+  payload: Record<string, unknown>;
+  idempotencyKey?: string;
+  actor?: string | null;
+}
+
 interface Accepted {
   command: CommandEntity;
   run: RunEntity;
@@ -99,6 +108,34 @@ export class CommandRepository {
     return accepted;
   }
 
+  /** One short transaction for a command of no run: the idempotency lookup in its scope and the command row. No run is touched. */
+  async acceptScoped(input: AcceptScopedInput): Promise<{ command: CommandEntity; replayed: boolean }> {
+    return transaction(this.dataSource, async (manager) => {
+      const stored = input.idempotencyKey
+        ? await manager.getRepository(CommandEntity).findOneBy({
+            scope: input.scope,
+            idempotencyKey: input.idempotencyKey,
+          })
+        : null;
+      if (stored) {
+        if (stored.type !== input.type || !samePayload(stored.payload, input.payload)) {
+          throw new UnprocessableEntityException('the idempotency key was used with another request');
+        }
+        return { command: stored, replayed: true };
+      }
+      const command = await insertAcceptedCommand(manager, {
+        runId: null,
+        scope: input.scope,
+        type: input.type,
+        payload: JSON.stringify(input.payload),
+        idempotencyKey: input.idempotencyKey ?? null,
+        actor: input.actor,
+        now: this.clock.iso(),
+      });
+      return { command, replayed: false };
+    });
+  }
+
   find(id: string): Promise<CommandEntity | null> {
     return this.commands.findOneBy({ id });
   }
@@ -108,7 +145,9 @@ export class CommandRepository {
     return this.commands.find({ where: { state: 'accepted' }, order: { createdAt: 'ASC' } });
   }
 
+  /** The key its queue is named by: the run key of a run command, the scope of a command of no run. */
   async keyOf(command: CommandEntity): Promise<string | null> {
+    if (command.runId === null) return command.scope;
     const run = await this.dataSource.getRepository(RunEntity).findOneBy({ id: command.runId });
     return run?.key ?? null;
   }
@@ -177,7 +216,7 @@ export class CommandRepository {
       select: { runId: true },
       where: { runId: In(runIds), state: In(['accepted', 'executing']), type: Not('stop') },
     });
-    return new Set(rows.map((row) => row.runId));
+    return new Set(rows.flatMap((row) => (row.runId === null ? [] : [row.runId])));
   }
 
   /** The commands of a run that are accepted or executing. */

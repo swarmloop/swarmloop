@@ -319,6 +319,30 @@ describe('LiveGateway', () => {
     expect(sent).toEqual([['backlog', entry]]);
   });
 
+  it('sends a command that ended to every socket, and stops after destroy', () => {
+    const hub = new LiveHub();
+    const gateway = new LiveGateway(
+      hub,
+      {} as unknown as RunQueriesService,
+      auth,
+      new ContainerGate(),
+      {} as RunListRows,
+      new FakeClock(),
+      noUsage(),
+      noDone(),
+    );
+    const sent: unknown[] = [];
+    gateway.server = {
+      emit: (name: string, entry: unknown) => sent.push([name, entry]),
+    } as unknown as LiveGateway['server'];
+    gateway.onModuleInit();
+    const entry = { commandId: 'one', state: 'succeeded' as const };
+    hub.commandEnded(entry);
+    gateway.onModuleDestroy();
+    hub.commandEnded(entry);
+    expect(sent).toEqual([['command', entry]]);
+  });
+
   describe('server pause', () => {
     function gatewayOn(gate: ContainerGate) {
       const gateway = new LiveGateway(

@@ -45,6 +45,12 @@ export interface LiveRunUsage {
   epic?: { usd: number; durationMs: number };
 }
 
+/** A command of no run has ended; its actor reads the outcome with `GET /commands/:id`. */
+export interface LiveCommand {
+  commandId: string;
+  state: 'succeeded' | 'failed';
+}
+
 /** Type aliases, not interfaces: socket.io's EventsMap needs an index signature that interfaces lack. */
 export type ServerToClientEvents = {
   runs: (page: RunsPage) => void;
@@ -56,6 +62,7 @@ export type ServerToClientEvents = {
   backlog: (entry: LiveBacklog) => void;
   usage: (entry: LiveRunUsage) => void;
   done: (items: DoneLatelyItem[]) => void;
+  command: (entry: LiveCommand) => void;
 };
 
 export type ClientToServerEvents = {

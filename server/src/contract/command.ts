@@ -12,6 +12,8 @@ export const COMMAND_TYPES = [
   'remove',
   'skip',
   'projects',
+  'create-repository',
+  'remote-refresh',
 ] as const;
 export type CommandType = (typeof COMMAND_TYPES)[number];
 
@@ -22,6 +24,20 @@ export interface CommandReceipt {
   commandId: string;
   revision: number;
   state: RunState;
+}
+
+/** What a route answers when it stores a command and does not wait for it. */
+export interface CommandAccepted {
+  commandId: string;
+}
+
+/** A command as its actor reads it: where it stands, what it returned or why it failed. */
+export interface CommandView {
+  commandId: string;
+  type: CommandType;
+  state: CommandState;
+  value: unknown;
+  error: { message: string; retryAt?: string } | null;
 }
 
 /** The optional inputs every mutating route takes next to its own body. */

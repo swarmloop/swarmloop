@@ -1,4 +1,11 @@
-import { ConflictException, HttpException, Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  Injectable,
+  Logger,
+  Optional,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { AppConfig } from '../config/env';
 import { missingCredential, runAgents } from '../config/agents';
@@ -11,15 +18,20 @@ import { DocumentRepository } from '../history/document.repository';
 import { readParkedConflict } from './parked-conflict';
 import { stateOfStatus, storedState } from '../history/run-state';
 import { actionsFor, SKIPPED_NOTE } from '../contract/run-state';
-import type { CommandReceipt, CommandType } from '../contract/command';
+import type { CommandReceipt, CommandType, CommandView } from '../contract/command';
 import { barrier } from '../core/barrier';
 import { assertKey } from '../core/pipeline-result';
 import type { PipelineResult } from '../core/pipeline-result';
 import { isHostOutage, SwarmloopError } from '../core/swarmloop-error';
 import { RunStop } from '../agent/run-stop';
+import { CommandOutcomes } from './command-outcomes';
+import { commandView } from './command-view';
+import { LiveHub } from '../live/live.hub';
 
 interface CommandContext {
   commandId: string;
+  /** The login of the person who asked; null for the server's own commands. */
+  actor: string | null;
 }
 
 /** Runs a command against the run. The services that did the work before the command path are the handlers. */
@@ -42,8 +54,6 @@ export interface SubmitOptions {
 /** The commands that make their person the owner of a run that was recorded as machine. */
 const TAKEOVER_TYPES: readonly CommandType[] = ['resume', 'replay', 'rebase'];
 
-type Outcome = { ok: true; value: unknown } | { ok: false; error: unknown };
-
 /** A command that is accepted while a writer holds the run is refused. */
 const BUSY_TYPES: readonly CommandType[] = ['start', 'resume', 'rebase', 'answer'];
 
@@ -59,7 +69,7 @@ export class CommandService {
   private readonly queues = new Map<string, Promise<void>>();
   private readonly scheduled = new Set<string>();
   private readonly stops = new Set<Promise<void>>();
-  private readonly waiters = new Map<string, ((outcome: Outcome) => void)[]>();
+  private readonly outcomes: CommandOutcomes;
 
   constructor(
     private readonly commands: CommandRepository,
@@ -69,7 +79,10 @@ export class CommandService {
     private readonly credentials: PersonalCredentials,
     private readonly userSettings: UserSettingRepository,
     private readonly documents: DocumentRepository,
-  ) {}
+    @Optional() private readonly live?: LiveHub,
+  ) {
+    this.outcomes = new CommandOutcomes(commands);
+  }
 
   register(type: CommandType, handler: CommandHandler): void {
     this.handlers.set(type, handler);
@@ -107,6 +120,24 @@ export class CommandService {
     return accepted;
   }
 
+  /** Stores a command of no run, queued under its scope, and wakes the executor. It moves no run. */
+  async acceptScoped(
+    type: CommandType,
+    scope: string,
+    payload: Record<string, unknown>,
+    options: { idempotencyKey?: string; actor?: string | null } = {},
+  ): Promise<CommandEntity> {
+    const { command } = await this.commands.acceptScoped({ type, scope, payload, ...options });
+    if (command.state === 'accepted') this.schedule(command, scope);
+    return command;
+  }
+
+  /** The command for the person who asked it; null when it is missing or another person's (both null with sign-in off). */
+  async view(id: string, actor: string | null): Promise<CommandView | null> {
+    const stored = await this.commands.find(id);
+    return stored && stored.actor === actor ? commandView(stored) : null;
+  }
+
   /** The newest command of a run whose idempotency key starts with `prefix`: the record of the last try of an event. */
   latestByKeyPrefix(runId: number, prefix: string): Promise<CommandEntity | null> {
     return this.commands.latestByKeyPrefix(runId, prefix);
@@ -140,7 +171,7 @@ export class CommandService {
     options: SubmitOptions = {},
   ): Promise<{ value: T; receipt: CommandReceipt }> {
     const { command, run } = await this.accept(type, key, payload, options);
-    const outcome = await this.outcome(command);
+    const outcome = await this.outcomes.outcome(command);
     if (!outcome.ok) {
       throw outcome.error;
     }
@@ -215,6 +246,11 @@ export class CommandService {
    * is confirmed, any other is failed.
    */
   private async settleLost(command: CommandEntity): Promise<void> {
+    if (command.runId === null) {
+      await this.commands.finish(command.id, 'failed', { error: { message: 'server restarted' } });
+      this.ended(command, null, 'failed');
+      return;
+    }
     if (command.type === 'stop' || command.type === 'remove' || command.type === 'rebase') {
       await this.commands.requeue(command.id);
       return;
@@ -226,7 +262,13 @@ export class CommandService {
     } else {
       await this.commands.finish(command.id, 'failed', { error: { message: 'server restarted' } });
     }
-    if (key) this.runs.notify(key);
+    this.ended(command, key, run?.status === 'done' ? 'succeeded' : 'failed');
+  }
+
+  /** Tells whoever shows the command that it ended: the run's readers for a run command, the sockets for a command of no run. */
+  private ended(command: CommandEntity, key: string | null, state: 'succeeded' | 'failed'): void {
+    if (command.runId === null) this.live?.commandEnded({ commandId: command.id, state });
+    else if (key) this.runs.notify(key);
   }
 
   /** `checked` is true for an HTTP command: its Resume is checked against the block's stored code. The CLI's run never refused a block. */
@@ -282,7 +324,7 @@ export class CommandService {
   private async execute(command: CommandEntity, key: string): Promise<void> {
     try {
       if (!(await this.commands.start(command.id))) {
-        this.settle(command.id, { ok: false, error: new ConflictException(`${key} command was superseded`) });
+        this.outcomes.settle(command.id, { ok: false, error: new ConflictException(`${key} command was superseded`) });
         return;
       }
       const handler = this.inline.get(command.id) ?? this.handlers.get(command.type as CommandType);
@@ -290,10 +332,10 @@ export class CommandService {
         throw new SwarmloopError(`${command.type} has no handler`);
       }
       const payload = JSON.parse(command.payload) as Record<string, unknown>;
-      const value = await handler(key, payload, { commandId: command.id });
+      const value = await handler(key, payload, { commandId: command.id, actor: command.actor });
       await this.commands.finish(command.id, 'succeeded', { value });
-      this.runs.notify(key);
-      this.settle(command.id, { ok: true, value });
+      this.ended(command, key, 'succeeded');
+      this.outcomes.settle(command.id, { ok: true, value });
     } catch (error) {
       this.logger.warn(`${command.type} of ${key} failed: ${error instanceof Error ? error.message : String(error)}`);
       await this.commands
@@ -305,39 +347,11 @@ export class CommandService {
           },
         })
         .catch(() => undefined);
-      this.runs.notify(key);
-      this.settle(command.id, { ok: false, error });
+      this.ended(command, key, 'failed');
+      this.outcomes.settle(command.id, { ok: false, error });
     } finally {
       this.inline.delete(command.id);
       this.scheduled.delete(command.id);
     }
-  }
-
-  private settle(id: string, outcome: Outcome): void {
-    const waiting = this.waiters.get(id) ?? [];
-    this.waiters.delete(id);
-    waiting.forEach((resolve) => resolve(outcome));
-  }
-
-  /** Waits for the executor, or reads what an earlier executor stored. */
-  private outcome(command: CommandEntity): Promise<Outcome> {
-    return new Promise((resolve) => {
-      this.waiters.set(command.id, [...(this.waiters.get(command.id) ?? []), resolve]);
-      void this.commands.find(command.id).then((stored) => {
-        if (stored?.state === 'succeeded' || stored?.state === 'failed' || stored?.state === 'superseded') {
-          this.settle(command.id, stored.state === 'succeeded' ? this.storedValue(stored) : this.storedError(stored));
-        }
-      });
-    });
-  }
-
-  private storedValue(stored: CommandEntity): Outcome {
-    const result = JSON.parse(stored.result ?? 'null') as { value?: unknown } | null;
-    return { ok: true, value: result?.value };
-  }
-
-  private storedError(stored: CommandEntity): Outcome {
-    const result = JSON.parse(stored.result ?? 'null') as { error?: { message: string } } | null;
-    return { ok: false, error: new ConflictException(result?.error?.message ?? `the command is ${stored.state}`) };
   }
 }
