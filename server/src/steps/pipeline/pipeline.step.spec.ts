@@ -166,7 +166,7 @@ describe('pipeline step', () => {
 
       const commands = app.get(CommandService);
       commands.register('resume', async () => {
-        await app.get(PipelineService).startDetached(key, {});
+        await app.get(PipelineService).step('pipeline', key);
         return { key, status: 'started' };
       });
       await commands.submit('resume', key, { ...PERSON_RESUME });
