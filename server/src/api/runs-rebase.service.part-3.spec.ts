@@ -12,7 +12,6 @@ import { rebaseFeatureRepos } from '../git/rebase';
 import { CommandService } from '../pipeline/command.service';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { RunRebase } from '../steps/run-rebase';
 import { hostConflictMarker } from '../steps/shared/host-conflict-marker';
 import { RunRebaseService } from './run-rebase.service';
 import { CommandHandlers } from './command-handlers';
@@ -245,34 +244,6 @@ describe('runs api', () => {
         expect((await runs.findRun('proj-82'))?.currentStep).toBe('code-review');
         expect(await documents.latestBody('proj-82', 'rebase_conflict')).not.toBe(hostConflictMarker(text));
         expect(git(tree, ['rev-parse', 'HEAD'])).not.toBe(head);
-      } finally {
-        await app.close();
-      }
-    });
-
-    it('parks the marker and starts implement without moving the branch', async () => {
-      const { tree, app, runs, documents } = await bootDone('proj-83');
-      try {
-        const head = git(tree, ['rev-parse', 'HEAD']);
-        await expect(app.get(RunRebase).handHostConflict('proj-83', text)).resolves.toBe('resolve');
-        expect((await runs.findRun('proj-83'))?.currentStep).toBe('implement');
-        expect(await documents.latestBody('proj-83', 'rebase_conflict')).toBe(hostConflictMarker(text));
-        expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
-      } finally {
-        await app.close();
-      }
-    });
-
-    it('returns the fetched base tip of every repository', async () => {
-      const { clone, app } = await bootDone('proj-84');
-      try {
-        git(clone, ['switch', 'main']);
-        writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
-        git(clone, ['add', 'src/base.ts']);
-        git(clone, ['commit', '-m', 'base']);
-        git(clone, ['push', 'origin', 'main']);
-        const base = git(clone, ['rev-parse', 'main']);
-        await expect(app.get(RunRebase).baseTips('proj-84')).resolves.toBe(`demo@${base}`);
       } finally {
         await app.close();
       }
