@@ -25,3 +25,7 @@ One line for each reviewer: what that review found. Do not give its decision: th
 `low`, `medium` or `high`, with a reason of one line.
 
 Do not add a finding none of the five wrote. Do not change their decisions. Do not end with a decision line.
+
+[reading with a reader]
+
+The reader is for searching and reading around the change; the diff, the lines under review and the lines being edited you read yourself.

@@ -328,11 +328,43 @@ describe('skillText', () => {
     expect(skillPrompt('implement', '{}', ['api'])).not.toContain(plannerCore());
   });
 
-  it('leaves the quote check out of the core and gives the asking text to the skill of a role with a reader only', () => {
+  it('leaves the quote check out of the core, which the asking text of the reader carries', () => {
     expect(plannerCore()).not.toContain('A fact checked by its quote');
-    expect(skillPrompt('backlog-plan', '{}', ['api'])).toContain(readingWithAReader());
-    expect(skillPrompt('plan', '{}', ['api'])).not.toContain(readingWithAReader());
-    expect(skillPrompt('implement', '{}', ['api'])).not.toContain(readingWithAReader());
+    expect(readingWithAReader()).toContain('by its quote');
+  });
+
+  it.each([
+    'research',
+    'plan',
+    'plan-improve',
+    'backlog-plan',
+    'implement',
+    'implement-improve',
+    'code-review/requirements',
+    'code-review/quality',
+    'code-review/regressions',
+    'code-review/security',
+    'code-review/performance',
+    'code-review/report',
+  ])('gives the %s skill the asking text by its mark, once and never as a copy', (name) => {
+    const text = skill(name);
+    expect(text.split('\n').filter((line) => line === READING_WITH_A_READER_MARK)).toHaveLength(1);
+    for (const line of readingWithAReader()
+      .split('\n')
+      .filter((line) => line.length > 20)) {
+      expect(text).not.toContain(line);
+    }
+    const prompt = skillPrompt(name, '{}', ['api'], [], [], { split: true });
+    expect(prompt.split(readingWithAReader())).toHaveLength(2);
+    const reads =
+      'The reader is for searching and reading around the change; the diff, the lines under review and the lines being edited you read yourself.';
+    const own = /^(implement|implement-improve|code-review\/)/.test(name);
+    expect(text.includes(reads)).toBe(own);
+  });
+
+  it('leaves the asking text out of the plan section for a person', () => {
+    expect(skillSection('plan', 'Answer a person')).not.toContain(readingWithAReader());
+    expect(skillSection('plan', 'Answer a person')).not.toBe('');
   });
 
   it('leaves a text without markers as it is', () => {

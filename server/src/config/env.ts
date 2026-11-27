@@ -60,7 +60,8 @@ export interface SwarmloopEnv extends CodeHostServerEnv, CodeHostLoginEnv {
   AGENTS_SUBTASK_IMPLEMENT: string;
   AGENTS_SUBTASK_REVIEW: string;
   AGENTS_BACKLOG_PLAN: string;
-  AGENTS_BACKLOG_READ: string;
+  AGENTS_READ: string;
+  READ_ROLES: string;
   BACKLOG_CHAT_CONTEXT_SHARE: number;
   EPIC_EFFORT: string;
   EPIC_REPLAN_EVERY_MERGE: boolean;
@@ -126,6 +127,15 @@ function warnRetiredBudgets(config: ConfigService): void {
   );
 }
 
+/** The backlog's own reader list is gone: one list, `AGENTS_READ`, serves every role `READ_ROLES` names. */
+function warnRetiredReadList(config: ConfigService): void {
+  if (config.get('AGENTS_BACKLOG_READ') !== undefined) {
+    new Logger('Config').warn(
+      'AGENTS_BACKLOG_READ is no longer read: the reader list is AGENTS_READ and READ_ROLES names the roles that get it',
+    );
+  }
+}
+
 function readStrings<Key extends string>(config: ConfigService, keys: readonly Key[]): Record<Key, string> {
   return Object.fromEntries(keys.map((key) => [key, config.getOrThrow<string>(key)])) as Record<Key, string>;
 }
@@ -142,6 +152,7 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
   }
   warnIgnoredAgentEnv(config);
   warnRetiredBudgets(config);
+  warnRetiredReadList(config);
   const root = config.get<string>('SWARMLOOP_ROOT');
   const checkoutsRoot = config.get<string>('CHECKOUTS_ROOT');
   const env = {
@@ -195,7 +206,8 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
     AGENTS_SUBTASK_IMPLEMENT: config.getOrThrow<string>('AGENTS_SUBTASK_IMPLEMENT'),
     AGENTS_SUBTASK_REVIEW: config.getOrThrow<string>('AGENTS_SUBTASK_REVIEW'),
     AGENTS_BACKLOG_PLAN: config.getOrThrow<string>('AGENTS_BACKLOG_PLAN'),
-    AGENTS_BACKLOG_READ: config.getOrThrow<string>('AGENTS_BACKLOG_READ'),
+    AGENTS_READ: config.getOrThrow<string>('AGENTS_READ'),
+    READ_ROLES: config.getOrThrow<string>('READ_ROLES'),
     BACKLOG_CHAT_CONTEXT_SHARE: config.getOrThrow<number>('BACKLOG_CHAT_CONTEXT_SHARE'),
     EPIC_EFFORT: config.getOrThrow<string>('EPIC_EFFORT'),
     EPIC_REPLAN_EVERY_MERGE: config.getOrThrow<boolean>('EPIC_REPLAN_EVERY_MERGE'),

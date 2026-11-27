@@ -39,7 +39,7 @@ const answered = {
 const OLD = ['old item - files: a.ts - proof: a.spec.ts'];
 const NEW = ['new item - files: a.ts - proof: a.spec.ts'];
 
-function setup(options: { chat?: boolean; split?: boolean } = {}) {
+function setup(options: { chat?: boolean; split?: boolean; env?: Record<string, string> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'swarmloop-plan-conversation-'));
   mkdirSync(join(dir, 'data'), { recursive: true });
   mkdirSync(agentStateDir(dir, 'run-1', sessionHome('plan')), { recursive: true });
@@ -91,7 +91,9 @@ function setup(options: { chat?: boolean; split?: boolean } = {}) {
       hasAgentVisit: async () => false,
     } as never,
     documents as never,
-    new AppConfig(testEnv({ SWARMLOOP_ROOT: dir, AGENTS_PLAN: 'claude:m-plan', PLAN_TIMEOUT_MS: 1234 })),
+    new AppConfig(
+      testEnv({ SWARMLOOP_ROOT: dir, AGENTS_PLAN: 'claude:m-plan', PLAN_TIMEOUT_MS: 1234, ...options.env }),
+    ),
     new FakeClock(),
     store as never,
   );
@@ -124,6 +126,18 @@ describe('PlanConversation.visit', () => {
     expect(request.result.name).toBe('subtask_answer');
     expect(request.mounts).toEqual([{ hostPath: run.targetPath, containerPath: '/work' }]);
     expect(finished).toMatchObject([{ step: 'plan', mode: 'plan', status: 'done', exitCode: 0 }]);
+  });
+
+  it('launches with the reader under the shipped READ_ROLES, and with none when plan-answers is left out', async () => {
+    const reader = { runtime: 'claude', model: 'h-claude', effort: 'low' };
+    for (const [env, helpers] of [
+      [{ AGENTS_READ: 'claude:h-claude:low' }, [reader]],
+      [{ AGENTS_READ: 'claude:h-claude:low', READ_ROLES: 'plan,research' }, undefined],
+    ] as const) {
+      const { conversation, launch, run } = setup({ env });
+      await conversation.visit({ run, startedAt: '' } as never, () => 'x', subtaskAnswer);
+      expect(launch.mock.calls[0][0].helpers).toEqual(helpers);
+    }
   });
 
   it('launches nothing and records no visit when the run has no plan chat', async () => {

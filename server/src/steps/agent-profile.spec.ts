@@ -43,6 +43,7 @@ describe('agent profiles', () => {
       tools: 'plan',
       timeLimitMs: env.RESEARCH_TIMEOUT_MS,
       session: 'resume',
+      helpers: [{ runtime: 'claude', model: 'claude-haiku-5-5', effort: 'medium' }],
     });
     for (const name of ['plan', 'plan-improve']) {
       expect(profile(name)).toMatchObject({

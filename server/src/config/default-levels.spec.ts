@@ -5,7 +5,7 @@ describe('defaultLevelOf', () => {
     expect(defaultLevelOf('AGENTS_PLAN')).toBe('high');
     expect(defaultLevelOf('AGENTS_SUBTASK_REVIEW')).toBe('medium');
     expect(defaultLevelOf('AGENTS_BACKLOG_PLAN')).toBe('high');
-    expect(defaultLevelOf('AGENTS_BACKLOG_READ')).toBe('medium');
+    expect(defaultLevelOf('AGENTS_READ')).toBe('medium');
   });
 
   it('refuses a list that defaults.env does not name', () => {

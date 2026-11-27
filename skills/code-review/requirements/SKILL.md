@@ -15,3 +15,7 @@ Do not edit files. Do not run git. Do not run tests, a service, a database, or t
 Fill `requirements` with one entry per id of the Requirements list: `id`, `status` (`met`, `partial` or `missing`) and a `note` that says where the diff does it, or what is missing. Any `partial` or `missing` entry is `decision: return`. One return names every id that is not met, not only the first. Do not ask for a new subsystem the input does not ask for. On a later pass, check again every requirement marked `partial` or `missing` before and every requirement the new changes touch, and give every entry again with its new mark. The later pass of a CI fix reads the failing test's log, not only the changed lines. "Nothing changed since my last decision" is never the reason on its own for `decision: ok`. An unchanged tree passes only when `met` says where the required behavior already is. "The plan said to stop" and "the plan asks nothing more" are never a reason. Do not return that behavior again once a person or the plan confirmed it.
 
 Decision: ok only if every requirement is `met` and nothing is extra. Return otherwise. A failed job's required fix is not extra, except the test changes above.
+
+[reading with a reader]
+
+The reader is for searching and reading around the change; the diff, the lines under review and the lines being edited you read yourself.

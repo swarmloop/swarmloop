@@ -10,7 +10,6 @@ import {
   assertAgents,
   firstAvailable,
   backlogPlanAgents,
-  backlogReadAgents,
   helperFor,
   knownModels,
   namedAgentsFor,
@@ -64,7 +63,14 @@ describe('the role of a step', () => {
   it('gives plan, implement and review their steps, and the steps that run no agent none', () => {
     const roles = (role: string): string[] =>
       Object.keys(ROLE_OF_STEP).filter((step) => ROLE_OF_STEP[step as never] === role);
-    expect(roles('plan')).toEqual(['research', 'plan', 'plan-improve', 'merge-request', 'backlog-plan']);
+    expect(roles('plan')).toEqual([
+      'research',
+      'plan',
+      'plan-improve',
+      'merge-request',
+      'backlog-plan',
+      'plan-answers',
+    ]);
     expect(roles('implement')).toEqual(['implement', 'implement-improve', 'rebase']);
     expect(roles('review')).toContain('code-review');
     expect(roles('review')).toHaveLength(7);
@@ -464,11 +470,18 @@ describe('the shipped defaults', () => {
     expect(agentFor(env, { epicAt: '2026-11-13T10:00:00Z' }, 'plan-improve')?.effort).toBe('high');
   });
 
-  it('gives a backlog planner turn one reader on Haiku 5.5 at medium, as the shipped defaults say', () => {
+  it('gives every planner one reader on Haiku 5.5 at medium, and the reviewers, implement and the rest none', () => {
     const { value } = validateSettings({}, { convert: true });
-    expect(backlogReadAgents(value as ReturnType<typeof testEnv>)).toEqual([
-      { runtime: 'claude', model: 'claude-haiku-5-5', effort: 'medium' },
-    ]);
+    const env = value as ReturnType<typeof testEnv>;
+    const reader = [{ runtime: 'claude', model: 'claude-haiku-5-5', effort: 'medium' }];
+    for (const use of ['research', 'plan', 'plan-improve', 'plan-answers']) {
+      expect(agentFor(env, null, use)?.helpers).toEqual(reader);
+      expect(agentFor(env, { parentRunId: 2 }, use)?.helpers).toEqual(reader);
+    }
+    expect(backlogPlanAgents(env)[0].helpers).toEqual(reader);
+    for (const use of ['code-review', 'code-review-report', 'implement', 'implement-improve', 'merge-request']) {
+      expect(agentFor(env, null, use)).not.toHaveProperty('helpers');
+    }
   });
 });
 
@@ -520,15 +533,19 @@ describe('the backlog tier', () => {
   });
 });
 
-describe('the backlog helpers', () => {
-  it('parses like every list, with its level resolved', () => {
-    const env = testEnv({ AGENTS_BACKLOG_READ: 'claude:a:high,codex:b' });
-    const [first, second] = backlogReadAgents(env);
-    expect(first).toEqual({ runtime: 'claude', model: 'a', effort: 'high' });
-    expect(second).toEqual({ runtime: 'codex', model: 'b', effort: 'high' });
+describe('the readers', () => {
+  const readers = (env: ReturnType<typeof testEnv>, use: string) => agentFor(env, null, use)?.helpers;
+
+  it('parse like every list, with their level resolved, and go to every agent of the use', () => {
+    const env = testEnv({ AGENTS_PLAN: 'claude:p1,codex:p2', AGENTS_READ: 'claude:a:high,codex:b' });
+    const helpers = [
+      { runtime: 'claude', model: 'a', effort: 'high' },
+      { runtime: 'codex', model: 'b', effort: 'high' },
+    ];
+    expect(agentsFor(env, null, 'plan').map((agent) => agent.helpers)).toEqual([helpers, helpers]);
   });
 
-  it('resolves a level against what its runtime declares for the model, as for every list', () => {
+  it('resolve a level against what the runtime declares for the model, as for every list', () => {
     const offered = {
       claude: ['low', 'medium', 'high', 'xhigh', 'max'],
       codex: ['low', 'medium', 'high', 'xhigh'],
@@ -537,7 +554,7 @@ describe('the backlog helpers', () => {
       jest.spyOn(runtimeFor(name), 'efforts').mockReturnValue(offered[name]),
     );
     try {
-      const [first, second] = backlogReadAgents(testEnv({ AGENTS_BACKLOG_READ: 'claude:a:max,codex:b' }));
+      const [first, second] = readers(testEnv({ AGENTS_READ: 'claude:a:max,codex:b' }), 'research') ?? [];
       expect(first).toEqual({ runtime: 'claude', model: 'a', effort: 'max' });
       expect(second).toEqual({ runtime: 'codex', model: 'b', effort: 'xhigh', effortNote: 'capped:max' });
     } finally {
@@ -545,35 +562,69 @@ describe('the backlog helpers', () => {
     }
   });
 
-  it('runs a helper at the level before it, and a first one at its own list level, never the plan role', () => {
+  it('run at the level before them, and a first one at its own list level, never the plan role', () => {
     const plan = { AGENTS_PLAN: 'claude:claude-opus-5-5:xhigh' };
-    const [first] = backlogReadAgents(testEnv({ ...plan, AGENTS_BACKLOG_READ: 'claude:claude-sonnet-5-5' }));
-    expect(first.effort).toBe('medium');
+    expect(readers(testEnv({ ...plan, AGENTS_READ: 'claude:claude-sonnet-5-5' }), 'plan')?.[0].effort).toBe('medium');
     const list = 'claude:claude-opus-5-5:high,claude:claude-sonnet-5-5';
-    expect(backlogReadAgents(testEnv({ ...plan, AGENTS_BACKLOG_READ: list }))[1].effort).toBe('high');
+    expect(readers(testEnv({ ...plan, AGENTS_READ: list }), 'plan')?.[1].effort).toBe('high');
   });
 
-  it('gives no helper for an empty list and passes the start-up check', () => {
-    const env = testEnv({ AGENTS_BACKLOG_READ: '' });
-    expect(backlogReadAgents(env)).toEqual([]);
-    expect(() => assertAgents({ ...env, ...KEYS })).not.toThrow();
+  it('go to the roles READ_ROLES names, a reviewer role to every reviewer, and to no other use', () => {
+    const base = { AGENTS_READ: 'claude:h' } as const;
+    const shipped = testEnv(base);
+    for (const use of ['research', 'plan', 'plan-improve', 'plan-answers']) {
+      expect(readers(shipped, use)).toHaveLength(1);
+    }
+    for (const use of [
+      'code-review',
+      'code-review-report',
+      'implement',
+      'implement-improve',
+      'merge-request',
+      'rebase',
+    ]) {
+      expect(agentFor(shipped, null, use)).not.toHaveProperty('helpers');
+    }
+    const reviewers = testEnv({ ...base, READ_ROLES: 'code-review, implement' });
+    for (const name of CODE_REVIEWERS) {
+      expect(readers(reviewers, `code-review-${name}`)).toHaveLength(1);
+    }
+    expect(readers(reviewers, 'implement')).toHaveLength(1);
+    expect(agentFor(reviewers, null, 'code-review-report')).not.toHaveProperty('helpers');
+    expect(agentFor(reviewers, null, 'plan')).not.toHaveProperty('helpers');
+    expect(backlogPlanAgents(reviewers)[0]).not.toHaveProperty('helpers');
+    expect(backlogPlanAgents(testEnv({ ...base, READ_ROLES: 'backlog' }))[0].helpers).toHaveLength(1);
   });
 
-  it('refuses an unknown runtime at start-up, naming the setting', () => {
-    expect(() => assertAgents({ ...testEnv({ AGENTS_BACKLOG_READ: 'gemini:g' }), ...KEYS })).toThrow(
-      /AGENTS_BACKLOG_READ.*gemini/,
+  it('go to no use when AGENTS_READ or READ_ROLES is empty, and the start-up check passes', () => {
+    for (const env of [testEnv({ AGENTS_READ: '' }), testEnv({ AGENTS_READ: 'claude:h', READ_ROLES: '' })]) {
+      expect(agentFor(env, null, 'plan')).not.toHaveProperty('helpers');
+      expect(backlogPlanAgents(env)[0]).not.toHaveProperty('helpers');
+      expect(() => assertAgents({ ...env, ...KEYS })).not.toThrow();
+    }
+  });
+
+  it('are the same for a subtask run as for a main run', () => {
+    const env = testEnv({ AGENTS_READ: 'claude:h:low' });
+    expect(agentFor(env, { parentRunId: 1 }, 'plan')?.helpers).toEqual(readers(env, 'plan'));
+  });
+
+  it('refuse an unknown runtime or an unknown role at start-up, naming the setting', () => {
+    expect(() => assertAgents({ ...testEnv({ AGENTS_READ: 'gemini:g' }), ...KEYS })).toThrow(/AGENTS_READ.*gemini/);
+    expect(() => assertAgents({ ...testEnv({ READ_ROLES: 'plan,reviewer' }), ...KEYS })).toThrow(
+      /READ_ROLES.*"reviewer".*backlog, research/,
     );
   });
 
-  it('names a runtime whose helper has a level, and leaves readiness and models alone', () => {
-    const env = testEnv({ AGENTS_BACKLOG_READ: 'claude:m:high' });
+  it('name a runtime whose reader has a level, and leave readiness and models alone', () => {
+    const env = testEnv({ AGENTS_READ: 'claude:m:high' });
     expect(runtimesNamingEffort(env)).toEqual(['cursor', 'claude']);
     expect(runtimesInUse(env)).not.toContain('claude');
     expect(knownModels(env).claude ?? []).not.toContain('m');
   });
 
-  it('picks the first entry of the runtime, and none for a runtime without an entry or without helpers', () => {
-    const helpers = backlogReadAgents(testEnv({ AGENTS_BACKLOG_READ: 'codex:x,claude:h1,claude:h2' }));
+  it('are picked by the first entry of the runtime, and none for a runtime without an entry or without helpers', () => {
+    const helpers = readers(testEnv({ AGENTS_READ: 'codex:x,claude:h1,claude:h2' }), 'plan');
     expect(helperFor(helpers, 'claude')).toMatchObject({ model: 'h1' });
     expect(helperFor(helpers, 'cursor')).toBeUndefined();
     expect(helperFor(helpers, 'codex')).toBeUndefined();

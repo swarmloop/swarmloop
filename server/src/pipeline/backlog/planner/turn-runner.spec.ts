@@ -226,7 +226,7 @@ describe('BacklogTurnRunner', () => {
         await h.runner.run('one', 'turn-a');
         expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', effort: 'low', prompt: readerPrompt() });
       },
-      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'codex:h-codex,claude:h-claude:low' },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_READ: 'codex:h-codex,claude:h-claude:low' },
     ));
 
   it('gives the agent a failover moves to its own helper, or none', () =>
@@ -240,8 +240,29 @@ describe('BacklogTurnRunner', () => {
       },
       {
         AGENTS_BACKLOG_PLAN: 'claude:m-claude,codex:m-codex',
-        AGENTS_BACKLOG_READ: 'claude:h-claude',
+        AGENTS_READ: 'claude:h-claude',
       },
+    ));
+
+  it('keeps the reader on the follow-up of a turn that a limit moved to another agent', () =>
+    withTurn(
+      async (h, id) => {
+        h.agent.script = ['limit', turnResult('First.'), turnResult('Second.')];
+        h.agent.started = async () => {
+          if (h.agent.launches.length !== 1) return;
+          await h.chat.addPersonMessage(id, 'more', 'm2', []);
+          await h.chat.takeInto(id, 'turn-a');
+        };
+        await h.runner.run('one', 'turn-a');
+
+        expect(h.agent.launches.map((launch) => launch.runtime)).toEqual(['codex', 'claude', 'claude']);
+        expect(h.agent.launches.map((launch) => launch.helper)).toEqual([
+          undefined,
+          { model: 'h-claude', effort: 'low', prompt: readerPrompt() },
+          { model: 'h-claude', effort: 'low', prompt: readerPrompt() },
+        ]);
+      },
+      { AGENTS_BACKLOG_PLAN: 'codex:m-codex,claude:m-claude', AGENTS_READ: 'claude:h-claude:low' },
     ));
 
   it('gives the reader its skill on a result follow-up and on a Resume', () =>
@@ -255,7 +276,7 @@ describe('BacklogTurnRunner', () => {
           h.agent.launches.map(() => readerPrompt()),
         );
       },
-      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'claude:h-claude' },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_READ: 'claude:h-claude' },
     ));
 
   it('gives a turn with an empty helper list no helper', () =>
@@ -265,7 +286,17 @@ describe('BacklogTurnRunner', () => {
         await h.runner.run('one', 'turn-a');
         expect(h.agent.launches[0].helper).toBeUndefined();
       },
-      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: '' },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_READ: '' },
+    ));
+
+  it('gives a turn no helper when READ_ROLES leaves the backlog out', () =>
+    withTurn(
+      async (h) => {
+        h.agent.script = [turnResult('Hi.')];
+        await h.runner.run('one', 'turn-a');
+        expect(h.agent.launches[0].helper).toBeUndefined();
+      },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_READ: 'claude:h-claude', READ_ROLES: 'plan,research' },
     ));
 
   it('gives a turn on a runtime without a helper entry none', () =>
@@ -276,7 +307,7 @@ describe('BacklogTurnRunner', () => {
         expect(h.agent.launches[0].runtime).toBe('cursor');
         expect(h.agent.launches[0].helper).toBeUndefined();
       },
-      { AGENTS_BACKLOG_READ: 'claude:h-claude' },
+      { AGENTS_READ: 'claude:h-claude' },
     ));
 
   it('sends what the turn took while the agent worked in one follow-up and applies the answer to it', () =>
@@ -327,7 +358,7 @@ describe('BacklogTurnRunner', () => {
           { model: 'h-claude', effort: 'low', prompt: readerPrompt() },
         ]);
       },
-      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'claude:h-claude:low' },
+      { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_READ: 'claude:h-claude:low' },
     ));
 
   it('launches once and applies the answer when the turn took nothing while it worked', () =>

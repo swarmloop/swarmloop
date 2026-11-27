@@ -28,3 +28,6 @@ Package registries are reachable for a library install. Do not call Jira, GitLab
 
 End the answer with the result block. `implementation` says what this pass changed. When nothing changed and the return is not a pipeline failure, leave it empty. `summary` says why the files were left or what changed, and ends with one line for each item of the input or the plan that is not built, `not built: <item> - <why>`, or the single line `not built: nothing`. Stopping part way without that line is never allowed.
 
+[reading with a reader]
+
+The reader is for searching and reading around the change; the diff, the lines under review and the lines being edited you read yourself.

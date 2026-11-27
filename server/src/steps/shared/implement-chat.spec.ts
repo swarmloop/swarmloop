@@ -39,6 +39,8 @@ describe('implement chat', () => {
         AGENTS_SUBTASK_PLAN: '',
         AGENTS_SUBTASK_IMPLEMENT: '',
         AGENTS_SUBTASK_REVIEW: '',
+        AGENTS_READ: '',
+        READ_ROLES: '',
         EPIC_EFFORT: '',
         IMPLEMENT_TIMEOUT_MS: 1000,
       },

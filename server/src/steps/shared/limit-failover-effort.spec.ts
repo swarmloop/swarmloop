@@ -7,6 +7,7 @@ import { testEnv } from '../../config/env.spec-helpers';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import type { VisitDraft } from '../../history/visit';
 import { AgentLauncher } from './agent-launcher';
+import type { AgentLaunchRequest } from './agent-launch-request';
 import { LimitFailover } from './limit-failover';
 
 const ran = { chatId: null, tokensIn: 0, tokensOut: 0, usd: 0, calls: 1, exitCode: 0, resumed: false, samples: [] };
@@ -52,24 +53,24 @@ function setup(env: Record<string, string>, epic: boolean, step: 'implement' | '
     } as never,
   );
   const launcher = new AgentLauncher(runner as never, new RunStop(), failover);
-  const launch = () =>
-    launcher.launch({
-      root,
-      run,
-      key: 'run',
-      step,
-      mode: 'agent',
-      tools: 'write',
-      runtime: 'claude',
-      model: 'm-claude',
-      effort: 'high',
-      timeLimitMs: 1,
-      prompt: 'prompt',
-      workspace: root,
-      mounts: [],
-      failover: true,
-    });
-  return { runner, finished, launch };
+  const request: AgentLaunchRequest = {
+    root,
+    run,
+    key: 'run',
+    step,
+    mode: 'agent',
+    tools: 'write',
+    runtime: 'claude',
+    model: 'm-claude',
+    effort: 'high',
+    timeLimitMs: 1,
+    prompt: 'prompt',
+    workspace: root,
+    mounts: [],
+    failover: true,
+  };
+  const launch = () => launcher.launch(request);
+  return { runner, finished, launch, failover, request };
 }
 
 describe('limit failover effort', () => {
@@ -89,5 +90,19 @@ describe('limit failover effort', () => {
 
     expect(runner.run.mock.calls[1][0]).toMatchObject({ runtime: 'codex', effort: 'xhigh' });
     expect(result.agent).toEqual({ runtime: 'codex', model: 'm-codex', effort: 'xhigh', effortNote: 'capped:max' });
+  });
+
+  it("keeps the readers of the launch it moves to the next agent, whatever that agent's list carries", async () => {
+    const env = { AGENTS_READ: 'claude:h-list', READ_ROLES: 'implement' };
+    const { failover, request } = setup(env, false);
+    const reader = { runtime: 'claude', model: 'h-own' } as const;
+    const limit = { ...ran, responseText: 'limit', limit: { window: '5-hour' } };
+
+    const own = await failover.limited({ ...request, helpers: [reader] } as never, limit as never);
+    expect(own).toMatchObject({ runtime: 'codex', helpers: [reader] });
+
+    const none = await failover.limited({ ...request } as never, limit as never);
+    expect(none).toMatchObject({ runtime: 'codex' });
+    expect(none).not.toHaveProperty('helpers');
   });
 });
