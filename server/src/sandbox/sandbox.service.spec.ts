@@ -5,6 +5,7 @@ import { join } from 'path';
 import { AppConfig } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { ContainerDropped, ContainerGate } from './container-gate';
+import { emptyWorkMount } from './empty-work-mount';
 import { SandboxService } from './sandbox.service';
 import type { SandboxChild } from './sandbox.service';
 import type { SandboxLaunch } from './sandbox-types';
@@ -13,7 +14,7 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 
 const GB = 1024 ** 3;
 
-type Given = Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots'>;
+type Given = Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots' | 'emptyWork'>;
 
 const projectLaunch = {
   image: 'swarmloop-env-demo:0123456789ab',
@@ -369,6 +370,13 @@ describe('SandboxService memory cap', () => {
       await sandbox.spawn(launch('sign-in'));
       expect(runs).toHaveLength(1);
       expect(gate.running()).toBe(0);
+    });
+
+    it('lets the empty work folder of a sign-in through at /work', async () => {
+      const { sandbox } = gated();
+      await sandbox.spawn(launch('sign-in', { mounts: [emptyWorkMount(root)] }));
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.join(' ')).toContain(`type=bind,src=${join(root, 'data', 'empty-work')},dst=/work`);
     });
 
     it('takes a held spawn out of the wait when its run is stopped, and starts nothing after resume', async () => {

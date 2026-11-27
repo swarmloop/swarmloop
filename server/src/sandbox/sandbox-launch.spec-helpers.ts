@@ -10,6 +10,7 @@ export function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
     attemptId: 'attempt-1',
     mounts: [{ hostPath: '/tmp/worktrees/PROJ-1/demo', containerPath: '/work/demo' }],
     workRoots: ['/tmp/worktrees'],
+    emptyWork: '/tmp/data/empty-work',
     envMasks: [{ hostFile: '/tmp/worktrees/PROJ-1/demo/.env', containerFile: '/work/demo/.env' }],
     allowHosts: [],
     command: ['agent', '--print', 'hello'],

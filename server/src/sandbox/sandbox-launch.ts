@@ -251,7 +251,7 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
     throw new SwarmloopError('sandbox address is not allowed');
   }
   for (const mount of launch.mounts) {
-    assertMount(mount, home, launch.workRoots);
+    assertMount(mount, home, launch.workRoots, launch.emptyWork);
   }
   const state = launch.stateDaemonPath ?? launch.statePath;
   if (state) {

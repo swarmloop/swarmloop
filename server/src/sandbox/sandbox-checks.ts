@@ -31,7 +31,12 @@ export function assertProject(project: ProjectLaunch, command: string[], home: s
   }
 }
 
-export function assertMount(mount: SandboxMount, home: string, workRoots: string[]): void {
+/** The empty `/work` folder of a container with no checkout: that exact host path at `/work`, never a prefix. */
+function isEmptyWork(mount: SandboxMount, emptyWork: string): boolean {
+  return mount.containerPath === '/work' && mount.hostPath === emptyWork;
+}
+
+export function assertMount(mount: SandboxMount, home: string, workRoots: string[], emptyWork: string): void {
   const files = mount.containerPath === ATTACHMENTS_MOUNT && mount.readonly === true;
   if (!files && !WORKTREE.test(mount.containerPath) && !GIT_METADATA.test(mount.containerPath)) {
     throw new SwarmloopError('sandbox mount is not allowed');
@@ -47,7 +52,8 @@ export function assertMount(mount: SandboxMount, home: string, workRoots: string
     !(mount.volume && mount.volumeSubpath === undefined) &&
     WORK_MOUNT.test(mount.containerPath) &&
     mount.containerPath !== BRIEF_MOUNT &&
-    mount.containerPath !== RUN_LOGS_PATH
+    mount.containerPath !== RUN_LOGS_PATH &&
+    !isEmptyWork(mount, emptyWork)
   ) {
     try {
       assertInsideWork(mount.hostPath, workRoots);

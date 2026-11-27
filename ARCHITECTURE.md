@@ -515,13 +515,13 @@ Adapters are found by folder. A fake of each kind serves the tests.
 ## 3.22 Sandbox and network
 
 **Target.**
-- **What a container sees.** It holds only its run's worktrees; reviewers get them read-only. A `.env` file in a worktree is masked.
+- **What a container sees.** It holds only its run's worktrees; reviewers get them read-only. A `.env` file in a worktree is masked. A container of no run (a sign-in, a connection test) gets only one empty folder at `/work`.
 - **How it runs.** It never runs as root. All capabilities are dropped, `no-new-privileges` is set, the root filesystem is read-only, and it has a process cap, a memory cap and its own `/tmp` on disk. It has no docker socket.
 - **Network.** The only route out is the egress proxy. It allows each container's hosts by policy: a model step reaches its vendor only, and implement and setup may also reach the package registries. DNS answers nothing inside.
 - **Model keys** are swapped in by the proxy where the vendor allows it.
 - **Lifetime.** A container never outlives its step.
 
-**Today.** Holds (`sandbox/`, `docker/egress`).
+**Today.** Holds (`sandbox/`, `docker/egress`). The empty folder is `emptyWorkPath` in `sandbox/empty-work-mount.ts`; the service hands it to the mount check on the launch, and `assertMount` accepts it by exact host path at `/work`, while every other `/work` mount must lie inside the work roots.
 
 ## 3.23 What a person sees
 
