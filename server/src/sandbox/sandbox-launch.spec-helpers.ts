@@ -11,11 +11,9 @@ export function launch(patch: Partial<SandboxLaunch> = {}): SandboxLaunch {
     mounts: [{ hostPath: '/tmp/worktrees/PROJ-1/demo', containerPath: '/work/demo' }],
     workRoots: ['/tmp/worktrees'],
     emptyWork: '/tmp/data/empty-work',
-    envMasks: [{ hostFile: '/tmp/worktrees/PROJ-1/demo/.env', containerFile: '/work/demo/.env' }],
     allowHosts: [],
     command: ['agent', '--print', 'hello'],
     userId: 501,
-    maskFile: '/tmp/swarmloop-empty-env',
     ...(patch.project
       ? { tmp: { hostPath: `/tmp/worktrees/.tmp/PROJ-1/${patch.step ?? 'research'}`, containerPath: '/tmp' } }
       : {}),

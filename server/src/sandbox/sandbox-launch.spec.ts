@@ -1,12 +1,10 @@
-import { mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync } from 'fs';
 import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, join } from 'path';
 import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { makeRepo, runGit, writeFiles } from '../git/git-repo.spec-helpers';
 import { imageName } from './image-resolver';
-import { collectEnvMasks } from './env-masks';
 import { SandboxService } from './sandbox.service';
 import { parseDockerStats } from './docker-stats';
 import type { SandboxLaunch } from '../sandbox/sandbox-launch';
@@ -14,7 +12,6 @@ import { packageRegistries, setupHosts } from './sandbox-hosts';
 import { home, launch } from './sandbox-launch.spec-helpers';
 import {
   agentStateDir,
-  emptyEnvFile,
   mountsForRun,
   resolveDaemonPath,
   sandboxArgs,
@@ -270,7 +267,6 @@ describe('sandbox launch', () => {
     expect(args).toContain('/home/sandbox:rw,nosuid,nodev,size=64m,uid=501,gid=501,mode=700');
     expect(args).toContain('/tmp:rw,nosuid,nodev,size=64m,mode=1777');
     expect(args.join(' ')).toContain('type=bind,src=/tmp/worktrees/PROJ-1/demo,dst=/work/demo,readonly=false');
-    expect(args.join(' ')).toContain('src=/tmp/swarmloop-empty-env,dst=/work/demo/.env,readonly=true');
     expect(args).not.toContain('--privileged');
     expect(args).not.toContain('host');
     expect(args.join('\n')).not.toContain('docker.sock');
@@ -333,12 +329,11 @@ describe('sandbox launch', () => {
       '/Users/dev/www/run-1',
     );
     expect(resolveDaemonPath('/tmp/worktrees/PROJ-1', [])).toBe('/tmp/worktrees/PROJ-1');
-    const mask = emptyEnvFile('/app/data/agent-state/PROJ-1');
-    expect(mask).toBe('/app/data/swarmloop-empty-env');
-    expect(emptyEnvFile('/app/data/agent-state/PROJ-12--3/code-review-security')).toBe('/app/data/swarmloop-empty-env');
-    expect(resolveDaemonPath(mask, [{ destination: '/app/data', source: '/Users/dev/www/swarmloop/data' }])).toBe(
-      '/Users/dev/www/swarmloop/data/swarmloop-empty-env',
-    );
+    expect(
+      resolveDaemonPath('/app/data/agent-state/PROJ-1', [
+        { destination: '/app/data', source: '/Users/dev/www/swarmloop/data' },
+      ]),
+    ).toBe('/Users/dev/www/swarmloop/data/agent-state/PROJ-1');
   });
 
   it('uses the daemon path for a bind and a volume name for a shared disk', () => {
@@ -346,7 +341,6 @@ describe('sandbox launch', () => {
       launch({
         mounts: [{ hostPath: '/data/checkout', daemonPath: '/builds/group/project', containerPath: '/work' }],
         workRoots: ['/data/checkout'],
-        envMasks: [],
       }),
       home,
     );
@@ -357,7 +351,6 @@ describe('sandbox launch', () => {
         mounts: [
           { hostPath: '/data/clones/other', volume: 'swarmloop-clones', containerPath: '/work', readonly: true },
         ],
-        envMasks: [],
       }),
       home,
     );
@@ -379,6 +372,15 @@ describe('sandbox launch', () => {
     ).toThrow('sandbox mount is not allowed');
   });
 
+  it('refuses a mount of a .env or docker.sock file', () => {
+    const mountOf = (hostPath: string) => launch({ mounts: [{ hostPath, containerPath: '/work/demo' }] });
+    expect(() => sandboxArgs(mountOf('/tmp/worktrees/PROJ-1/demo/.env'), home)).toThrow('sandbox mount is not allowed');
+    expect(() => sandboxArgs(mountOf('/tmp/worktrees/PROJ-1/demo/docker.sock'), home)).toThrow(
+      'sandbox mount is not allowed',
+    );
+    expect(() => sandboxArgs(mountOf('/tmp/worktrees/PROJ-1/demo/notes'), home)).not.toThrow();
+  });
+
   describe('volume subpath mounts', () => {
     const subpathLaunch = (patch: Record<string, unknown>) =>
       launch({
@@ -391,7 +393,6 @@ describe('sandbox launch', () => {
             ...patch,
           },
         ],
-        envMasks: [],
       });
 
     it('mounts the folder of a volume by its subpath, read-write or read-only', () => {
@@ -422,16 +423,15 @@ describe('sandbox launch', () => {
 
   describe('work mounts', () => {
     it('refuses a /work mount from outside the allowed roots, and lets the brief and worktrees through', () => {
-      const outside = launch({ mounts: [{ hostPath: '/srv/other-repo', containerPath: '/work' }], envMasks: [] });
+      const outside = launch({ mounts: [{ hostPath: '/srv/other-repo', containerPath: '/work' }] });
       expect(() => sandboxArgs(outside, home)).toThrow('sandbox mount is not allowed');
-      const named = launch({ mounts: [{ hostPath: '/srv/other-repo', containerPath: '/work/other' }], envMasks: [] });
+      const named = launch({ mounts: [{ hostPath: '/srv/other-repo', containerPath: '/work/other' }] });
       expect(() => sandboxArgs(named, home)).toThrow('sandbox mount is not allowed');
       const brief = launch({
         mounts: [
           { hostPath: '/tmp/worktrees/PROJ-1/demo', containerPath: '/work/demo' },
           { hostPath: '/data/briefs/PROJ-1', containerPath: '/work/brief', readonly: true },
         ],
-        envMasks: [],
       });
       expect(() => sandboxArgs(brief, home)).not.toThrow();
     });
@@ -439,7 +439,7 @@ describe('sandbox launch', () => {
     it('lets exactly the empty work folder through at /work', () => {
       const emptyWork = '/app/data/empty-work';
       const mount = (hostPath: string, containerPath: string, daemonPath?: string) =>
-        launch({ emptyWork, mounts: [{ hostPath, containerPath, daemonPath }], envMasks: [] });
+        launch({ emptyWork, mounts: [{ hostPath, containerPath, daemonPath }] });
       const plain = sandboxArgs(mount(emptyWork, '/work'), home);
       expect(plain.join(' ')).toContain('dst=/work,');
       const mapped = sandboxArgs(mount(emptyWork, '/work', '/Users/dev/www/swarmloop/data/empty-work'), home);
@@ -453,7 +453,6 @@ describe('sandbox launch', () => {
       const files = (readonly: boolean) =>
         launch({
           mounts: [{ hostPath: '/data/runs/PROJ-1/attachments', containerPath: '/work/brief/attachments', readonly }],
-          envMasks: [],
         });
       expect(sandboxArgs(files(true), home).join(' ')).toContain('dst=/work/brief/attachments,readonly=true');
       expect(() => sandboxArgs(files(false), home)).toThrow('sandbox mount is not allowed');
@@ -465,7 +464,7 @@ describe('sandbox launch', () => {
       mkdirSync(join(base, 'secret'));
       symlinkSync(join(base, 'secret'), join(base, 'repo', 'escape'));
       const mount = (hostPath: string) =>
-        launch({ workRoots: [join(base, 'repo')], mounts: [{ hostPath, containerPath: '/work' }], envMasks: [] });
+        launch({ workRoots: [join(base, 'repo')], mounts: [{ hostPath, containerPath: '/work' }] });
       expect(() => sandboxArgs(mount(join(base, 'repo')), home)).not.toThrow();
       expect(() => sandboxArgs(mount(join(base, 'repo', 'escape')), home)).toThrow('sandbox mount is not allowed');
     });
@@ -510,7 +509,6 @@ describe('sandbox launch', () => {
       launch({
         allowHosts: ['api2.cursor.sh'],
         env: [{ name: 'CURSOR_API_KEY', value: 'cursor-test-key' }],
-        envMasks: [],
       }),
       home,
     );
@@ -521,7 +519,7 @@ describe('sandbox launch', () => {
       'sandbox env is not allowed',
     );
     const both = { name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'token' };
-    const claude = sandboxArgs(launch({ env: [both], envMasks: [] }), home);
+    const claude = sandboxArgs(launch({ env: [both] }), home);
     expect(claude.filter((arg) => arg === '--env')).toEqual(['--env']);
     expect(claude[claude.indexOf('--env') + 1]).toBe('CLAUDE_CODE_OAUTH_TOKEN=token');
     expect(claude.join(' ')).not.toContain('ANTHROPIC_API_KEY');
@@ -539,61 +537,6 @@ describe('sandbox launch', () => {
   it('accepts the Packagist hosts as registries', () => {
     const args = sandboxArgs(launch({ allowHosts: ['repo.packagist.org', 'packagist.org'] }), home);
     expect(args[args.indexOf('--network') + 1]).toBe('swarmloop-registry');
-  });
-
-  it('masks env files and leaves the example', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-env-mask-'));
-    writeFileSync(join(root, '.env'), 'TOKEN=secret\n');
-    writeFileSync(join(root, '.env.example'), 'TOKEN=\n');
-    mkdirSync(join(root, 'apps'));
-    writeFileSync(join(root, 'apps', '.env.local'), 'TOKEN=secret\n');
-    const masks = await collectEnvMasks([{ hostPath: root, containerPath: '/work/demo' }]);
-    expect(masks.map((mask) => mask.containerFile).sort()).toEqual(['/work/demo/.env', '/work/demo/apps/.env.local']);
-  });
-
-  describe('in a git checkout', () => {
-    const masked = async (root: string) =>
-      (await collectEnvMasks([{ hostPath: root, containerPath: '/w' }])).map((mask) => mask.containerFile).sort();
-
-    it('leaves a tracked env file and masks an untracked one whatever its suffix', async () => {
-      const root = makeRepo({ '.env.sample': 'TOKEN=\n' });
-      writeFiles(root, { '.env.local': 's\n', '.env.example': 's\n', '.env': 's\n' });
-      expect(await masked(root)).toEqual(['/w/.env', '/w/.env.example', '/w/.env.local']);
-    });
-
-    it.each(['node_modules', '.venv'])('does not walk an ignored %s', async (folder) => {
-      const root = makeRepo({ '.gitignore': `${folder}/\n` });
-      writeFiles(root, { [`${folder}/pkg/.env`]: 's\n', '.env': 's\n' });
-      expect(await masked(root)).toEqual(['/w/.env']);
-    });
-
-    it('walks a node_modules that is not ignored like any folder', async () => {
-      const root = makeRepo();
-      writeFiles(root, { 'node_modules/pkg/.env': 's\n' });
-      expect(await masked(root)).toEqual(['/w/node_modules/pkg/.env']);
-    });
-
-    it('treats a worktree, whose .git is a file, as a checkout', async () => {
-      const root = makeRepo({ '.env.sample': 'x\n' });
-      const tree = join(mkdtempSync(join(tmpdir(), 'swarmloop-env-tree-')), 'wt');
-      runGit(root, ['worktree', 'add', '-q', '-b', 'side', tree]);
-      writeFiles(tree, { '.env.local': 's\n' });
-      expect(await masked(tree)).toEqual(['/w/.env.local']);
-    });
-  });
-
-  it('does not scan Git metadata or treat file mounts as directories', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'swarmloop-file-mount-'));
-    const pointer = join(root, 'worktree-link');
-    writeFileSync(pointer, 'gitdir: /swarmloop-git/git-abcdef\n');
-    writeFileSync(join(root, '.env'), 'not-a-project-secret\n');
-    expect(
-      await collectEnvMasks([
-        { hostPath: root, containerPath: '/swarmloop-git/git-abcdef' },
-        { hostPath: pointer, containerPath: '/work/app/.git' },
-        { hostPath: pointer, containerPath: '/work/file' },
-      ]),
-    ).toEqual([]);
   });
 
   it('names a missing docker daemon and a missing image', async () => {

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { mkdirSync, mkdtempSync, realpathSync } from 'fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { AppConfig } from '../config/env';
@@ -14,7 +14,7 @@ import { FakeClock } from '../core/fake-clock.spec-helpers';
 
 const GB = 1024 ** 3;
 
-type Given = Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots' | 'emptyWork'>;
+type Given = Omit<SandboxLaunch, 'workRoots' | 'emptyWork'>;
 
 const projectLaunch = {
   image: 'swarmloop-env-demo:0123456789ab',
@@ -353,15 +353,25 @@ describe('SandboxService memory cap', () => {
     it('starts held spawns in the order they came', async () => {
       const { sandbox, gate } = gated();
       gate.pause();
-      // Given masks skip the real file walk, whose finish time would decide the order the containers start in.
-      const first = sandbox.spawn({ ...launch('first'), envMasks: [] }, { onPaused: () => undefined });
-      const second = sandbox.spawn({ ...launch('second'), envMasks: [] }, { onPaused: () => undefined });
+      const first = sandbox.spawn(launch('first'), { onPaused: () => undefined });
+      const second = sandbox.spawn(launch('second'), { onPaused: () => undefined });
       gate.resume();
       await Promise.all([first, second]);
       expect(children.map((child) => child.containerName)).toEqual([
         expect.stringContaining('first'),
         expect.stringContaining('second'),
       ]);
+    });
+
+    it('leaves a .env the run wrote in its worktree visible to the container', async () => {
+      const { sandbox } = gated();
+      const worktree = join(root, 'worktrees', 'k', 'demo');
+      writeFileSync(join(worktree, '.env'), 'TOKEN=dummy\n');
+      writeFileSync(join(worktree, '.env.test'), 'TOKEN=dummy\n');
+      await sandbox.spawn(launch('plan'), { onPaused: () => undefined });
+      const mounts = runs.flat().filter((arg) => arg.startsWith('type='));
+      expect(mounts.some((mount) => mount.includes('dst=/work/demo,'))).toBe(true);
+      expect(mounts.filter((mount) => /dst=\/work\/demo\/\.env/.test(mount))).toEqual([]);
     });
 
     it('starts a spawn that is not held, as sign-in does', async () => {

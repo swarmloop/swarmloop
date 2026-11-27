@@ -46,11 +46,9 @@ function setup() {
       mounts: [workMount, ...launch.mounts],
       workRoots: [join(root, 'worktrees')],
       emptyWork: join(root, 'data', 'empty-work'),
-      envMasks: [],
       allowHosts: [],
       command: ['claude', ...launch.args],
       userId: 501,
-      maskFile: join(root, 'empty-env'),
       statePath: launch.statePath,
     };
     return { launch, sandbox };

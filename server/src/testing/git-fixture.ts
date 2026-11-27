@@ -1,4 +1,3 @@
-import type * as ChildProcess from 'child_process';
 import { execFileSync } from 'child_process';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -7,15 +6,6 @@ import { join } from 'path';
 /** The one file of the shared test helpers that runs git: it owns the real git calls of test setup. */
 export function gitOutput(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-}
-
-/**
- * A spy on `execFileSync` of the module object that `require('child_process')` gives, the one git.ts calls through
- * (an `import * as` copy would not see it). The caller restores it.
- */
-export function spyOnExecFileSync(): jest.SpyInstance {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return jest.spyOn(require('child_process') as typeof ChildProcess, 'execFileSync');
 }
 
 export function git(cwd: string, args: string[]): string {

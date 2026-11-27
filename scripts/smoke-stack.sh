@@ -75,11 +75,9 @@ async function main() {
     mounts: [mount],
     tmp: tmpMount,
     workRoots: ['/app/worktrees'],
-    envMasks: [],
     allowHosts: [],
     command: [],
     userId,
-    maskFile: '/app/data/swarmloop-empty-env',
     project: {
       image: `${process.env.SWARMLOOP_REGISTRY}/swarmloop-server:${process.env.SWARMLOOP_VERSION}`,
       cliVolume: volume,

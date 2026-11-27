@@ -1,6 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
 import { mkdirSync } from 'fs';
-import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { AppConfig, splitList } from '../config/env';
@@ -12,15 +11,7 @@ import { barrier } from '../core/barrier';
 import { ERROR_CODES } from '../contract/error-codes';
 import { SwarmloopError } from '../core/swarmloop-error';
 import type { SandboxMount } from '../core/sandbox-mount';
-import {
-  emptyEnvFile,
-  EnvMask,
-  agentImage,
-  prepareStateDir,
-  SandboxLaunch,
-  sandboxArgs,
-  sandboxUserId,
-} from '../sandbox/sandbox-launch';
+import { agentImage, prepareStateDir, SandboxLaunch, sandboxArgs, sandboxUserId } from '../sandbox/sandbox-launch';
 import { hostName, isLocalHost, sandboxNetworkName } from './sandbox-hosts';
 import { attemptAwaited, attemptRunning, killAttempt, stopRun } from './run-containers';
 import type { DockerRunner } from './run-containers';
@@ -30,7 +21,6 @@ import { Egress, egressMode } from './egress';
 import { imageMissing } from './image-resolver';
 import { withEgress } from './egress-launch';
 import { projectGitMount } from './project-git';
-import { collectEnvMasks, ensureMaskFile } from './env-masks';
 import { defaultDocker } from './default-docker';
 import type { DockerMachine } from './docker-machine';
 import { RunningWork } from './running-work';
@@ -54,7 +44,6 @@ export interface SandboxChild extends ChildProcess {
 @Injectable()
 export class SandboxService implements OnModuleDestroy {
   private docker: DockerRunner = defaultDocker;
-  private readonly maskFile = join(tmpdir(), 'swarmloop-empty-env');
   private readonly ownMounts = new OwnMounts(() => this.docker);
   private ownership = new SandboxOwnership();
   private egressProxy: Egress | null = null;
@@ -149,7 +138,7 @@ export class SandboxService implements OnModuleDestroy {
    * Without it, the container starts at once and is not counted.
    */
   async spawn(
-    given: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots' | 'emptyWork'> & { envMasks?: EnvMask[] },
+    given: Omit<SandboxLaunch, 'workRoots' | 'emptyWork'>,
     held?: { onPaused: () => void; agent?: AgentHold; work?: 'check' | 'setup' },
   ): Promise<SandboxChild> {
     const egress = this.egress();
@@ -194,9 +183,7 @@ export class SandboxService implements OnModuleDestroy {
     }
   }
 
-  private async spawnLaunch(
-    launch: Omit<SandboxLaunch, 'maskFile' | 'envMasks' | 'workRoots' | 'emptyWork'> & { envMasks?: EnvMask[] },
-  ): Promise<SandboxChild> {
+  private async spawnLaunch(launch: Omit<SandboxLaunch, 'workRoots' | 'emptyWork'>): Promise<SandboxChild> {
     const mounts = await this.withDaemonPaths(launch.mounts);
     const tmp = launch.tmp ? (await this.withDaemonPaths([launch.tmp]))[0] : undefined;
     await this.prepareMounts(mounts, launch.userId);
@@ -204,8 +191,6 @@ export class SandboxService implements OnModuleDestroy {
       prepareStateDir(launch.statePath, launch.userId);
     }
     const stateDaemonPath = await this.stateDaemonPath(launch.statePath, launch.stateDaemonPath);
-    const envMasks = launch.envMasks ?? (await collectEnvMasks(mounts));
-    const maskFile = await this.maskFor(launch.statePath, envMasks.length > 0);
     const env = rawEnv();
     const root = resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname);
     const workRoots = workRootsAt(root, env.CHECKOUTS_ROOT, splitList(env.SWARMLOOP_REPOS));
@@ -216,8 +201,6 @@ export class SandboxService implements OnModuleDestroy {
       workRoots,
       emptyWork: emptyWorkPath(root),
       stateDaemonPath,
-      envMasks,
-      maskFile,
     };
     const args = sandboxArgs(full);
     const network = full.egress ? null : sandboxNetworkName(full.allowHosts);
@@ -327,15 +310,6 @@ export class SandboxService implements OnModuleDestroy {
     } catch {
       return;
     }
-  }
-
-  async maskFor(statePath: string | undefined, needed: boolean): Promise<string> {
-    if (!needed) {
-      return this.maskFile;
-    }
-    const local = statePath ? emptyEnvFile(statePath) : this.maskFile;
-    ensureMaskFile(local);
-    return this.ownMounts.resolveBind(local);
   }
 
   async stateDaemonPath(path?: string, given?: string): Promise<string | undefined> {

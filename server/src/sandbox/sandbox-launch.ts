@@ -1,6 +1,6 @@
 import { chmodSync, chownSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
-import { dirname, join, resolve, sep } from 'path';
+import { dirname, join, resolve } from 'path';
 import type { RuntimeName } from '../integrations/agent-runtime/agent-runtime.registry';
 import { RUNTIME_NAMES, runtimeFor } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SwarmloopError } from '../core/swarmloop-error';
@@ -18,13 +18,13 @@ import {
   sandboxNetworkName,
 } from './sandbox-hosts';
 import { imageName } from './image-resolver';
-import { assertDaemonPath, assertMask, assertMount, assertProject, assertTmp, sandboxMount } from './sandbox-checks';
+import { assertDaemonPath, assertMount, assertProject, assertTmp, sandboxMount } from './sandbox-checks';
 import { CLI_ROOT, egressProxyArgs, projectImageArgs } from './sandbox-args';
 import { coreListText } from './core-slices';
 import type { SandboxLaunch } from './sandbox-types';
 
 import type { SandboxMount } from '../core/sandbox-mount';
-export type { EnvMask, ManifestHosts, ProjectLaunch, SandboxLaunch } from './sandbox-types';
+export type { ManifestHosts, ProjectLaunch, SandboxLaunch } from './sandbox-types';
 export { CLI_ROOT } from './sandbox-args';
 /** Test runners and JVM builds start many threads, and every thread counts. Still a ceiling against a fork bomb. */
 const PROJECT_PIDS = '1024';
@@ -140,14 +140,6 @@ export function agentStateDir(root: string, key: string, step?: string): string 
     throw new SwarmloopError('sandbox step is invalid');
   }
   return join(base, step);
-}
-
-/** The empty file that covers a checkout .env. It lives in data/, which Compose bind-mounts, so the daemon can see it when the server itself is in a container. */
-export function emptyEnvFile(statePath: string): string {
-  const parts = statePath.split(sep);
-  const at = parts.lastIndexOf('agent-state');
-  const data = at > 0 ? parts.slice(0, at).join(sep) : dirname(dirname(statePath));
-  return join(data, 'swarmloop-empty-env');
 }
 
 /** The sandbox user must be able to write the session directory. */
@@ -314,10 +306,6 @@ export function sandboxArgs(launch: SandboxLaunch, home = homedir(), engine = sa
   }
   for (const mount of launch.mounts) {
     args.push('--mount', sandboxMount(mount));
-  }
-  for (const mask of launch.envMasks) {
-    assertMask(mask, launch.mounts);
-    args.push('--mount', `type=bind,src=${launch.maskFile},dst=${mask.containerFile},readonly=true`);
   }
   const workdir = launch.mounts[0]?.containerPath ?? '/work';
   if (project?.shell !== undefined) {
