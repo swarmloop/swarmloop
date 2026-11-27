@@ -27,11 +27,17 @@ export class RunRebaseService {
    * `main` is the machine bringing a new green main into an epic: its open subtasks follow the epic's new tip.
    * `keepsWait` is a parent moving a subtask that waits on a question or a sibling: it is moved and starts nothing.
    */
-  async rebase(key: string, byParent = false, main?: string, keepsWait = false): Promise<RunRef> {
+  async rebase(
+    key: string,
+    byParent = false,
+    main?: string,
+    keepsWait = false,
+    hostConflict: string | null = null,
+  ): Promise<RunRef> {
     // A cleaned run gets its worktrees back before they are rebased.
     const run = await this.runs.findRun(key);
     if (run) await this.workspace.ensureForRequest(run);
-    const next = await this.rebaseOrConflict(key, byParent, main !== undefined, keepsWait);
+    const next = await this.rebaseOrConflict(key, byParent, main !== undefined, keepsWait, hostConflict);
     // An epic whose rebase conflicted moves none: the end of its resolution round moves them.
     if (run?.split && next !== 'resolve') await this.tasksMove.move(run);
     if (next === 'stay') return { key, status: keepsWait ? 'waiting' : 'blocked' };
@@ -50,9 +56,10 @@ export class RunRebaseService {
     byParent: boolean,
     byMain: boolean,
     keepsWait: boolean,
+    hostConflict: string | null,
   ): Promise<RebaseNext> {
     try {
-      return await this.action.rebase(key, false, byParent, byMain, keepsWait);
+      return await this.action.rebase(key, false, byParent, byMain, keepsWait, hostConflict);
     } catch (error) {
       if (isHostOutage(error) && !byMain) throw new ConflictException(error.message);
       throw error;

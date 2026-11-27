@@ -258,7 +258,7 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 - **Merge request.** The server opens or updates it from the repository's template, with the report in its body between markers, and keeps the report current.
 - **CI.** The pipeline step reads CI on the exact head commit. A red job's cleaned trace is saved, and the run returns to implement with it. A job that only CI fails, on the same content the checks passed, is marked CI-only. A known flaky test is told apart. When CI never starts, the step looks again on a timer and then triggers it. A run is done only when its merge requests are ready for review.
 
-**Today.** Holds (`steps/commit/`, `steps/merge-request/`, `steps/pipeline/`).
+**Today.** Holds (`steps/commit/`, `steps/merge-request/`, `steps/pipeline/`). When a merge conflict keeps CI from starting, the pipeline step (`missing-pipeline.ts`) joins the code host's reasons into one conflict text, counts the try, records the loop and waits with "automatic rebase". `pipeline-rebase.ts` then sends the run's Rebase with that text, bounded by the try limit, whose stop says how many automatic rebases were tried. A move that leaves every head where it was parks the text and starts implement, whose conflict agent resolves it (`run-rebase.ts`, `implement-host-conflict.ts`). A move that changes a head goes back through code review. No such conflict stops for a person. The stop for a changed worktree, the wait on a code host outage and the block for other failed moves stay.
 
 ## 3.9 Merge
 

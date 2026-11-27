@@ -30,6 +30,7 @@ export async function missingPipeline(input: {
   const run = ctx.opened.run;
   const notes = [input.missing.map((repo) => `${repo} CI did not start`).join(', ')];
   const conflicts: PipelineRef[] = [];
+  const conflictReasons: string[] = [];
   const unexplained: PipelineRef[] = [];
   let closed = false;
   for (const ref of records.filter((ref) =>
@@ -40,7 +41,10 @@ export async function missingPipeline(input: {
     if (!diagnosis.code) unexplained.push(ref);
     ctx.calls.push(...diagnosis.httpCalls);
     if (diagnosis.reason) notes.push(diagnosis.reason);
-    if (diagnosis.code === 'merge-conflict') conflicts.push(ref);
+    if (diagnosis.code === 'merge-conflict') {
+      conflicts.push(ref);
+      if (diagnosis.reason) conflictReasons.push(diagnosis.reason);
+    }
     if (diagnosis.code === 'closed') closed = true;
   }
   const end = (outcome: 'failed' | 'blocked', detail?: string): StepResult => {
@@ -57,11 +61,9 @@ export async function missingPipeline(input: {
   if (conflicts.length === 0) {
     return unexplained.length === 0 ? end('failed') : waitForCi({ ctx, events, host, refs: unexplained, notes });
   }
-  const history = JSON.parse((await ctx.reread(ARTIFACTS.pipelineRebases)) ?? '[]') as string[];
-  const sources = conflicts.map((ref) => `${ref.project}@${ref.sha ?? 'unknown'}`);
-  if (history.some((source) => sources.includes(source)))
-    return end('blocked', 'automatic rebase was already attempted for this SHA');
-  if (run.attemptsPipeline >= input.limit) return end('blocked', 'automatic rebase limit reached');
+  if (run.attemptsPipeline >= input.limit) {
+    return end('blocked', `automatic rebase limit reached after ${run.attemptsPipeline} automatic rebases`);
+  }
   const changed = await changedWorktree(input.root, run.key, ctx, records);
   if (changed) return end('blocked', changed);
   run.attemptsPipeline += 1;
@@ -69,12 +71,9 @@ export async function missingPipeline(input: {
   return {
     route: { to: 'wait', reason: 'automatic rebase' },
     summary: `${ctx.opened.startedAt} automatic rebase\n${notes.join('\n')}`,
-    outputs: [
-      { artifact: ARTIFACTS.pipelineRebases, value: JSON.stringify([...history, ...sources]) },
-      { artifact: ARTIFACTS.pipelineLog, value: `result: rebase\n${notes.join('\n')}\n` },
-    ],
+    outputs: [{ artifact: ARTIFACTS.pipelineLog, value: `result: rebase\n${notes.join('\n')}\n` }],
     visit: { status: 'waiting' },
-    afterClose: automaticRebase({ ctx, runs, rebase, halted: input.halted }),
+    afterClose: automaticRebase({ ctx, runs, rebase, halted: input.halted, hostConflict: conflictReasons.join('\n') }),
   };
 }
 

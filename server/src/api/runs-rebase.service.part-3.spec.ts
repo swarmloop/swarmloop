@@ -9,11 +9,18 @@ import { tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
 
 import { rebaseFeatureRepos } from '../git/rebase';
+import { CommandService } from '../pipeline/command.service';
+import { DocumentRepository } from '../history/document.repository';
+import { RunRepository } from '../history/run.repository';
+import { hostConflictMarker } from '../steps/shared/host-conflict-marker';
+import { RunRebaseService } from './run-rebase.service';
+import { CommandHandlers } from './command-handlers';
+import { seededBoot } from './runs-boot.spec-helpers';
 import { memoryJournal } from '../git/rebase/journal.spec-helpers';
 
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 
-import { featureWorktree, git } from '../testing/runs.spec-helpers';
+import { featureWorktree, git, remember } from '../testing/runs.spec-helpers';
 
 async function rebaseDemo(root: string, key: string, branch: string, denied: string[]) {
   const previous = process.env.SWARMLOOP_ROOT;
@@ -192,5 +199,76 @@ describe('runs api', () => {
     }
     const env = existsSync(join(tree, '.env')) ? readFileSync(join(tree, '.env'), 'utf8') : '';
     expect(hidden || env.includes('TOKEN=2')).toBe(true);
+  });
+
+  describe('a conflict only the code host sees', () => {
+    const text = 'The pull request has merge conflicts with its base branch.';
+
+    async function bootDone(key: string) {
+      const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-host-'));
+      const fixture = featureWorktree(root, key);
+      const pipeline = { startDetached: jest.fn().mockResolvedValue({ exitCode: 0, message: `${key} started` }) };
+      const app = await seededBoot(root, pipeline);
+      const runs = app.get(RunRepository);
+      const documents = app.get(DocumentRepository);
+      const run = await remember(runs, documents, key, 'pipeline', 'done');
+      await documents.putDocument(run, 'implementation', '- changed the field\n');
+      return { ...fixture, app, runs, documents };
+    }
+
+    it('hands the conflict to implement when the move leaves the head where it was', async () => {
+      const { tree, app, runs, documents } = await bootDone('proj-81');
+      try {
+        const head = git(tree, ['rev-parse', 'HEAD']);
+        await app.get(RunRebaseService).rebase('proj-81', false, undefined, false, text);
+        const run = await runs.findRun('proj-81');
+        expect(run?.currentStep).toBe('implement');
+        expect(run?.status).toBe('waiting');
+        expect(await documents.latestBody('proj-81', 'rebase_conflict')).toBe(hostConflictMarker(text));
+        expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('goes to code review as today when the base moved and the head moved', async () => {
+      const { tree, clone, app, runs, documents } = await bootDone('proj-82');
+      try {
+        const head = git(tree, ['rev-parse', 'HEAD']);
+        git(clone, ['switch', 'main']);
+        writeFileSync(join(clone, 'src', 'base.ts'), 'export const base = 1;\n');
+        git(clone, ['add', 'src/base.ts']);
+        git(clone, ['commit', '-m', 'base']);
+        git(clone, ['push', 'origin', 'main']);
+        await app.get(RunRebaseService).rebase('proj-82', false, undefined, false, text);
+        expect((await runs.findRun('proj-82'))?.currentStep).toBe('code-review');
+        expect(await documents.latestBody('proj-82', 'rebase_conflict')).not.toBe(hostConflictMarker(text));
+        expect(git(tree, ['rev-parse', 'HEAD'])).not.toBe(head);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('is handed on by a rebase command with a hostConflict payload', async () => {
+      const { app, runs, documents } = await bootDone('proj-85');
+      try {
+        new CommandHandlers(
+          app.get(CommandService),
+          {} as never,
+          {} as never,
+          {} as never,
+          {} as never,
+          app.get(RunRebaseService),
+          { register: jest.fn() } as never,
+          {} as never,
+          {} as never,
+        ).onModuleInit();
+        await app.get(CommandService).submit('rebase', 'proj-85', { hostConflict: text });
+        expect((await runs.findRun('proj-85'))?.currentStep).toBe('implement');
+        expect(await documents.latestBody('proj-85', 'rebase_conflict')).toBe(hostConflictMarker(text));
+      } finally {
+        await app.close();
+      }
+    });
   });
 });

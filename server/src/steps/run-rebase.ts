@@ -10,6 +10,7 @@ import { root } from '../history/run-paths';
 import { RunNames } from './shared/run-names';
 import { RunAuthor } from './shared/run-author';
 import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
+import { hostConflictMarker } from './shared/host-conflict-marker';
 import { sameOwnDiff } from '../git/rebase/own-diff';
 import { git } from '../git/git';
 import { withWorktrees } from '../git/worktree-lock';
@@ -76,6 +77,7 @@ export class RunRebase {
     byParent = false,
     byMain = false,
     keepsWait = false,
+    hostConflict: string | null = null,
   ): Promise<'resume' | 'start' | 'stay' | 'resolve'> {
     const run = await this.requireRun(key);
     await this.assertOffered(run, byParent, byMain, keepsWait);
@@ -90,8 +92,8 @@ export class RunRebase {
     const bases = new Map<string, string>();
     const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
     const paths = this.worktreePaths(run, names);
-    const { heads, stop } = await withWorktrees(paths, async () => {
-      const heads = status === 'done' ? await this.heads(run) : new Map<string, string>();
+    const { heads, moved, stop } = await withWorktrees(paths, async () => {
+      const heads = status === 'done' || hostConflict !== null ? await this.heads(run) : new Map<string, string>();
       try {
         const stop = await this.rebaseWorktrees(run, bases, journal);
         await this.environments.refreshAfterRebase(
@@ -101,7 +103,8 @@ export class RunRebase {
         );
         await this.tips.recordMoved(run, journal);
         await completeRebase(journal, run.key);
-        return { heads, stop };
+        const moved = hostConflict !== null ? await this.heads(run) : heads;
+        return { heads, moved, stop };
       } catch (error) {
         if (isHostOutage(error)) throw error;
         const message = error instanceof SwarmloopError ? error.message : 'rebase failed';
@@ -122,6 +125,9 @@ export class RunRebase {
     await this.settleParkedMarker(run);
     if (byMain || run.split) await withWorktrees(paths, async () => this.publishRebased(key, run, names, stop.leases));
     if (stays) return 'stay';
+    if (hostConflict !== null && [...heads].every(([repo, before]) => moved.get(repo) === before)) {
+      return this.handHostConflict(key, hostConflict);
+    }
     if (await this.checklistUnfinished(run)) {
       return this.startAtImplement(run);
     }
@@ -132,6 +138,14 @@ export class RunRebase {
     }
     // Every review and CI result of the old generation is stale: a step that reads them goes back through code-review.
     return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
+  }
+
+  /** A conflict only the code host sees goes to the implement agent, as a conflict of the move does. */
+  private async handHostConflict(key: string, text: string): Promise<'resolve'> {
+    const run = await this.requireRun(key);
+    await this.documents.putDocument(run, ARTIFACTS.rebaseConflict.kind, hostConflictMarker(text));
+    await this.startAtImplement(run);
+    return 'resolve';
   }
 
   /** A move that ended clean leaves no conflict parked: the one the marker names was settled by the move itself. */
