@@ -12,6 +12,8 @@ import {
   startWaitColumns,
   stateColumns,
   storedState,
+  WRITTEN_WHOLE,
+  writeOpenItemState,
   writeRunState,
 } from './run-state';
 
@@ -94,7 +96,7 @@ describe('deriveState', () => {
   });
 
   it('calls a return to implement idle with the reason RETURNED', () => {
-    expect(withFacts({ status: 'waiting' }, { returned: true })).toEqual({
+    expect(withFacts({ status: 'waiting', currentStep: 'implement', attemptsReview: 1 }, {})).toEqual({
       state: 'idle',
       reason: { code: REASON.returned, message: 'returned to implement' },
     });
@@ -374,7 +376,7 @@ describe('liveState', () => {
 });
 
 describe('factColumns', () => {
-  const facts = { needsAnswers: false, returned: false };
+  const facts = { needsAnswers: false };
 
   it('says waiting for a person on a run with open questions', () => {
     expect(read(factColumns({ status: 'waiting' }, { ...facts, needsAnswers: true }))).toEqual({
@@ -403,7 +405,7 @@ describe('factColumns', () => {
   });
 
   it('marks a run that went back to implement as returned', () => {
-    expect(read(factColumns({ status: 'waiting' }, { ...facts, returned: true }))).toEqual({
+    expect(read(factColumns({ status: 'waiting', currentStep: 'implement', attemptsPipeline: 1 }, facts))).toEqual({
       state: 'idle',
       code: REASON.returned,
     });
@@ -472,5 +474,57 @@ describe('factColumns', () => {
     it('reads plain BLOCKED with no stored code and no code in the error text', () => {
       expect(stored(undefined)).toEqual({ state: 'blocked', code: REASON.blocked });
     });
+  });
+});
+
+describe('writeOpenItemState', () => {
+  const row = (status: string, state: string | null = null, stateReason: string | null = null) => ({
+    status,
+    state,
+    stateReason,
+  });
+  const none = { needsAnswers: false, asksPlanner: false };
+
+  it.each([
+    [{ ...none, needsAnswers: true }, 'waiting', 'NEEDS_ANSWERS'],
+    [{ ...none, asksPlanner: true }, 'waiting', REASON.asksPlanner],
+    [none, 'idle', null],
+  ])('sets the state of a waiting run from the facts %j', (facts, state, code) => {
+    const run = row('waiting');
+    writeOpenItemState(run, facts);
+    expect(storedState(run)).toEqual({
+      state,
+      reason: code ? { code, message: expect.any(String) as string } : null,
+    });
+  });
+
+  it('marks a waiting run at implement with an earlier return as returned', () => {
+    const run = { ...row('waiting'), currentStep: 'implement', attemptsChecks: 1 };
+    writeOpenItemState(run, none);
+    expect(storedState(run).reason?.code).toBe(REASON.returned);
+  });
+
+  it.each(['running', 'done', 'failed'])('leaves a %s row with a stored state as its writer wrote it', (status) => {
+    const reason = JSON.stringify({ code: 'KEPT', message: 'kept' });
+    const run = row(status, 'running', reason);
+    writeOpenItemState(run, { ...none, needsAnswers: true });
+    expect(run).toEqual(row(status, 'running', reason));
+  });
+
+  it('leaves a waiting row with a reason of its own as its writer wrote it', () => {
+    const reason = JSON.stringify({ code: ERROR_CODES.PIPELINE_UNFIXED, message: 'failed twice' });
+    const run = row('waiting', 'idle', reason);
+    writeOpenItemState(run, none);
+    expect(run).toEqual(row('waiting', 'idle', reason));
+  });
+
+  it('fills a running row that has no state', () => {
+    const run = row('running');
+    writeOpenItemState(run, none);
+    expect(run.state).toBe('running');
+  });
+
+  it('keeps WRITTEN_WHOLE to the statuses whose writers store the whole state', () => {
+    expect(WRITTEN_WHOLE).toEqual(['running', 'done', 'failed']);
   });
 });

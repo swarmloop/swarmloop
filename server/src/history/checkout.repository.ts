@@ -1,14 +1,18 @@
 import { Injectable, Optional } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { LiveHub } from '../live/live.hub';
 import { CheckoutEntity, PasteEntity } from './entities';
+import { RunOpenItems } from './run-open-items';
+import { transaction } from './transaction';
 
 @Injectable()
 export class CheckoutRepository {
   constructor(
     @InjectRepository(CheckoutEntity) private readonly checkouts: Repository<CheckoutEntity>,
     @InjectRepository(PasteEntity) private readonly pastes: Repository<PasteEntity>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly openItems: RunOpenItems,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -31,13 +35,17 @@ export class CheckoutRepository {
   }
 
   async savePaste(runKey: string, url: string, body: string): Promise<void> {
-    const existing = await this.pastes.findOne({ where: { runKey, url } });
-    if (existing) {
-      existing.body = body;
-      await this.pastes.save(existing);
-    } else {
-      await this.pastes.save(this.pastes.create({ runKey, url, body }));
-    }
+    await transaction(this.dataSource, async (manager) => {
+      const pastes = manager.getRepository(PasteEntity);
+      const existing = await pastes.findOne({ where: { runKey, url } });
+      if (existing) {
+        existing.body = body;
+        await pastes.save(existing);
+      } else {
+        await pastes.save(pastes.create({ runKey, url, body }));
+      }
+      await this.openItems.hold(manager, { key: runKey });
+    });
     this.live?.changed(runKey);
   }
 }

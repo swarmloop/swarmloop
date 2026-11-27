@@ -35,6 +35,9 @@ import { RunWaitLog } from './run-wait.log';
 import { VisitStartRepository } from './visit-start.repository';
 import { AgentCallRepository } from './agent-call.repository';
 import { RunFactsRepository } from './run-facts.repository';
+import { OpenItemRules } from './open-item-rules';
+import { RunOpenItems } from './run-open-items';
+import { OpenItemFacts } from '../steps/shared/open-item-facts';
 import { EtaHistoryRepository } from './eta-history.repository';
 
 /**
@@ -107,6 +110,8 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     EtaHistoryRepository,
     VisitStartRepository,
     AgentCallRepository,
+    RunOpenItems,
+    { provide: OpenItemRules, useClass: OpenItemFacts },
   ],
   exports: [
     RunRepository,
@@ -135,6 +140,7 @@ export function historyDatabaseOptions(root: string): BetterSqlite3ConnectionOpt
     EtaHistoryRepository,
     VisitStartRepository,
     AgentCallRepository,
+    RunOpenItems,
     TypeOrmModule,
   ],
 })

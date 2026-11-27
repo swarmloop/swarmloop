@@ -5,6 +5,8 @@ import { DocumentRepository } from '../../history/document.repository';
 import { PlanChatStore } from '../../history/plan-chat.store';
 import { RunRepository } from '../../history/run.repository';
 import { copyMainWithOrigin, git } from '../../testing/git-fixture';
+import { ARTIFACTS } from '../../steps/contract/artifacts';
+import { askedQuestion } from '../../steps/implement/split-questions';
 import { readStoredQuestions } from '../../steps/shared/question-parts';
 import type { PlanConversation } from '../../steps/shared/plan-conversation';
 import { PlannerChain } from '../planner-chain';
@@ -407,7 +409,12 @@ describe('BacklogEvents', () => {
       const id = (await h.seedBacklog('one')).id as number;
       await h.seedTask(id, 'a', { runKey: 'a-1' });
       await h.seedDoneRun('a-1', []);
-      await h.moveRun('a-1', { status: 'waiting', reason: { code: 'SUBTASK_WAITING', message: 'waiting' } });
+      await h.moveRun('a-1', {
+        status: 'waiting',
+        currentStep: 'implement',
+        reason: { code: 'SUBTASK_WAITING', message: 'waiting' },
+      });
+      await h.markSplit('a-1');
       const runs = h.db.app.get(RunRepository);
       const documents = h.db.app.get(DocumentRepository);
       const epic = (await runs.findRun('a-1'))!;
@@ -428,6 +435,14 @@ describe('BacklogEvents', () => {
         conversation,
         documents,
         runs,
+      );
+
+      // The planner of the backlog already passed the question on, so it waits for the person who started the run.
+      const line = askedQuestion('b', 'b needs c: which retry policy wins', h.db.clock.iso()).question;
+      await documents.putDocument(
+        epic,
+        ARTIFACTS.passedOn.kind,
+        ARTIFACTS.passedOn.format([{ question: line, line: 'Only you can choose.', at: h.db.clock.iso() }]),
       );
 
       const asked = await chain.askUp(child, { from: 'implement', text: 'b needs c: which retry policy wins' }, 1);

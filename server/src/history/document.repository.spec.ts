@@ -1,4 +1,7 @@
 import { DataSource } from 'typeorm';
+import { ARTIFACTS } from '../steps/contract/artifacts';
+import { seedBacklogTask } from '../steps/shared/question-holds.spec-helpers';
+import { storedState } from './run-state';
 import { DocumentRepository } from './document.repository';
 import { repositoryDatabase } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
@@ -105,5 +108,93 @@ describe('DocumentRepository', () => {
     } finally {
       await db.close();
     }
+  });
+
+  describe('stores the state with a document of an open-item kind', () => {
+    const waitingAtResearch = async (db: Awaited<ReturnType<typeof repositoryDatabase>>, key: string) => {
+      const runs = db.app.get(RunRepository);
+      await runs.openWaiting(key, '/target');
+      return runs.change(key, (run) => {
+        run.currentStep = 'research';
+      });
+    };
+    const stateOf = async (db: Awaited<ReturnType<typeof repositoryDatabase>>, key: string) => {
+      const { state, reason } = storedState((await db.app.get(RunRepository).findRun(key))!);
+      return [state, reason?.code ?? null];
+    };
+
+    it('says waiting for a person right after a question is stored, and idle once the run is past its questions', async () => {
+      const db = await repositoryDatabase();
+      try {
+        const documents = db.app.get(DocumentRepository);
+        const run = await waitingAtResearch(db, 'run-1');
+        await documents.putDocument(run, 'questions', '- Which store?\n');
+        expect(await stateOf(db, 'run-1')).toEqual(['waiting', 'NEEDS_ANSWERS']);
+        await db.app.get(RunRepository).change('run-1', (row) => {
+          row.currentStep = 'implement';
+        });
+        expect(await stateOf(db, 'run-1')).toEqual(['idle', null]);
+      } finally {
+        await db.close();
+      }
+    });
+
+    it('says waiting for the planner for a backlog task run', async () => {
+      const db = await repositoryDatabase();
+      try {
+        await seedBacklogTask(db.app, 'going-1');
+        const documents = db.app.get(DocumentRepository);
+        const run = await waitingAtResearch(db, 'going-1');
+        await documents.putDocument(run, 'questions', '- Which store?\n');
+        expect(await stateOf(db, 'going-1')).toEqual(['waiting', 'ASKS_PLANNER']);
+      } finally {
+        await db.close();
+      }
+    });
+
+    it('stops the walk up the parents at a run that is its own parent', async () => {
+      const db = await repositoryDatabase();
+      try {
+        const run = await waitingAtResearch(db, 'run-1');
+        await db.app.get(RunRepository).change('run-1', (row) => {
+          row.parentRunId = row.id;
+        });
+        await db.app.get(DocumentRepository).putDocument(run, 'questions', '- Which store?\n');
+        expect(await stateOf(db, 'run-1')).toEqual(['waiting', 'NEEDS_ANSWERS']);
+      } finally {
+        await db.close();
+      }
+    });
+
+    it('says waiting for a person for a backlog task run whose question is passed on', async () => {
+      const db = await repositoryDatabase();
+      try {
+        await seedBacklogTask(db.app, 'going-1');
+        const documents = db.app.get(DocumentRepository);
+        const run = await waitingAtResearch(db, 'going-1');
+        const line = { question: 'Which store?', line: 'Only you can choose.', at: '2026-01-01T00:00:00.000Z' };
+        await documents.putDocument(run, ARTIFACTS.passedOn.kind, ARTIFACTS.passedOn.format([line]));
+        await documents.putDocument(run, 'questions', '- Which store?\n');
+        expect(await stateOf(db, 'going-1')).toEqual(['waiting', 'NEEDS_ANSWERS']);
+      } finally {
+        await db.close();
+      }
+    });
+
+    it('corrects the state for a document of an open-item kind only', async () => {
+      const db = await repositoryDatabase();
+      try {
+        const documents = db.app.get(DocumentRepository);
+        const run = await waitingAtResearch(db, 'run-1');
+        await documents.putDocument(run, 'questions', '- Which store?\n');
+        await db.app.get(DataSource).query("UPDATE runs SET state = 'idle', state_reason = NULL");
+        await documents.putDocument(run, 'git_refusal', 'a');
+        expect(await stateOf(db, 'run-1')).toEqual(['idle', null]);
+        await documents.putDocument(run, 'questions', '- Which store?\n- And where?\n');
+        expect(await stateOf(db, 'run-1')).toEqual(['waiting', 'NEEDS_ANSWERS']);
+      } finally {
+        await db.close();
+      }
+    });
   });
 });

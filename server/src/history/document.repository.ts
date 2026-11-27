@@ -1,10 +1,14 @@
 import { Injectable, Optional } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, LessThan, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, LessThan, Repository } from 'typeorm';
 import { Clock } from '../core/clock';
 import { LiveHub } from '../live/live.hub';
 import { RunEntity, DocumentEntity } from './entities';
 import type { GateStamp } from './gate-stamp';
+import { latestDocumentsOf } from './latest-document';
+import { OpenItemRules } from './open-item-rules';
+import { RunOpenItems } from './run-open-items';
+import { transaction } from './transaction';
 
 @Injectable()
 export class DocumentRepository {
@@ -12,6 +16,9 @@ export class DocumentRepository {
     private readonly clock: Clock,
     @InjectRepository(RunEntity) private readonly runs: Repository<RunEntity>,
     @InjectRepository(DocumentEntity) private readonly documents: Repository<DocumentEntity>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly openItems: RunOpenItems,
+    private readonly rules: OpenItemRules,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
@@ -23,18 +30,24 @@ export class DocumentRepository {
     if (latest?.body === body) {
       return;
     }
-    await this.documents.save(
-      this.documents.create({
-        runId: run.id,
-        stepStatId: 0,
-        kind,
-        attempt: 0,
-        body,
-        path: '',
-        stamp: null,
-        createdAt: this.clock.iso(),
-      }),
-    );
+    const row = this.documents.create({
+      runId: run.id,
+      stepStatId: 0,
+      kind,
+      attempt: 0,
+      body,
+      path: '',
+      stamp: null,
+      createdAt: this.clock.iso(),
+    });
+    if (this.rules.kinds.includes(kind)) {
+      await transaction(this.dataSource, async (manager) => {
+        await manager.getRepository(DocumentEntity).save(row);
+        await this.openItems.hold(manager, { id: run.id });
+      });
+    } else {
+      await this.documents.save(row);
+    }
     this.live?.changed(run.key);
   }
 
@@ -99,19 +112,7 @@ export class DocumentRepository {
 
   /** The latest document of each of `kinds` for each of the runs, in two reads whatever the number of runs. */
   async latestDocuments(runIds: number[], kinds: string[]): Promise<DocumentEntity[]> {
-    if (runIds.length === 0 || kinds.length === 0) {
-      return [];
-    }
-    const newest: { id: number }[] = await this.documents
-      .createQueryBuilder('document')
-      .select('MAX(document.id)', 'id')
-      .where('document.runId IN (:...runIds) AND document.kind IN (:...kinds)', { runIds, kinds })
-      .groupBy('document.runId')
-      .addGroupBy('document.kind')
-      .getRawMany();
-    return newest.length === 0
-      ? []
-      : this.documents.find({ where: { id: In(newest.map(({ id }) => Number(id))) }, order: { id: 'ASC' } });
+    return latestDocumentsOf(this.documents, runIds, kinds);
   }
 
   async hasDocument(key: string, kind: string): Promise<boolean> {

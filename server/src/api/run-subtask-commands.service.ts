@@ -119,8 +119,8 @@ export class RunSubtaskCommandsService {
       ),
     );
     const fresh = (await this.runs.findRun(key)) ?? parent;
-    // An epic that waits on questions may wait on this part's, which the skip just closed: its pass is due as well.
-    if (this.subtasks.passDue(fresh) || asksAtImplement(fresh))
+    // An epic that waited on questions, read before the skip closed this part's, has its pass due as well.
+    if (this.subtasks.passDue(fresh) || asksAtImplement(parent))
       await this.subtasks.resumeParent(fresh, `skip-${taskId}-${fresh.revision}`);
     return { key, status: 'started' };
   }

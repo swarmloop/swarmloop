@@ -2,6 +2,9 @@ import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import { repositoryDatabase } from '../../history/repository.spec-helpers';
 import { ARTIFACTS } from '../contract/artifacts';
+import type { FlowItem } from '../../contract/api';
+import type { DocumentEntity } from '../../history/entities';
+import { holdFacts, markHolders } from './question-holds';
 import { holdServices, seedBacklogTask } from './question-holds.spec-helpers';
 import { storeRun } from '../../testing/store-run.spec-helpers';
 
@@ -83,5 +86,31 @@ describe('QuestionHolds', () => {
     } finally {
       await db.close();
     }
+  });
+});
+
+describe('markHolders', () => {
+  const open: FlowItem = { kind: 'question', id: QUESTION, label: QUESTION, answer: '' };
+  const answered: FlowItem = { ...open, answer: 'sqlite' };
+  const paste: FlowItem = { kind: 'paste', id: 'https://example.test/p', label: 'p', answer: '' };
+
+  it('gives the planner the open question of a backlog run, and not an answered one or a paste', () => {
+    expect(markHolders([open, answered, paste], [], true)).toEqual([{ ...open, holder: 'planner' }, answered, paste]);
+  });
+
+  it('leaves every question with the person outside a backlog', () => {
+    expect(markHolders([open], [], false)).toEqual([open]);
+  });
+
+  it('marks a passed-on question with the planner line instead of a holder', () => {
+    const passed = ARTIFACTS.passedOn.format([{ question: QUESTION, line: 'You choose.', at: 'now' }]);
+    const documents = [{ kind: ARTIFACTS.passedOn.kind, body: passed }] as DocumentEntity[];
+    expect(markHolders([open], documents, true)).toEqual([{ ...open, passedOn: 'You choose.' }]);
+  });
+
+  it('says what the marked items ask: the person for any item the planner does not hold', () => {
+    expect(holdFacts([{ ...open, holder: 'planner' }])).toEqual({ needsAnswers: false, asksPlanner: true });
+    expect(holdFacts([{ ...open, holder: 'planner' }, paste])).toEqual({ needsAnswers: true, asksPlanner: true });
+    expect(holdFacts([])).toEqual({ needsAnswers: false, asksPlanner: false });
   });
 });
