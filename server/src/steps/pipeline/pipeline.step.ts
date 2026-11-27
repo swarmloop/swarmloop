@@ -150,6 +150,7 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
 
   /** The first look at the CI of every ref, before any wait: the projects with no CI are left out of it. */
   private async scopeOf(ctx: StepContext, records: PipelineRef[], host: CodeHost): Promise<CiScope> {
+    assertNotStopped(this.runStop, ctx.opened.run.key);
     const seen = await loadSeen(records, ctx.calls, host, false);
     const showedNothing = seen.some((item) => item.runs.length === 0 && item.checks.length === 0);
     const ciFiles = showedNothing ? await ciFileProjects(ctx, root(this.config)) : new Set<string>();

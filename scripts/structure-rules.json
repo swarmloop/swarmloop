@@ -98,6 +98,15 @@
     {
       "include": "server/src/",
       "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/integrations/code-host/"],
+      "reasons": {
+        "server/src/integrations/code-host/": "the door itself: the registry builds the hosts from the adapters"
+      },
+      "pattern": "\\b\\w*[aA]dapters?\\w*(\\([^)]*\\))?(\\[[^\\]]*\\])?[!?]?\\.create\\("
+    },
+    {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
       "allowFiles": [
         "server/src/git/rebase/own-change.ts",
         "server/src/pipeline/parent-tree-sync.ts",

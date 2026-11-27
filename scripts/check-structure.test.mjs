@@ -584,6 +584,21 @@ test('a code host is reached only through the door of the run person', () => {
   assert.deepEqual(check({ 'server/src/steps/shared/call-context.ts': 'await this.starts.forRun(run.id);\n' }), []);
 });
 
+test('only the code host folder builds a host from an adapter with the server env', () => {
+  const lookup = 'const host = codeHostAdapter(run.codeHost)!.create(this.config.env, this.clock);\n';
+  const each = 'const hosts = codeHostAdapters().map((adapter) => adapter.create(env, clock));\n';
+
+  assert.equal(check({ 'server/src/steps/merge-request/merge-request-draft.ts': lookup }).length, 1);
+  assert.equal(check({ 'server/src/pipeline/merge-watch.ts': each }).length, 1);
+  for (const allowed of [
+    'server/src/integrations/code-host/code-host.registry.ts',
+    'server/src/steps/merge-request/merge-request-draft.spec.ts',
+  ]) {
+    assert.deepEqual(check({ [allowed]: lookup + each }), [], allowed);
+  }
+  assert.deepEqual(check({ 'server/src/git/rebase/fetch.ts': 'return CodeHostRegistry.create(hosts, clock);\n' }), []);
+});
+
 test('only the own-change files say what a move carries', () => {
   const onto = "await git(['-C', path, 'rebase', '--onto', base, old]);\n";
   const mergeBase = "await git(['merge-base', 'HEAD', tip]);\n";

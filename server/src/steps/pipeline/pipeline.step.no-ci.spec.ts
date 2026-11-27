@@ -5,6 +5,7 @@ import { mkdtemp, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+import { RunStop } from '../../agent/run-stop';
 import { PipelinesRefused } from '../../core/swarmloop-error';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -180,6 +181,24 @@ describe('pipeline step and projects with no CI', () => {
       expect(host.drafts.get('group/demo!1')).toBe(false);
       expect(await app.get(DocumentRepository).latestBody(KEY, 'merge_request')).toContain('draft: false');
       expect(clock.now()).toBe(started);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not mark a draft ready for a run with no CI that was asked to stop', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-no-ci-stop-'));
+    const host = setDraft();
+    const app = await boot(root, jest.fn(refuse), jest.fn(), undefined, undefined, undefined, {
+      readBranchHasPipeline: jest.fn(refuse),
+      setDraft: host.mock,
+    });
+    try {
+      await settledRun(app, root, true);
+      jest.spyOn(app.get(RunStop), 'halted').mockReturnValue(true);
+      const result = await app.get(PipelineService).step('pipeline', KEY);
+      expect(result.message).toContain('Stopped by request');
+      expect(host.drafts.get('group/demo!1')).toBe(true);
     } finally {
       await app.close();
     }
