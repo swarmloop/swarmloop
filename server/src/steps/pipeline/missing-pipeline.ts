@@ -135,3 +135,32 @@ export async function missingRuns(ctx: StepContext, root: string, seen: Seen[]):
   }
   return missing;
 }
+
+/**
+ * The origin projects of the run's checked repositories whose tree has a CI file, read the way `missingRuns` reads
+ * them. Empty when the repo list is missing or unreadable.
+ */
+export async function ciFileProjects(ctx: StepContext, root: string): Promise<Set<string>> {
+  const projects = new Set<string>();
+  const lines = await ctx.reread(ARTIFACTS.repos);
+  if (!lines || lines.length === 0) {
+    return projects;
+  }
+  let names: string[];
+  try {
+    names = checkedRepoNames(lines);
+  } catch {
+    return projects;
+  }
+  for (const name of names) {
+    const dir = worktreePath(root, ctx.opened.run.key, name);
+    if (!hasCi(dir)) {
+      continue;
+    }
+    const project = await withWorktree(dir, () => originProject(dir));
+    if (project) {
+      projects.add(project);
+    }
+  }
+  return projects;
+}
