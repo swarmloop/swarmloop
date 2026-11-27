@@ -14,7 +14,7 @@ describe('Connections page', () => {
 
     render(<Page />);
 
-    expect(await screen.findByText('GitHub did not answer: x')).toBeInTheDocument();
+    expect(await screen.findByText('Login with GitHub failed: x')).toBeInTheDocument();
     expect(screen.getByText('connections stub')).toBeInTheDocument();
   });
 });

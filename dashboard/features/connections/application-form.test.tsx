@@ -37,7 +37,7 @@ describe('ApplicationForm', () => {
     renderForm();
     const link = screen.getByRole('link', { name: 'Open Applications on git.corp.example' });
     expect(link).toHaveAttribute('href', setup.page);
-    expect(link).toHaveAttribute('target', '_blank');
+    expect((link as HTMLAnchorElement).target).toBe('_blank');
     expect(screen.getByLabelText('Callback URL')).toHaveValue(setup.callback);
     expect(screen.getByLabelText('Callback URL')).toHaveAttribute('readonly');
     expect(screen.getByText(/read_user, api, write_repository/)).toBeInTheDocument();
