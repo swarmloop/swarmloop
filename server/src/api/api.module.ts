@@ -11,6 +11,7 @@ import { RepositoryOrigins } from '../steps/shared/repository-origins';
 import { ProvidersModule } from '../integrations/providers.module';
 import { ReadinessModule } from '../readiness/readiness.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
+import { CommandsController } from './commands.controller';
 import { CommandHandlers } from './command-handlers';
 import { PlanChatController } from './plan-chat.controller';
 import { UploadsController } from './uploads.controller';
@@ -60,6 +61,7 @@ import { RequestTiming } from './request-timing';
     ServerController,
     ReadinessController,
     RunsController,
+    CommandsController,
     PlanChatController,
     UploadsController,
     BacklogsController,

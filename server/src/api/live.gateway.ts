@@ -108,6 +108,7 @@ export class LiveGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConn
         this.markDoneDue();
       }),
     );
+    this.stop.push(this.hub.onCommandEnded((entry) => this.server.emit('command', entry)));
     this.stop.push(this.hub.onBacklogWritten(() => this.markDoneDue()));
     this.stop.push(this.gate.onChange((paused) => this.server.emit('server', { paused })));
   }

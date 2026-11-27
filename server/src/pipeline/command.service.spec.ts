@@ -299,7 +299,7 @@ describe('CommandService', () => {
       await commands.recover();
       await commands.idle();
 
-      expect(ran).toEqual([['proj-1', { prompt: 'go' }, { commandId: acceptedId }]]);
+      expect(ran).toEqual([['proj-1', { prompt: 'go' }, { commandId: acceptedId, actor: null }]]);
       expect((await second.get(CommandRepository).find(acceptedId))?.state).toBe('succeeded');
     } finally {
       await second.close();

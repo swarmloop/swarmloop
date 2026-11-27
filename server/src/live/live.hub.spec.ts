@@ -31,6 +31,18 @@ describe('LiveHub', () => {
     expect(seen).toEqual(['alpha']);
   });
 
+  it('tells listeners when a command of no run ended, until they stop', () => {
+    const hub = new LiveHub();
+    const seen: string[] = [];
+    const stop = hub.onCommandEnded((entry) => seen.push(`${entry.commandId}:${entry.state}`));
+
+    hub.commandEnded({ commandId: 'one', state: 'succeeded' });
+    stop();
+    hub.commandEnded({ commandId: 'two', state: 'failed' });
+
+    expect(seen).toEqual(['one:succeeded']);
+  });
+
   it('sums parallel reviewer spend and drops a finished one', () => {
     const hub = new LiveHub();
     hub.log({ key: 'run-1', step: 'code-review-quality', body: 'q\n', usage: { tokensIn: 10, tokensOut: 1, usd: 2 } });

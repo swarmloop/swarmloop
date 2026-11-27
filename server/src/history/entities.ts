@@ -269,12 +269,18 @@ export class CheckCommandEntity {
 
 @Entity('commands')
 @Index('IDX_commands_run_idempotency', ['runId', 'idempotencyKey'], { unique: true })
+@Index('IDX_commands_scope_idempotency', ['scope', 'idempotencyKey'], { unique: true })
 export class CommandEntity {
   @PrimaryColumn()
   id!: string;
 
-  @Column({ name: 'run_id', type: 'integer' })
-  runId!: number;
+  /** The run the command is asked of; null for a command of no run, which has a scope. */
+  @Column({ name: 'run_id', type: 'integer', nullable: true })
+  runId!: number | null;
+
+  /** What a command of no run is for, such as `repositories:<login>`; null for a run command. */
+  @Column({ type: 'text', nullable: true })
+  scope!: string | null;
 
   @Column()
   type!: string;
