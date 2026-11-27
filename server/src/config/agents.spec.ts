@@ -463,6 +463,13 @@ describe('the shipped defaults', () => {
     expect(efforts({ epicAt: '2026-11-13T10:00:00Z' })).toEqual(['high', 'high', 'high']);
     expect(agentFor(env, { epicAt: '2026-11-13T10:00:00Z' }, 'plan-improve')?.effort).toBe('high');
   });
+
+  it('gives a backlog planner turn one reader on Haiku 5.5 at medium, as the shipped defaults say', () => {
+    const { value } = validateSettings({}, { convert: true });
+    expect(backlogReadAgents(value as ReturnType<typeof testEnv>)).toEqual([
+      { runtime: 'claude', model: 'claude-haiku-5-5', effort: 'medium' },
+    ]);
+  });
 });
 
 describe('the backlog tier', () => {

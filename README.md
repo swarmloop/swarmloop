@@ -345,7 +345,7 @@ bin/swarmloop run PROJ-123 --prompt "what this ticket is"
 | `AGENTS_REVIEW` | Agents of the `review` role (every code reviewer and the review report). The default is `high`. Each person can override it in Settings. |
 | `AGENTS_SUBTASK_PLAN`, `AGENTS_SUBTASK_IMPLEMENT`, `AGENTS_SUBTASK_REVIEW` | The same for a run with a parent; the default is `medium`. Empty: the main role. Each person can override it in Settings. |
 | `AGENTS_BACKLOG_PLAN` | Agents of the backlog planner (plan role only), `runtime:model[:effort]`, comma-separated; the default is `high`. Empty: `AGENTS_PLAN`. Each person can override it in Settings. |
-| `AGENTS_BACKLOG_READ` | Helpers of a backlog planner turn, read only, `runtime:model[:effort]`, comma-separated; the turn uses the first entry of its own runtime. Empty: no helper. |
+| `AGENTS_BACKLOG_READ` | Helpers of a backlog planner turn, read only, `runtime:model[:effort]`, comma-separated; the turn uses the first entry of its own runtime. Empty: no helper. The default is `claude:claude-haiku-5-5:medium`. |
 | `BACKLOG_PLAN_TIMEOUT_MS` | Time limit of one backlog planner turn in milliseconds; the default is `3600000`. |
 | `BACKLOG_CHAT_CONTEXT_SHARE` | Share of the model's context, from 0 to 1, past which a backlog planner chat starts anew from the state brief; the default is `0.5`. |
 | `EPIC_EFFORT` | The effort that lifts only the planning of the parent of a split run: `low`, `medium`, `high`, `xhigh` or `max`. It only raises an agent's own effort. Default `high`; empty turns it off. |

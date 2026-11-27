@@ -24,8 +24,8 @@ export type AgentTools = 'none' | 'read' | 'plan' | 'write';
 export interface AgentHelper {
   model: string;
   effort?: Effort;
-  /** The launching agent reads the code mounts only through its helper; it keeps its search tool and the turn's own folder. */
-  codeOnlyByHelper?: boolean;
+  /** The helper's instructions: its own skill, which the launching side reads and the adapter hands to the helper unchanged. */
+  prompt: string;
 }
 
 /** The prompt cache a runtime uses: its lifetime, and what reading and writing it costs per million tokens. Its rates are the price fallback when the price page lacks one, and its lifetime says which cache writes are priced at. */

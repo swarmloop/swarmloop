@@ -4,6 +4,7 @@ import type { SandboxMount } from '../../core/sandbox-mount';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { NEAR_TESTS_MARK, NEAR_TESTS_RULE } from './near-tests-rule';
 import { PLANNER_CORE_MARK, plannerCore } from './planner-core';
+import { READING_WITH_A_READER_MARK, readingWithAReader } from './reader-asking';
 import { alsoReadLine, skillFileReads, STAY_LINE_START } from './outside-reads';
 import type { OutsideRead } from './outside-reads';
 import { requirementsBrief } from './requirements-brief';
@@ -62,12 +63,16 @@ function markedText(line: string): string {
   if (line === NEAR_TESTS_MARK) {
     return NEAR_TESTS_RULE;
   }
-  return line === PLANNER_CORE_MARK ? plannerCore() : line;
+  if (line === PLANNER_CORE_MARK) {
+    return plannerCore();
+  }
+  return line === READING_WITH_A_READER_MARK ? readingWithAReader() : line;
 }
 
 /**
  * Keeps a `[plan tool] ` line only for a runtime with a plan tool and a `[no plan tool] ` line only for one without.
- * A `[near tests rule]` line becomes the near-tests rule and a `[planner core]` line the planners' core text.
+ * A `[near tests rule]` line becomes the near-tests rule, a `[planner core]` line the planners' core text and a
+ * `[reading with a reader]` line the text of the agents that have a reader.
  */
 export function skillText(raw: string, planTool: boolean): string {
   const kept: string[] = [];
@@ -89,6 +94,16 @@ export function skillText(raw: string, planTool: boolean): string {
 
 const PLAN_TOOL_MARK = '[plan tool] ';
 const NO_PLAN_TOOL_MARK = '[no plan tool] ';
+
+/** The prompt of the reader that an agent with a helper launches: its own skill, read as the other skills are. */
+export function readerPrompt(): string {
+  const file = join(__dirname, '../../../../skills', 'reader', 'SKILL.md');
+  try {
+    return skillText(readFileSync(file, 'utf8'), true).trimEnd();
+  } catch {
+    throw new SwarmloopError('reader skill is missing');
+  }
+}
 
 /** The section of a skill that is for the chat with a person. A first prompt does not carry it. */
 const ANSWER_HEADING = '## Answer a person';

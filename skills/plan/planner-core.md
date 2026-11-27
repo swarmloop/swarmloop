@@ -23,7 +23,3 @@ No change is the usual answer. Change a task that has not started only when what
 ## A new task or a plan change
 
 Its brief carries the goal, the requirements and the facts you were given, each with the file and line it rests on, to be checked against main. The code research is the task's own research step, and you do no code research to write a brief.
-
-## A fact checked by its quote
-
-A helper that reads for you quotes each fact by its exact line, with its file and its line number. When a decision rests on a fact, check its quote with one search and do not reread the file.

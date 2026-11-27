@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 import { plannerCore } from '../../steps/shared/planner-core';
+import { READING_WITH_A_READER_MARK } from '../../steps/shared/reader-asking';
 import { skillPrompt } from '../../steps/shared/skill-prompt';
 
 const skill = readFileSync(join(__dirname, '../../../../skills/backlog-plan/SKILL.md'), 'utf8');
@@ -25,8 +26,6 @@ const CORE_SENTENCES = [
   'Give each decision with a one-line reason that names the goal',
   'the facts you were given, each with the file and line it rests on, to be checked against main',
   'you do no code research to write a brief',
-  'quotes each fact by its exact line, with its file and its line number',
-  'check its quote with one search and do not reread the file',
 ];
 
 const GENERAL_RULES = [
@@ -95,19 +94,11 @@ describe('the backlog-plan skill', () => {
     expect(skill).not.toContain('with names and evidence');
   });
 
-  it('hands heavy reading to a helper, rereads the lines a fact rests on, and names no runtime, model or tool', () => {
-    const start = skill.indexOf('## Reading with a helper');
-    const section = skill.slice(start, skill.indexOf('\n## ', start + 1));
-    expect(section).toContain('Hand it the heavy reading: code, long briefs, logs and diffs');
-    expect(section).toContain('Ask it for the facts you need');
-    expect(section).not.toContain('read yourself the lines it rests on');
-    expect(section).toContain('you read code only through it, and the launch holds you to it');
-    expect(section).toContain('each quoted as `A fact checked by its quote` says');
-    expect(section).toContain("long texts of the turn's folder (cut logs, attachments, diffs)");
-    expect(section).toContain('Without a helper you read yourself');
-    expect(section).toContain('The decisions, the actions and the result block are yours');
-    expect(section).not.toMatch(/claude|codex|cursor|sonnet|opus|haiku|gpt/i);
-    expect(section).not.toMatch(/\b(Task|Agent|Grep|Glob|Bash|Explore)\b/);
+  it('takes the shared text for reading with a reader by its mark, and holds no reading rule of its own', () => {
+    expect(skill.split('\n')).toContain(READING_WITH_A_READER_MARK);
+    expect(skill).not.toContain('Reading with a helper');
+    expect(skill).not.toContain('the launch holds you to it');
+    expect(skill).not.toContain('A fact checked by its quote');
   });
 
   it('lists the pass-on action among the run actions it hands back', () => {

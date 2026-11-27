@@ -4,6 +4,7 @@ import { backlogMessageKey } from '../../../history/backlog-message-key';
 import { plannerChatKey } from './planner-chat-key';
 import { plannerTurnsHarness } from './planner-turns.spec-helpers';
 import { turnResult } from './planner-scenarios.spec-helpers';
+import { readerPrompt } from '../../../steps/shared/skill-prompt';
 
 type Harness = Awaited<ReturnType<typeof plannerTurnsHarness>>;
 
@@ -223,7 +224,7 @@ describe('BacklogTurnRunner', () => {
       async (h) => {
         h.agent.script = [turnResult('Hi.')];
         await h.runner.run('one', 'turn-a');
-        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', effort: 'low', codeOnlyByHelper: true });
+        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', effort: 'low', prompt: readerPrompt() });
       },
       { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'codex:h-codex,claude:h-claude:low' },
     ));
@@ -234,7 +235,7 @@ describe('BacklogTurnRunner', () => {
         h.agent.script = ['limit', turnResult('Hi.')];
         await h.runner.run('one', 'turn-a');
         expect(h.agent.launches.map((launch) => launch.runtime)).toEqual(['claude', 'codex']);
-        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', effort: 'medium', codeOnlyByHelper: true });
+        expect(h.agent.launches[0].helper).toEqual({ model: 'h-claude', effort: 'medium', prompt: readerPrompt() });
         expect(h.agent.launches[1].helper).toBeUndefined();
       },
       {
@@ -243,21 +244,21 @@ describe('BacklogTurnRunner', () => {
       },
     ));
 
-  it('asks for the code-only-by-helper rights on a result follow-up and on a Resume', () =>
+  it('gives the reader its skill on a result follow-up and on a Resume', () =>
     withTurn(
       async (h) => {
         h.agent.script = [turnResult('First try.', outside), turnResult('Second try.'), turnResult('Again.')];
         await h.runner.run('one', 'turn-a');
         await h.runner.run('one', 'turn-a');
         expect(h.agent.launches.length).toBeGreaterThanOrEqual(3);
-        expect(h.agent.launches.map((launch) => launch.helper?.codeOnlyByHelper)).toEqual(
-          h.agent.launches.map(() => true),
+        expect(h.agent.launches.map((launch) => launch.helper?.prompt)).toEqual(
+          h.agent.launches.map(() => readerPrompt()),
         );
       },
       { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'claude:h-claude' },
     ));
 
-  it('gives a turn with an empty helper list no helper and no rights', () =>
+  it('gives a turn with an empty helper list no helper', () =>
     withTurn(
       async (h) => {
         h.agent.script = [turnResult('Hi.')];
@@ -322,8 +323,8 @@ describe('BacklogTurnRunner', () => {
         await h.runner.run('one', 'turn-a');
 
         expect(h.agent.launches.map((launch) => launch.helper)).toEqual([
-          { model: 'h-claude', effort: 'low', codeOnlyByHelper: true },
-          { model: 'h-claude', effort: 'low', codeOnlyByHelper: true },
+          { model: 'h-claude', effort: 'low', prompt: readerPrompt() },
+          { model: 'h-claude', effort: 'low', prompt: readerPrompt() },
         ]);
       },
       { AGENTS_BACKLOG_PLAN: 'claude:m-claude', AGENTS_BACKLOG_READ: 'claude:h-claude:low' },
