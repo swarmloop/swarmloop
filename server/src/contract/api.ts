@@ -376,6 +376,10 @@ export interface RemoteListView {
   reason: string | null;
   /** `SWARMLOOP_REPOS`. Empty when every name is allowed. */
   allowedNames: string[];
+  /** True while a host with no snapshot yet is being read for the first time. */
+  loading: boolean;
+  /** The message of the last refresh that failed, named by host label; null when none. */
+  error: string | null;
 }
 
 export interface CreateRepositoryBody {

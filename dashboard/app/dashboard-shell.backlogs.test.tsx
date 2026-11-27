@@ -47,7 +47,14 @@ beforeEach(() => {
   vi.mocked(useRouter).mockReturnValue({ push: vi.fn(), replace: vi.fn() } as unknown as ReturnType<typeof useRouter>);
   vi.mocked(listRuns).mockImplementation(listRunsFrom([]));
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
-  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
+  vi.mocked(listRemote).mockResolvedValue({
+    repositories: [],
+    owners: [],
+    reason: null,
+    allowedNames: [],
+    loading: false,
+    error: null,
+  });
   vi.mocked(listBacklogs).mockResolvedValue([backlogView()]);
 });
 

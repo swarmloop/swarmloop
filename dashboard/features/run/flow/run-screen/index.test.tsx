@@ -49,7 +49,14 @@ beforeEach(() => {
   vi.mocked(getFlow).mockResolvedValue(flowView({ status: 'done' }));
   vi.mocked(getStep).mockResolvedValue(stepView());
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
-  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
+  vi.mocked(listRemote).mockResolvedValue({
+    repositories: [],
+    owners: [],
+    reason: null,
+    allowedNames: [],
+    loading: false,
+    error: null,
+  });
 });
 
 describe('RunScreen', () => {

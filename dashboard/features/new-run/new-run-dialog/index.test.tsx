@@ -39,7 +39,14 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.mocked(listProjects).mockResolvedValue({ projects: ['swarmloop', 'docs'] });
-  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
+  vi.mocked(listRemote).mockResolvedValue({
+    repositories: [],
+    owners: [],
+    reason: null,
+    allowedNames: [],
+    loading: false,
+    error: null,
+  });
   vi.mocked(createRun).mockResolvedValue({ key: 'run-9', status: 'running' });
   vi.mocked(ticketKeys).mockResolvedValue({ keys: [] });
 });
@@ -188,6 +195,8 @@ describe('NewRunDialog', () => {
       owners: [{ host: 'github', login: 'acme', kind: 'organization' }],
       reason: null,
       allowedNames: [],
+      loading: false,
+      error: null,
     });
     vi.mocked(createRepository).mockImplementation(async (body) => ({
       host: body.host,

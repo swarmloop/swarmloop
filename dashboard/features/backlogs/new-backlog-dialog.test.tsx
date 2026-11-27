@@ -17,7 +17,14 @@ beforeEach(() => {
   user = userEvent.setup({ delay: null });
   push.mockReset();
   vi.mocked(listProjects).mockResolvedValue({ projects: ['shop', 'api'] });
-  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
+  vi.mocked(listRemote).mockResolvedValue({
+    repositories: [],
+    owners: [],
+    reason: null,
+    allowedNames: [],
+    loading: false,
+    error: null,
+  });
 });
 
 async function fill(): Promise<void> {
@@ -46,6 +53,8 @@ describe('NewBacklogDialog', () => {
       owners: [{ host: 'github', login: 'acme', kind: 'organization' }],
       reason: null,
       allowedNames: [],
+      loading: false,
+      error: null,
     });
     vi.mocked(createRepository).mockResolvedValue({
       host: 'github',

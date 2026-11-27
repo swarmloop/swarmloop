@@ -47,7 +47,14 @@ beforeEach(() => {
   vi.mocked(getStepEvents).mockResolvedValue({ events: [], next: null });
   vi.mocked(getStep).mockResolvedValue(stepView());
   vi.mocked(listProjects).mockResolvedValue({ projects: [] });
-  vi.mocked(listRemote).mockResolvedValue({ repositories: [], owners: [], reason: null, allowedNames: [] });
+  vi.mocked(listRemote).mockResolvedValue({
+    repositories: [],
+    owners: [],
+    reason: null,
+    allowedNames: [],
+    loading: false,
+    error: null,
+  });
 });
 
 describe('the run screen text', () => {
