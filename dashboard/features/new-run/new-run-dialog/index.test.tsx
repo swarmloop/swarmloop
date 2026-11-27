@@ -1,7 +1,17 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render as renderInto, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRepository, createRun, listProjects, listRemote, ticketKeys, uploadFile } from '../../../lib/endpoints';
+import {
+  createRepository,
+  createRun,
+  getCommand,
+  listProjects,
+  listRemote,
+  ticketKeys,
+  uploadFile,
+} from '../../../lib/endpoints';
+import { LiveBridgeProvider } from '../../shell';
 import { mediaWidth } from '../../../test/viewport';
 import { NewRunDialog, PREVIEW_DELAY_MS } from './index';
 
@@ -9,11 +19,17 @@ vi.mock('../../../lib/endpoints', () => ({
   listProjects: vi.fn(),
   listRemote: vi.fn(),
   createRepository: vi.fn(),
+  getCommand: vi.fn(),
+  refreshRemote: vi.fn(),
   createRun: vi.fn(),
   setRunProjects: vi.fn(),
   ticketKeys: vi.fn(),
   uploadFile: vi.fn(),
 }));
+
+vi.mock('../../../lib/live', async () => (await import('../../../test/fake-socket')).fakeLive());
+
+const render = (ui: ReactElement) => renderInto(ui, { wrapper: LiveBridgeProvider });
 
 const allPhases = ['planning', 'implementation', 'checks', 'code-review', 'ci'];
 
@@ -184,7 +200,7 @@ describe('NewRunDialog', () => {
     await pickProject(user, 'swarmloop');
 
     expect(screen.getByRole('button', { name: 'New repository' })).toBeDisabled();
-    expect(screen.queryByText('GitHub is down')).not.toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Repositories could not be loaded: GitHub is down');
   });
 
   it('creates two repositories in a row without closing the dialog and picks both', async () => {
@@ -198,13 +214,25 @@ describe('NewRunDialog', () => {
       loading: false,
       error: null,
     });
-    vi.mocked(createRepository).mockImplementation(async (body) => ({
-      host: body.host,
-      owner: body.owner,
-      name: body.name,
-      visibility: 'private',
-      defaultBranch: 'main',
-      cloned: true,
+    const made = new Map<string, unknown>();
+    vi.mocked(createRepository).mockImplementation(async (body) => {
+      const commandId = `c-${body.name}`;
+      made.set(commandId, {
+        host: body.host,
+        owner: body.owner,
+        name: body.name,
+        visibility: 'private',
+        defaultBranch: 'main',
+        cloned: true,
+      });
+      return { commandId };
+    });
+    vi.mocked(getCommand).mockImplementation(async (id) => ({
+      commandId: id,
+      type: 'create-repository',
+      state: 'succeeded',
+      value: made.get(id),
+      error: null,
     }));
     render(<NewRunDialog open onClose={onClose} />);
 
@@ -217,8 +245,16 @@ describe('NewRunDialog', () => {
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument());
     }
 
-    expect(createRepository).toHaveBeenNthCalledWith(1, expect.objectContaining({ owner: 'acme', name: 'first' }));
-    expect(createRepository).toHaveBeenNthCalledWith(2, expect.objectContaining({ owner: 'acme', name: 'second' }));
+    expect(createRepository).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ owner: 'acme', name: 'first' }),
+      expect.any(String),
+    );
+    expect(createRepository).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ owner: 'acme', name: 'second' }),
+      expect.any(String),
+    );
     expect(onClose).not.toHaveBeenCalled();
     await pastePrompt(user, 'Ship it');
     await user.click(screen.getByRole('button', { name: 'Start' }));

@@ -7,12 +7,12 @@ import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
-import type { RemoteEntry, RemoteListView } from '@contract/api';
+import type { RemoteEntry } from '@contract/api';
 import type { BacklogView } from '@contract/backlog';
 import { addBacklogRepository } from '../../lib/backlog-endpoints';
-import { listProjects, listRemote } from '../../lib/endpoints';
+import { listProjects } from '../../lib/endpoints';
 import { mergeNames } from '../../lib/names';
-import { ProjectPicker } from '../new-run';
+import { ProjectPicker, useRemoteList } from '../new-run';
 
 interface AddRepositoryDialogProps {
   open: boolean;
@@ -23,7 +23,7 @@ interface AddRepositoryDialogProps {
 
 export function AddRepositoryDialog({ open, view, onClose, onView }: AddRepositoryDialogProps): ReactElement {
   const [available, setAvailable] = useState<string[]>([]);
-  const [remote, setRemote] = useState<RemoteListView | null>(null);
+  const { remote, error: remoteError, reload, retry } = useRemoteList(open);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -31,10 +31,6 @@ export function AddRepositoryDialog({ open, view, onClose, onView }: AddReposito
     if (!open) {
       return;
     }
-    // A failed remote load leaves local folders working and shows no remote entries.
-    listRemote()
-      .then(setRemote)
-      .catch(() => setRemote(null));
     listProjects()
       .then((body) => setAvailable(body.projects))
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'projects failed'));
@@ -68,6 +64,9 @@ export function AddRepositoryDialog({ open, view, onClose, onView }: AddReposito
           pickedProjects={[]}
           onChange={add}
           remote={remote}
+          remoteError={remoteError}
+          onRetry={retry}
+          onRemoteLost={reload}
           onCreated={created}
         />
         {error ? <Alert severity="error">{error}</Alert> : null}

@@ -21,13 +21,23 @@ vi.mock('../../lib/backlog-endpoints', () => ({
   createBacklog: vi.fn(),
   getRepositoryMain: vi.fn(),
 }));
-vi.mock('../../lib/endpoints', () => ({ getSession: vi.fn(), listProjects: vi.fn(), listRemote: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({
+  getSession: vi.fn(),
+  listProjects: vi.fn(),
+  listRemote: vi.fn(),
+  refreshRemote: vi.fn(),
+  getCommand: vi.fn(),
+  createRepository: vi.fn(),
+}));
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 vi.mock('../shell', async () => {
   const bridge = await import('../shell/use-live-bridge');
   const { useOnReconnect } = await import('../shell/use-on-reconnect');
+  const { useCommandOutcome } = await import('../shell/use-command-outcome');
   return {
     useOnReconnect,
+    useCommandOutcome,
+    useCommandEnds: bridge.useCommandEnds,
     LiveBridgeProvider: bridge.LiveBridgeProvider,
     useLiveBridge: bridge.useLiveBridge,
     useBacklogStamp: bridge.useBacklogStamp,

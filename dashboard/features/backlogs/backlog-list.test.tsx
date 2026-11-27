@@ -10,13 +10,26 @@ import { LiveBridgeProvider } from '../shell';
 import { BacklogList } from './backlog-list';
 
 vi.mock('../../lib/backlog-endpoints', () => ({ listBacklogs: vi.fn(), createBacklog: vi.fn() }));
-vi.mock('../../lib/endpoints', () => ({ listProjects: vi.fn(), listRemote: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({
+  listProjects: vi.fn(),
+  listRemote: vi.fn(),
+  refreshRemote: vi.fn(),
+  getCommand: vi.fn(),
+  createRepository: vi.fn(),
+}));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
 vi.mock('../shell', async () => {
   const bridge = await import('../shell/use-live-bridge');
   const { useOnReconnect } = await import('../shell/use-on-reconnect');
-  return { LiveBridgeProvider: bridge.LiveBridgeProvider, useLiveBridge: bridge.useLiveBridge, useOnReconnect };
+  const { useCommandOutcome } = await import('../shell/use-command-outcome');
+  return {
+    LiveBridgeProvider: bridge.LiveBridgeProvider,
+    useLiveBridge: bridge.useLiveBridge,
+    useCommandEnds: bridge.useCommandEnds,
+    useOnReconnect,
+    useCommandOutcome,
+  };
 });
 
 function Wrapper({ children }: { children: ReactNode }) {

@@ -1,15 +1,26 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render as renderInto, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBacklog } from '../../lib/backlog-endpoints';
-import { createRepository, listProjects, listRemote } from '../../lib/endpoints';
+import { createRepository, getCommand, listProjects, listRemote, refreshRemote } from '../../lib/endpoints';
 import { backlogView } from '../../test/backlog-fixtures';
+import { LiveBridgeProvider } from '../shell';
 import { NewBacklogDialog } from './new-backlog-dialog';
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 vi.mock('../../lib/backlog-endpoints', () => ({ createBacklog: vi.fn() }));
-vi.mock('../../lib/endpoints', () => ({ createRepository: vi.fn(), listProjects: vi.fn(), listRemote: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({
+  createRepository: vi.fn(),
+  getCommand: vi.fn(),
+  listProjects: vi.fn(),
+  listRemote: vi.fn(),
+  refreshRemote: vi.fn(),
+}));
+vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
+
+const render = (ui: ReactElement) => renderInto(ui, { wrapper: LiveBridgeProvider });
 
 let user: UserEvent;
 
@@ -56,13 +67,20 @@ describe('NewBacklogDialog', () => {
       loading: false,
       error: null,
     });
-    vi.mocked(createRepository).mockResolvedValue({
-      host: 'github',
-      owner: 'acme',
-      name: 'payments',
-      visibility: 'private',
-      defaultBranch: 'main',
-      cloned: true,
+    vi.mocked(createRepository).mockResolvedValue({ commandId: 'c1' });
+    vi.mocked(getCommand).mockResolvedValue({
+      commandId: 'c1',
+      type: 'create-repository',
+      state: 'succeeded',
+      error: null,
+      value: {
+        host: 'github',
+        owner: 'acme',
+        name: 'payments',
+        visibility: 'private',
+        defaultBranch: 'main',
+        cloned: true,
+      },
     });
     vi.mocked(createBacklog).mockResolvedValue(backlogView({ name: 'checkout' }));
     render(<NewBacklogDialog open onClose={vi.fn()} />);
@@ -84,6 +102,25 @@ describe('NewBacklogDialog', () => {
       }),
     );
     expect(push).toHaveBeenCalledWith('/backlogs/checkout');
+  });
+
+  it('shows a failed remote list with its error and a Retry that refreshes it', async () => {
+    vi.mocked(listRemote).mockRejectedValue(new Error('GitHub is down'));
+    vi.mocked(refreshRemote).mockResolvedValue({
+      repositories: [],
+      owners: [],
+      reason: 'No token',
+      allowedNames: [],
+      loading: false,
+      error: null,
+    });
+    render(<NewBacklogDialog open onClose={vi.fn()} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Repositories could not be loaded: GitHub is down');
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(refreshRemote).toHaveBeenCalledTimes(1);
   });
 
   it('shows the refusal of the server as an alert and stays', async () => {

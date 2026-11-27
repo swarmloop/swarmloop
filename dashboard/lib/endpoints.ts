@@ -10,7 +10,6 @@ import type {
   ProvidersView,
   ProjectsView,
   ProjectListView,
-  RemoteEntry,
   RemoteListView,
   ReplayBody,
   SkipTaskBody,
@@ -21,6 +20,7 @@ import type {
   TicketKeysBody,
   TicketKeysView,
 } from '@contract/api';
+import type { CommandAccepted, CommandView } from '@contract/command';
 import type { UploadView } from '@contract/attachments';
 import type { ConnectionCard, IntegrationCardsView, SignInView } from '@contract/connections';
 import type { CreateTokenBody, CreatedTokenView, TokensView, UseTokenBody } from '@contract/people';
@@ -111,12 +111,20 @@ export const getHistory = (key: string): Promise<HistoryView> => api<HistoryView
 export const listProjects = (): Promise<ProjectListView> => api<ProjectListView>('/checkouts/projects');
 /** The repositories of the connected code hosts that the server's tokens can push to. */
 export const listRemote = (): Promise<RemoteListView> => api<RemoteListView>('/checkouts/remote');
+/** Reads the list from the server's cache again and starts the refresh the failed hosts need; the person's Retry. */
+export const refreshRemote = (): Promise<RemoteListView> => api<RemoteListView>('/checkouts/remote/refresh', post());
+/** One command of no run, as its actor reads it. */
+export const getCommand = (id: string): Promise<CommandView> => api<CommandView>(`/commands/${encodeURIComponent(id)}`);
 export const getRunLog = (key: string, name: string, attempt?: string, paging?: LogPaging): Promise<string | null> =>
   runLog(key, name, attempt, paging);
 
 export const createRun = (body: CreateRunBody): Promise<RunRef> => api<RunRef>('/runs', post(body));
-export const createRepository = (body: CreateRepositoryBody): Promise<RemoteEntry> =>
-  api<RemoteEntry>('/checkouts/repositories', post(body));
+/** Stores the create as a command; `idempotencyKey` names the attempt, so a repeated send is the same command. */
+export const createRepository = (body: CreateRepositoryBody, idempotencyKey: string): Promise<CommandAccepted> =>
+  api<CommandAccepted>('/checkouts/repositories', {
+    ...post(body),
+    headers: { 'idempotency-key': idempotencyKey },
+  });
 export const ticketKeys = (body: TicketKeysBody): Promise<TicketKeysView> =>
   api<TicketKeysView>('/runs/ticket-keys', post(body));
 export const setRunProjects = (key: string, name: string): Promise<ProjectsView> =>
