@@ -75,7 +75,13 @@ export class CommandHandlers implements OnModuleInit, OnApplicationBootstrap {
     on('rebase', (key, payload) =>
       typeof payload.main === 'string'
         ? this.rebases.rebase(key, false, payload.main)
-        : this.rebases.rebase(key, payload.byParent === true, undefined, payload.keepsWait === true),
+        : this.rebases.rebase(
+            key,
+            payload.byParent === true,
+            undefined,
+            payload.keepsWait === true,
+            typeof payload.hostConflict === 'string' ? payload.hostConflict : null,
+          ),
     );
   }
 
