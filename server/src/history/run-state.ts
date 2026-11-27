@@ -126,9 +126,11 @@ function deriveState(run: StateRow, facts: StateFacts = {}): { state: RunState; 
 
 type StoredRow = StateRow & Partial<Pick<RunEntity, 'state'>>;
 
-/** The state of the run as its row stores it. A row with no state column is read from the row alone; the refresh fills it. */
+/** The state of the run as its row stores it. A row with no state is idle with no reason. */
 export function storedState(run: StoredRow): { state: RunState; reason: StateReason | null } {
-  return run.state ? { state: run.state as RunState, reason: readReason(run.stateReason) } : deriveState(run);
+  return run.state
+    ? { state: run.state as RunState, reason: readReason(run.stateReason) }
+    : { state: 'idle', reason: null };
 }
 
 /** What a run view knows beyond the row: a request in flight. */
@@ -155,14 +157,11 @@ export function startWaitColumns(wait: StateReason | null): Pick<RunEntity, 'sta
   return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };
 }
 
-/**
- * The state columns the refresh writes from the facts of a run's documents. A blocked row keeps its stored code.
- */
-export function factColumns(
-  run: StateRow,
-  facts: Pick<StateFacts, 'needsAnswers' | 'asksPlanner'>,
+/** The state a row's status, reason and merge outcome give with no facts. */
+export function stateOfStatus(
+  row: Pick<RunEntity, 'status'> & { stateReason?: string | null; mergeOutcome?: string | null },
 ): Pick<RunEntity, 'state' | 'stateReason'> {
-  const derived = deriveState(run, facts);
+  const derived = deriveState(row);
   return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };
 }
 
@@ -188,7 +187,9 @@ export function writeOpenItemState(
   facts: Pick<StateFacts, 'needsAnswers' | 'asksPlanner'>,
 ): void {
   if (keepsWrittenState(run)) return;
-  Object.assign(run, factColumns(run, facts));
+  const derived = deriveState(run, facts);
+  run.state = derived.state;
+  run.stateReason = derived.reason ? JSON.stringify(derived.reason) : null;
 }
 
 export interface RunStateChange {

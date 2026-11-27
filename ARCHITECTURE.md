@@ -370,6 +370,8 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 
 The backlog planner's answer to a run's question, given while an unsettled fix task for a red main names the run's repository and that main is not green, holds the run for that main (`pipeline/backlog/red-main-wait.ts`).
 
+An open question and the state it gives are written together, in the write of the question (`RunOpenItems` in `history/run-open-items.ts`, through `history/run-state.ts`); no later pass rewrites the state, and the structure rule in `scripts/structure-rules.json` fails a write of `state` or `state_reason` outside `history/run-state.ts` and the migrations.
+
 A part's starter answer escalates by the chain of f124 (`starter-answer.ts`, `StarterExchange`).
 Every other planner answer, a step's question and a reply to a message on any path (the plan step's `answerMessages`, f129's own turn), has its `escalate` read by one function (`steps/shared/reply-escalation.ts`). It goes up only through `pipeline/escalation.ts`: `PlannerTurns.raise` puts the entry the plan step wrote to the person or, on a backlog run, to the backlog planner first. A subtask's message escalation is a `StarterExchange` hand-up for its epic's planner. A person's message has no step to read the planner's answer, so that answer is a taken line of the chat.
 
@@ -438,7 +440,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 - **A planned restart** pauses the server: running visits end, no new ones start, and the dashboard says so.
 - **Server stalls**, when the main loop was blocked or the machine slept, are recorded.
 
-**Today.** Holds (`pipeline/reconciler*.ts`, `run-settler.ts`, `stall-watch.ts`, `stall-decision.ts`, `contract/interruption.ts`, `server-stalls/`). Waits after a restart end by the one table and pass of 3.15.
+**Today.** Holds (`pipeline/reconciler*.ts`, `run-settler.ts`, `stall-watch.ts`, `stall-decision.ts`, `contract/interruption.ts`, `server-stalls/`). Waits after a restart end by the one table and pass of 3.15. The stall watch reads the stored state at once, with no pass to wait for; the structure rule named in 3.13 holds the door that writes it.
 
 ## 3.17 Backlog
 
@@ -485,7 +487,7 @@ A limit stops the run in a wait that names it (rule 18). Every call is a row of 
 - **Retention** removes everything a finished run leaves after `RETAIN_DONE_DAYS`, and deleting a run removes everything of it.
 - **Housekeeping** runs at startup and once a day.
 
-**Today.** Holds (`history/`, a run's row is written by `history/run.repository.ts` and `history/visit.repository.ts` from what the copy read, kept in `history/run-read.ts`; a change of it goes through `RunRepository.change` and `history/conditional-write.ts`, and the lint rule `run-write/no-run-write` (`eslint.run-write-rules.mjs`, registered in `eslint.config.mjs`) and the structure rule in `scripts/structure-rules.json` fail a second path; `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
+**Today.** Holds (`history/`, a run's row is written by `history/run.repository.ts`, `history/visit.repository.ts` and `history/run-open-items.ts` from what the copy read, kept in `history/run-read.ts`; a change of it goes through `RunRepository.change` and `history/conditional-write.ts`, and the lint rule `run-write/no-run-write` (`eslint.run-write-rules.mjs`, registered in `eslint.config.mjs`) and the structure rule in `scripts/structure-rules.json` fail a second path; `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
 
 ## 3.20 People, access and connections
 

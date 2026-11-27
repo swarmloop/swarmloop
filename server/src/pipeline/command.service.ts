@@ -9,7 +9,7 @@ import { UserSettingRepository } from '../history/user-setting.repository';
 import { RunRepository } from '../history/run.repository';
 import { DocumentRepository } from '../history/document.repository';
 import { readParkedConflict } from './parked-conflict';
-import { factColumns, storedState } from '../history/run-state';
+import { stateOfStatus, storedState } from '../history/run-state';
 import { actionsFor, SKIPPED_NOTE } from '../contract/run-state';
 import type { CommandReceipt, CommandType } from '../contract/command';
 import { barrier } from '../core/barrier';
@@ -248,7 +248,7 @@ export class CommandService {
     const status = run.status === 'running' && !held ? 'failed' : run.status;
     const state = storedState({
       ...run,
-      ...factColumns({ status, stateReason: run.stateReason }, {}),
+      ...stateOfStatus({ status, stateReason: run.stateReason }),
     });
     if (
       type === 'resume' &&

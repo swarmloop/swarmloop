@@ -14,7 +14,6 @@ import { storedState, writeRunState } from '../history/run-state';
 import { CommandService } from '../pipeline/command.service';
 import { agentStateDir } from '../sandbox/sandbox-launch';
 import { handoffText } from '../steps/shared/handoff';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import type { checkDocker } from './check-docker.spec-helpers';
 import { FAKE_MODEL_KEY } from './env.spec-helpers';
 import { createFlowHarness } from './flow-harness';
@@ -256,7 +255,6 @@ export function epicMainKit(flow: () => Flow) {
     await documents().putDocument((await runs().findRun(KEY))!, 'contract', '- api (owner a): the api\n');
     await flow().app.pipeline.step('implement', KEY);
     await flow().app.app.get(CommandService).idle();
-    await flow().app.app.get(RunStateRefresh).settled();
   }
 
   const waitingKept = async (id: string) => {

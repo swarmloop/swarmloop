@@ -9,6 +9,7 @@ import { testEnv } from '../config/env.spec-helpers';
 import { Clock } from '../core/clock';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { HistoryModule } from './history.module';
+import { LiveModule } from '../live/live.module';
 import { seedMigratedDatabase } from '../testing/migrated-database.spec-helpers';
 import type { VisitDraft } from './visit';
 import { AgentCallRepository } from './agent-call.repository';
@@ -30,7 +31,9 @@ export async function repositoryDatabase() {
   class RepositoryConfigModule {}
 
   try {
-    const app = await Test.createTestingModule({ imports: [RepositoryConfigModule, HistoryModule] }).compile();
+    const app = await Test.createTestingModule({
+      imports: [RepositoryConfigModule, LiveModule, HistoryModule],
+    }).compile();
     return {
       app,
       root,

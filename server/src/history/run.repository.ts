@@ -326,6 +326,26 @@ export class RunRepository {
     this.live?.changed(key);
   }
 
+  /**
+   * Stores what an agent start of a running run waits for. It writes only while the row still reads `running` and
+   * only when the columns differ, and leaves the revision: the wait is no change of the run. Tells the dashboard when written.
+   */
+  async recordStartWait(
+    seen: Pick<RunEntity, 'id' | 'key' | 'state' | 'stateReason'>,
+    columns: Pick<RunEntity, 'state' | 'stateReason'>,
+  ): Promise<boolean> {
+    if (seen.state === columns.state && seen.stateReason === columns.stateReason) return false;
+    const written = await this.runs
+      .createQueryBuilder()
+      .update(RunEntity)
+      .set({ ...columns })
+      .where("id = :id AND status = 'running'", { id: seen.id })
+      .execute();
+    if (!written.affected) return false;
+    this.live?.changed(seen.key);
+    return true;
+  }
+
   /** Raises the generation by one in a single statement, so a restart cannot count the same command twice. */
   async bumpGeneration(key: string): Promise<void> {
     await this.runs.increment({ key }, 'generation', 1);

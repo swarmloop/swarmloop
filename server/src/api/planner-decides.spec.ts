@@ -7,7 +7,6 @@ import { Clock } from '../core/clock';
 import { CommandService } from '../pipeline/command.service';
 import type { PlannerTurnActions } from '../pipeline/backlog/planner/planner-actions';
 import { plannerTurnActions, turnResult } from '../pipeline/backlog/planner/planner-scenarios.spec-helpers';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { save } from '../testing/runs.spec-helpers';
 import { withAnswerRoutes } from './answer-routes.spec-helpers';
 
@@ -74,7 +73,6 @@ async function seedWaitingRun(app: Parts['app']) {
   const run = await save(app.get(RunRepository), 'going-1', 'research', 'waiting');
   await app.get(DocumentRepository).putDocument(run, 'questions', '- which store\n');
   app.get(RunRepository).notify('going-1');
-  await app.get(RunStateRefresh).settled();
   return backlogId;
 }
 

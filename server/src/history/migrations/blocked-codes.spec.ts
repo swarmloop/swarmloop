@@ -4,7 +4,6 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { sentence } from '../../api/run-view/flow-waiting';
-import { RunStateRefresh } from '../../steps/shared/run-state-refresh';
 import { boot, save } from '../../testing/runs.spec-helpers';
 import { DocumentRepository } from '../document.repository';
 import { RunRepository } from '../run.repository';
@@ -41,11 +40,10 @@ interface Seed {
 
 let counter = 0;
 
-/** Saves the row, waits for the refresh its notice woke, then sets the two columns by SQL, which sends no notice. */
+/** Saves the row, then sets the two columns by SQL, which sends no notice. */
 async function seed(item: Seed): Promise<number> {
   const run = await save(app.get(RunRepository), `proj-${(counter += 1)}`, item.step, item.status ?? 'blocked');
   for (const body of item.errors ?? []) await app.get(DocumentRepository).putDocument(run, 'error', body);
-  await app.get(RunStateRefresh).settled();
   const stored = item.stored === undefined || item.stored === null ? null : item.stored;
   await app
     .get(DataSource)

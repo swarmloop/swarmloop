@@ -22,7 +22,6 @@ import { MergeWatch } from '../pipeline/merge-watch';
 import { RunRetention } from '../pipeline/run-retention';
 import { EventRepository } from '../history/event.repository';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { seededBoot } from '../api/runs-boot.spec-helpers';
 
 /** What each reader of a run's state says about one run. */
@@ -57,7 +56,7 @@ afterEach(async () => {
   await app.close();
 });
 
-/** Writes the run the way a step does, lets the state refresh settle, and reads it through every reader. */
+/** Writes the run the way a step does and reads it through every reader. */
 async function readings(setup: Setup): Promise<Readings> {
   const key = `proj-agree-${(counter += 1)}`;
   const runs = app.get(RunRepository);
@@ -67,7 +66,6 @@ async function readings(setup: Setup): Promise<Readings> {
   await storeRun(runs, run);
   if (setup.document) await app.get(DocumentRepository).putDocument(run, ...setup.document);
   runs.notify(key);
-  await app.get(RunStateRefresh).settled();
   const stored = (await runs.findRun(key))!;
   const flow = await app.get(RunQueriesService).flow(key);
   const { view } = await app.get(RunListRows).read();
@@ -206,7 +204,6 @@ describe('every reader of a run state agrees with the stored state', () => {
       summary: '',
     };
     await app.get(DocumentRepository).putDocument(run, 'merge_request', renderMergeRequest([request]));
-    await app.get(RunStateRefresh).settled();
     expect(storedState((await runs.findRun(run.key))!).state).toBe('stopped');
     const lookup = {
       state: async () => ({ state: 'merged', sha: 'abc', by: null, at: '2026-05-01T10:00:00Z', httpCalls: [] }),

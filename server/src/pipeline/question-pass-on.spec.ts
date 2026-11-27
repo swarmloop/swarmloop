@@ -6,12 +6,11 @@ import { RunRepository } from '../history/run.repository';
 import { REASON } from '../contract/run-state';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { holdServices, seedBacklogTask } from '../steps/shared/question-holds.spec-helpers';
-import { RunFactsRepository } from '../history/run-facts.repository';
-import { factColumns, storedState } from '../history/run-state';
+import { storedState } from '../history/run-state';
 
 const QUESTION = 'Which store?';
 
-/** A backlog run waiting at research on one question, stored the way the refresh stores it. */
+/** A backlog run waiting at research on one question, stored with its question. */
 async function setup() {
   const db = await repositoryDatabase();
   const runs = db.app.get(RunRepository);
@@ -22,7 +21,6 @@ async function setup() {
   run.currentStep = 'research';
   await storeRun(runs, run);
   await documents.putDocument(run, 'questions', `- ${QUESTION}\n`);
-  await db.app.get(RunFactsRepository).recordFacts(run, factColumns(run, await services.holds.facts(run)));
   const read = async () => {
     const row = await runs.findRun('going-1');
     return row && storedState(row);

@@ -1,6 +1,5 @@
 import { storeRun } from '../testing/store-run.spec-helpers';
 import { writeRunState } from '../history/run-state';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import 'reflect-metadata';
 
 import { mkdtemp } from 'fs/promises';
@@ -271,12 +270,10 @@ describe('runs api', () => {
       });
       await documents.putDocument(parent, 'subtasks', JSON.stringify([task('a')]));
       const child = await runs.openSubtask('proj-wait-task-a', parent.id, 'a');
-      child.status = 'waiting';
-      child.currentStep = 'implement';
-      child.stateReason = JSON.stringify({
-        code: 'RUNTIME_LIMIT',
-        message: 'limit',
-        limit: { runtime: 'x', resumesAt: '2026-11-13T10:00:00Z' },
+      writeRunState(child, {
+        status: 'waiting',
+        currentStep: 'implement',
+        reason: { code: 'RUNTIME_LIMIT', message: 'limit', limit: { runtime: 'x', resumesAt: '2026-11-13T10:00:00Z' } },
       });
       await storeRun(runs, child);
 
@@ -318,7 +315,6 @@ describe('runs api', () => {
       await storeRun(runs, asking);
       await documents.putDocument(asking, 'questions', '- Which branch?\n');
       runs.notify('proj-ask-b');
-      await app.get(RunStateRefresh).settled();
 
       const queries = app.get(RunQueriesService);
       const shown = (await queries.flow('proj-ask')).tasks ?? [];

@@ -7,7 +7,6 @@ import { RunAnswersService } from './run-answers.service';
 import { RunRepository } from '../history/run.repository';
 import { eventFactsOf } from '../pipeline/backlog/planner/planner-facts.spec-helpers';
 import type { RepositoryHost } from '../steps/shared/repository-host';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { save } from '../testing/runs.spec-helpers';
 import { withAnswerRoutes } from './answer-routes.spec-helpers';
 
@@ -45,7 +44,6 @@ describe('the planner answering a run that waits on a question', () => {
       const run = await save(app.get(RunRepository), 'proj-1', 'research', 'waiting');
       await app.get(DocumentRepository).putDocument(run, 'questions', '- which limit\n');
       app.get(RunRepository).notify('proj-1');
-      await app.get(RunStateRefresh).settled();
       const facts = await needsPersonFacts(app, 'proj-1');
       expect(facts.question).toBe('- which limit');
       await port.send({ type: 'answer', run: 'proj-1', answers: [{ body: 'three' }] }, 'ada', 'turn-1-action-0');
@@ -61,7 +59,6 @@ describe('the planner answering a run that waits on a question', () => {
       const run = await save(app.get(RunRepository), 'proj-2', 'code-review', 'waiting');
       await app.get(DocumentRepository).putDocument(run, 'review_questions', '- keep the cache?\n');
       app.get(RunRepository).notify('proj-2');
-      await app.get(RunStateRefresh).settled();
       await port.send({ type: 'answer', run: 'proj-2', answers: [{ body: 'keep it' }] }, 'ada', 'turn-1-action-0');
       expect(await app.get(DocumentRepository).latestBody('proj-2', 'answers')).toContain(
         'question: keep the cache?\nanswer: keep it',

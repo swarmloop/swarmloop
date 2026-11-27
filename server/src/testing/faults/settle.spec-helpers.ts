@@ -11,7 +11,6 @@ import { BacklogTurnState, type TaskState } from '../../pipeline/backlog/planner
 import { CommandService } from '../../pipeline/command.service';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { Reconciler } from '../../pipeline/reconciler';
-import { RunStateRefresh } from '../../steps/shared/run-state-refresh';
 import { StartWaits } from '../../steps/shared/start-waits';
 import { assertInvariants } from '../flow-invariants';
 import type { TestApp } from '../test-app';
@@ -25,7 +24,6 @@ async function drain(app: TestApp): Promise<void> {
   for (const run of runs) await app.app.get(PipelineService).whenIdle(run.key);
   await app.app.get(BacklogPlanner).whenIdle();
   await app.app.get(StartWaits).settled();
-  await app.app.get(RunStateRefresh).settled();
 }
 
 /** Lets the system settle: every running thing ends, the reconciler takes one pass, and what it started ends too. Time moves only through the app's clock. */
