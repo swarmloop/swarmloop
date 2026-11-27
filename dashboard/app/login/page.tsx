@@ -10,7 +10,8 @@ import Paper from '@mui/material/Paper';
 import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
 import type { TokenSignInView } from '@contract/api';
-import { FirstRun, TokenSignIn } from '../../features/connections';
+import type { ApplicationSetupView } from '@contract/host-login';
+import { ApplicationForm, FirstRun, hostTexts, TokenSignIn } from '../../features/connections';
 import { getInstallUrl, getProviders } from '../../lib/endpoints';
 import { hostOf, installHost } from './hosts';
 import { LoginProblemAlert } from './login-problem-alert';
@@ -66,38 +67,45 @@ function loginHref(provider: string, next: string | null): string {
   return next ? `/auth/${provider}/login?next=${encodeURIComponent(next)}` : `/auth/${provider}/login`;
 }
 
-/** One button for each login provider the server has configured. */
-function ProviderButtons({ providers, next }: { providers: string[]; next: string | null }): ReactElement {
-  const first = useRef<HTMLAnchorElement>(null);
+/** The button of a login provider the server has configured. */
+function ContinueButton({
+  provider,
+  next,
+  focus,
+}: {
+  provider: string;
+  next: string | null;
+  focus: boolean;
+}): ReactElement {
+  const ref = useRef<HTMLAnchorElement>(null);
+  const { label, Mark } = hostOf(provider);
 
   // Not autoFocus (jsx-a11y forbids it): the first button takes focus once the providers have loaded.
   useEffect(() => {
-    first.current?.focus();
-  }, []);
+    if (focus) {
+      ref.current?.focus();
+    }
+  }, [focus]);
 
   return (
-    <>
-      {providers.map((provider, index) => {
-        const { label, Mark } = hostOf(provider);
-        return (
-          <Button
-            key={provider}
-            ref={index === 0 ? first : undefined}
-            fullWidth
-            variant="outlined"
-            href={loginHref(provider, next)}
-            startIcon={<Mark />}
-          >
-            Continue with {label}
-          </Button>
-        );
-      })}
-    </>
+    <Button ref={ref} fullWidth variant="outlined" href={loginHref(provider, next)} startIcon={<Mark />}>
+      Continue with {label}
+    </Button>
   );
 }
 
-/** A token sign-in for each host that takes one, under the buttons. */
-function TokenSignIns({ tokens, next }: { tokens: TokenSignInView[]; next: string | null }): ReactElement {
+/** A token sign-in for each host that takes one, with that host's Continue button under it when it is configured. */
+function TokenBlocks({
+  tokens,
+  providers,
+  next,
+  focused,
+}: {
+  tokens: TokenSignInView[];
+  providers: string[];
+  next: string | null;
+  focused: string | undefined;
+}): ReactElement {
   return (
     <>
       {tokens.map((entry) => {
@@ -109,9 +117,35 @@ function TokenSignIns({ tokens, next }: { tokens: TokenSignInView[]; next: strin
               {label}
             </Typography>
             <TokenSignIn entry={entry} label={label} next={next} />
+            {providers.includes(entry.provider) ? (
+              <ContinueButton provider={entry.provider} next={next} focus={focused === entry.provider} />
+            ) : null}
           </Box>
         );
       })}
+    </>
+  );
+}
+
+/** The plain buttons of the hosts without a token entry, an or line, then a block for each host with one. */
+function LoginChoice({
+  providers,
+  tokens,
+  next,
+}: {
+  providers: string[];
+  tokens: TokenSignInView[];
+  next: string | null;
+}): ReactElement {
+  const plain = providers.filter((provider) => !tokens.some((entry) => entry.provider === provider));
+  const focused = plain[0] ?? tokens.find((entry) => providers.includes(entry.provider))?.provider;
+  return (
+    <>
+      {plain.map((provider) => (
+        <ContinueButton key={provider} provider={provider} next={next} focus={focused === provider} />
+      ))}
+      {plain.length > 0 && tokens.length > 0 ? <Divider flexItem>or</Divider> : null}
+      <TokenBlocks tokens={tokens} providers={providers} next={next} focused={focused} />
     </>
   );
 }
@@ -128,6 +162,8 @@ function LoadingButtons(): ReactElement {
 export default function LoginPage(): ReactElement {
   const [providers, setProviders] = useState<string[] | null>(null);
   const [tokens, setTokens] = useState<TokenSignInView[]>([]);
+  const [applications, setApplications] = useState<ApplicationSetupView[]>([]);
+  const [replace, setReplace] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [install, setInstall] = useState(false);
   const [installed, setInstalled] = useState<string | null>(null);
@@ -139,6 +175,7 @@ export default function LoginPage(): ReactElement {
     getProviders().then(
       (view) => {
         setTokens(view.tokens);
+        setApplications(view.applications ?? []);
         setProviders(view.providers);
       },
       (cause: unknown) => setError(cause instanceof Error ? cause.message : 'api is not reachable'),
@@ -150,11 +187,15 @@ export default function LoginPage(): ReactElement {
     setInstall(query.get('install') === '1');
     setInstalled(query.get('installed'));
     setNext(query.get('next'));
+    setReplace(query.get('replace'));
     load();
   }, [load]);
 
   const step = installed !== null ? <InstalledReturn account={installed} /> : install ? <InstallStep /> : null;
   const firstRun = step === null && providers?.length === 0;
+
+  const replaceSetup = applications.find((item) => item.provider === replace);
+  const replaceTexts = replaceSetup ? hostTexts(replaceSetup.provider)?.application : undefined;
 
   let choice: ReactElement;
   if (step !== null) {
@@ -167,14 +208,18 @@ export default function LoginPage(): ReactElement {
     );
   } else if (providers === null) {
     choice = <LoadingButtons />;
-  } else {
+  } else if (replaceSetup && replaceTexts) {
     choice = (
-      <>
-        <ProviderButtons providers={providers} next={next} />
-        {providers.length > 0 && tokens.length > 0 ? <Divider flexItem>or</Divider> : null}
-        <TokenSignIns tokens={tokens} next={next} />
-      </>
+      <ApplicationForm
+        setup={replaceSetup}
+        label={hostOf(replaceSetup.provider).label}
+        texts={replaceTexts}
+        replacing={{ name: 'OAuth application', connected: [] }}
+        onSaved={() => window.location.assign(`/auth/${replaceSetup.provider}/login`)}
+      />
     );
+  } else {
+    choice = <LoginChoice providers={providers} tokens={tokens} next={next} />;
   }
 
   return (
@@ -195,7 +240,7 @@ export default function LoginPage(): ReactElement {
         {firstRun ? (
           <>
             <LoginProblemAlert />
-            <FirstRun tokens={tokens} next={next} />
+            <FirstRun tokens={tokens} applications={applications} next={next} />
           </>
         ) : (
           <>

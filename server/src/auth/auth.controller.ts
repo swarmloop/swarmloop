@@ -14,10 +14,12 @@ import {
 } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { AuthService, type Credentials } from './auth.service';
+import { callbackUrl } from './callback-url';
+import { AppRejectedError } from '../integrations/code-host/app-rejected-error';
 import { CheckoutRepos } from './checkout-repos';
 import { ConnectionsService } from './connections.service';
 import { cookieOptions, startState, STATE_COOKIE, type CookieResponse } from './cookies';
-import { appFlowRoutes, applicationRoutes, routeHost } from './host-routes';
+import { appFlowRoutes, routeHost } from './host-routes';
 import { HostAppsService } from './host-apps.service';
 import { LoginStates } from './login-states';
 import { problemOf, safeNext, type ProblemBase } from './login-problem';
@@ -146,31 +148,6 @@ export class AuthController {
     });
   }
 
-  /** First run only: the OAuth application of a host instance, stored encrypted. */
-  @Post(applicationRoutes('application'))
-  async storeApplication(
-    @Body() body: { clientId?: string; clientSecret?: string },
-    @Req() request: RoutedRequest,
-  ): Promise<{ ok: true }> {
-    this.assertFirstRun(request.headers);
-    const provider = this.anyProvider(routeHost(request));
-    const clientId = body.clientId?.trim() ?? '';
-    const clientSecret = body.clientSecret?.trim() ?? '';
-    if (!clientId || !clientSecret) {
-      throw new BadRequestException('clientId and clientSecret are required');
-    }
-    await this.apps.save({
-      host: provider.name,
-      appId: '',
-      slug: '',
-      clientId,
-      clientSecret,
-      privateKey: '',
-      madeBy: FIRST_RUN_MAKER,
-    });
-    return { ok: true };
-  }
-
   @Get('providers')
   providers(): ProvidersView {
     const { env } = this.config;
@@ -183,6 +160,18 @@ export class AuthController {
                 provider: adapter.name,
                 base: codeHostBaseUrl(adapter, env).toString().replace(/\/$/, ''),
                 tokenPage: adapter.tokenPage(env),
+              },
+            ]
+          : [],
+      ),
+      applications: codeHostAdapters().flatMap((adapter) =>
+        adapter.storesApplication && adapter.applicationsPage
+          ? [
+              {
+                provider: adapter.name,
+                page: adapter.applicationsPage(env),
+                callback: callbackUrl(this.config, adapter.name),
+                scopes: adapter.endpoints(env).scope.split(' ').filter(Boolean),
               },
             ]
           : [],
@@ -251,7 +240,7 @@ export class AuthController {
   ): void {
     const provider = this.provider(name);
     const { state, verifier } = this.startState(provider.name, response, true, safeNext(next));
-    response.redirect(provider.authorizeUrl(this.redirectUri(provider), state, verifier));
+    response.redirect(provider.authorizeUrl(callbackUrl(this.config, provider.name), state, verifier));
   }
 
   @Get(':provider/callback')
@@ -293,8 +282,11 @@ export class AuthController {
       throw new BadRequestException('the login did not start here or has expired: try again');
     }
     const identity = await provider
-      .identify(code, this.redirectUri(provider), pending.verifier)
+      .identify(code, callbackUrl(this.config, provider.name), pending.verifier)
       .catch((error: unknown) => {
+        if (error instanceof AppRejectedError) {
+          throw error;
+        }
         throw new BadGatewayException(error instanceof Error ? error.message : `${provider.name} login failed`);
       });
     response.redirect(await this.signIns.complete(provider, identity, headers, response, pending.next));
@@ -354,9 +346,5 @@ export class AuthController {
       throw new NotFoundException(`${provider.name} login is not configured`);
     }
     return provider as FlowProvider;
-  }
-
-  private redirectUri(provider: LoginProvider): string {
-    return `${this.config.env.SWARMLOOP_PUBLIC_URL.replace(/\/$/, '')}/auth/${provider.name}/callback`;
   }
 }

@@ -10,7 +10,15 @@ vi.mock('../../lib/endpoints', () => ({
   getInstallUrl: vi.fn(),
   getOwner: vi.fn(),
   signInWithToken: vi.fn(),
+  saveApplication: vi.fn(),
 }));
+
+const gitlabSetup = {
+  provider: 'gitlab',
+  page: 'https://git.corp.example/-/user_settings/applications',
+  callback: 'https://swarm.example/auth/gitlab/callback',
+  scopes: ['read_user', 'api', 'write_repository'],
+};
 
 const gitlabToken = {
   provider: 'gitlab',
@@ -52,14 +60,14 @@ describe('LoginPage', () => {
   });
 
   it('says so when no provider is configured', async () => {
-    vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [] });
+    vi.mocked(getProviders).mockResolvedValue({ providers: [], tokens: [], applications: [gitlabSetup] });
 
     render(<LoginPage />);
 
     // The no-login mode is gone: with no login yet the page is the first-run screen.
     expect(await screen.findByRole('button', { name: 'Create GitHub App' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Connect GitLab' })).toBeInTheDocument();
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Continue with/ })).not.toBeInTheDocument();
   });
 
   it('shows the install step after the app is made, in place of the login buttons', async () => {
@@ -127,7 +135,7 @@ describe('LoginPage', () => {
     const { container } = render(<LoginPage />);
 
     expect(container.querySelector('.MuiSkeleton-root')).toBeInTheDocument();
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Continue with/ })).not.toBeInTheDocument();
   });
 
   it('loads the providers again on Try again', async () => {
@@ -154,7 +162,7 @@ describe('LoginPage', () => {
       ],
     ],
     ['?error=expired', ['The login took too long or started somewhere else. Try again.']],
-    ['?error=host&host=gitlab&reason=timeout', ['GitLab did not answer: timeout']],
+    ['?error=host&host=gitlab&reason=timeout', ['Login with GitLab failed: timeout']],
   ])('shows the text of the login problem %s', async (search, texts) => {
     vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [] });
     window.history.pushState({}, '', `/login${search}`);
@@ -197,7 +205,7 @@ describe('LoginPage', () => {
     render(<LoginPage />);
 
     await screen.findByRole('heading', { name: 'Connect swarmloop to your code host' });
-    expect(await screen.findByText('GitHub did not answer: x')).toBeInTheDocument();
+    expect(await screen.findByText('Login with GitHub failed: x')).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(await screen.findByDisplayValue('acme')).toBeInTheDocument();
   });
@@ -234,14 +242,59 @@ describe('LoginPage', () => {
     expect(screen.getAllByLabelText('Personal access token')).toHaveLength(1);
   });
 
-  it('shows the token sign-in under the provider buttons', async () => {
+  it('shows the GitLab token sign-in above Continue with GitLab', async () => {
     vi.mocked(getProviders).mockResolvedValue({ providers: ['gitlab'], tokens: [gitlabToken] });
 
     render(<LoginPage />);
 
-    expect(await screen.findByRole('link', { name: 'Continue with GitLab' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Personal access token')).toBeInTheDocument();
+    const button = await screen.findByRole('link', { name: 'Continue with GitLab' });
+    const field = screen.getByLabelText('Personal access token');
+    expect(field.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in with token' })).toBeInTheDocument();
+    expect(screen.queryByText('or')).not.toBeInTheDocument();
+    await waitFor(() => expect(button).toHaveFocus());
+  });
+
+  it('shows no Continue button under a token block of a host that is not configured', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['github'], tokens: [gitlabToken] });
+
+    render(<LoginPage />);
+
+    await screen.findByLabelText('Personal access token');
+    expect(screen.queryByRole('link', { name: 'Continue with GitLab' })).not.toBeInTheDocument();
+  });
+
+  it('says the application was rejected, with a link to replace it', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['gitlab'], tokens: [], applications: [gitlabSetup] });
+    window.history.pushState({}, '', '/login?error=app&host=gitlab');
+
+    render(<LoginPage />);
+
+    expect(await screen.findByText('GitLab rejected the Application ID or Secret')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Replace the application' })).toHaveAttribute(
+      'href',
+      '/login?replace=gitlab',
+    );
+  });
+
+  it('shows the application form in replace mode in place of the choice', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['gitlab'], tokens: [], applications: [gitlabSetup] });
+    window.history.pushState({}, '', '/login?replace=gitlab');
+
+    render(<LoginPage />);
+
+    expect(await screen.findByLabelText('Application ID', { exact: false })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Replace application' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Continue with GitLab' })).not.toBeInTheDocument();
+  });
+
+  it('shows the normal choice when replace names a host with no setup', async () => {
+    vi.mocked(getProviders).mockResolvedValue({ providers: ['gitlab'], tokens: [], applications: [] });
+    window.history.pushState({}, '', '/login?replace=gitlab');
+
+    render(<LoginPage />);
+
+    expect(await screen.findByRole('link', { name: 'Continue with GitLab' })).toBeInTheDocument();
   });
 
   it('puts an or line between the buttons and a GitLab block with its icon and heading', async () => {

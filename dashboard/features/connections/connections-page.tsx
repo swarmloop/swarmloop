@@ -8,6 +8,7 @@ import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
 import type { ConnectionView, TokenSignInView } from '@contract/api';
+import type { ApplicationSetupView } from '@contract/host-login';
 import type { ConnectionCard as Card } from '@contract/connections';
 import {
   disconnect,
@@ -20,20 +21,12 @@ import {
 import { usePhone } from '../../lib/use-phone';
 import { Placeholders } from '../overview';
 import { ConfirmDialog } from '../shell';
+import { disconnected } from './application-form';
 import { ConnectionCard } from './connection-card';
+import { ReplaceApplicationCard } from './replace-application-card';
 import { FirstRun, ManifestPost, type ManifestForm } from './first-run';
 import { HostCard } from './host-card';
 import { hostTexts } from './logos';
-
-const NAMED_MAX = 5;
-
-/** Who the replace disconnects: by name when there are few, else the count. */
-function disconnected(people: string[]): string {
-  if (people.length === 0) {
-    return 'Everyone connected through this app';
-  }
-  return people.length <= NAMED_MAX ? people.join(', ') : `${people.length} people`;
-}
 
 /** Per host: the app, the connected account, the repositories, the health of the token, and Reconnect and Disconnect. */
 export function ConnectionsPage(): ReactElement {
@@ -41,23 +34,26 @@ export function ConnectionsPage(): ReactElement {
   const [connections, setConnections] = useState<ConnectionView[] | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [tokens, setTokens] = useState<TokenSignInView[]>([]);
+  const [applications, setApplications] = useState<ApplicationSetupView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [asking, setAsking] = useState<{ connection: ConnectionView; label: string } | null>(null);
   const [replacing, setReplacing] = useState<ConnectionView | null>(null);
+  const [replacingApplication, setReplacingApplication] = useState<string | null>(null);
   const words = replacing ? hostTexts(replacing.host)?.replace : undefined;
   const [form, setForm] = useState<ManifestForm | null>(null);
 
   const load = useCallback(() => {
-    // The token entries are an extra: a failed read leaves the cards without a token form.
-    const entries = getProviders().then(
-      (view) => view.tokens,
-      () => [],
+    // The token entries and application setups are an extra: a failed read leaves the cards without them.
+    const extras = getProviders().then(
+      (view) => ({ tokens: view.tokens, applications: view.applications ?? [] }),
+      () => ({ tokens: [], applications: [] }),
     );
-    Promise.all([getConnections(), getIntegrationCards(), entries]).then(
-      ([view, integrations, tokenEntries]) => {
+    Promise.all([getConnections(), getIntegrationCards(), extras]).then(
+      ([view, integrations, extra]) => {
         setConnections(view.connections);
         setCards(integrations.cards);
-        setTokens(tokenEntries);
+        setTokens(extra.tokens);
+        setApplications(extra.applications);
       },
       (cause: unknown) => setError(cause instanceof Error ? cause.message : 'connections could not be read'),
     );
@@ -113,14 +109,27 @@ export function ConnectionsPage(): ReactElement {
               size={phone || (connection?.installs && connection.app === null) ? 12 : { xs: 12, md: 6 }}
             >
               {connection?.installs && connection.app === null ? (
-                <FirstRun />
+                <FirstRun tokens={tokens} applications={applications} />
+              ) : connection && connection.app && replacingApplication === connection.host ? (
+                <ReplaceApplicationCard
+                  connection={connection}
+                  card={card}
+                  applications={applications}
+                  onClose={() => setReplacingApplication(null)}
+                  onSaved={() => {
+                    setReplacingApplication(null);
+                    load();
+                  }}
+                />
               ) : connection ? (
                 <HostCard
                   card={card}
                   connection={connection}
                   tokenEntry={tokens.find((entry) => entry.provider === card.id)}
                   onChanged={load}
-                  onReplace={() => setReplacing(connection)}
+                  onReplace={() =>
+                    connection.installs ? setReplacing(connection) : setReplacingApplication(connection.host)
+                  }
                   onInstall={() => void addRepositories(connection.host)}
                   onDisconnect={() => setAsking({ connection, label: card.label })}
                 />

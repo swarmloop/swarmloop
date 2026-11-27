@@ -1,20 +1,19 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getManifest, getOwner, saveGitlabApplication } from '../../lib/endpoints';
+import { getManifest, getOwner } from '../../lib/endpoints';
 import { FirstRun } from './first-run';
 
 vi.mock('../../lib/endpoints', () => ({
   getManifest: vi.fn(),
   getOwner: vi.fn(),
-  saveGitlabApplication: vi.fn(),
+  saveApplication: vi.fn(),
   signInWithToken: vi.fn(),
 }));
 
 const submit = vi.fn();
 beforeEach(() => {
   vi.mocked(getManifest).mockReset();
-  vi.mocked(saveGitlabApplication).mockReset();
   vi.mocked(getOwner).mockReset().mockResolvedValue({ owner: 'acme', others: [] });
   vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(submit);
 });
@@ -65,17 +64,6 @@ describe('FirstRun', () => {
     );
   });
 
-  it('offers Connect GitLab, which stores the application it is given', async () => {
-    vi.mocked(saveGitlabApplication).mockRejectedValue(new Error('a login exists'));
-    render(<FirstRun />);
-    await userEvent.setup({ delay: null }).type(screen.getByLabelText(/Application ID/), 'gl-id');
-    await userEvent.setup({ delay: null }).type(screen.getByLabelText(/Secret/), 'gl-secret');
-    await userEvent.setup({ delay: null }).click(screen.getByRole('button', { name: 'Connect GitLab' }));
-
-    expect(saveGitlabApplication).toHaveBeenCalledWith('gl-id', 'gl-secret');
-    expect(await screen.findByText('a login exists')).toBeInTheDocument();
-  });
-
   it('prefills the owner and sends it to the manifest', async () => {
     vi.mocked(getOwner).mockResolvedValue({ owner: 'beta', others: [] });
     vi.mocked(getManifest).mockResolvedValue({ action: 'https://github.com/x', manifest: {} });
@@ -103,12 +91,25 @@ describe('FirstRun', () => {
     expect(screen.queryByText(/public/i)).not.toBeInTheDocument();
   });
 
-  it('offers the token sign-in in the GitLab card, after "or", when the server takes one', () => {
+  it('puts the token sign-in before the application form in the GitLab card', () => {
     const gitlab = { provider: 'gitlab', base: 'https://git.corp.example', tokenPage: 'https://git.corp.example/t' };
-    render(<FirstRun tokens={[gitlab]} />);
-    const card = screen.getByRole('form', { name: 'Connect GitLab' });
-    expect(within(card).getByText('or')).toBeInTheDocument();
-    expect(within(card).getByLabelText('Personal access token')).toBeInTheDocument();
+    const setup = {
+      provider: 'gitlab',
+      page: 'https://git.corp.example/-/user_settings/applications',
+      callback: 'https://swarm.example/auth/gitlab/callback',
+      scopes: ['read_user', 'api', 'write_repository'],
+    };
+    render(<FirstRun tokens={[gitlab]} applications={[setup]} />);
+    const card = screen.getByRole('region', { name: 'Connect GitLab' });
+    const recommended = within(card).getByText('Recommended');
+    const token = within(card).getByLabelText('Personal access token');
+    const divider = within(card).getByText('Or, for a team that wants OAuth');
+    const form = within(card).getByRole('form', { name: 'GitLab application' });
+    const before = (a: Element, b: Element): boolean =>
+      !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(recommended, token)).toBe(true);
+    expect(before(token, divider)).toBe(true);
+    expect(before(divider, form)).toBe(true);
     expect(within(card).getByText('GitLab at https://git.corp.example')).toBeInTheDocument();
   });
 

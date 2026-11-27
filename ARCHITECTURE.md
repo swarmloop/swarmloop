@@ -489,7 +489,7 @@ A limit stops the run in a wait that names it (rule 18). Every call is a row of 
 ## 3.20 People, access and connections
 
 **Target.**
-- **Sign-in** is through a code host (GitHub or GitLab OAuth), or with a personal API token for scripts. On first run the server creates its OAuth app.
+- **Sign-in** is through a code host (GitHub or GitLab OAuth), or with a personal API token for scripts. On first run the server creates its OAuth app. GitLab sign-in leads with a personal access token and offers an OAuth application second. The server checks an application with an invalid-code token request before it stores it. Its maker or an admin can replace it from Connections, or this machine from the login page while nobody has signed in through it.
 - **The first person** is an admin, and one admin always stays.
 - **Connections.** Each person keeps their own connections (code hosts, agent runtimes, Jira, Confluence, Drive), encrypted with the server's secret. A connection is tested when it is saved and refreshed before it expires. A run uses its starter's connections.
 - **Request guard.** Every mutating request must:
@@ -498,7 +498,7 @@ A limit stops the run in a wait that names it (rule 18). Every call is a row of 
   - come from an allowed host and origin.
 - **Secrets** are never logged, never put in a URL, and never sent to the browser.
 
-**Today.** Holds (`auth/`, `config/redact.ts`, `api/request-guard.ts`). The photo is stored with the person. A token the host accepts from Connections (`POST /auth/:provider/token` with a signed-in person) adds a connection for that person and starts no session. The installation warning of a host names only the repositories of this server that neither the installation nor the server token reaches (`LoginProvider.serverTokenMisses`).
+**Today.** Holds (`auth/`, `config/redact.ts`, `api/request-guard.ts`). The photo is stored with the person. A token the host accepts from Connections (`POST /auth/:provider/token` with a signed-in person) adds a connection for that person and starts no session. The installation warning of a host names only the repositories of this server that neither the installation nor the server token reaches (`LoginProvider.serverTokenMisses`). `POST /auth/:host/application` (`ApplicationController`) stores a GitLab application only after `LoginProvider.checkApp` accepts it; a replace drops only the connections with a refresh token the application issued, so token sign-ins stay. A 401 from the token endpoint in the callback redirects to the login page with `error=app`.
 
 ## 3.21 Integrations
 

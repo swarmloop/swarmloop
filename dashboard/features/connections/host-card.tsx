@@ -88,9 +88,9 @@ function HostActions({
           {connection.account ? 'Reconnect' : `Connect ${card.label}`}
         </Button>
       ) : null}
-      {connection.installs && connection.app && connection.mayReplace ? (
+      {connection.app && connection.mayReplace ? (
         <Button variant="outlined" size="small" onClick={onReplace}>
-          Replace app
+          Replace {connection.appLabel.toLowerCase()}
         </Button>
       ) : null}
       {connection.account || card.serverDefault ? (

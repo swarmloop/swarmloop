@@ -1,6 +1,7 @@
 import { BadGatewayException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { AppRejectedError } from '../integrations/code-host/app-rejected-error';
 
-type ProblemCode = 'refused' | 'expired' | 'host';
+type ProblemCode = 'refused' | 'expired' | 'host' | 'app';
 type ProblemValues = Partial<Record<'host' | 'account' | 'reason', string>>;
 
 /** The page a login problem returns to: the login page, or Connections for a signed-in person replacing the app. */
@@ -25,10 +26,13 @@ export function safeNext(value: unknown): string {
     : '/';
 }
 
-/** The redirect for a login that threw: a bad or expired state is `expired`, a host that failed is `host`. Other errors are not a login problem: null. */
+/** The redirect for a login that threw: a bad or expired state is `expired`, an application the host rejected is `app`, a host that failed is `host`. Other errors are not a login problem: null. */
 export function problemOf(error: unknown, base: ProblemBase, host: string): string | null {
   if (error instanceof BadRequestException || error instanceof NotFoundException) {
     return problemUrl(base, 'expired');
+  }
+  if (error instanceof AppRejectedError) {
+    return problemUrl(base, 'app', { host });
   }
   return error instanceof BadGatewayException ? problemUrl(base, 'host', { host, reason: error.message }) : null;
 }

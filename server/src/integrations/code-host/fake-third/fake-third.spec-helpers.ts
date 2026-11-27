@@ -37,6 +37,7 @@ function endpointsOf(base: string): Endpoints {
     token: `${root}/auth/token`,
     api: `${root}/api/v1`,
     scope: 'profile teams',
+    appCheck: { accepted: 'forge_bad_code', rejected: 'forge_bad_client' },
     userHeaders: (token) => ({ Authorization: `Bearer ${token}` }),
     user: { path: '/me', field: 'handle' },
     groups: { path: '/me/teams', field: 'slug' },
