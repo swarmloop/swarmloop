@@ -21,13 +21,31 @@ export function useRemoteList(open: boolean): RemoteList {
   const loading = useRef(false);
   loading.current = remote?.loading === true;
 
-  const read = useCallback((load: () => Promise<RemoteListView>): void => {
+  const latestEnds = useRef(ends);
+  latestEnds.current = ends;
+  const latestRead = useRef(0);
+
+  const read = useCallback(function read(load: () => Promise<RemoteListView>): void {
+    latestRead.current += 1;
+    const id = latestRead.current;
+    const endsAtStart = latestEnds.current;
     load()
       .then((view) => {
+        if (id !== latestRead.current) {
+          return;
+        }
         setRemote(view);
         setError(null);
+        // A command ended while this read was in flight: a loading answer may be older than its result.
+        if (view.loading && latestEnds.current !== endsAtStart) {
+          read(listRemote);
+        }
       })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'remote list failed'));
+      .catch((cause: unknown) => {
+        if (id === latestRead.current) {
+          setError(cause instanceof Error ? cause.message : 'remote list failed');
+        }
+      });
   }, []);
   const reload = useCallback(() => read(listRemote), [read]);
   const retry = useCallback(() => {

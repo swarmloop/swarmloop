@@ -67,6 +67,40 @@ describe('useRemoteList', () => {
     await waitFor(() => expect(listRemote).toHaveBeenCalledTimes(2));
   });
 
+  it('reads again at once when a command ended during a read that answers loading', async () => {
+    let answer: (v: RemoteListView) => void = () => undefined;
+    vi.mocked(listRemote).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    show();
+    act(() => receive('command', { commandId: 'c1', state: 'succeeded' }));
+
+    vi.mocked(listRemote).mockResolvedValueOnce(view({ reason: 'done' }));
+    await act(async () => answer(view({ loading: true })));
+
+    expect(await screen.findByText('list done')).toBeInTheDocument();
+    expect(listRemote).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not read again when a read answers loading and no command ended during it', async () => {
+    vi.mocked(listRemote).mockResolvedValueOnce(view({ loading: true }));
+    show();
+    expect(await screen.findByText('loading')).toBeInTheDocument();
+    expect(listRemote).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the answer of an older read', async () => {
+    const user = userEvent.setup({ delay: null });
+    let older: (v: RemoteListView) => void = () => undefined;
+    vi.mocked(listRemote).mockReturnValueOnce(new Promise((resolve) => (older = resolve)));
+    show();
+    vi.mocked(listRemote).mockResolvedValueOnce(view({ reason: 'newer' }));
+    await user.click(screen.getByRole('button', { name: 'reload' }));
+    await screen.findByText('list newer');
+
+    await act(async () => older(view({ reason: 'older' })));
+
+    expect(screen.getByText('list newer')).toBeInTheDocument();
+  });
+
   it('reads again after a reconnect', async () => {
     vi.mocked(listRemote).mockResolvedValueOnce(view({ reason: 'first' }));
     show();
