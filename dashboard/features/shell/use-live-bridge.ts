@@ -5,7 +5,7 @@ import { createContext, createElement, useContext, useEffect, useState, useSyncE
 import { liveSocket } from '../../lib/live';
 import type { FlowView, RunSummary } from '@contract/api';
 import type { LiveBacklog } from '@contract/backlog-chat';
-import type { LiveEvents, LiveLog, LiveRunUsage } from '@contract/live';
+import type { LiveCommand, LiveEvents, LiveLog, LiveRunUsage } from '@contract/live';
 import type { DoneLatelyItem } from '@contract/overview-done';
 import type { Part, PartCounts, RunChange, RunsPage } from '@contract/run-list';
 import type { ServerState } from '@contract/server-pause';
@@ -50,6 +50,8 @@ interface LiveSnapshot {
   done: DoneLatelyItem[] | null;
   /** True while the server holds new containers for a restart. */
   paused: boolean;
+  /** Moves each time a command of no run ends. */
+  commandEnds: number;
 }
 
 interface LiveStore {
@@ -91,6 +93,7 @@ function createStore(): LiveStore {
     usage: {},
     done: null,
     paused: false,
+    commandEnds: 0,
   };
   let watched: string | null = null;
   const statuses = new Map<string, string>();
@@ -215,6 +218,7 @@ function createStore(): LiveStore {
         update({ backlogStamps: bumped(snapshot.backlogStamps, [entry.backlog]) });
       const onDone = (items: DoneLatelyItem[]): void => update({ done: items });
       const onServer = (state: ServerState): void => update({ paused: state.paused });
+      const onCommand = (_entry: LiveCommand): void => update({ commandEnds: snapshot.commandEnds + 1 });
       socket.on('connect', onConnect);
       socket.on('disconnect', onDisconnect);
       socket.on('runs', onRuns);
@@ -226,6 +230,7 @@ function createStore(): LiveStore {
       socket.on('usage', onUsage);
       socket.on('done', onDone);
       socket.on('server', onServer);
+      socket.on('command', onCommand);
       if (socket.connected) {
         update({ connected: true, connects: snapshot.connects + 1 });
       }
@@ -241,6 +246,7 @@ function createStore(): LiveStore {
         socket.off('usage', onUsage);
         socket.off('done', onDone);
         socket.off('server', onServer);
+        socket.off('command', onCommand);
       };
     },
   };
@@ -275,6 +281,11 @@ export function useLiveBridge<T>(select: (snapshot: LiveSnapshot) => T): T {
 /** The stamp of one backlog; it moves when the backlog or one of its runs changes. */
 export function useBacklogStamp(name: string): number {
   return useLiveBridge((snapshot) => snapshot.backlogStamps[name] ?? 0);
+}
+
+/** A number that moves each time a command of no run ends. */
+export function useCommandEnds(): number {
+  return useLiveBridge((snapshot) => snapshot.commandEnds);
 }
 
 export function useLiveActions(): Pick<LiveStore, 'setRuns' | 'showList' | 'setPage' | 'watchRun'> {

@@ -22,6 +22,8 @@ import {
   listProjects,
   listRemote,
   createRepository,
+  getCommand,
+  refreshRemote,
   listRuns,
   rebaseRun,
   removeRun,
@@ -110,14 +112,22 @@ describe('endpoints', () => {
 
   it('reads the remote repositories and posts a new repository to the swarmloop API', async () => {
     await listRemote();
-    await createRepository({ host: 'github', owner: 'acme', name: 'demo', public: false });
+    await refreshRemote();
+    await createRepository({ host: 'github', owner: 'acme', name: 'demo', public: false }, 'key-1');
+    await getCommand('c/1');
 
     expect(vi.mocked(api).mock.calls).toEqual([
       ['/checkouts/remote'],
+      ['/checkouts/remote/refresh', { method: 'POST' }],
       [
         '/checkouts/repositories',
-        { method: 'POST', body: JSON.stringify({ host: 'github', owner: 'acme', name: 'demo', public: false }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({ host: 'github', owner: 'acme', name: 'demo', public: false }),
+          headers: { 'idempotency-key': 'key-1' },
+        },
       ],
+      ['/commands/c%2F1'],
     ]);
   });
 

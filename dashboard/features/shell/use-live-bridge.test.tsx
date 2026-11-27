@@ -75,6 +75,19 @@ describe('useLiveBridge', () => {
     expect(screen.getByText('connects 2')).toBeInTheDocument();
   });
 
+  it('moves commandEnds on each command event', () => {
+    function Ends() {
+      return <p>ends {useLiveBridge((snapshot) => snapshot.commandEnds)}</p>;
+    }
+    render(<Ends />, { wrapper: LiveBridgeProvider });
+    expect(screen.getByText('ends 0')).toBeInTheDocument();
+
+    act(() => receive('command', { commandId: 'c1', state: 'succeeded' }));
+    act(() => receive('command', { commandId: 'c2', state: 'failed' }));
+
+    expect(screen.getByText('ends 2')).toBeInTheDocument();
+  });
+
   it('sends nothing on connect once no run is watched', () => {
     render(<Probe />, { wrapper: LiveBridgeProvider });
     act(() => watch('r1'));

@@ -1,9 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { render as renderInto, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { addBacklogRepository, getRepositoryMain, pauseBacklog, unpauseBacklog } from '../../lib/backlog-endpoints';
 import { listProjects, listRemote } from '../../lib/endpoints';
 import { backlogView } from '../../test/backlog-fixtures';
+import { LiveBridgeProvider } from '../shell';
 import { BacklogHeader } from './backlog-header';
 
 vi.mock('../../lib/backlog-endpoints', () => ({
@@ -12,7 +14,16 @@ vi.mock('../../lib/backlog-endpoints', () => ({
   pauseBacklog: vi.fn(),
   unpauseBacklog: vi.fn(),
 }));
-vi.mock('../../lib/endpoints', () => ({ createRepository: vi.fn(), listProjects: vi.fn(), listRemote: vi.fn() }));
+vi.mock('../../lib/endpoints', () => ({
+  createRepository: vi.fn(),
+  getCommand: vi.fn(),
+  listProjects: vi.fn(),
+  listRemote: vi.fn(),
+  refreshRemote: vi.fn(),
+}));
+vi.mock('../../lib/live', async () => (await import('../../test/fake-socket')).fakeLive());
+
+const render = (ui: ReactElement) => renderInto(ui, { wrapper: LiveBridgeProvider });
 
 const main = (repository: string, state: 'green' | 'pending' | 'red', url: string | null = null) => ({
   repository,

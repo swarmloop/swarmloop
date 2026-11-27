@@ -8,15 +8,16 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Typography from '@mui/material/Typography';
 import { Composer } from '../../../components/composer/composer';
-import { createRun, listProjects, listRemote, setRunProjects, ticketKeys } from '../../../lib/endpoints';
+import { createRun, listProjects, setRunProjects, ticketKeys } from '../../../lib/endpoints';
 import { mergeNames } from '../../../lib/names';
 import { useFullScreenDialog } from '../../../lib/use-phone';
 import type { PhaseName } from '@contract/steps';
 import { PHASES } from '@contract/steps';
 import type { AttachmentRef } from '@contract/attachments';
-import type { CreateRunBody, RemoteEntry, RemoteListView } from '@contract/api';
+import type { CreateRunBody, RemoteEntry } from '@contract/api';
 import { PhasePicker } from './phase-picker';
 import { ProjectPicker } from './project-picker';
+import { useRemoteList } from './use-remote-list';
 
 export const PREVIEW_DELAY_MS = 300;
 const DEFAULT_PHASES: PhaseName[] = [...PHASES];
@@ -56,7 +57,7 @@ export function NewRunDialog({
   const [picked, setPicked] = useState<PhaseName[]>(selected ?? DEFAULT_PHASES);
   const [available, setAvailable] = useState<string[]>(lockedProjects ?? []);
   const [pickedProjects, setPickedProjects] = useState<string[]>(lockedProjects ?? []);
-  const [remote, setRemote] = useState<RemoteListView | null>(null);
+  const { remote, error: remoteError, reload, retry } = useRemoteList(open);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -72,10 +73,6 @@ export function NewRunDialog({
     if (!open) {
       return;
     }
-    // A failed remote load leaves local folders working and shows no remote entries.
-    listRemote()
-      .then(setRemote)
-      .catch(() => setRemote(null));
     if (!frozenProjects) {
       listProjects()
         .then((body) => {
@@ -224,6 +221,9 @@ export function NewRunDialog({
           pickedProjects={pickedProjects}
           onChange={changeProjects}
           remote={remote}
+          remoteError={remoteError}
+          onRetry={retry}
+          onRemoteLost={reload}
           onCreated={created}
         />
         {note ? <Typography variant="body2">{note}</Typography> : null}
