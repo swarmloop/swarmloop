@@ -1,4 +1,6 @@
+import { nextTryAt } from '../../contract/outside-waits';
 import { REASON } from '../../contract/reason-words';
+import { HOST_RETRY_MS } from '../../integrations/http';
 import { storedState } from '../../history/run-state';
 import { storeRun } from '../../testing/store-run.spec-helpers';
 import { backlogHarness } from './backlog.spec-helpers';
@@ -41,6 +43,32 @@ describe('MainWaitWake', () => {
       await h.tick();
       expect(rebases(h)).toEqual([]);
       expect(await messageOf(h, key)).toBe('waits for a green main of web');
+    }));
+
+  it('writes the waiting run once per try during a code host outage, with the next try unchanged between passes', () =>
+    withHarness(async (h) => {
+      const { key } = await waitingRun(h);
+      h.fake.hostDown(() => nextTryAt(h.db.clock.now(), HOST_RETRY_MS));
+      await h.tick();
+      const seen = async () => {
+        const run = (await h.runs.findRun(key))!;
+        return { revision: run.revision, updatedAt: run.updatedAt, reason: storedState(run).reason };
+      };
+      const first = await seen();
+      expect(first.reason?.message).toContain('next try at');
+      for (let pass = 0; pass < 3; pass += 1) {
+        h.db.clock.advance(30_000);
+        await h.tick();
+        expect(await seen()).toEqual(first);
+      }
+      h.db.clock.advance(HOST_RETRY_MS);
+      await h.tick();
+      const next = await seen();
+      expect(next.revision).toBeGreaterThan(first.revision);
+      expect(next.reason?.message).not.toBe(first.reason?.message);
+      h.db.clock.advance(30_000);
+      await h.tick();
+      expect(await seen()).toEqual(next);
     }));
 
   it('refreshes the words when the task waits for another reason', () =>

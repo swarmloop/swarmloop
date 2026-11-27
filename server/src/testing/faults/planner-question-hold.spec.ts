@@ -6,7 +6,6 @@ import { RunRepository } from '../../history/run.repository';
 import { storedState } from '../../history/run-state';
 import { BacklogQueries } from '../../pipeline/backlog/backlog-queries';
 import { BacklogPlanner } from '../../pipeline/backlog/planner/backlog-planner';
-import { RunStateRefresh } from '../../steps/shared/run-state-refresh';
 import { DEFAULT_RESEARCH } from '../result-answer';
 import { remember } from '../runs.spec-helpers';
 import {
@@ -44,7 +43,6 @@ describe('a question of a backlog run while the planner turn that holds it waits
     await boot.flow.app.pipeline.step('research', runKey);
     await boot.flow.app.pipeline.whenIdle(runKey);
     await boot.flow.tick();
-    await get(RunStateRefresh).settled();
     return runKey;
   }
 

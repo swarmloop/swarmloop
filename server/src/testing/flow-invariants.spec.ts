@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { DataSource } from 'typeorm';
 import { storeRun } from './store-run.spec-helpers';
 import { ERROR_CODES } from '../contract/error-codes';
 import { REASON, type StateReason } from '../contract/run-state';
@@ -89,6 +90,25 @@ describe('assertInvariants', () => {
 
     if (item.broken) await expect(check).rejects.toThrow(run.key);
     else await expect(check).resolves.toBeUndefined();
+  });
+
+  describe('the stored state of a run', () => {
+    const askingRun = async () => {
+      const run = await save(app.app.get(RunRepository), 'PROJ-902', 'research', 'waiting');
+      await app.app.get(DocumentRepository).putDocument(run, 'questions', '- which store\n');
+      return run;
+    };
+
+    it('passes when the stored state is what the row and its open items say', async () => {
+      await askingRun();
+      await expect(assertInvariants(app)).resolves.toBeUndefined();
+    });
+
+    it('throws when the stored state differs from what the row and its open items say', async () => {
+      const run = await askingRun();
+      await app.app.get(DataSource).query(`UPDATE runs SET state = 'idle', state_reason = NULL WHERE id = ?`, [run.id]);
+      await expect(assertInvariants(app)).rejects.toThrow(`${run.key} stores idle`);
+    });
   });
 
   describe('the starts of a run', () => {

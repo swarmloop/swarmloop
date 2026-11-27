@@ -33,6 +33,14 @@ function entryOf(code: unknown): OutsideWait | null {
     : null;
 }
 
+/**
+ * The next try of an outside wait: the next boundary of a fixed grid of `everyMs` after `now`. It is fixed for the
+ * whole try, so a pass inside it computes the same time and writes nothing new.
+ */
+export function nextTryAt(now: number, everyMs: number): string {
+  return new Date(Math.floor(now / everyMs) * everyMs + everyMs).toISOString();
+}
+
 /** Reads a thrown error or a stored error record as an outside wait with its next try, or null when it is none. */
 export function outsideWaitOf(error: unknown): OutsideWaitRead | null {
   if (typeof error !== 'object' || error === null) return null;

@@ -6,14 +6,27 @@ import { actionsFor, REASON } from '../contract/run-state';
 import type { RunAction, RunState } from '../contract/run-state';
 import {
   clearEpic,
-  factColumns,
-  liveState,
+  liveState as readLive,
   markEpic,
   startWaitColumns,
   stateColumns,
-  storedState,
+  stateOfStatus,
+  storedState as readStored,
+  unseenStartWait,
+  WRITTEN_WHOLE,
+  writeOpenItemState,
   writeRunState,
 } from './run-state';
+
+type Row = Parameters<typeof readStored>[0];
+
+/** A row as its writer stores it: a row given with no state column has the state its status and reason give. */
+function written<T extends Row>(row: T): T {
+  return row.state === undefined ? { ...row, ...stateOfStatus(row) } : row;
+}
+
+const storedState = (row: Row) => readStored(written(row));
+const liveState = (row: Row, live: Parameters<typeof readLive>[1]) => readLive(written(row), live);
 
 const GOLDEN_DIR = join(__dirname, '..', 'testing', 'golden');
 
@@ -43,9 +56,29 @@ const STATE_OF_STATUS: Record<string, RunState> = {
   done: 'done',
 };
 
-/** The state of a row as the refresh stores it from these document facts, read back from the columns. */
-function withFacts(run: Parameters<typeof factColumns>[0], facts: Parameters<typeof factColumns>[1]) {
-  return storedState({ ...run, ...factColumns(run, facts) });
+/** The state columns of a row once its writer has stored the state of these open-item facts. */
+function columnsOf(
+  run: { status: string; [column: string]: unknown },
+  facts: Parameters<typeof writeOpenItemState>[1],
+) {
+  const held = { state: null, stateReason: null, ...run } as Parameters<typeof writeOpenItemState>[0];
+  writeOpenItemState(held, facts);
+  return { state: held.state, stateReason: held.stateReason };
+}
+
+/** What a row says once its writer stored the state its status and reason give, with no facts. */
+function rowState(row: Parameters<typeof stateOfStatus>[0]) {
+  return storedState({ ...row, ...stateOfStatus(row) });
+}
+
+const implementReturned = { status: 'waiting', currentStep: 'implement', attemptsReview: 1 };
+
+/** The state columns a writer that ends a run with `status` and `code` stores, through the one door. */
+function writtenColumns(status: string, code?: string) {
+  return stateColumns(
+    { currentStep: 'implement', ownerInstance: null, activeAttempt: null },
+    { status, reason: code ? { code, message: 'm' } : undefined },
+  );
 }
 
 describe('deriveState', () => {
@@ -72,7 +105,9 @@ describe('deriveState', () => {
 
   it('keeps waiting after ok idle, and a person needed waiting', () => {
     expect(storedState({ status: 'waiting' })).toEqual({ state: 'idle', reason: null });
-    expect(withFacts({ status: 'waiting' }, { needsAnswers: true }).state).toBe('waiting');
+    expect(storedState({ status: 'waiting', ...columnsOf({ status: 'waiting' }, { needsAnswers: true }) }).state).toBe(
+      'waiting',
+    );
   });
 
   it('keeps the stored STALLED reason on a waiting run, not idle', () => {
@@ -94,7 +129,7 @@ describe('deriveState', () => {
   });
 
   it('calls a return to implement idle with the reason RETURNED', () => {
-    expect(withFacts({ status: 'waiting' }, { returned: true })).toEqual({
+    expect(storedState({ ...implementReturned, ...columnsOf(implementReturned, {}) })).toEqual({
       state: 'idle',
       reason: { code: REASON.returned, message: 'returned to implement' },
     });
@@ -119,6 +154,15 @@ describe('deriveState', () => {
       reason: null,
     });
     expect(startWaitColumns(null)).toEqual({ state: 'running', stateReason: null });
+  });
+
+  it('gives only the start wait columns the row does not show yet', () => {
+    const wait = startWaitColumns({ code: REASON.agentPlace, message: 'Waiting for a free agent place (4 of 4 busy)' });
+    const none = startWaitColumns(null);
+    expect(unseenStartWait(none, wait)).toEqual({ stateReason: wait.stateReason });
+    expect(unseenStartWait(wait, none)).toEqual({ stateReason: null });
+    expect(unseenStartWait({ state: 'idle', stateReason: null }, none)).toEqual({ state: 'running' });
+    expect(unseenStartWait(wait, wait)).toEqual({});
   });
 });
 
@@ -231,14 +275,14 @@ describe('deriveState of a split run between passes', () => {
   });
 
   it('keeps SUBTASK_BLOCKED for a blocked run', () => {
-    expect(withFacts({ status: 'blocked', stateReason: reason(ERROR_CODES.SUBTASK_BLOCKED) }, {})).toMatchObject({
+    expect(rowState({ status: 'blocked', stateReason: reason(ERROR_CODES.SUBTASK_BLOCKED) })).toMatchObject({
       state: 'blocked',
       reason: { code: ERROR_CODES.SUBTASK_BLOCKED },
     });
   });
 
   it('keeps PARENT_TREE_CONFLICT for a blocked run', () => {
-    expect(withFacts({ status: 'blocked', stateReason: reason(ERROR_CODES.PARENT_TREE_CONFLICT) }, {})).toMatchObject({
+    expect(rowState({ status: 'blocked', stateReason: reason(ERROR_CODES.PARENT_TREE_CONFLICT) })).toMatchObject({
       state: 'blocked',
       reason: { code: ERROR_CODES.PARENT_TREE_CONFLICT },
     });
@@ -293,18 +337,18 @@ describe('deriveState of a block that a person must clear', () => {
   const stored = (code: string) => JSON.stringify({ code, message: 'stopped' });
 
   it.each([REASON.loopLimit, ERROR_CODES.SPEND_LIMIT, ERROR_CODES.PIPELINE_UNFIXED])('keeps the stored %s', (code) => {
-    expect(withFacts({ status: 'blocked', stateReason: stored(code) }, {})).toMatchObject({
+    expect(rowState({ status: 'blocked', stateReason: stored(code) })).toMatchObject({
       state: 'blocked',
       reason: { code },
     });
   });
 
   it('keeps a stored RESOURCE_UNKNOWN and reads a blocked DOCKER_UNAVAILABLE as before', () => {
-    expect(withFacts({ status: 'blocked', stateReason: stored(ERROR_CODES.RESOURCE_UNKNOWN) }, {})).toMatchObject({
+    expect(rowState({ status: 'blocked', stateReason: stored(ERROR_CODES.RESOURCE_UNKNOWN) })).toMatchObject({
       state: 'blocked',
       reason: { code: ERROR_CODES.RESOURCE_UNKNOWN },
     });
-    expect(withFacts({ status: 'blocked', stateReason: stored(ERROR_CODES.DOCKER_UNAVAILABLE) }, {})).toMatchObject({
+    expect(rowState({ status: 'blocked', stateReason: stored(ERROR_CODES.DOCKER_UNAVAILABLE) })).toMatchObject({
       state: 'blocked',
       reason: { code: ERROR_CODES.DOCKER_UNAVAILABLE },
     });
@@ -343,9 +387,9 @@ describe('storedState', () => {
     });
   });
 
-  it('reads a null state as the row derivation', () => {
+  it('reads a null state as idle with no reason', () => {
     expect(storedState({ status: 'waiting', state: null, stateReason: null })).toEqual({ state: 'idle', reason: null });
-    expect(storedState({ status: 'blocked', state: null, stateReason: null }).state).toBe('blocked');
+    expect(storedState({ status: 'blocked', state: null, stateReason: null })).toEqual({ state: 'idle', reason: null });
   });
 });
 
@@ -373,25 +417,25 @@ describe('liveState', () => {
   });
 });
 
-describe('factColumns', () => {
-  const facts = { needsAnswers: false, returned: false };
+describe('writeOpenItemState from the facts of a row', () => {
+  const facts = { needsAnswers: false };
 
   it('says waiting for a person on a run with open questions', () => {
-    expect(read(factColumns({ status: 'waiting' }, { ...facts, needsAnswers: true }))).toEqual({
+    expect(read(columnsOf({ status: 'waiting' }, { ...facts, needsAnswers: true }))).toEqual({
       state: 'waiting',
       code: 'NEEDS_ANSWERS',
     });
   });
 
   it('says waiting for the backlog planner on a run whose open questions the planner holds', () => {
-    expect(read(factColumns({ status: 'waiting' }, { ...facts, asksPlanner: true }))).toEqual({
+    expect(read(columnsOf({ status: 'waiting' }, { ...facts, asksPlanner: true }))).toEqual({
       state: 'waiting',
       code: 'ASKS_PLANNER',
     });
   });
 
   it('says waiting for a person when one question is the planner’s and another is passed on', () => {
-    expect(read(factColumns({ status: 'waiting' }, { ...facts, asksPlanner: true, needsAnswers: true }))).toEqual({
+    expect(read(columnsOf({ status: 'waiting' }, { ...facts, asksPlanner: true, needsAnswers: true }))).toEqual({
       state: 'waiting',
       code: 'NEEDS_ANSWERS',
     });
@@ -399,61 +443,55 @@ describe('factColumns', () => {
 
   it('clears the open questions once they are gone', () => {
     const run = { status: 'waiting', stateReason: reasonOf('NEEDS_ANSWERS') };
-    expect(read(factColumns(run, facts))).toEqual({ state: 'idle', code: null });
+    expect(read(columnsOf(run, facts))).toEqual({ state: 'idle', code: null });
   });
 
   it('marks a run that went back to implement as returned', () => {
-    expect(read(factColumns({ status: 'waiting' }, { ...facts, returned: true }))).toEqual({
+    expect(read(columnsOf({ status: 'waiting', currentStep: 'implement', attemptsPipeline: 1 }, facts))).toEqual({
       state: 'idle',
       code: REASON.returned,
     });
   });
 
   it('keeps a stored waiting code such as RUNTIME_LIMIT', () => {
-    const run = { status: 'waiting', stateReason: reasonOf(ERROR_CODES.RUNTIME_LIMIT) };
-    expect(read(factColumns(run, { ...facts, needsAnswers: true }))).toEqual({
+    const run = { status: 'waiting', state: 'waiting', stateReason: reasonOf(ERROR_CODES.RUNTIME_LIMIT) };
+    expect(read(columnsOf(run, { ...facts, needsAnswers: true }))).toEqual({
       state: 'waiting',
       code: ERROR_CODES.RUNTIME_LIMIT,
     });
   });
 
   it('keeps the code a blocked row stores', () => {
-    const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.GIT_RULES) };
-    expect(read(factColumns(run, facts))).toEqual({
+    expect(read(writtenColumns('blocked', ERROR_CODES.GIT_RULES))).toEqual({
       state: 'blocked',
       code: ERROR_CODES.GIT_RULES,
     });
   });
 
   it('keeps a stored code that is not on the kept list over the loop limit a step gives alone', () => {
-    const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.DISK_LOW) };
-    expect(read(factColumns(run, facts))).toEqual({
+    expect(read(writtenColumns('blocked', ERROR_CODES.DISK_LOW))).toEqual({
       state: 'blocked',
       code: ERROR_CODES.DISK_LOW,
     });
   });
 
   it('keeps a stored code on the kept list over the code of the error text', () => {
-    const run = { status: 'blocked', stateReason: reasonOf(ERROR_CODES.SPEND_LIMIT) };
-    expect(read(factColumns(run, facts))).toEqual({
+    expect(read(writtenColumns('blocked', ERROR_CODES.SPEND_LIMIT))).toEqual({
       state: 'blocked',
       code: ERROR_CODES.SPEND_LIMIT,
     });
   });
 
   it('keeps a stored stopped reason', () => {
-    const run = { status: 'blocked', stateReason: reasonOf(REASON.stopped) };
-    expect(read(factColumns(run, facts))).toEqual({
+    expect(read(writtenColumns('blocked', REASON.stopped))).toEqual({
       state: 'stopped',
       code: REASON.stopped,
     });
   });
 
   describe('blocked code precedence', () => {
-    const blocked = (code?: string) => ({ status: 'blocked', stateReason: code ? reasonOf(code) : null });
     const stored = (code: string | undefined) => {
-      const row = blocked(code);
-      const { state, reason } = storedState({ ...row, ...factColumns(row, facts) });
+      const { state, reason } = storedState(writtenColumns('blocked', code));
       return { state, code: reason?.code };
     };
 
@@ -472,5 +510,57 @@ describe('factColumns', () => {
     it('reads plain BLOCKED with no stored code and no code in the error text', () => {
       expect(stored(undefined)).toEqual({ state: 'blocked', code: REASON.blocked });
     });
+  });
+});
+
+describe('writeOpenItemState', () => {
+  const row = (status: string, state: string | null = null, stateReason: string | null = null) => ({
+    status,
+    state,
+    stateReason,
+  });
+  const none = { needsAnswers: false, asksPlanner: false };
+
+  it.each([
+    [{ ...none, needsAnswers: true }, 'waiting', 'NEEDS_ANSWERS'],
+    [{ ...none, asksPlanner: true }, 'waiting', REASON.asksPlanner],
+    [none, 'idle', null],
+  ])('sets the state of a waiting run from the facts %j', (facts, state, code) => {
+    const run = row('waiting');
+    writeOpenItemState(run, facts);
+    expect(storedState(run)).toEqual({
+      state,
+      reason: code ? { code, message: expect.any(String) as string } : null,
+    });
+  });
+
+  it('marks a waiting run at implement with an earlier return as returned', () => {
+    const run = { ...row('waiting'), currentStep: 'implement', attemptsChecks: 1 };
+    writeOpenItemState(run, none);
+    expect(storedState(run).reason?.code).toBe(REASON.returned);
+  });
+
+  it.each(['running', 'done', 'failed'])('leaves a %s row with a stored state as its writer wrote it', (status) => {
+    const reason = JSON.stringify({ code: 'KEPT', message: 'kept' });
+    const run = row(status, 'running', reason);
+    writeOpenItemState(run, { ...none, needsAnswers: true });
+    expect(run).toEqual(row(status, 'running', reason));
+  });
+
+  it('leaves a waiting row with a reason of its own as its writer wrote it', () => {
+    const reason = JSON.stringify({ code: ERROR_CODES.PIPELINE_UNFIXED, message: 'failed twice' });
+    const run = row('waiting', 'idle', reason);
+    writeOpenItemState(run, none);
+    expect(run).toEqual(row('waiting', 'idle', reason));
+  });
+
+  it('fills a running row that has no state', () => {
+    const run = row('running');
+    writeOpenItemState(run, none);
+    expect(run.state).toBe('running');
+  });
+
+  it('keeps WRITTEN_WHOLE to the statuses whose writers store the whole state', () => {
+    expect(WRITTEN_WHOLE).toEqual(['running', 'done', 'failed']);
   });
 });

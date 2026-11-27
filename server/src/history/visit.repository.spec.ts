@@ -1,4 +1,4 @@
-import { writeRunState } from './run-state';
+import { storedState, writeRunState } from './run-state';
 import { DocumentRepository } from './document.repository';
 import { repositoryCall, repositoryDatabase, repositoryVisit } from './repository.spec-helpers';
 import { RunRepository } from './run.repository';
@@ -21,6 +21,27 @@ describe('VisitRepository', () => {
       const second = await visits.finishVisit(run, visit);
       const documents = await db.app.get(DocumentRepository).listDocuments(run.id);
       expect(documents.map((document) => document.stepStatId)).toEqual([first.id, second.id]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('stores the state of the questions a visit stores in the write that finalizes it', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const runs = db.app.get(RunRepository);
+      const run = await runs.begin('run-asks', 'research');
+      writeRunState(run, { status: 'waiting' });
+      const visit = {
+        ...repositoryVisit(),
+        step: 'research',
+        documents: [{ kind: 'questions', fileName: '', body: '- Which store?\n' }],
+      };
+      await db.app.get(VisitRepository).finalize(run.activeAttempt, run, visit);
+      expect(storedState((await runs.findRun('run-asks'))!)).toMatchObject({
+        state: 'waiting',
+        reason: { code: 'NEEDS_ANSWERS' },
+      });
     } finally {
       await db.close();
     }

@@ -370,6 +370,8 @@ epic-conflict-implement removed the wait for a person. One path is planned after
 
 The backlog planner's answer to a run's question, given while an unsettled fix task for a red main names the run's repository and that main is not green, holds the run for that main (`pipeline/backlog/red-main-wait.ts`).
 
+An open question and the state it gives are written together, in the write of the question (`RunOpenItems` in `history/run-open-items.ts`, through `history/run-state.ts`); no later pass rewrites the state, and the structure rules in `scripts/structure-rules.json` fail a write of `state` or `state_reason` outside `history/run-state.ts` and the migrations, and inside `history/` also a query builder's `.set`, an object, a spread or raw SQL that names them.
+
 A part's starter answer escalates by the chain of f124 (`starter-answer.ts`, `StarterExchange`).
 Every other planner answer, a step's question and a reply to a message on any path (the plan step's `answerMessages`, f129's own turn), has its `escalate` read by one function (`steps/shared/reply-escalation.ts`). It goes up only through `pipeline/escalation.ts`: `PlannerTurns.raise` puts the entry the plan step wrote to the person or, on a backlog run, to the backlog planner first. A subtask's message escalation is a `StarterExchange` hand-up for its epic's planner. A person's message has no step to read the planner's answer, so that answer is a taken line of the chat.
 
@@ -420,6 +422,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
   - child-run waits;
   - a stopped run's pending message in its plan chat, which waits for the model host (`wait` of the entry).
 - Outside waits (usage limit, code or model host, CI not started, docker, disk, git auth) end by one table (`contract/outside-waits.ts`) and one reconciler pass (`ReconcilerResumes.resumeOutsideWaits`), which also takes a stopped run's pending message at its next try. The backlog's turn wait, merges, main readings and an epic's main move read the same table. A structure rule fails an outside-wait test outside that table and `model-host-unavailable.ts`. The stall watch's tries stay with 3.16.
+- An outside wait's next try is the next boundary of its interval (`nextTryAt` in `contract/outside-waits.ts`), fixed for the whole try, so an outage writes a waiting run once per try and not once per pass.
 - An agent ended by SIGTERM or SIGKILL with no kill of ours and no Stop (its container stopped from outside) is a wait like a model host's outage: the launch throws `AgentStoppedFromOutside` (`steps/shared/stopped-from-outside.ts`), every caller of `agentFailure` takes it where it takes that outage (a planner turn stores it on its turn row), and `ReconcilerResumes.resumeOutsideWaits` takes it at its next try (the `HOST_UNAVAILABLE` row, no new row or retry count). Exit 137 of a container with a memory cap is the cap's kill, swarmloop's own limit: it is no stop from outside, relaunches under `MAX_LAUNCHES` and then fails (`killedByMemoryCap`, `agent/agent-result.ts`). Any other signal ends a step as `<step> failed: ended by <signal>`, with Resume offered. A person's Stop stays a stop.
 - The wait for a green main (`WAITS_FOR_MAIN`) is not an outside wait: it ends only when a backlog fix task lands and main reads green, which only the scheduler's main reading sees. That reading is its single wake rule (`MainWaitWake` for a plain run, the epic main move for an epic and its parts), and its rebase reads a failed try through the same table (`outsideWaitOf`). Gap: an epic that already holds main's green head waits for the next head.
 - An agent start that waits before its first output, for a free agent place (with how many are busy) or for the server's pause, stores that wait with its run's state (on its turn row for a backlog planner turn) through `steps/shared/start-waits.ts` (a structure rule fails any other file that calls `recordStartWait`), and the run page, the run list and the backlog chat show it. A place comes back when its launch ends, because the launch ends its container in every ending (`agent/agent-launch.ts`).
@@ -437,7 +440,7 @@ Each one is a command with an idempotency key that names its event (rule 11) and
 - **A planned restart** pauses the server: running visits end, no new ones start, and the dashboard says so.
 - **Server stalls**, when the main loop was blocked or the machine slept, are recorded.
 
-**Today.** Holds (`pipeline/reconciler*.ts`, `run-settler.ts`, `stall-watch.ts`, `stall-decision.ts`, `contract/interruption.ts`, `server-stalls/`). Waits after a restart end by the one table and pass of 3.15.
+**Today.** Holds (`pipeline/reconciler*.ts`, `run-settler.ts`, `stall-watch.ts`, `stall-decision.ts`, `contract/interruption.ts`, `server-stalls/`). Waits after a restart end by the one table and pass of 3.15. The stall watch reads the stored state at once, with no pass to wait for; the structure rule named in 3.13 holds the door that writes it.
 
 ## 3.17 Backlog
 
@@ -484,7 +487,7 @@ A limit stops the run in a wait that names it (rule 18). Every call is a row of 
 - **Retention** removes everything a finished run leaves after `RETAIN_DONE_DAYS`, and deleting a run removes everything of it.
 - **Housekeeping** runs at startup and once a day.
 
-**Today.** Holds (`history/`, a run's row is written by `history/run.repository.ts` and `history/visit.repository.ts` from what the copy read, kept in `history/run-read.ts`; a change of it goes through `RunRepository.change` and `history/conditional-write.ts`, and the lint rule `run-write/no-run-write` (`eslint.run-write-rules.mjs`, registered in `eslint.config.mjs`) and the structure rule in `scripts/structure-rules.json` fail a second path; `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
+**Today.** Holds (`history/`, a run's row is written by `history/run.repository.ts`, `history/visit.repository.ts` and `history/run-open-items.ts` from what the copy read, kept in `history/run-read.ts`; a change of it goes through `RunRepository.change` and `history/conditional-write.ts`, and the lint rule `run-write/no-run-write` (`eslint.run-write-rules.mjs`, registered in `eslint.config.mjs`) and the structure rule in `scripts/structure-rules.json` fail a second path; `pipeline/disk-guard.ts`, `run-retention.ts`, `housekeeping.ts`).
 
 ## 3.20 People, access and connections
 

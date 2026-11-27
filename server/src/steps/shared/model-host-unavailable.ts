@@ -1,4 +1,5 @@
 import { ERROR_CODES } from '../../contract/error-codes';
+import { nextTryAt } from '../../contract/outside-waits';
 import { HostUnavailable } from '../../core/swarmloop-error';
 import { HOST_RETRY_MS } from '../../integrations/http';
 import type { ModelHostOutage } from '../../integrations/agent-runtime/runtime-outage';
@@ -11,7 +12,7 @@ export class ModelHostUnavailable extends HostUnavailable {
     outage: ModelHostOutage,
     readonly result: LaunchResult,
   ) {
-    super(outage.host, outage.detail, new Date(Date.parse(result.finishedAt) + HOST_RETRY_MS).toISOString());
+    super(outage.host, outage.detail, nextTryAt(Date.parse(result.finishedAt), HOST_RETRY_MS));
     this.name = 'ModelHostUnavailable';
   }
 }

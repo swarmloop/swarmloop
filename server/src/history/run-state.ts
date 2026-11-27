@@ -1,7 +1,7 @@
 import { SERVER_INSTANCE } from '../core/server-instance';
 import { ERROR_CODES, SUBTASK_WAIT_CODES } from '../contract/error-codes';
 import type { ErrorCode } from '../contract/error-codes';
-import { REASON } from '../contract/run-state';
+import { NEEDS_ANSWERS, REASON } from '../contract/run-state';
 import type { MergeOutcome, RunState, StateReason } from '../contract/run-state';
 import type { StoredAgents } from '../contract/api';
 import type { RunEntity } from './entities';
@@ -18,13 +18,18 @@ export interface StateFacts {
   needsAnswers?: boolean;
   /** An open question waits for the planner of the backlog, not yet for a person. */
   asksPlanner?: boolean;
-  /** The run went back to implementation after a review or pipeline return. */
-  returned?: boolean;
   /** What the agent starts of a running run wait for before their first output: a free place or the server's pause. */
   startWait?: StateReason;
 }
 
-type StateRow = Pick<RunEntity, 'status'> & { stateReason?: string | null; mergeOutcome?: string | null };
+type StateRow = Pick<RunEntity, 'status'> &
+  Partial<Pick<RunEntity, 'currentStep' | 'attemptsReview' | 'attemptsPipeline' | 'attemptsChecks'>> & {
+    stateReason?: string | null;
+    mergeOutcome?: string | null;
+  };
+
+/** Statuses whose writers store the whole state: the facts of the documents do not change it. */
+export const WRITTEN_WHOLE = ['running', 'done', 'failed'];
 
 function readReason(stored: string | null | undefined): StateReason | null {
   if (!stored) return null;
@@ -69,6 +74,7 @@ function blockedState(stored: StateReason | null): { state: RunState; reason: St
 }
 
 function unfinishedState(
+  run: StateRow,
   stored: StateReason | null,
   facts: StateFacts,
 ): { state: RunState; reason: StateReason | null } {
@@ -90,7 +96,7 @@ function unfinishedState(
   if (facts.needsAnswers) return { state: 'waiting', reason: reasonOf('NEEDS_ANSWERS', 'waiting for a person') };
   if (facts.asksPlanner)
     return { state: 'waiting', reason: reasonOf(REASON.asksPlanner, 'waiting for the backlog planner') };
-  if (facts.returned) return { state: 'idle', reason: reasonOf(REASON.returned, 'returned to implement') };
+  if (isReturned(run)) return { state: 'idle', reason: reasonOf(REASON.returned, 'returned to implement') };
   return { state: 'idle', reason: null };
 }
 
@@ -114,15 +120,17 @@ function deriveState(run: StateRow, facts: StateFacts = {}): { state: RunState; 
         ? { state: 'stopped', reason: stored }
         : { state: 'failed', reason: stored };
     default:
-      return unfinishedState(stored, facts);
+      return unfinishedState(run, stored, facts);
   }
 }
 
 type StoredRow = StateRow & Partial<Pick<RunEntity, 'state'>>;
 
-/** The state of the run as its row stores it. A row with no state column is read from the row alone; the refresh fills it. */
+/** The state of the run as its row stores it. A row with no state is idle with no reason. */
 export function storedState(run: StoredRow): { state: RunState; reason: StateReason | null } {
-  return run.state ? { state: run.state as RunState, reason: readReason(run.stateReason) } : deriveState(run);
+  return run.state
+    ? { state: run.state as RunState, reason: readReason(run.stateReason) }
+    : { state: 'idle', reason: null };
 }
 
 /** What a run view knows beyond the row: a request in flight. */
@@ -143,21 +151,56 @@ export function liveState(run: StoredRow, live: LiveFacts): { state: RunState; r
   return live.stopping ? { state: 'stopping', reason: null } : stored;
 }
 
+/** The state columns a run's agent start wait is stored in. */
+export type StartWaitColumns = Pick<RunEntity, 'state' | 'stateReason'>;
+
 /** The state columns of a running run whose agent start waits for `wait`, or waits for nothing. Persist with `recordStartWait`. */
-export function startWaitColumns(wait: StateReason | null): Pick<RunEntity, 'state' | 'stateReason'> {
+export function startWaitColumns(wait: StateReason | null): StartWaitColumns {
   const derived = deriveState({ status: 'running' }, wait ? { startWait: wait } : {});
   return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };
 }
 
-/**
- * The state columns the refresh writes from the facts of a run's documents. A blocked row keeps its stored code.
- */
-export function factColumns(
-  run: StateRow,
-  facts: Pick<StateFacts, 'needsAnswers' | 'asksPlanner' | 'returned'>,
+/** The state columns of `columns` that the row `seen` does not show yet: nothing when it shows them all. */
+export function unseenStartWait(seen: StartWaitColumns, columns: StartWaitColumns): Partial<StartWaitColumns> {
+  return {
+    ...(seen.state === columns.state ? {} : { state: columns.state }),
+    ...(seen.stateReason === columns.stateReason ? {} : { stateReason: columns.stateReason }),
+  };
+}
+
+/** The state a row's status, reason and merge outcome give with no facts. */
+export function stateOfStatus(
+  row: Pick<RunEntity, 'status'> & { stateReason?: string | null; mergeOutcome?: string | null },
 ): Pick<RunEntity, 'state' | 'stateReason'> {
-  const derived = deriveState(run, facts);
+  const derived = deriveState(row);
   return { state: derived.state, stateReason: derived.reason ? JSON.stringify(derived.reason) : null };
+}
+
+/** The reasons the facts of the open items and the row give: any other stored reason is its writer's own. */
+const FACT_REASONS: string[] = [NEEDS_ANSWERS, REASON.asksPlanner, REASON.returned];
+
+/**
+ * Whether the writer of the row stored its whole state: a running, done or failed row with a state, or a reason of
+ * its own. The facts of its open items cannot change it.
+ */
+export function keepsWrittenState(run: Pick<RunEntity, 'status' | 'state' | 'stateReason'>): boolean {
+  if (run.state !== null && WRITTEN_WHOLE.includes(run.status)) return true;
+  const code = readReason(run.stateReason)?.code;
+  return code !== undefined && !FACT_REASONS.includes(code);
+}
+
+/**
+ * Sets the state of a run from the facts of its open items, in memory. A row that `keepsWrittenState` stays as its
+ * writer stored it. Persist it with `RunOpenItems.hold`.
+ */
+export function writeOpenItemState(
+  run: StateRow & Pick<RunEntity, 'state' | 'stateReason'>,
+  facts: Pick<StateFacts, 'needsAnswers' | 'asksPlanner'>,
+): void {
+  if (keepsWrittenState(run)) return;
+  const derived = deriveState(run, facts);
+  run.state = derived.state;
+  run.stateReason = derived.reason ? JSON.stringify(derived.reason) : null;
 }
 
 export interface RunStateChange {
@@ -190,14 +233,23 @@ type StateColumns = Pick<
 /** The columns of a run row that `change` sets. Used for an insert and for a conditional update. */
 export function stateColumns(
   current: Pick<StateColumns, 'currentStep' | 'ownerInstance' | 'activeAttempt'> &
-    Partial<Pick<StateColumns, 'mergeOutcome' | 'doneAt'>>,
+    Partial<Pick<StateColumns, 'mergeOutcome' | 'doneAt'>> &
+    Partial<Pick<RunEntity, 'attemptsReview' | 'attemptsPipeline' | 'attemptsChecks'>>,
   change: RunStateChange,
 ): StateColumns {
   const status = change.status;
   const done = status === 'done';
   const mergeOutcome = done ? (change.merge ? JSON.stringify(change.merge) : (current.mergeOutcome ?? null)) : null;
   const derived = deriveState(
-    { status, stateReason: change.reason ? JSON.stringify(change.reason) : null, mergeOutcome },
+    {
+      status,
+      currentStep: change.currentStep ?? current.currentStep,
+      attemptsReview: current.attemptsReview,
+      attemptsPipeline: current.attemptsPipeline,
+      attemptsChecks: current.attemptsChecks,
+      stateReason: change.reason ? JSON.stringify(change.reason) : null,
+      mergeOutcome,
+    },
     change.facts,
   );
   const reason = change.reason ?? derived.reason;
@@ -215,13 +267,11 @@ export function stateColumns(
 }
 
 /** Whether the run was sent back to implement by a failed review, checks or pipeline and now waits there. */
-export function isReturned(
-  run: Pick<RunEntity, 'status' | 'currentStep' | 'attemptsReview' | 'attemptsPipeline' | 'attemptsChecks'>,
-): boolean {
+export function isReturned(run: StateRow): boolean {
   return (
     run.status === 'waiting' &&
     run.currentStep === 'implement' &&
-    (run.attemptsReview > 0 || run.attemptsPipeline > 0 || run.attemptsChecks > 0)
+    ((run.attemptsReview ?? 0) > 0 || (run.attemptsPipeline ?? 0) > 0 || (run.attemptsChecks ?? 0) > 0)
   );
 }
 

@@ -1,18 +1,18 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
-import type { EntityManager } from 'typeorm';
 import type { CommandType } from '../contract/command';
-import { ERROR_CODES } from '../contract/error-codes';
 import type { InterruptionNote } from '../contract/interruption';
 import { LiveHub } from '../live/live.hub';
 import { insertAcceptedCommand } from './accepted-command';
 import { AgentCallRepository } from './agent-call.repository';
 import { adoptRow, changedColumns } from './run-read';
+import { RunOpenItems } from './run-open-items';
 import { releasedColumns } from './run-state';
 import { transaction } from './transaction';
-import { summarizeSamples } from './visit';
 import type { VisitDraft } from './visit';
+import { insertVisit, tablesOf } from './visit-insert';
+import type { VisitTables } from './visit-insert';
 import {
   StepStatEntity,
   ResourceSampleEntity,
@@ -22,24 +22,7 @@ import {
   RunEntity,
 } from './entities';
 
-interface VisitTables {
-  stepStats: Repository<StepStatEntity>;
-  samples: Repository<ResourceSampleEntity>;
-  httpCalls: Repository<HttpCallEntity>;
-  documents: Repository<DocumentEntity>;
-}
-
-function tablesOf(manager: EntityManager): VisitTables {
-  return {
-    stepStats: manager.getRepository(StepStatEntity),
-    samples: manager.getRepository(ResourceSampleEntity),
-    httpCalls: manager.getRepository(HttpCallEntity),
-    documents: manager.getRepository(DocumentEntity),
-  };
-}
-
-/** How a visit that ended on a provider limit is recorded. */
-export const LIMIT_VISIT = { status: 'interrupted', killReason: ERROR_CODES.RUNTIME_LIMIT } as const;
+export { LIMIT_VISIT } from './visit-insert';
 
 /** A command that is accepted in the transaction that stores the visit. */
 interface FinalizeCommand {
@@ -63,11 +46,12 @@ export class VisitRepository {
     @InjectRepository(DocumentEntity) private readonly documents: Repository<DocumentEntity>,
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly calls: AgentCallRepository,
+    private readonly openItems: RunOpenItems,
     @Optional() private readonly live?: LiveHub,
   ) {}
 
   async finishVisit(run: RunEntity, visit: VisitDraft): Promise<StepStatEntity> {
-    const stat = await this.insertVisit(this.tables, run, visit, null);
+    const stat = await insertVisit(this.tables, this.calls, run, visit, null);
     this.live?.changed(run.key);
     return stat;
   }
@@ -112,7 +96,9 @@ export class VisitRepository {
           now: command.now,
         });
       }
-      return this.insertVisit(tablesOf(manager), run, visit, attemptId);
+      const inserted = await insertVisit(tablesOf(manager), this.calls, run, visit, attemptId);
+      await this.openItems.hold(manager, { id });
+      return inserted;
     }).catch(async (error: unknown) => {
       if (attemptId && String(error).includes(DUPLICATE_ATTEMPT)) {
         return this.stepStats.findOneBy({ attemptId });
@@ -151,102 +137,11 @@ export class VisitRepository {
       await manager
         .getRepository(DocumentEntity)
         .update({ stepStatId: stat.id, kind: 'interruption' }, { body: JSON.stringify(note) });
+      await this.openItems.hold(manager, { id });
       return true;
     });
     adoptRow(run, await this.dataSource.getRepository(RunEntity).findOneByOrFail({ id: run.id }));
     return ended;
-  }
-
-  private async insertVisit(
-    { stepStats, samples, httpCalls, documents }: VisitTables,
-    run: RunEntity,
-    visit: VisitDraft,
-    attemptId: string | null,
-  ): Promise<StepStatEntity> {
-    // A launch that ended on a provider limit is no attempt: the visit after it keeps the number.
-    const previous =
-      (await stepStats.count({ where: { runId: run.id, step: visit.step } })) -
-      (await stepStats.count({ where: { runId: run.id, step: visit.step, ...LIMIT_VISIT } }));
-    const stats = summarizeSamples(visit.samples);
-    const now = visit.finishedAt;
-    const stat = await stepStats.save(
-      stepStats.create({
-        runId: run.id,
-        step: visit.step,
-        attempt: previous + 1,
-        runtime: visit.runtime ?? null,
-        model: visit.model,
-        effort: visit.effort ?? null,
-        effortNote: visit.effortNote ?? null,
-        mode: visit.mode,
-        startedAt: visit.startedAt,
-        stepStartedAt: run.stepStartedAt,
-        finishedAt: visit.finishedAt,
-        durationMs: visit.durationMs,
-        status: visit.status,
-        exitCode: visit.exitCode,
-        killReason: visit.killReason,
-        tokensIn: visit.tokensIn,
-        tokensOut: visit.tokensOut,
-        usd: visit.usd,
-        cpuAvg: stats.cpuAvg,
-        cpuPeak: stats.cpuPeak,
-        memAvg: stats.memAvg,
-        memPeak: stats.memPeak,
-        resumed: visit.resumed ? 1 : 0,
-        preparedMs: visit.preparedMs ?? null,
-        shellEdits: visit.shellEdits ?? 0,
-        checkedCommits: visit.checkedCommits ? JSON.stringify(visit.checkedCommits) : null,
-        attemptId,
-      }),
-    );
-    for (const sample of visit.samples) {
-      await samples.save(
-        samples.create({
-          stepStatId: stat.id,
-          sampledAt: sample.sampledAt,
-          cpuPercent: sample.cpuPercent,
-          rssBytes: sample.rssBytes,
-          source: sample.source,
-        }),
-      );
-    }
-    await this.calls.linkVisit(visit.callIds ?? [], stat.id);
-    for (const call of visit.httpCalls) {
-      await httpCalls.save(
-        httpCalls.create({
-          runId: run.id,
-          stepStatId: stat.id,
-          provider: call.provider,
-          method: call.method,
-          url: call.url,
-          statusCode: call.statusCode,
-          durationMs: call.durationMs,
-          error: call.error,
-          createdAt: now,
-        }),
-      );
-    }
-    for (const document of visit.documents ?? (visit.document ? [visit.document] : [])) {
-      const latest = await documents.findOne({
-        where: { runId: run.id, kind: document.kind },
-        order: { id: 'DESC' },
-      });
-      if (document.perVisit || latest?.body !== document.body) {
-        await documents.save(
-          documents.create({
-            runId: run.id,
-            stepStatId: stat.id,
-            kind: document.kind,
-            attempt: stat.attempt,
-            body: document.body,
-            path: '',
-            createdAt: now,
-          }),
-        );
-      }
-    }
-    return stat;
   }
 
   private get tables(): VisitTables {

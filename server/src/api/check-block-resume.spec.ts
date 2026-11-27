@@ -6,7 +6,6 @@ import { REASON } from '../contract/run-state';
 import { storedState, writeRunState } from '../history/run-state';
 import { DocumentRepository } from '../history/document.repository';
 import { RunRepository } from '../history/run.repository';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { save } from '../testing/runs.spec-helpers';
 import { storeRun } from '../testing/store-run.spec-helpers';
 import { RunCommandsService } from './run-commands.service';
@@ -26,7 +25,6 @@ async function blockedAtChecks(root: string) {
   writeRunState(run, { status: 'blocked', reason: { code: REASON.checkFailed, message: 'blocked' } });
   await storeRun(runs, run);
   runs.notify('proj-checks');
-  await app.get(RunStateRefresh).settled();
   return { app, pipeline, runs, documents };
 }
 

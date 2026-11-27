@@ -10,6 +10,7 @@ import type { AgentRunInput, AgentRunResult } from '../../agent/agent-runner';
 import { AGENT_RUNNER } from '../../agent/agent-runner';
 import { seedMigratedDatabase } from '../../testing/migrated-database.spec-helpers';
 import { SwarmloopConfigModule } from '../../config/config.module';
+import { nextTryAt } from '../../contract/outside-waits';
 import { Clock } from '../../core/clock';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { storedState } from '../../history/run-state';
@@ -34,7 +35,7 @@ function limited(step: string): AgentRunResult {
   return { ...result(LIMIT_TEXT, step), limit: { window: '5-hour', resetsAt: RESETS_AT } };
 }
 
-const RETRY_AT = new Date(START + HOST_RETRY_MS).toISOString();
+const RETRY_AT = nextTryAt(START, HOST_RETRY_MS);
 
 /** A launch that ended with the model host's API error, finished at the start of the test. */
 function down(): Partial<AgentRunResult> {

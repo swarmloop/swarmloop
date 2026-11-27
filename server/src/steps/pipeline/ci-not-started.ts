@@ -1,6 +1,7 @@
 import type { EventRepository } from '../../history/event.repository';
 import { CI_WAIT_COUNTER } from '../../history/loop-detail';
 import { ERROR_CODES } from '../../contract/error-codes';
+import { nextTryAt } from '../../contract/outside-waits';
 import { isHostOutage } from '../../core/swarmloop-error';
 import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-host';
 import type { StepContext } from '../base-step';
@@ -114,7 +115,7 @@ export async function waitForCi(input: {
       ],
     };
   }
-  const retryAt = new Date(now + CI_LOOK_MS).toISOString();
+  const retryAt = nextTryAt(now, CI_LOOK_MS);
   const text = `CI has not started for ${commits}; next look at ${retryAt}`;
   return {
     route: { to: 'wait', reason: text, code: ERROR_CODES.CI_NOT_STARTED, retryAt },

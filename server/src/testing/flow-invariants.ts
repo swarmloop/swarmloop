@@ -8,7 +8,9 @@ import {
   type StateReason,
 } from '../contract/run-state';
 import type { AgentExchangeEntity, RunEntity, StepStatEntity } from '../history/entities';
-import { liveState } from '../history/run-state';
+import { liveState, storedState, writeOpenItemState } from '../history/run-state';
+import { QuestionHolds } from '../steps/shared/question-holds';
+import { isDeepStrictEqual } from 'util';
 import { DocumentRepository } from '../history/document.repository';
 import { readParkedConflict } from '../pipeline/parked-conflict';
 import { CommandRepository } from '../history/command.repository';
@@ -29,6 +31,7 @@ export async function assertInvariants(app: TestApp): Promise<void> {
   const commands = app.app.get(CommandRepository);
   const starts = app.app.get(VisitStartRepository);
   const documents = app.app.get(DocumentRepository);
+  const holds = app.app.get(QuestionHolds);
   const broken: string[] = [];
   for (const run of await runs.listRuns()) {
     const queued = (await commands.pending(run.id)).some((command) => command.type !== 'stop');
@@ -37,6 +40,7 @@ export async function assertInvariants(app: TestApp): Promise<void> {
     const runStarts = await starts.forRun(run.id);
     broken.push(
       ...stateRules(run.key, state, reason),
+      ...(await storedRules(holds, run)),
       ...(await conflictRules(documents, run, state, reason)),
       ...visitRules(run.key, state, reason, stats),
       ...startRules(run.key, runStarts),
@@ -44,6 +48,15 @@ export async function assertInvariants(app: TestApp): Promise<void> {
     );
   }
   if (broken.length > 0) throw new Error(broken.join('\n'));
+}
+
+/** A run's stored state is what its row and its open items say: no pass after the write has to correct it. */
+async function storedRules(holds: QuestionHolds, run: RunEntity): Promise<string[]> {
+  const said = { ...run };
+  writeOpenItemState(said, await holds.facts(run));
+  return isDeepStrictEqual(storedState(said), storedState(run))
+    ? []
+    : [`${run.key} stores ${run.state ?? 'no state'}, but its row and open items say ${said.state ?? 'no state'}`];
 }
 
 /** A stop is on the needs-a-person list, and a wait or a stop says what happens next. */

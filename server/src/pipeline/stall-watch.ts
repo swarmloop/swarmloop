@@ -9,7 +9,6 @@ import { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import { VisitRepository } from '../history/visit.repository';
 import { ContainerGate } from '../sandbox/container-gate';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { stallDecision, type StallDecision } from './stall-decision';
 
 type Try = Extract<StallDecision, { kind: 'try' }>;
@@ -22,7 +21,6 @@ export class StallWatch {
     private readonly visits: VisitRepository,
     private readonly commands: CommandRepository,
     private readonly events: EventRepository,
-    private readonly refresh: RunStateRefresh,
     private readonly gate: ContainerGate,
     private readonly clock: Clock,
   ) {}
@@ -30,7 +28,6 @@ export class StallWatch {
   /** The runs to act on now. Nothing while the server is paused, so a rebuild never cuts a run just resumed. */
   async decisions(claimed: (key: string) => boolean): Promise<{ run: RunEntity; decision: StallDecision }[]> {
     if (this.gate.paused()) return [];
-    await this.refresh.settled();
     const due: { run: RunEntity; decision: StallDecision }[] = [];
     for (const run of await this.runs.listRuns({ state: 'idle' })) {
       if (run.stateReason !== null || claimed(run.key)) continue;

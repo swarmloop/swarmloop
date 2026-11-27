@@ -6,11 +6,14 @@ import { join } from 'path';
 import type { LoopEventEntity } from '../../history/entities';
 import type { CheckCommandView } from '../../contract/api';
 import { actionsFor } from '../../contract/run-state';
-import { storedState } from '../../history/run-state';
+import { stateOfStatus, storedState } from '../../history/run-state';
 import { parkedConflictIn } from '../../pipeline/parked-conflict';
 import type { RelaunchView } from '../../contract/relaunch';
 import { phases, returns, usageFigures } from './flow';
 import { reason, resumeState, sentence } from './flow-waiting';
+
+/** A row as its writer stores it: the state its status and reason give. */
+const withState = (row: RunEntity): RunEntity => ({ ...row, ...stateOfStatus(row) });
 
 describe('usage figures', () => {
   it('shows the cost and tokens of the log, and the highest peak of the stored visits and the open ones', () => {
@@ -428,7 +431,11 @@ describe('chips of a second code-review round', () => {
 describe('sentence of a stop with its own next step', () => {
   const retryAt = '2026-11-12T14:05:00.000Z';
   const run = (status: string, step: string, code: string, extra: object = {}): RunEntity =>
-    ({ status, currentStep: step, stateReason: JSON.stringify({ code, message: 'm', ...extra }) }) as RunEntity;
+    withState({
+      status,
+      currentStep: step,
+      stateReason: JSON.stringify({ code, message: 'm', ...extra }),
+    } as RunEntity);
   const say = (entity: RunEntity): string => sentence(entity, [], [], [], 3);
 
   it.each([
@@ -519,11 +526,11 @@ describe('sentence of a stop with its own next step', () => {
 
 describe('sentence of a run that waits for its subtasks', () => {
   const waiting = (code: string): RunEntity =>
-    ({
+    withState({
       status: 'waiting',
       currentStep: 'implement',
       stateReason: JSON.stringify({ code, message: 'm' }),
-    }) as RunEntity;
+    } as RunEntity);
   const tasks = [...Array(6).keys()].map((index) => ({
     id: `t${index}`,
     title: `Task ${index}`,

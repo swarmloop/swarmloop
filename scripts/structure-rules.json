@@ -20,11 +20,43 @@
       "pattern": "\\binstanceof\\s+(HostUnavailable|RuntimeLimit|ModelHostUnavailable)\\b"
     },
     {
+      "include": "server/src/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": ["server/src/history/run-state.ts", "server/src/history/migrations/"],
+      "reasons": {
+        "server/src/history/run-state.ts": "the one door through which a run's state changes",
+        "server/src/history/migrations/": "a migration rewrites stored rows, not a run's change"
+      },
+      "allowLine": "@Column\\(",
+      "pattern": "\\bstate_reason\\b|\\.set\\(\\{[^}]*\\b(state|stateReason)\\b|\\bstateReason\\s*=[^=]"
+    },
+    {
+      "include": "server/src/history/",
+      "exclude": "\\.spec(-helpers)?\\.ts$",
+      "allowFiles": [
+        "server/src/history/run-state.ts",
+        "server/src/history/migrations/",
+        "server/src/history/run.entity.ts",
+        "server/src/history/conditional-write.ts",
+        "server/src/history/command.repository.ts",
+        "server/src/history/accepted-command.ts"
+      ],
+      "reasons": {
+        "server/src/history/run-state.ts": "the one door through which a run's state changes",
+        "server/src/history/migrations/": "a migration rewrites stored rows, not a run's change",
+        "server/src/history/run.entity.ts": "declares the columns",
+        "server/src/history/conditional-write.ts": "writes the columns its caller changed, which come from run-state.ts",
+        "server/src/history/command.repository.ts": "a command's own state column, not a run's",
+        "server/src/history/accepted-command.ts": "a command's own state column, not a run's"
+      },
+      "allowLine": "\\bstate(Reason)?: true\\b",
+      "pattern": "\\bstateReason\\b|\\bSET\\s+state\\b|\\bstate\\s*=\\s*[?'\"]|\\b(runs?|runTable|RunEntity)\\b.*[{,]\\s*state\\s*[:,}]|^\\s*state\\s*[:,]|\\.set\\(\\{\\s*\\.\\.\\.[A-Za-z_]\\w*\\s*[,}]"
+    },
+    {
       "include": [
         "server/src/history/run-state.ts",
         "server/src/api/run-view/flow-waiting.ts",
-        "server/src/pipeline/command.service.ts",
-        "server/src/steps/shared/run-state-refresh.ts"
+        "server/src/pipeline/command.service.ts"
       ],
       "allowLine": "latest\\(current, 'error'\\)|A required check failed again on unchanged files\\.",
       "pattern": "\\bblockCode\\b|\\bdidNotFit\\(|\\bisStopNote\\b|does not fit|failed again on unchanged|\\.latestBody\\(|'error'|ARTIFACTS\\.error"

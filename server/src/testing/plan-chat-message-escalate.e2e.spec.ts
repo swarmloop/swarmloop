@@ -14,7 +14,6 @@ import { storedState } from '../history/run-state';
 import { remoteProject } from '../integrations/code-host/remote-project';
 import { BacklogPlanner } from '../pipeline/backlog/planner/backlog-planner';
 import { CommandService } from '../pipeline/command.service';
-import { RunStateRefresh } from '../steps/shared/run-state-refresh';
 import { FAKE_MODEL_KEY } from './env.spec-helpers';
 import { assertInvariants } from './flow-invariants';
 import { createFlowHarness } from './flow-harness';
@@ -169,7 +168,6 @@ describe('a planner escalates in its reply to a message on the plan step path', 
     await flow.backlog().scheduler.tick();
     await get(BacklogPlanner).whenIdle();
     await flow.app.pipeline.whenIdle(KEY);
-    await get(RunStateRefresh).settled();
 
     const events = await get(BacklogRepository).events(backlogId, 100);
     const asked = events.filter((event) => event.kind === 'run-asks-planner');
