@@ -92,6 +92,20 @@ describe('MergeWatch', () => {
     });
   });
 
+  it('does not settle a run merged while a repository is still publishing, and settles it once nothing is', async () => {
+    await doneRun('PROJ-9', ['acme/demo']);
+    answers.set('acme/demo#1', merged('someone-else'));
+    const documents = app.get(DocumentRepository);
+    await documents.putDocument(await find('PROJ-9'), 'delivery', 'demo published acme/demo\nweb publishing\n');
+
+    await app.get(MergeWatch).run();
+    expect((await find('PROJ-9')).state).not.toBe('merged');
+
+    await documents.putDocument(await find('PROJ-9'), 'delivery', 'demo published acme/demo\nweb read\n');
+    await app.get(MergeWatch).run();
+    expect((await find('PROJ-9')).state).toBe('merged');
+  });
+
   it('links the merge commit on a GitLab host', async () => {
     await doneRun('PROJ-1G', ['group/demo'], 'gitlab');
     await app.get(DocumentRepository).putDocument(

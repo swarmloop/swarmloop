@@ -30,7 +30,7 @@ async function gitAt(repo: string, path: string, args: string[], failure: string
   }
 }
 
-/** One tree per repository of the run, each checked to be a pushed feature branch of the host's own origin. */
+/** One tree per repository the run publishes, each checked to be a pushed feature branch of the host's own origin. */
 export async function mergeRequestTrees(
   deps: { config: AppConfig; registry: CodeHostRegistry; names: RunNames },
   run: Pick<RunEntity, 'key' | 'codeHost' | 'parentRunId' | 'taskId'>,

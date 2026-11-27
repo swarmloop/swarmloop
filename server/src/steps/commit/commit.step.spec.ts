@@ -452,7 +452,7 @@ describe('commit step', () => {
     }
   });
 
-  it('pushes only the repository it changed and records no pipeline ref for one it only read', async () => {
+  it('pushes only the repository it changed, records no pipeline ref for one it only read and lists it as read', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-commit-read-only-'));
     const branch = 'feature/PROJ-141-ship-the-field';
     const changed = featureTree(root, 'PROJ-141');
@@ -478,6 +478,9 @@ describe('commit step', () => {
         const refs = await app.get(DocumentRepository).latestBody('PROJ-141', 'pipeline_ref');
         expect(refs).toContain('project: group/demo');
         expect(refs).not.toContain('group/other');
+        expect(await app.get(DocumentRepository).latestBody('PROJ-141', 'delivery')).toBe(
+          'demo publishing\nother read\n',
+        );
       } finally {
         await app.close();
       }

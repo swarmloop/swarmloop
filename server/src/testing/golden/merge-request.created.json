@@ -19,6 +19,10 @@
     {
       "body": "{\"line\":\"Ships the field.\",\"done\":[\"x\"],\"worthALook\":[],\"notes\":{\"requirements\":\"a\",\"quality\":\"b\",\"regressions\":\"c\",\"security\":\"d\",\"performance\":\"e\"},\"risk\":\"low\",\"riskReason\":\"small\"}\n",
       "kind": "review_report_result"
+    },
+    {
+      "body": "demo published group/demo\n",
+      "kind": "delivery"
     }
   ],
   "events": [
@@ -36,22 +40,6 @@
     },
     {
       "kind": "input.received",
-      "step": "merge-request"
-    },
-    {
-      "kind": "command.started",
-      "step": "merge-request"
-    },
-    {
-      "kind": "command.finished",
-      "step": "merge-request"
-    },
-    {
-      "kind": "command.started",
-      "step": "merge-request"
-    },
-    {
-      "kind": "command.finished",
       "step": "merge-request"
     },
     {
@@ -191,6 +179,7 @@
       "ci_skip",
       "requirements",
       "repos",
+      "delivery",
       "implementation_result",
       "implementation",
       "review_report_result",

@@ -9,6 +9,8 @@ import { storedState, readOutcome } from '../../history/run-state';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import { parseMergeRequests, type MergeRequestLine } from '../../steps/merge-request/merge-request-record';
+import { deliveryOf, toPublish } from '../../steps/contract/delivery-list';
+import { storedDelivery } from '../run-delivery';
 import { parsePipelineRefs } from '../../steps/pipeline/pipeline-report';
 import { CommandService } from '../command.service';
 import { BacklogEvents } from './backlog-events';
@@ -91,12 +93,15 @@ export class BacklogMerge {
     mains: Map<string, MainReading>,
   ): Promise<void> {
     const body = await this.documents.latestBody(run.key, 'merge_request');
-    if (!body) return void (await this.save(task, { note: NO_REQUEST_NOTE }));
+    // The repositories the run publishes; a read one is never looked up, noted or merged.
+    const publishing = toPublish(deliveryOf(await storedDelivery(this.documents, run.key), task.repositories));
+    const repositories = publishing.map((entry) => entry.repo);
+    if (!body || repositories.length === 0) return void (await this.save(task, { note: NO_REQUEST_NOTE }));
     const refs = parsePipelineRefs((await this.documents.latestBody(run.key, 'pipeline_ref')) ?? '');
     const requests = parseMergeRequests(body);
     let current = task;
     const notes: string[] = [];
-    for (const repository of task.repositories) {
+    for (const repository of repositories) {
       if (repository in current.merged) continue;
       try {
         const project = (await this.origins.of(repository)).project;
@@ -117,7 +122,7 @@ export class BacklogMerge {
         notes.push(tryNote(error));
       }
     }
-    if (!task.repositories.every((repo) => repo in current.merged)) {
+    if (!repositories.every((repo) => repo in current.merged)) {
       await this.save(current, { note: notes.join('; ') });
       return;
     }

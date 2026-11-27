@@ -36,6 +36,7 @@ export function flowView(overrides: Partial<FlowView> = {}): FlowView {
     name: 'Run one',
     title: 'Run one',
     mergeRequests: [],
+    delivery: [],
     status: 'running',
     currentStep: 'implement',
     updatedAt: at,

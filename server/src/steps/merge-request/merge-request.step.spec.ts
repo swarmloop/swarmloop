@@ -67,6 +67,7 @@ describe('merge-request step', () => {
       expect(body).toContain('draft: true');
       expect(body).toContain('https://gitlab.example/group/demo/-/merge_requests/12');
       expect(body).toContain('Ships the field.');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-200', 'delivery')).toBe('demo published group/demo\n');
       const run = await app.get(RunRepository).findRun('PROJ-200');
       expect(run?.currentStep).toBe('pipeline');
       expect(run?.status).toBe('waiting');
@@ -269,7 +270,7 @@ describe('merge-request step', () => {
     const open = jest.fn();
     const app = await boot(root, { find, open }, jest.fn());
     try {
-      await seed(app, 'PROJ-220');
+      await seed(app, 'PROJ-220', { delivery: 'demo read\n' });
       const opened = await app.get(PipelineService).step('merge-request', 'PROJ-220');
       expect(opened.exitCode).toBe(0);
       expect(opened.message).toContain(NOTHING_TO_MERGE);
@@ -299,35 +300,7 @@ describe('merge-request step', () => {
       expect(opened.exitCode).toBe(0);
       expect(opened.message).toContain(NOTHING_TO_MERGE);
       expect(await app.get(DocumentRepository).latestBody('PROJ-221', 'merge_request')).toBeFalsy();
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('opens a request only for the repository with work', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-mr-onework-'));
-    featureTree(root, 'PROJ-222', 'demo');
-    featureTree(root, 'PROJ-222', 'web', true, false);
-    const find = jest.fn(async () => ({ record: null, httpCalls: [call('GET')] }));
-    const open = jest.fn(async (draft: MergeRequestDraft) => ({
-      record: {
-        project: draft.project,
-        iid: 12,
-        url: `https://gitlab.example/${draft.project}/-/merge_requests/12`,
-        summary: '',
-        draft: true,
-      },
-      httpCalls: [call('POST')],
-    }));
-    const app = await boot(root, { find, open }, jest.fn());
-    try {
-      await seed(app, 'PROJ-222', { repos: 'demo\nweb\n' });
-      const opened = await app.get(PipelineService).step('merge-request', 'PROJ-222');
-      expect(opened.exitCode).toBe(0);
-      expect(open.mock.calls.map((entry) => entry[0].project)).toEqual(['group/demo']);
-      const body = await app.get(DocumentRepository).latestBody('PROJ-222', 'merge_request');
-      expect(body).toContain('group/demo');
-      expect(body).not.toContain('group/web');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-221', 'delivery')).toBe('demo read\n');
     } finally {
       await app.close();
     }

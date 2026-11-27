@@ -9,21 +9,22 @@ import { HttpCallDraft, NothingToMerge, SwarmloopError } from '../../core/swarml
 import { GitRefusal } from '../shared/git-refusal';
 import { RunNames } from '../shared/run-names';
 import { baseBranch } from '../../git/base-ref';
-import { checkedRepoNames } from '../../git/repo-names';
+import { checkedRepoNames, worktreePath } from '../../git/repo-names';
+import { root } from '../../history/run-paths';
 import { BaseStep, StepContext } from '../base-step';
 import { nothingToMergeResult } from './nothing-to-merge';
 import { mergeRequestDetails, renderMergeRequest } from './merge-request-record';
 import { ARTIFACTS } from '../contract/artifacts';
 import { lateInput } from '../agent-step';
 import { renderImplementation } from '../implement/implement-record';
-import { hasWorkToMerge } from '../shared/branch-work';
 import { worktreesFingerprint } from '../shared/gate';
 import { jumpBackToReview } from '../shared/back-to-review';
 import { RunReport } from '../shared/run-report';
 import { StaleReview } from '../shared/stale-review';
 import { MergeRequestTemplate, type Summary } from './merge-request-template';
 import { mergeRequestTrees, type Tree } from './merge-request-trees';
-import { ref } from './merge-request-target';
+import { deliveredList } from './merge-request-delivery';
+import { deliveryOf, toPublish } from '../contract/delivery-list';
 import type { RunEntity } from '../../history/entities';
 import type { AttemptFacts } from '../../contract/step-events';
 import type { InputSpec, StepInput, StepResult } from '../contract/step-contract';
@@ -33,6 +34,7 @@ const INPUTS = {
   ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional' },
   requirements: { artifact: ARTIFACTS.requirements, need: 'start' },
   repos: { artifact: ARTIFACTS.repos, need: 'run' },
+  delivery: { artifact: ARTIFACTS.delivery, need: 'optional', late: true },
   implementationResult: lateInput(ARTIFACTS.implementationResult),
   implementation: lateInput(ARTIFACTS.implementation),
   reviewReportResult: lateInput(ARTIFACTS.reviewReportResult),
@@ -45,7 +47,7 @@ const INPUTS = {
 export class MergeRequestStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'merge-request';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.mergeRequest, ARTIFACTS.rebaseMergeSkip, ARTIFACTS.commit];
+  readonly outputs = [ARTIFACTS.mergeRequest, ARTIFACTS.rebaseMergeSkip, ARTIFACTS.commit, ARTIFACTS.delivery];
 
   constructor(
     kernel: StepKernel,
@@ -74,27 +76,33 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
       throw new SwarmloopError('requirements is missing');
     }
     const repos = checkedRepoNames(input.repos);
+    const entries = deliveryOf(await ctx.reread(ARTIFACTS.delivery), repos);
+    const names = toPublish(entries).map((entry) => entry.repo);
+    if (names.length === 0) {
+      return nothingToMergeResult(opened.startedAt, await this.implementation(ctx));
+    }
     const branch = await this.runNames.branchOf(opened.run, repos);
     const trees = await mergeRequestTrees(
       { config: this.config, registry: this.registry, names: this.runNames },
       opened.run,
-      repos,
+      names,
       branch,
       baseBranch(opened.run.prompt),
       ctx.calls,
       client,
     );
-    const built = await this.summary(ctx, phases, trees);
+    // The review judged every repository of the run, so its gate is checked against all of them, read ones too.
+    const built = await this.summary(
+      ctx,
+      phases,
+      repos.map((name) => worktreePath(root(this.config), key, name)),
+    );
     if ('route' in built) {
       return built;
     }
     const skip = ((await ctx.reread(ARTIFACTS.rebaseMergeSkip)) ?? '').trim() === 'skip';
-    const withWork = await this.withWork(trees);
-    if (withWork.length === 0) {
-      return nothingToMergeResult(opened.startedAt, await this.implementation(ctx));
-    }
     assertNotStopped(this.runStop, key);
-    const bodies = await this.template.bodies(opened.run, withWork, built, await ctx.reread(ARTIFACTS.gitRulesNote));
+    const bodies = await this.template.bodies(opened.run, trees, built, await ctx.reread(ARTIFACTS.gitRulesNote));
     const { opened: done, unavailable } = await ctx.activity(
       'Open merge request',
       () =>
@@ -106,6 +114,14 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
         }),
       ({ opened: items }) =>
         items.map(({ tree, record }) => `!${record.iid} ${tree.existing ? 'reused' : 'created'}`).join(', '),
+    );
+    await ctx.write(
+      ARTIFACTS.delivery,
+      deliveredList(
+        entries,
+        bodies.trees,
+        done.map((item) => item.tree),
+      ),
     );
     if (done.length === 0) {
       return nothingToMergeResult(opened.startedAt, await this.implementation(ctx));
@@ -127,7 +143,11 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
   }
 
   /** The body of the request, or the jump back to review when the report is for other files. */
-  private async summary(ctx: StepContext, phases: readonly PhaseName[], trees: Tree[]): Promise<Summary | StepResult> {
+  private async summary(
+    ctx: StepContext,
+    phases: readonly PhaseName[],
+    paths: string[],
+  ): Promise<Summary | StepResult> {
     const implementation = await this.implementation(ctx);
     if (!implementation) {
       throw new SwarmloopError('implementation is missing');
@@ -135,7 +155,7 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     if (!phases.includes('code-review')) {
       return { text: implementation, report: false };
     }
-    const fingerprint = await worktreesFingerprint(trees.map((tree) => tree.path));
+    const fingerprint = await worktreesFingerprint(paths);
     const counted = await ctx.gate(ARTIFACTS.reviewReport, fingerprint);
     if (!counted) {
       const stale = await this.staleReview.reason(ctx.opened.run);
@@ -163,18 +183,6 @@ export class MergeRequestStep extends BaseStep<typeof INPUTS> {
     return result
       ? renderImplementation(result.implementation).trim()
       : ((await ctx.reread(ARTIFACTS.implementation))?.trim() ?? '');
-  }
-
-  /** The trees whose branch has a request already, or a commit its target does not have. */
-  private async withWork(trees: Tree[]): Promise<Tree[]> {
-    const kept: Tree[] = [];
-    for (const tree of trees) {
-      const target = tree.existing ? null : await ref(tree.repo, tree.path, `refs/remotes/origin/${tree.target}`);
-      if (tree.existing || (await hasWorkToMerge(tree, target))) {
-        kept.push(tree);
-      }
-    }
-    return kept;
   }
 
   private async ensure(

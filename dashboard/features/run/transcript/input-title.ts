@@ -8,6 +8,7 @@ const TITLES: Record<string, string> = {
   issues: 'Issues',
   pipeline_log: 'Pipeline log',
   pipeline_ref: 'Watched branch',
+  delivery: 'Delivery',
   ci_skip: 'CI skip',
   ci_rerun: 'CI re-run',
 };

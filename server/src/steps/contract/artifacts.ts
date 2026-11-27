@@ -20,6 +20,7 @@ import { reviewDefinition, reviewStoredDefinition, type ReviewResult } from '../
 import { resultArtifactCodec } from '../../agent-result/result-codec';
 import { PLAN_CHAT_KIND, readPlanChat, type PlanChatLog } from '../../contract/plan-chat';
 import { pipelineRefSummary } from './pipeline-ref-summary';
+import { deliverySummary, formatDelivery, parseDelivery } from './delivery-list';
 import { summarizePipeline, summarizeRequirements, summarizeReviewResult } from './artifact-summaries';
 import {
   artifact,
@@ -228,6 +229,13 @@ export const ARTIFACTS = {
     writers: ['commit', 'implement'],
     readers: ['branch', 'commit', 'implement', 'pipeline'],
     summarize: pipelineRefSummary,
+  }),
+  // One entry per repository of the run: read, publishing or published. Commit decides read through hasOwnWork; the merge request step marks published.
+  delivery: artifact('delivery', {
+    writers: ['commit', 'merge-request'],
+    readers: ['commit', 'merge-request', 'pipeline'],
+    codec: { parse: parseDelivery, format: formatDelivery },
+    summarize: deliverySummary,
   }),
   pipelineLog: artifact('pipeline_log', {
     writers: ['pipeline'],

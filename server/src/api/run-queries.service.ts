@@ -37,6 +37,7 @@ import { openRelaunch, relaunchViews } from './run-view/relaunch';
 import { reason, sentence, withSkip } from './run-view/flow-waiting';
 import { withReturnNotes } from './run-view/documents';
 import { storedVisits } from './run-view/stored-visits';
+import { deliveryEntriesOf, deliveryViews } from './run-view/delivery';
 import { mergeRequestViews } from './run-view/merge-requests';
 import { ARTIFACTS } from '../steps/contract/artifacts';
 import { shownRun } from './run-view/own-state';
@@ -125,15 +126,16 @@ export class RunQueriesService {
     const label = (await this.backlogs.labelsFor([run.key])).get(run.key);
     const parent = await parentOf(this.runs, this.documents, run);
     const relaunches = relaunchViews(run, launches, stats, documents);
+    const delivery = deliveryEntriesOf(
+      latest(documents, ARTIFACTS.delivery.kind),
+      latest(documents, ARTIFACTS.repos.kind),
+    );
     return {
       key: run.key,
       name: runName(run.key, run.prompt),
       title: viewTitle(run, latest(documents, 'requirements')),
-      mergeRequests: mergeRequestViews(
-        run.mergeOutcome,
-        latest(documents, ARTIFACTS.mergeRequest.kind),
-        latest(documents, ARTIFACTS.repos.kind),
-      ),
+      mergeRequests: mergeRequestViews(run.mergeOutcome, latest(documents, ARTIFACTS.mergeRequest.kind), delivery),
+      delivery: deliveryViews(latest(documents, ARTIFACTS.delivery.kind)),
       status: shown.status,
       currentStep: run.currentStep,
       updatedAt: run.updatedAt,

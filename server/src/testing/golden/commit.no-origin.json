@@ -11,6 +11,10 @@
     {
       "body": "CI skipped: there is no origin to push.\n",
       "kind": "ci_skip"
+    },
+    {
+      "body": "demo publishing\n",
+      "kind": "delivery"
     }
   ],
   "events": [
@@ -95,6 +99,22 @@
       "step": "commit"
     },
     {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
+      "kind": "command.started",
+      "step": "commit"
+    },
+    {
+      "kind": "command.finished",
+      "step": "commit"
+    },
+    {
       "kind": "artifact.produced",
       "step": "commit"
     },
@@ -122,7 +142,7 @@
   },
   "loopEvents": [],
   "reads": {
-    "commit": ["requirements", "repos", "commit", "ci_skip", "handoff"]
+    "commit": ["requirements", "repos", "commit", "ci_skip", "delivery", "handoff"]
   },
   "result": {
     "exitCode": 0,

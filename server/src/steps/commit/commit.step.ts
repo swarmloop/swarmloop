@@ -14,6 +14,7 @@ import { assertNotStopped } from '../../agent/step-stopped';
 import { RunNames } from '../shared/run-names';
 import { RebasedPublisher } from '../shared/rebased-publisher';
 import { CommitPublish } from './commit-publish';
+import { deliveryEntries } from './commit-delivery';
 import { BaseStep, StepContext } from '../base-step';
 import { allowedPaths, parsePaths, PlannedPath, renderPaths } from '../../git/commit-paths';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -35,7 +36,7 @@ const INPUTS = {
 export class CommitStep extends BaseStep<typeof INPUTS> {
   readonly name: StepName = 'commit';
   readonly inputs = INPUTS;
-  readonly outputs = [ARTIFACTS.commit, ARTIFACTS.pipelineRef, ARTIFACTS.ciSkip, ARTIFACTS.issues];
+  readonly outputs = [ARTIFACTS.commit, ARTIFACTS.pipelineRef, ARTIFACTS.ciSkip, ARTIFACTS.issues, ARTIFACTS.delivery];
 
   constructor(
     kernel: StepKernel,
@@ -66,7 +67,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     if (!phases.includes('ci') && !again) {
       const body = await this.preview(trees, branch, named);
       if (body === null) {
-        return this.unchanged(opened, trees, branch, named);
+        return this.unchanged(ctx, trees, branch, named);
       }
       return commitResult('waiting', `${opened.startedAt} commit waiting\n${body.trimEnd()}`, body);
     }
@@ -74,7 +75,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     const rerun = planned.length === 0 && (await this.reader.newer(key, ARTIFACTS.ciRerun, ARTIFACTS.commit));
     if (!rerun && planned.length === 0) {
       if (!(await this.hasWork(trees, named))) {
-        return this.unchanged(opened, trees, branch, named);
+        return this.unchanged(ctx, trees, branch, named);
       }
       if (!(await this.somethingToPush(trees, branch, named))) {
         if (await this.publishedHead(trees, branch)) {
@@ -82,9 +83,10 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
             ctx.write(ARTIFACTS.pipelineRef, body),
           );
           await this.publisher.stampRefs(opened.run, trees);
+          await this.recordDelivery(ctx, trees, named);
           return commitResult('ok', `${opened.startedAt} commit done\n${label}`);
         }
-        return this.unchanged(opened, trees, branch, named);
+        return this.unchanged(ctx, trees, branch, named);
       }
     }
     assertNotStopped(this.runStop, key);
@@ -107,6 +109,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
     const recordedHeads = heads.length > 0 ? `${heads.join('\n')}\n` : undefined;
     if (!pushed) {
       await ctx.write(ARTIFACTS.ciSkip, `${CI_SKIPPED}\n`);
+      await this.recordDelivery(ctx, trees, named);
       const line = listed ? `${opened.startedAt} ${CI_SKIPPED}\n${listed}` : `${opened.startedAt} ${CI_SKIPPED}`;
       return commitResult('ok', line, listed ? `${listed}\n` : undefined);
     }
@@ -123,10 +126,16 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
         await ctx.write(ARTIFACTS.ciSkip, '');
       }
     }
+    await this.recordDelivery(ctx, trees, named);
     const line = listed
       ? `${opened.startedAt} commit done\n${pushedLabel}\n${listed}`
       : `${opened.startedAt} commit done\n${pushedLabel}`;
     return commitResult('ok', line, listed ? `${listed}\n` : recordedHeads);
+  }
+
+  /** The delivery list of this pass: each repository with work of its own is publishing, the rest were only read. */
+  private async recordDelivery(ctx: StepContext, trees: Tree[], named: string | null): Promise<void> {
+    await ctx.write(ARTIFACTS.delivery, await deliveryEntries(this.publisher, trees, named));
   }
 
   /** A failed or still-open commit retries its own path list. Arriving from the previous phase reads the tree again. */
@@ -159,11 +168,13 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
 
   /** Nothing to commit is not an error: the task is already delivered, or the run goes back to implement. */
   private async unchanged(
-    opened: OpenedStep,
+    ctx: StepContext,
     trees: Tree[],
     branch: (repo: string) => string,
     named: string | null,
   ): Promise<StepResult> {
+    const { opened } = ctx;
+    await this.recordDelivery(ctx, trees, named);
     const hosts = await this.publisher.hostsFor(opened.run);
     const branches: BranchOnOrigin[] = [];
     for (const tree of trees) {
