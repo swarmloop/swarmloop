@@ -102,7 +102,7 @@ export class SubtaskWorktrees {
 
   /**
    * Moves the worktrees of the parent to the feature branch as it is on origin. A worktree with commits the branch
-   * lacks, or with edits the move would overwrite, stays where it is; the result names both heads. Null when every worktree moved.
+   * lacks stays where it is; the result names both heads. Null when every worktree moved.
    */
   async fastForward(parent: RunEntity, repos: string[], branch: string): Promise<string | null> {
     const hosts = await this.hostsFor(parent);
@@ -120,12 +120,12 @@ export class SubtaskWorktrees {
             () => false,
             () => true,
           );
-          const edited = await this.hasEdits({ repo, path });
-          if (!ahead && !edited) throw error;
+          if (!ahead) throw error;
           const local = await git(['-C', path, 'rev-parse', 'HEAD']);
           const tip = await git(['-C', path, 'rev-parse', remote]);
-          const lacks = ahead ? `it has commits that ${remote} at ${tip} lacks` : `its edits are not committed yet`;
-          notes.push(`the worktree of ${repo} stays at ${local}: ${lacks}, so it was not moved to the feature branch`);
+          notes.push(
+            `the worktree of ${repo} stays at ${local}: it has commits that ${remote} at ${tip} lacks, so it was not moved to the feature branch`,
+          );
         }
       });
     }

@@ -1,3 +1,4 @@
+import { ERROR_CODES } from '../../contract/error-codes';
 import { storedState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
 import type { AppConfig } from '../../config/env';
@@ -9,7 +10,7 @@ import { readyTasks, settled, runWaitNote, waitNote, withStatuses, type Subtask 
 import { openQuestions } from '../shared/answers';
 import { keepOpen } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
-import type { OwnEdits, SubtaskOps } from '../shared/subtask-ops';
+import type { SubtaskOps } from '../shared/subtask-ops';
 import { refusedRoute } from '../shared/start-refused';
 import { withoutSkipped } from '../shared/subtask-question-line';
 import { skippedByEpic } from '../shared/subtask-skip-reason';
@@ -64,10 +65,19 @@ export class SplitPass {
     const { run, startedAt } = ctx.opened;
     // Every task settled: the agent resolves a conflict of the parent's own edits, so it is parked for the agent.
     const view = await settledView(this.deps.subtasks, run, withStatuses(subtasks));
-    const first = await this.deps.subtasks.commitOwnEdits(run, view !== null);
-    if (first.conflict && view) {
-      await this.closeSkipped(run, newlySkipped(withStatuses(subtasks), view));
-      return handOver(ctx, view, { ...first, conflict: first.conflict }, subtasks);
+    const own = await this.deps.subtasks.commitOwnEdits(run, view !== null);
+    if (own.conflict) {
+      if (view) {
+        await this.closeSkipped(run, newlySkipped(withStatuses(subtasks), view));
+        return handOver(ctx, view, { ...own, conflict: own.conflict }, subtasks);
+      }
+      const reason = `${startedAt} ${own.conflict}; the implement agent resolves it once every task is settled; a Resume or a message then goes on`;
+      const text = [reason, own.committed].filter(Boolean).join('; ');
+      return {
+        route: { to: 'block', reason, code: ERROR_CODES.PARENT_TREE_CONFLICT },
+        summary: text,
+        outputs: [],
+      };
     }
     const stored = withStatuses(subtasks);
     // A task the list reads skipped may still hold open questions, its epic's copy among them: the one skip closes them.
@@ -86,10 +96,7 @@ export class SplitPass {
     const needed = await this.deps.needs.run(ctx.opened, gapped.tasks, gapped.contract, held);
     const followed = await this.refresh(run, needed.tasks);
     const { tasks: merged, refusal, unfetched, unmoved: mergeNote } = await this.deps.merges.run(run, followed.tasks);
-    const after = await this.ownAfterMerges(ctx, subtasks, merged, first);
-    if (after.handed) return after.handed;
-    const { own } = after;
-    const unmoved = [followed.unmoved, mergeNote, after.note].filter(Boolean).join('; ') || null;
+    const unmoved = [followed.unmoved, mergeNote].filter(Boolean).join('; ') || null;
     const requirements = (await ctx.reread(ARTIFACTS.requirementList)) ?? [];
     const looked = await this.deps.look.run(ctx, merged, needed.contract, requirements);
     // A refused look holds the dependents back: they start after the planner has seen the merge.
@@ -118,33 +125,6 @@ export class SplitPass {
       : await this.routing.route(ctx, tasks, open, outputs, { refusal, unfetched });
     const noted = unmoved ? this.routing.withUnmoved(result, unmoved) : result;
     return own.committed ? { ...noted, summary: `${noted.summary}; ${own.committed}` } : noted;
-  }
-
-  /**
-   * A conflict of the parent's own edits met while tasks were open: the edits stay uncommitted in its worktree and the
-   * pass goes on. When the merges settled the last task, the edits are parked and the agent gets the conflict; otherwise
-   * the wait names it.
-   */
-  private async ownAfterMerges(
-    ctx: StepContext,
-    subtasks: Subtask[],
-    merged: Subtask[],
-    own: OwnEdits,
-  ): Promise<{ own: OwnEdits; note: string | null; handed: StepResult | null }> {
-    const { run } = ctx.opened;
-    if (!own.conflict) return { own, note: null, handed: null };
-    const view = await settledView(this.deps.subtasks, run, merged);
-    if (!view) {
-      return { own, note: `${own.conflict}; the implement agent resolves it once every task is settled`, handed: null };
-    }
-    const parked = await this.deps.subtasks.commitOwnEdits(run, true);
-    if (!parked.conflict) return { own: parked, note: null, handed: null };
-    await this.closeSkipped(run, newlySkipped(withStatuses(subtasks), view));
-    return {
-      own: parked,
-      note: null,
-      handed: handOver(ctx, view, { ...parked, conflict: parked.conflict }, subtasks),
-    };
   }
 
   /** The run of each of these skipped tasks is closed with the epic's reason. A run already skipped only has its questions closed. */

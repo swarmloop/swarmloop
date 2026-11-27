@@ -467,20 +467,18 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     await assertInvariants(app);
   });
 
-  it("waits on its tasks when the parent's edits touch the lines a merged task changed, then hands the conflict to its agent", async () => {
-    const blocks = new BlockAgentRunner();
+  it("blocks with PARENT_TREE_CONFLICT naming the file when the parent's edits touch the lines a merged task changed", async () => {
     const { parentTree, originHead, before, tick, worktreeHead } = await behindWithEdits(
       (shared) => writeFileSync(shared, lines('own one')),
       [task('a'), task('b')],
-      { blocks, realSteps: ['commit'] },
     );
 
     for (let count = 0; count < 3; count++) await tick();
 
     const parent = (await parentRun(app))!;
     const { state, reason } = storedState(parent);
-    expect(state).not.toBe('blocked');
-    expect(['SUBTASKS_RUNNING', 'SUBTASK_WAITING']).toContain(reason?.code);
+    expect(state).toBe('blocked');
+    expect(reason?.code).toBe('PARENT_TREE_CONFLICT');
     expect(reason?.message).toContain('src/shared.ts');
     expect(reason?.message).toContain(before);
     expect(reason?.message).toContain(worktreeHead);
@@ -489,12 +487,6 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     expect(reason?.message).toContain('the implement agent resolves it once every task is settled');
     expect(git(parentTree, ['status', '--porcelain'])).toContain('src/shared.ts');
     expect(originHead()).toBe(before);
-    expect(blocks.prompts.filter((launch) => launch.prompt.includes(OWN_CONFLICT_LEAD))).toHaveLength(0);
-
-    await deliver('b', { 'src/b.ts': 'export const b = 1;\n' });
-    for (let count = 0; count < 3; count++) await tick();
-
-    expect(blocks.prompts.filter((launch) => launch.prompt.includes(OWN_CONFLICT_LEAD))).toHaveLength(1);
     await assertInvariants(app);
   });
 
@@ -503,7 +495,7 @@ describe('a split run is reviewed and delivered as one merge request', () => {
       (file) => writeFileSync(file, lines('own one')),
       [task('a'), task('b')],
     );
-    expect(['SUBTASKS_RUNNING', 'SUBTASK_WAITING']).toContain(storedState((await parentRun(app))!).reason?.code);
+    expect(storedState((await parentRun(app))!).reason?.code).toBe('PARENT_TREE_CONFLICT');
 
     writeFileSync(shared, lines('task one', 'own five'));
     await app.app.get(CommandService).accept('resume', KEY, { ...PERSON_RESUME });

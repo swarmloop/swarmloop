@@ -9,7 +9,7 @@ import { FlowRepository } from '../history/flow.repository';
 import { root } from '../history/run-paths';
 import { RunNames } from './shared/run-names';
 import { RunAuthor } from './shared/run-author';
-import { completeRebase, fetchedBaseTip, rebaseFeatureRepos } from '../git/rebase';
+import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
 import { hostConflictMarker } from './shared/host-conflict-marker';
 import { sameOwnDiff } from '../git/rebase/own-diff';
 import { git } from '../git/git';
@@ -141,7 +141,7 @@ export class RunRebase {
   }
 
   /** A conflict only the code host sees goes to the implement agent, as a conflict of the move does. */
-  async handHostConflict(key: string, text: string): Promise<'resolve'> {
+  private async handHostConflict(key: string, text: string): Promise<'resolve'> {
     const run = await this.requireRun(key);
     await this.documents.putDocument(run, ARTIFACTS.rebaseConflict.kind, hostConflictMarker(text));
     await this.startAtImplement(run);
@@ -208,26 +208,6 @@ export class RunRebase {
       .map(([repo, sha]) => `${repo}@${sha}`)
       .sort()
       .join(',');
-  }
-
-  /** The fetched base tip of every repository of the run, as `<repo>@<sha>` sorted and joined: what a move would go onto. */
-  async baseTips(key: string): Promise<string> {
-    const run = await this.requireRun(key);
-    const names = repoNames((await this.documents.latestBody(key, ARTIFACTS.repos.kind)) ?? '');
-    const hosts = await this.hostsFor(run);
-    const tips = await withWorktrees(this.worktreePaths(run, names), async () =>
-      Promise.all(
-        names.map(
-          async (repo) =>
-            `${repo}@${await fetchedBaseTip(worktreePath(root(this.config), run.key, repo), repo, run.prompt, hosts)}`,
-        ),
-      ),
-    );
-    return tips.sort().join(',');
-  }
-
-  private async hostsFor(run: RunEntity) {
-    return { ...this.config.env, ...(await this.registry.tokensFor(run.startedBy, run.codeHost)), clock: this.clock };
   }
 
   /** An epic's Rebase that rebased clean puts the branch on origin before any subtask moves onto it. */
@@ -301,7 +281,11 @@ export class RunRebase {
       throw new SwarmloopError('requirements is missing');
     }
     const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
-    const hosts = await this.hostsFor(run);
+    const hosts = {
+      ...this.config.env,
+      ...(await this.registry.tokensFor(run.startedBy, run.codeHost)),
+      clock: this.clock,
+    };
     return rebaseFeatureRepos({
       root: root(this.config),
       key: run.key,
