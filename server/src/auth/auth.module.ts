@@ -6,6 +6,8 @@ import { Clock } from '../core/clock';
 import { HistoryModule } from '../history/history.module';
 import { PeopleController } from './people.controller';
 import { TokensController } from './tokens.controller';
+import { AppReplacePolicy } from './app-replace-policy';
+import { ApplicationController } from './application.controller';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { AuthService, OAUTH_PROVIDERS } from './auth.service';
@@ -26,8 +28,9 @@ import { SignInService } from './sign-in.service';
 
 @Module({
   imports: [HistoryModule],
-  controllers: [AuthController, ConnectionsController, TokensController, PeopleController],
+  controllers: [AuthController, ApplicationController, ConnectionsController, TokensController, PeopleController],
   providers: [
+    AppReplacePolicy,
     SessionService,
     CheckoutRepos,
     LoginStates,

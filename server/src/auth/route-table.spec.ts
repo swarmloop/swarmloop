@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { SettingsController } from '../api/settings.controller';
+import { ApplicationController } from './application.controller';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { ConnectionsController } from './connections.controller';
@@ -37,14 +38,17 @@ describe('the route table', () => {
     controllers = [
       ...modules.flatMap((loaded) => Object.values(loaded).filter((value) => value.name.endsWith('Controller'))),
       AuthController,
+      ApplicationController,
     ];
   });
   const open = (controller: Controller) => Reflect.getMetadata(PUBLIC_KEY, controller) === true;
 
   it('guards every route globally: ApiModule imports AuthModule, which registers the guard', () => {
-    expect(controllers).toHaveLength(15);
+    expect(controllers).toHaveLength(16);
     expect(apiModule).toMatch(/imports: \[[^\]]*\bAuthModule\b/);
-    for (const controller of controllers.filter((candidate) => candidate !== AuthController)) {
+    for (const controller of controllers.filter(
+      (candidate) => candidate !== AuthController && candidate !== ApplicationController,
+    )) {
       expect(apiModule).toMatch(new RegExp(`controllers: \\[[^\\]]*\\b${controller.name}\\b`));
     }
     expect(Reflect.getMetadata('providers', AuthModule)).toContainEqual({ provide: APP_GUARD, useClass: AuthGuard });
@@ -80,6 +84,6 @@ describe('the route table', () => {
 
   it('opens no controller under another path', () => {
     const names = controllers.filter(open).map((controller) => controller.name);
-    expect(names.sort()).toEqual(['AuthController', 'HealthController']);
+    expect(names.sort()).toEqual(['ApplicationController', 'AuthController', 'HealthController']);
   });
 });

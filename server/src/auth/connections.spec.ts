@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, 
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
+import type { ConnectionsView } from '../contract/api';
 import { GitAuthError } from '../core/swarmloop-error';
 import { CommandService } from '../pipeline/command.service';
 import { Reconciler } from '../pipeline/reconciler';
@@ -531,7 +532,7 @@ describe('connect GitLab', () => {
       const saved = await fetch(`${app.url}/auth/gitlab/application`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ clientId: 'gl-client', clientSecret: 'gl-secret' }),
+        body: JSON.stringify({ clientId: 'gl-id', clientSecret: 'gl-secret' }),
       });
       expect(saved.status).toBeLessThan(300);
       const start = await fetch(`${app.url}/auth/gitlab/login`, { redirect: 'manual' });
@@ -548,6 +549,34 @@ describe('connect GitLab', () => {
       expect(fake.seen[fake.seen.length - 1]).toMatchObject({ authorization: 'Bearer ghu_carol_1' });
       const [row] = await app.app.get(DataSource).query<Record<string, string>[]>(`SELECT * FROM host_apps`);
       expect(row.client_secret).not.toBe('gl-secret');
+    } finally {
+      await app.close();
+      await fake.stop();
+    }
+  });
+
+  it('lets the maker or an admin replace a stored application, and lists the connections it issued', async () => {
+    const fake = await startFakeHosts();
+    const app = await createTestApp({
+      env: { GITLAB_BASE_URL: fake.url, SWARMLOOP_ALLOW: 'gitlab:carol', SWARMLOOP_TOKEN: TOKEN },
+    });
+    try {
+      await fetch(`${app.url}/auth/gitlab/application`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ clientId: 'gl-id', clientSecret: 'gl-secret' }),
+      });
+      const service = app.app.get(ConnectionsService);
+      await service.connect('gitlab', 'carol', { accessToken: 'access-c', refreshToken: 'refresh-c' });
+      await service.connect('gitlab', 'ann', { accessToken: 'glpat-ann', refreshToken: '' });
+      const gitlab = async (headers: Record<string, string>) =>
+        ((await (await fetch(`${app.url}/connections`, { headers })).json()) as ConnectionsView).connections.find(
+          (view) => view.host === 'gitlab',
+        );
+      expect(await gitlab(app.auth)).toMatchObject({ mayReplace: true, connected: ['carol'] });
+      expect(await gitlab(await app.personToken('mia'))).toMatchObject({ mayReplace: false, connected: [] });
+      await service.disconnectGrants('gitlab');
+      expect(await service.loginsOn('gitlab')).toEqual(['ann']);
     } finally {
       await app.close();
       await fake.stop();

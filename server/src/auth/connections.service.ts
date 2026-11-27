@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
 import { Clock } from '../core/clock';
 import { GitAuthError, SwarmloopError } from '../core/swarmloop-error';
@@ -74,6 +74,11 @@ export class ConnectionsService {
     return (await this.rows.findBy({ host })).map((row) => row.login).sort();
   }
 
+  /** The logins whose connection holds a refresh token, sorted: the connections an OAuth application issued. A token sign-in has none. */
+  async grantLogins(host: ProviderName): Promise<string[]> {
+    return (await this.rows.findBy({ host, refreshToken: Not('') })).map((row) => row.login).sort();
+  }
+
   /** True when any person has a working connection. */
   async anyConnected(): Promise<boolean> {
     return (await this.rows.countBy({ status: 'ok' })) > 0;
@@ -94,6 +99,11 @@ export class ConnectionsService {
   /** Drops every person's connection to a host, for tokens that belong to an app that was replaced. */
   async disconnectAll(host: ProviderName): Promise<void> {
     await this.rows.delete({ host });
+  }
+
+  /** Drops the connections an OAuth application issued (the rows with a refresh token); token sign-ins stay. */
+  async disconnectGrants(host: ProviderName): Promise<void> {
+    await this.rows.delete({ host, refreshToken: Not('') });
   }
 
   /** The access token of a person on a host, refreshed when it is about to end. Null when the person has no connection. Only the code-host layer reads it. */
