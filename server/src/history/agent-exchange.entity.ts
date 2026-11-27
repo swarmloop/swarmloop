@@ -129,6 +129,10 @@ export class AgentExchangeEntity {
   @Column({ name: 'first_cache_read_tokens', type: 'integer', nullable: true })
   firstCacheReadTokens!: number | null;
 
+  /** The size of the prompt of the row's last model request: input plus cache read plus cache write; null when no request was counted. */
+  @Column({ name: 'last_prompt_tokens', type: 'integer', nullable: true })
+  lastPromptTokens!: number | null;
+
   @Column({ name: 'own_usd', type: 'float', default: 0 })
   ownUsd!: number;
 

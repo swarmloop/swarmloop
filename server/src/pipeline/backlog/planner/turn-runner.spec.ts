@@ -1,11 +1,16 @@
+import { Logger } from '@nestjs/common';
 import { HostUnavailable } from '../../../core/swarmloop-error';
 import { backlogMessageKey } from '../../../history/backlog-message-key';
+import { plannerChatKey } from './planner-chat-key';
 import { plannerTurnsHarness } from './planner-turns.spec-helpers';
 import { turnResult } from './planner-scenarios.spec-helpers';
 
 type Harness = Awaited<ReturnType<typeof plannerTurnsHarness>>;
 
-async function withTurn(body: (harness: Harness, id: number) => Promise<void>, env: Record<string, string> = {}) {
+async function withTurn(
+  body: (harness: Harness, id: number) => Promise<void>,
+  env: Record<string, string | number> = {},
+) {
   const harness = await plannerTurnsHarness(env);
   try {
     harness.setMain('web');
@@ -33,7 +38,7 @@ describe('BacklogTurnRunner', () => {
       expect(h.agent.launches[0].mounts.every((mount) => mount.readonly)).toBe(true);
       expect(await h.lines(id)).toEqual(['person: plan it', 'planner: Here is the plan.']);
       const turn = await h.chat.findTurn('turn-a');
-      expect(turn).toMatchObject({ status: 'done', runtime: 'cursor', tokensIn: 15, tokensOut: 0, usd: 0.5 });
+      expect(turn).toMatchObject({ status: 'done', runtime: 'cursor', tokensIn: 10, tokensOut: 5, usd: 0.5 });
       expect(turn?.model).not.toBe('');
       expect(turn?.transcript).toMatch(/turn-a-backlog-plan-output\.txt$/);
       expect(h.workspace.opened).toEqual(['turn-a']);
@@ -57,7 +62,7 @@ describe('BacklogTurnRunner', () => {
       ]);
       expect(await h.chat.findTurn('turn-a')).toMatchObject({
         usd: await h.calls.spendOfTurn('turn-a'),
-        tokensIn: await h.calls.tokensOfTurn('turn-a'),
+        ...(await h.calls.turnTokens('turn-a')),
       });
     }));
 
@@ -134,7 +139,7 @@ describe('BacklogTurnRunner', () => {
       h.agent.script = ['crash'];
       await expect(h.runner.run('one', 'turn-a')).rejects.toThrow("The planner's agent did not finish");
       expect(h.workspace.closed).toEqual(['turn-a']);
-      expect(await h.chat.findTurn('turn-a')).toMatchObject({ tokensIn: 15, usd: 0.1 });
+      expect(await h.chat.findTurn('turn-a')).toMatchObject({ tokensIn: 10, usd: 0.1 });
     }));
 
   it('ends with the next try of the host when the worktrees of a turn cannot be fetched', () =>
@@ -159,7 +164,7 @@ describe('BacklogTurnRunner', () => {
 
       expect(outcome).toMatchObject({ status: 'waiting', reason: expect.stringContaining('api.anthropic.com') });
       expect(h.agent.launches).toHaveLength(1);
-      expect((await h.chat.findTurn('turn-a'))?.tokensIn).toBe(15);
+      expect((await h.chat.findTurn('turn-a'))?.tokensIn).toBe(10);
     }));
 
   it('runs again on Resume after a launch halted its key', () =>
@@ -347,6 +352,118 @@ describe('BacklogTurnRunner', () => {
       expect(rows).toHaveLength(2);
       expect(rows.map((row) => row.ties)).toEqual([rows[0].ties, rows[0].ties]);
       expect(JSON.parse(rows[1].ties ?? '[]')).toEqual([{ task: 'going', run: 'going-1', general: true }]);
-      expect(await h.chat.findTurn('turn-a')).toMatchObject({ usd: 1, tokensIn: 30 });
+      expect(await h.chat.findTurn('turn-a')).toMatchObject({ usd: 1, tokensIn: 20 });
     }));
+
+  describe('the planner chat of the backlog', () => {
+    const CLAUDE = { AGENTS_BACKLOG_PLAN: 'claude:claude-opus-5-5:high' };
+
+    /** Runs turn-a, then opens turn-b with a new message and runs it. */
+    async function secondTurn(h: Harness, id: number, answers: Parameters<typeof turnResult>[0][] = []) {
+      await h.runner.run('one', 'turn-a');
+      await h.chat.addPersonMessage(id, 'and this', 'm2', []);
+      await h.openTurn(id, 'turn-b');
+      h.agent.script = answers.map((text) => turnResult(text));
+      await h.runner.run('one', 'turn-b');
+    }
+
+    it('starts the chat from the whole brief, and the next turn resumes it with the changes and stores what it has seen', () =>
+      withTurn(async (h, id) => {
+        await secondTurn(h, id);
+
+        const [first, second] = h.agent.launches;
+        expect(first).toMatchObject({
+          chatKey: plannerChatKey(id),
+          resumeChatId: null,
+          prompt: expect.stringMatching(/plan one in turn-a$/),
+        });
+        expect(second).toMatchObject({
+          chatKey: plannerChatKey(id),
+          prompt: expect.stringMatching(/changes for one in turn-b$/),
+          freshPrompt: expect.stringMatching(/plan one in turn-b$/),
+        });
+        expect(second.resumeChatId).not.toBeNull();
+        expect((await h.chat.findTurn('turn-b'))?.seenState).toBe('seen by turn-b');
+      }, CLAUDE));
+
+    it('renews a chat past its share of the context from the whole brief, says why in the log only, and resumes the new chat in its follow-up', () =>
+      withTurn(
+        async (h, id) => {
+          const logged = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+          try {
+            await h.runner.run('one', 'turn-a');
+            await h.chat.addPersonMessage(id, 'and this', 'm2', []);
+            await h.openTurn(id, 'turn-b');
+            h.agent.started = async () => {
+              if (h.agent.launches.length !== 2) return;
+              await h.chat.addPersonMessage(id, 'one more', 'm3', []);
+              await h.chat.takeInto(id, 'turn-b');
+            };
+            await h.runner.run('one', 'turn-b');
+
+            const [, renewed, followUp] = h.agent.launches;
+            expect(renewed.prompt).toMatch(/plan one in turn-b$/);
+            expect(renewed.resumeChatId).toBeNull();
+            expect(followUp.resumeChatId).not.toBeNull();
+            expect(followUp.prompt).toContain('one more');
+            expect(followUp.freshPrompt).toContain('plan one in turn-b\n\n');
+            expect(followUp.freshPrompt).toContain('one more');
+            expect(logged).toHaveBeenCalledWith('turn turn-b: new planner chat: chat past its size limit');
+          } finally {
+            logged.mockRestore();
+          }
+        },
+        { ...CLAUDE, BACKLOG_CHAT_CONTEXT_SHARE: 0.000001 },
+      ));
+
+    it('sends the whole brief to the next agent when a usage limit moves a resumed turn', () =>
+      withTurn(
+        async (h, id) => {
+          await h.runner.run('one', 'turn-a');
+          await h.chat.addPersonMessage(id, 'and this', 'm2', []);
+          await h.openTurn(id, 'turn-b');
+          h.agent.script = ['limit', turnResult('Moved.')];
+          await h.runner.run('one', 'turn-b');
+
+          const [, resumed, moved] = h.agent.launches;
+          expect(resumed.prompt).toMatch(/changes for one in turn-b$/);
+          expect(moved).toMatchObject({ runtime: 'codex', prompt: expect.stringMatching(/plan one in turn-b$/) });
+        },
+        { AGENTS_BACKLOG_PLAN: 'claude:claude-opus-5-5:high,codex:m-codex' },
+      ));
+
+    it('stores no seen state on a turn that fails', () =>
+      withTurn(async (h) => {
+        h.agent.script = ['crash'];
+        await expect(h.runner.run('one', 'turn-a')).rejects.toThrow();
+        expect((await h.chat.findTurn('turn-a'))?.seenState).toBeNull();
+      }));
+  });
+
+  describe('the time limit of a turn', () => {
+    it('is BACKLOG_PLAN_TIMEOUT_MS with no continue message', () =>
+      withTurn(
+        async (h) => {
+          await h.runner.run('one', 'turn-a');
+          expect(h.agent.launches[0]).toMatchObject({ timeLimitMs: 120_000, continuePrompt: null });
+        },
+        { BACKLOG_PLAN_TIMEOUT_MS: 120_000, PLAN_TIMEOUT_MS: 999_000 },
+      ));
+
+    it('fails with the time limit as the reason and keeps the cost and tokens of the killed call', () =>
+      withTurn(
+        async (h) => {
+          h.agent.script = ['timeout', 'timeout', 'timeout'];
+          await expect(h.runner.run('one', 'turn-a')).rejects.toThrow(
+            'The planner stopped at its time limit of 2 minutes.',
+          );
+          expect(await h.chat.findTurn('turn-a')).toMatchObject({
+            usd: await h.calls.spendOfTurn('turn-a'),
+            tokensIn: 30,
+            tokensOut: 15,
+          });
+        },
+        { BACKLOG_PLAN_TIMEOUT_MS: 120_000 },
+      ));
+  });
 });

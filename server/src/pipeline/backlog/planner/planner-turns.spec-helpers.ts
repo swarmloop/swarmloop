@@ -1,10 +1,11 @@
 import type { AgentHelper } from '../../../integrations/agent-runtime/agent-runtime';
-import { mkdirSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
 import type { BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
 import { emptyResult } from '../../../agent/agent-result';
 import type { AgentRunResult } from '../../../agent/agent-result';
 import type { PricedRequest } from '../../../agent/request-usage';
+import { sessionHome } from '../../../history/session-group';
 import { RunStop } from '../../../agent/run-stop';
 import { AppConfig } from '../../../config/env';
 import { testEnv } from '../../../config/env.spec-helpers';
@@ -43,11 +44,21 @@ import { TurnTakes } from './turn-takes';
 import { TurnTies } from './turn-ties';
 
 /** One answer of the scripted planner agent: a turn result, a usage limit, a model host that did not answer, or a launch that fails. */
-export type TurnAnswer = BacklogTurnResult | 'limit' | 'crash' | 'outage';
+export type TurnAnswer = BacklogTurnResult | 'limit' | 'crash' | 'outage' | 'timeout';
 
 /** The planner's agent: it answers every launch from a script and records what it was asked. */
 export class ScriptedTurnAgent {
-  readonly launches: { runtime: string; prompt: string; mounts: { readonly?: boolean }[]; helper?: AgentHelper }[] = [];
+  readonly launches: {
+    runtime: string;
+    prompt: string;
+    mounts: { readonly?: boolean }[];
+    helper?: AgentHelper;
+    chatKey?: string;
+    resumeChatId: string | null;
+    freshPrompt?: string;
+    timeLimitMs: number;
+    continuePrompt?: string | null;
+  }[] = [];
   /** The answers still to give; an empty script answers with a turn that does nothing. */
   script: TurnAnswer[] = [];
   /** Held back until a spec lets it go, so it can add messages while a turn runs. */
@@ -59,11 +70,29 @@ export class ScriptedTurnAgent {
     onRequest?: (request: PricedRequest) => void;
     onStartWait?: () => Promise<void>;
     runtime: string;
+    step: string;
     prompt: string;
     mounts: { readonly?: boolean }[];
     helper?: AgentHelper;
+    sessionFile?: string;
+    runKey?: string;
+    chatKey?: string;
+    resumeChatId: string | null;
+    freshPrompt?: string;
+    timeLimitMs: number;
+    continuePrompt?: string | null;
   }): Promise<AgentRunResult> {
-    this.launches.push({ runtime: input.runtime, prompt: input.prompt, mounts: input.mounts, helper: input.helper });
+    this.launches.push({
+      runtime: input.runtime,
+      prompt: input.prompt,
+      mounts: input.mounts,
+      helper: input.helper,
+      chatKey: input.chatKey,
+      resumeChatId: input.resumeChatId,
+      freshPrompt: input.freshPrompt,
+      timeLimitMs: input.timeLimitMs,
+      continuePrompt: input.continuePrompt,
+    });
     await this.started?.(input.onStartWait);
     await this.gate;
     const next = this.script.shift() ?? { say: '', actions: [] };
@@ -73,7 +102,22 @@ export class ScriptedTurnAgent {
       tokensIn: 10,
       tokensOut: 5,
     };
-    const answer = this.answerOf(next, base);
+    const answer = { ...this.answerOf(next, base), chatId: `chat-${input.chatKey ?? input.runKey}` };
+    // Like a real run, the launch leaves its chat's session file and state folder behind.
+    if (input.sessionFile && input.runKey) {
+      const chat = input.chatKey ?? input.runKey;
+      mkdirSync(join(dirname(input.sessionFile), 'agent-state', chat, sessionHome(input.step)), { recursive: true });
+      writeFileSync(
+        input.sessionFile,
+        JSON.stringify({
+          runtime: input.runtime,
+          chatId: answer.chatId,
+          resumed: true,
+          completed: true,
+          killReason: null,
+        }),
+      );
+    }
     // Every launch streams its one model request, as a real agent does, so the log holds what it spent even when it dies.
     input.onRequest?.({
       messageId: `request-${this.launches.length}`,
@@ -94,6 +138,7 @@ export class ScriptedTurnAgent {
     if (next === 'outage') {
       return { ...base, usd: 0.25, responseText: '', outage: { host: 'api.anthropic.com', detail: 'API Error: 502' } };
     }
+    if (next === 'timeout') return { ...base, usd: 0.3, killReason: 'time', responseText: '' };
     if (next === 'crash') return { ...base, usd: 0.1, exitCode: 1, responseText: '' };
     return { ...base, usd: 0.5, responseText: resultAnswer('Done.', next) };
   }
@@ -110,7 +155,7 @@ export interface SentRunCommand {
  * prompt are stand-ins: their own specs cover them.
  */
 export async function plannerTurnsHarness(
-  env: Record<string, string> = {},
+  env: Record<string, string | number> = {},
   processOf: (config: AppConfig, clock: Clock) => { run(input: never): Promise<AgentRunResult> } = () =>
     new ScriptedTurnAgent(),
 ) {
@@ -201,8 +246,12 @@ export async function plannerTurnsHarness(
   );
   // The brief is a stand-in; the follow-up is written by the real prompt over the real state.
   const prompt = {
-    build: async (name: string, key: string) => `plan ${name} in ${key}`,
-    followUp: (...input: Parameters<BacklogTurnPrompt['followUp']>) => new BacklogTurnPrompt(state).followUp(...input),
+    build: async (name: string, key: string) => {
+      const fresh = `plan ${name} in ${key}`;
+      return { prompt: `changes for ${name} in ${key}`, fresh, seen: `seen by ${key}` };
+    },
+    followUp: (...input: Parameters<BacklogTurnPrompt['followUp']>) =>
+      new BacklogTurnPrompt(state, config).followUp(...input),
   };
   const takes = new TurnTakes(chat);
   const attachments = new AttachmentStore(config, db.clock);

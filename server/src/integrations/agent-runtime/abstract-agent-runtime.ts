@@ -52,6 +52,8 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
 
   abstract promptCache(model: string): PromptCache | null;
 
+  abstract contextTokens(model: string): number | null;
+
   abstract ownRuleFiles(): readonly string[];
 
   abstract briefArgs(): string[];

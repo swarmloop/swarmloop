@@ -210,9 +210,10 @@ export class AgentLauncher {
     const directory = join(request.root, 'data');
     mkdirSync(directory, { recursive: true });
     const session = sessionStepOf(request);
-    const sessionFile = join(directory, sessionFileName(request.key, session));
+    const chat = request.chatKey ?? request.key;
+    const sessionFile = join(directory, sessionFileName(chat, session));
     const stored = await readSession(sessionFile, request.runtime);
-    const removed = chatStateRemoved(request.root, request.key, session, stored);
+    const removed = chatStateRemoved(request.root, chat, session, stored);
     const chatId = request.resume === false || removed ? null : (stored?.chatId ?? null);
     const launch = {
       runtime: request.runtime,
@@ -287,6 +288,7 @@ export class AgentLauncher {
       chatSpentUsd: call?.before.chatSpentUsd ?? 0,
       onRequest: call?.onRequest,
       runKey: request.key,
+      chatKey: request.chatKey,
       login: request.login,
       step: request.step,
       attemptId: request.run.activeAttempt ?? '',

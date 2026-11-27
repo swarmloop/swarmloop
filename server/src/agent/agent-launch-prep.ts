@@ -43,7 +43,7 @@ export class AgentLaunchPrep {
       return {};
     }
     const root = resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname);
-    const path = runTmpDir(root, input.runKey, sessionHome(input.step));
+    const path = runTmpDir(root, input.chatKey ?? input.runKey, sessionHome(input.step));
     return { tmp: await prepareRunTmp(path, sandboxUserId(), !input.resumeChatId) };
   }
 
@@ -51,7 +51,7 @@ export class AgentLaunchPrep {
   prepare(input: LaunchInput, runtime: AgentRuntime, resumed: boolean): Launch {
     const userId = sandboxUserId();
     const root = resolveRepoRoot(this.config.env.SWARMLOOP_ROOT, __dirname);
-    const statePath = agentStateDir(root, input.runKey, sessionHome(input.step));
+    const statePath = agentStateDir(root, input.chatKey ?? input.runKey, sessionHome(input.step));
     prepareStateDir(statePath, userId);
     writeHomeFiles(runtime.homeFiles(), statePath, userId);
     if (runtime.syncsChatMode && input.resumeChatId) {

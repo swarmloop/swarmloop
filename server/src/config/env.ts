@@ -49,6 +49,7 @@ export interface SwarmloopEnv extends CodeHostServerEnv, CodeHostLoginEnv {
   REQUIREMENTS_TIMEOUT_MS: number;
   RESEARCH_TIMEOUT_MS: number;
   PLAN_TIMEOUT_MS: number;
+  BACKLOG_PLAN_TIMEOUT_MS: number;
   IMPLEMENT_TIMEOUT_MS: number;
   CODE_REVIEW_TIMEOUT_MS: number;
   MERGE_REQUEST_TIMEOUT_MS: number;
@@ -62,6 +63,7 @@ export interface SwarmloopEnv extends CodeHostServerEnv, CodeHostLoginEnv {
   AGENTS_SUBTASK_REVIEW: string;
   AGENTS_BACKLOG_PLAN: string;
   AGENTS_BACKLOG_READ: string;
+  BACKLOG_CHAT_CONTEXT_SHARE: number;
   EPIC_EFFORT: string;
   EPIC_REPLAN_EVERY_MERGE: boolean;
   SPLIT: 'auto' | 'off';
@@ -172,6 +174,7 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
     REQUIREMENTS_TIMEOUT_MS: config.getOrThrow<number>('REQUIREMENTS_TIMEOUT_MS'),
     RESEARCH_TIMEOUT_MS: config.getOrThrow<number>('RESEARCH_TIMEOUT_MS'),
     PLAN_TIMEOUT_MS: config.getOrThrow<number>('PLAN_TIMEOUT_MS'),
+    BACKLOG_PLAN_TIMEOUT_MS: config.getOrThrow<number>('BACKLOG_PLAN_TIMEOUT_MS'),
     IMPLEMENT_TIMEOUT_MS: config.getOrThrow<number>('IMPLEMENT_TIMEOUT_MS'),
     CODE_REVIEW_TIMEOUT_MS: config.getOrThrow<number>('CODE_REVIEW_TIMEOUT_MS'),
     MERGE_REQUEST_TIMEOUT_MS: config.getOrThrow<number>('MERGE_REQUEST_TIMEOUT_MS'),
@@ -185,6 +188,7 @@ export function readEnv(config: ConfigService, hostKeys: HostEnvKeys): Swarmloop
     AGENTS_SUBTASK_REVIEW: config.getOrThrow<string>('AGENTS_SUBTASK_REVIEW'),
     AGENTS_BACKLOG_PLAN: config.getOrThrow<string>('AGENTS_BACKLOG_PLAN'),
     AGENTS_BACKLOG_READ: config.getOrThrow<string>('AGENTS_BACKLOG_READ'),
+    BACKLOG_CHAT_CONTEXT_SHARE: config.getOrThrow<number>('BACKLOG_CHAT_CONTEXT_SHARE'),
     EPIC_EFFORT: config.getOrThrow<string>('EPIC_EFFORT'),
     EPIC_REPLAN_EVERY_MERGE: config.getOrThrow<boolean>('EPIC_REPLAN_EVERY_MERGE'),
     SPLIT: config.getOrThrow<'auto' | 'off'>('SPLIT'),

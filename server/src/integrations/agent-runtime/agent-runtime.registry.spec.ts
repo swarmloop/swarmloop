@@ -11,4 +11,15 @@ describe('agent runtime registry', () => {
     expect(runtimeFor('codex').promptCache('gpt-5')).toBeNull();
     expect(runtimeFor('cursor').promptCache('grok-4.7')).toBeNull();
   });
+
+  it('declares the context window of each known Claude model and none for an unknown one', () => {
+    expect(runtimeFor('claude').contextTokens('claude-opus-5-5')).toBe(1_000_000);
+    expect(runtimeFor('claude').contextTokens('claude-sonnet-5-5')).toBe(1_000_000);
+    expect(runtimeFor('claude').contextTokens('claude-unknown')).toBeNull();
+  });
+
+  it('declares no context window for codex and cursor models', () => {
+    expect(runtimeFor('codex').contextTokens('gpt-5')).toBeNull();
+    expect(runtimeFor('cursor').contextTokens('grok-4.7')).toBeNull();
+  });
 });

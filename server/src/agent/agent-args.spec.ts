@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { readOnlyTree } from './agent-args';
+import { briefMounts, readOnlyTree } from './agent-args';
 import { buildAgentArgs, reviewBriefMount, spillPrompt } from './agent-runner';
 
 describe('buildAgentArgs', () => {
@@ -97,6 +97,14 @@ describe('review brief mount', () => {
     expect(reviewBriefMount(root, 'plan-improve')).toEqual(mount);
     expect(reviewBriefMount(root, 'code-review-quality')).toEqual(mount);
     expect(reviewBriefMount(root, 'code-review-report')).toEqual(mount);
+    expect(reviewBriefMount(root, 'backlog-plan')).toEqual(mount);
+  });
+
+  it('adds no second brief mount when a backlog-plan prompt spilled', () => {
+    const root = mkdtempSync(join(tmpdir(), 'swarmloop-review-brief-'));
+    const spilled = spillPrompt('a'.repeat(100_001), root, 'backlog-plan').mounts;
+    expect(briefMounts(root, 'backlog-plan', spilled)).toEqual(spilled);
+    expect(briefMounts(root, 'backlog-plan', [])).toHaveLength(1);
   });
 });
 

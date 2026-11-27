@@ -97,6 +97,8 @@ export interface AgentRuntime {
   classifyOutage(input: LimitInput): ModelHostOutage | null;
   /** The cache lifetime and the cache prices of this model, or null when the runtime has no known prompt cache for it. */
   promptCache(model: string): PromptCache | null;
+  /** The context window of this model in tokens, or null when the runtime does not know the model. */
+  contextTokens(model: string): number | null;
   /** The rule file names the CLI loads by itself from its working directory. */
   ownRuleFiles(): readonly string[];
   briefArgs(): string[];

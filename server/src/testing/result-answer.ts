@@ -129,6 +129,7 @@ export class BlockAgentRunner {
     resultName?: string;
     runtime?: string;
     runKey?: string;
+    chatKey?: string;
   }): Promise<AgentRunResult> {
     const script = scriptOf(input);
     if (script !== 'plan-turn') this.steps.push(script);
@@ -141,7 +142,8 @@ export class BlockAgentRunner {
     const chatId = `chat-${input.step}`;
     if (input.sessionFile && input.runKey) {
       const directory = dirname(input.sessionFile);
-      mkdirSync(join(directory, 'agent-state', input.runKey, sessionHome(input.step)), { recursive: true });
+      const chat = input.chatKey ?? input.runKey;
+      mkdirSync(join(directory, 'agent-state', chat, sessionHome(input.step)), { recursive: true });
       writeFileSync(
         input.sessionFile,
         JSON.stringify({
