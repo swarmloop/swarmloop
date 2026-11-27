@@ -75,7 +75,7 @@ describe('step descriptors', () => {
   it('lists the outputs of a step it migrated', () => {
     const described = app.get(StepRegistry).describe(testEnv());
     const kinds = (step: string) => described.find((item) => item.name === step)?.outputs;
-    expect(kinds('commit')).toEqual(['commit', 'pipeline_ref', 'ci_skip', 'issues']);
+    expect(kinds('commit')).toEqual(['commit', 'pipeline_ref', 'ci_skip', 'issues', 'delivery']);
     expect(kinds('pipeline')).toEqual([
       'pipeline_log',
       'return',
@@ -85,7 +85,7 @@ describe('step descriptors', () => {
       'flaky',
       'merge_request',
     ]);
-    expect(kinds('merge-request')).toEqual(['merge_request', 'rebase_merge_skip', 'commit']);
+    expect(kinds('merge-request')).toEqual(['merge_request', 'rebase_merge_skip', 'commit', 'delivery']);
     expect(kinds('branch')).toEqual([]);
   });
 });

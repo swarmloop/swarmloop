@@ -22,7 +22,7 @@ import type { InputSpec, StepInput, StepResult } from '../contract/step-contract
 
 export const CI_SKIPPED = 'CI skipped: there is no origin to push.';
 
-/** `ci_skip` and `ci_rerun` are read where the path needs them, so a visit that stops earlier never reads them. */
+/** `ci_skip`, `ci_rerun`, `pipeline_ref` and `delivery` are read where the path needs them, so a visit that stops earlier never reads them. */
 const INPUTS = {
   requirements: { artifact: ARTIFACTS.requirements, need: 'start' },
   repos: { artifact: ARTIFACTS.repos, need: 'run' },
@@ -30,6 +30,7 @@ const INPUTS = {
   ciSkip: { artifact: ARTIFACTS.ciSkip, need: 'optional', late: true },
   ciRerun: { artifact: ARTIFACTS.ciRerun, need: 'optional', late: true },
   pipelineRef: { artifact: ARTIFACTS.pipelineRef, need: 'optional', late: true },
+  delivery: { artifact: ARTIFACTS.delivery, need: 'optional', late: true },
 } as const satisfies InputSpec;
 
 @Injectable()
