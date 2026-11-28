@@ -65,6 +65,17 @@ describe('BacklogScheduler', () => {
       expect(h.started()).toEqual(['a', 'c']);
     }));
 
+  it('keeps one active milestone before it starts anything: a task of the later of two active milestones does not start', () =>
+    withHarness(async (h) => {
+      const { id, milestoneId } = await activeBacklog(h);
+      const later = (await h.seedMilestone(id, 2)).id as number;
+      await h.seedTask(id, 'a', { milestoneId });
+      await h.seedTask(id, 'b', { milestoneId: later });
+      await h.tick();
+      expect(h.started()).toEqual(['a']);
+      expect((await h.backlogs.milestones(id)).map((milestone) => milestone.status)).toEqual(['active', 'queued']);
+    }));
+
   it('starts nothing behind a blocked task', () =>
     withHarness(async (h) => {
       const { id, milestoneId } = await activeBacklog(h);

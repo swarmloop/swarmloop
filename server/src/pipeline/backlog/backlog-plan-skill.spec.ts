@@ -233,4 +233,11 @@ describe('the backlog-plan skill', () => {
       expect(`${section}${core}`).not.toMatch(/swarmloop|@\w/i);
     });
   });
+
+  it('accepts a milestone whose tasks are all merged or skipped and whose requirements are closed, with none included', () => {
+    expect(skill).toContain(
+      "When the active milestone's work is done (every task merged or skipped and every requirement closed, a milestone with no requirements included)",
+    );
+    expect(skill).toContain('Accept it in that turn with `acceptMilestone`');
+  });
 });

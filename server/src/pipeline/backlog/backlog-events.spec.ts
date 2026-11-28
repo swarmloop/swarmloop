@@ -299,6 +299,19 @@ describe('BacklogEvents', () => {
       expect((await h.backlogs.milestones(id))[0].status).toBe('active');
     }));
 
+  it('raises milestone-ready once for an active milestone whose tasks are all merged or skipped and that has no requirements', () =>
+    withHarness(async (h) => {
+      const id = (await h.seedBacklog('one')).id as number;
+      const milestone = (await h.seedMilestone(id, 1)).id as number;
+      await h.seedTask(id, 'a', { milestoneId: milestone, status: 'merged' });
+      await h.seedTask(id, 'b', { milestoneId: milestone, status: 'skipped' });
+
+      await h.tick();
+      await h.tick();
+
+      expect(await events(h, id, 'milestone-ready')).toMatchObject([{ facts: { milestone: '1' } }]);
+    }));
+
   it('closes a requirement for a task MergeWatch saw merged, in a paused backlog and a milestone that is not active', () =>
     withHarness(async (h) => {
       h.setMain('web');

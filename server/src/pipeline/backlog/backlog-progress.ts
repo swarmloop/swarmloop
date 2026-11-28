@@ -1,3 +1,4 @@
+import { milestoneWorkDone } from '../../contract/milestone-work';
 import { settled } from '../../contract/subtask';
 import type { BacklogTaskRecord } from '../../history/backlog.repository';
 import type { MilestoneStatus, RequirementStatus } from '../../contract/backlog';
@@ -14,7 +15,7 @@ interface MilestoneFacts {
   status: MilestoneStatus;
 }
 
-/** What the tasks' merges bring: the requirements that become ready (and so close) and the active milestones whose requirements are all closed. */
+/** What the tasks' merges bring: the requirements that become ready (and so close) and the active milestones whose work is done. */
 interface Progress {
   requirements: string[];
   milestones: number[];
@@ -22,12 +23,13 @@ interface Progress {
 
 /**
  * A requirement is ready when at least one task covers it, every covering task is merged or skipped, and at least one is merged;
- * one that no task covers never is. A milestone is ready when it is active, has requirements and all of them are closed once these writes count.
+ * one that no task covers never is. A milestone is ready when it is active and its work is done (`milestoneWorkDone`) once these writes count:
+ * every task of it merged or skipped and every requirement of it closed; one with no tasks and no requirements never is.
  */
 export function backlogProgress(
   requirements: RequirementFacts[],
   milestones: MilestoneFacts[],
-  tasks: Pick<BacklogTaskRecord, 'covers' | 'status'>[],
+  tasks: Pick<BacklogTaskRecord, 'covers' | 'status' | 'milestoneId'>[],
 ): Progress {
   const ready = requirements.filter((requirement) => {
     if (requirement.status === 'closed') return false;
@@ -37,11 +39,15 @@ export function backlogProgress(
   });
   const closing = new Set(ready.map((requirement) => requirement.ref));
   const done = milestones.filter((milestone) => {
-    const own = requirements.filter((requirement) => requirement.milestoneId === milestone.id);
+    const own = requirements
+      .filter((requirement) => requirement.milestoneId === milestone.id)
+      .map((requirement) => (closing.has(requirement.ref) ? { status: 'closed' as const } : requirement));
     return (
       milestone.status === 'active' &&
-      own.length > 0 &&
-      own.every((requirement) => requirement.status === 'closed' || closing.has(requirement.ref))
+      milestoneWorkDone(
+        tasks.filter((task) => task.milestoneId === milestone.id),
+        own,
+      )
     );
   });
   return {
