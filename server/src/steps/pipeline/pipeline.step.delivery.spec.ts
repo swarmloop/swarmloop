@@ -38,8 +38,13 @@ describe('pipeline step and the delivery list', () => {
   });
 
   it('watches only the published repository and ends done when the others are read', async () => {
-    const { app, read } = await bootRun('swarmloop-pipe-read-', 'demo published group/demo\nweb read\n');
+    const { app, read, run } = await bootRun('swarmloop-pipe-read-', 'demo published group/demo\nweb publishing\n');
     try {
+      const first = await app.get(PipelineService).step('pipeline', KEY);
+      expect(first.exitCode).toBe(1);
+      expect(first.message).toContain('web has work but no merge request yet');
+      expect(read).not.toHaveBeenCalled();
+      await app.get(DocumentRepository).putDocument(run, 'delivery', 'demo published group/demo\nweb read\n');
       const result = await app.get(PipelineService).step('pipeline', KEY);
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('pipeline done');
@@ -53,6 +58,9 @@ describe('pipeline step and the delivery list', () => {
   it('a CI-skipped run still ends skipped', async () => {
     const { app, read, run } = await bootRun('swarmloop-pipe-ci-skip-', 'demo publishing\n', '');
     try {
+      const first = await app.get(PipelineService).step('pipeline', KEY);
+      expect(first.exitCode).toBe(1);
+      expect(first.message).toContain('demo has work but no merge request yet');
       await app.get(DocumentRepository).putDocument(run, 'ci_skip', 'CI skipped: there is no origin to push.\n');
       const result = await app.get(PipelineService).step('pipeline', KEY);
       expect(result.exitCode).toBe(0);
