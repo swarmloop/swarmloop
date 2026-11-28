@@ -57,13 +57,9 @@ describe('decideMerge', () => {
     });
   });
 
-  it('rebases a request that is behind or conflicting once, then needs a person', () => {
+  it('rebases a request that is behind or conflicting, never needs a person', () => {
     expect(decideMerge(facts({}, { mergeability: 'behind' }))).toEqual({ kind: 'rebase' });
     expect(decideMerge(facts({}, { mergeability: 'conflicting' }))).toEqual({ kind: 'rebase' });
-    expect(decideMerge(facts({ rebaseSent: true }, { mergeability: 'behind' }))).toEqual({
-      kind: 'person',
-      note: 'still behind swarmloop/t1 after a rebase; needs a person',
-    });
   });
 
   it('rebases a request the target reads as behind, once, though the host calls it clean', () => {

@@ -56,18 +56,28 @@ describe('BacklogMerge', () => {
       expect(mergeCalls(h)).toHaveLength(0);
     }));
 
-  it('asks for one rebase per head, then needs a person', () =>
+  it("asks for one rebase per main head, then hands a conflict the host still sees to the run's implement agent", () =>
     withHarness(async (h) => {
       const id = await doneTask(h);
       h.fake.setGate('acme/web', 5, { mergeability: 'behind' });
       await h.tick();
       expect((await h.task(id, 'a')).note).toBe('rebased onto swarmloop/web; waits for its new head');
       await h.tick();
-      expect((await h.task(id, 'a')).note).toBe('still behind swarmloop/web after a rebase; needs a person');
-      expect(h.accepts).toEqual([{ type: 'rebase', key: 'a-1', idempotencyKey: 'backlog-rebase-a-acme/web-pr-5' }]);
-      h.fake.setGate('acme/web', 5, { head: 'newer' });
+      expect((await h.task(id, 'a')).note).toBe('handed its conflict to its implement agent');
       await h.tick();
-      expect(h.accepts).toHaveLength(2);
+      expect((await h.task(id, 'a')).note).toBe('waits for its implement agent to resolve the conflict');
+      expect(h.accepts).toEqual([
+        { type: 'rebase', key: 'a-1', idempotencyKey: 'backlog-rebase-a-acme/web-head-0' },
+        { type: 'rebase', key: 'a-1', idempotencyKey: 'backlog-host-conflict-a-acme/web-pr-5' },
+      ]);
+      expect(h.payloads.get('backlog-rebase-a-acme/web-head-0')).toEqual({});
+      expect(h.payloads.get('backlog-host-conflict-a-acme/web-pr-5')).toEqual({
+        hostConflict: 'web merge request is behind with swarmloop/web',
+      });
+      h.fake.setHead('acme/web', 'acme/web-head-1');
+      await h.tick();
+      expect(h.accepts).toHaveLength(3);
+      expect(h.accepts[2].idempotencyKey).toBe('backlog-rebase-a-acme/web-head-1');
     }));
 
   it('names failing checks, then pending checks, then the reviews', () =>
@@ -183,12 +193,31 @@ describe('BacklogMerge', () => {
       expect(await h.backlogs.recordEvent(id, 'rebase-refused:a:acme/web-pr-5', 'rebase-refused', {})).toBe(false);
     }));
 
-  it('asks for the rebase when the merge conflicts', () =>
+  it("hands a merge refused as a conflict to the run's implement agent", () =>
     withHarness(async (h) => {
       const id = await doneTask(h);
       h.fake.conflictMerge('acme/web', 5, 'conflict');
       await h.tick();
-      expect((await h.task(id, 'a')).note).toBe('rebased onto swarmloop/web; waits for its new head');
+      expect((await h.task(id, 'a')).note).toBe('handed its conflict to its implement agent');
+      expect(h.accepts).toEqual([
+        { type: 'rebase', key: 'a-1', idempotencyKey: 'backlog-host-conflict-a-acme/web-pr-5' },
+      ]);
+      expect(h.payloads.get('backlog-host-conflict-a-acme/web-pr-5')).toEqual({
+        hostConflict: 'web merge request is conflicting with swarmloop/web',
+      });
+    }));
+
+  it("waits for the next look when main's head is not read", () =>
+    withHarness(async (h) => {
+      const id = await doneTask(h);
+      await h.seedTask(id, 'b', { runKey: 'b-1' });
+      await h.seedDoneRun('b-1', [{ repo: 'web', iid: 6 }]);
+      h.fake.setGate('acme/web', 6, { mergeability: 'behind' });
+      await h.tick();
+      expect(await h.task(id, 'a')).toMatchObject({ status: 'merged' });
+      expect((await h.task(id, 'b')).note).toBe('waits for the head of swarmloop/web');
+      expect(h.accepts).toEqual([]);
+      await h.tick();
       expect(h.accepts).toHaveLength(1);
     }));
 

@@ -237,6 +237,11 @@ export class CommandService {
     }
   }
 
+  /** True while the run has a command of the type that is accepted or executing: it has not run to its end. */
+  async hasPending(run: RunEntity, type: CommandType): Promise<boolean> {
+    return (await this.commands.pending(run.id)).some((command) => command.type === type);
+  }
+
   /** Runs the accepted commands of one run, such as a relaunch stored with a visit. A command this process holds is left alone. */
   async runAccepted(key: string): Promise<void> {
     const run = await this.runs.findRun(key);

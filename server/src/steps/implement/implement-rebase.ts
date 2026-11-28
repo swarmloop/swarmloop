@@ -13,12 +13,42 @@ import { runJournal } from '../shared/rebase-journal';
 import { rebaseResolution, type RebaseResolutionResult } from '../../agent-result/definitions/rebase-resolution';
 import type { PlanChatEntry } from '../../contract/plan-chat';
 import { answersConflict, askConflict, inRound, resolvedResult, type RebaseDeps } from './rebase-resolved';
-import { settleOwnConflict } from './implement-own-conflict';
+import { continueOwnEdits } from './implement-own-conflict';
 import { settleHostConflict } from './implement-host-conflict';
 import { hostConflictOf } from '../shared/host-conflict-marker';
 import { ownConflictOf } from './own-conflict-marker';
-import { rebaseConflictPrompt } from './implement.prompts';
+import { ownConflictPrompt, rebaseConflictPrompt } from './implement.prompts';
 import { plannerWait, takeAnswer } from './implement-question';
+
+type Conflict = Extract<RebaseStop, { kind: 'conflict' }>;
+
+/** The conflict agent's prompt: the parent's own-edits kind and the base-move kind differ only here and in the continue. */
+async function conflictPrompt(
+  ctx: ModelStepContext,
+  own: string | null,
+  outcome: Conflict,
+  requirements: string,
+  answer: PlanChatEntry | null,
+): Promise<string> {
+  const { repo, files } = outcome;
+  if (own === null) {
+    return rebaseConflictPrompt({ repo, files, requirements, base: outcome.base, commit: outcome.commit, answer });
+  }
+  return ownConflictPrompt({
+    repo,
+    files,
+    conflict: own,
+    requirements,
+    handoff: await ctx.reread(ARTIFACTS.handoff),
+    answer,
+  });
+}
+
+function resolvedNote(own: string | null): string {
+  return own === null
+    ? '- resolved the rebase\n'
+    : "- resolved the conflict of the parent's own edits with the feature branch\n";
+}
 
 /**
  * Finish an open rebase in the server. A stored checklist then goes to code review; an unfinished one returns to the
@@ -41,10 +71,8 @@ export async function settleRebase(
   }
   // On every path the conflict agent takes only the answer to the question askConflict asked; any other answer stays pending for the visit that asked it.
   const conflictAnswer = answersConflict(answer, deps.step) ? answer : null;
-  const own = ownConflictOf(storedStderr);
-  if (marker === 'pending' && own !== null) {
-    return settleOwnConflict(deps, requirements, ctx, names, forRepo(branch, names[0] ?? ''), own, conflictAnswer);
-  }
+  // The conflict of a parent's own edits is the same loop; only its prompt and the continue of the parked rebase differ.
+  const own = marker === 'pending' ? ownConflictOf(storedStderr) : null;
   const host = hostConflictOf(storedStderr);
   if (marker === 'pending' && host !== null) {
     return settleHostConflict(deps, requirements, ctx, names, host, conflictAnswer);
@@ -68,6 +96,16 @@ export async function settleRebase(
   };
   const mounts = mountsForStep(root(deps.config), key, names, ctx.opened.run.targetPath);
   const paths = names.map((repo) => worktreePath(root(deps.config), key, repo));
+  const ownEdits = {
+    root: input.root,
+    key,
+    repos: names,
+    branch: forRepo(branch, names[0] ?? ''),
+    journal: input.journal,
+    publisher: deps.publisher,
+    author: input.author,
+    onBase: input.onBase,
+  };
   let outcome: RebaseStop = await withWorktrees(paths, async () => {
     for (const repo of names) {
       const entry = await input.journal.entry(repo);
@@ -81,7 +119,7 @@ export async function settleRebase(
         return parked;
       }
     }
-    return rebaseFeatureRepos(input);
+    return own !== null ? continueOwnEdits(ownEdits, null) : rebaseFeatureRepos(input);
   });
   const seen = new Set<string>();
   let launched = false;
@@ -106,14 +144,7 @@ export async function settleRebase(
     const workplace = await agentWorkplace(
       deps.environments,
       place,
-      `${rebaseConflictPrompt({
-        repo: outcome.repo,
-        files: outcome.files,
-        requirements,
-        base: outcome.base,
-        commit: outcome.commit,
-        answer: carried,
-      })}\n`,
+      `${await conflictPrompt(ctx, own, outcome, requirements, carried)}\n`,
     );
     launched = true;
     const resolved = await ctx.launch({
@@ -129,6 +160,7 @@ export async function settleRebase(
     const cwd = worktreePath(root(deps.config), key, outcome.repo);
     const { repo } = outcome;
     outcome = await withWorktrees(paths, async () => {
+      if (own !== null) return continueOwnEdits(ownEdits, repo);
       const still = await unmergedPaths(cwd);
       if (still.length > 0) {
         try {
@@ -157,5 +189,5 @@ export async function settleRebase(
   }
   const { leases } = outcome;
   await withWorktrees(paths, () => deps.publisher.publishRebased(key, branch, leases));
-  return resolvedResult(deps, ctx, mounts, '- resolved the rebase\n');
+  return resolvedResult(deps, ctx, mounts, resolvedNote(own));
 }

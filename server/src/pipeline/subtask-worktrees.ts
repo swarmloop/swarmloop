@@ -1,9 +1,8 @@
 import { existsSync } from 'fs';
-import { Logger } from '@nestjs/common';
 import type { AppConfig } from '../config/env';
 import type { Clock } from '../core/clock';
 import { FetchFailed } from '../core/swarmloop-error';
-import { fetchBranch, ownChangeBase } from '../git/rebase';
+import { fetchBranch } from '../git/rebase';
 import { withWorktree } from '../git/worktree-lock';
 import { originRef } from '../git/base-ref';
 import { git, type CommitAuthor } from '../git/git';
@@ -12,6 +11,7 @@ import { worktreePath } from '../git/repo-names';
 import { root } from '../history/run-paths';
 import { originProject } from '../steps/pipeline/pipeline-report';
 import type { RunEntity } from '../history/entities';
+import type { DocumentRepository } from '../history/document.repository';
 import type { BaseTips } from '../steps/shared/base-tips';
 import type { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import type { OwnEdits } from '../steps/shared/subtask-ops';
@@ -20,42 +20,16 @@ import { ParentTreeSync } from './parent-tree-sync';
 
 /** The git side of the subtask operations: what the worktrees of a parent and its subtask runs hold against the feature branch on origin. */
 export class SubtaskWorktrees {
-  private readonly logger = new Logger(SubtaskWorktrees.name);
-
   constructor(
     private readonly config: AppConfig,
     private readonly clock: Clock,
     private readonly tips: BaseTips,
     private readonly publisher?: RebasedPublisher,
+    private readonly documents?: DocumentRepository,
   ) {}
 
   private async hostsFor(run: RunEntity) {
     return (await this.publisher?.hostsFor(run)) ?? { ...this.config.env, clock: this.clock };
-  }
-
-  /**
-   * Brings the worktrees of a subtask run, edits that are not committed included, up to the feature branch as it is on
-   * origin. Only the run's own change is replayed, from the base tip it stands on, so a rewritten branch brings nothing else.
-   */
-  async catchUp(run: RunEntity, repos: string[], branch: string): Promise<void> {
-    const hosts = await this.hostsFor(run);
-    const known = await this.tips.known(run, repos);
-    for (const repo of repos) {
-      const path = worktreePath(root(this.config), run.key, repo);
-      if (!existsSync(path)) continue;
-      await withWorktree(path, async () => {
-        if (!(await fetchBranch(path, repo, branch, hosts))) return;
-        const remote = originRef(branch);
-        try {
-          const ownBase = await ownChangeBase(path, known[repo] ?? [], remote);
-          await git(['-C', path, 'rebase', '--autostash', '--onto', remote, ownBase]);
-          await this.tips.record(run, { [repo]: await git(['-C', path, 'rev-parse', remote]) });
-        } catch (error) {
-          await git(['-C', path, 'rebase', '--abort']).catch(() => undefined);
-          this.logger.warn(`${run.key} was not caught up: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    }
   }
 
   /**
@@ -71,7 +45,7 @@ export class SubtaskWorktrees {
     park: boolean,
   ): Promise<OwnEdits> {
     const hosts = await this.hostsFor(parent);
-    const sync = new ParentTreeSync(this.publisher);
+    const sync = new ParentTreeSync(this.publisher, this.documents);
     const known = await this.tips.known(parent, repos);
     const lines: string[] = [];
     let identity: Awaited<ReturnType<typeof commitAs>> | null = null;
@@ -102,7 +76,8 @@ export class SubtaskWorktrees {
 
   /**
    * Moves the worktrees of the parent to the feature branch as it is on origin. A worktree with commits the branch
-   * lacks stays where it is; the result names both heads. Null when every worktree moved.
+   * lacks, or uncommitted edits the branch conflicts with, stays where it is; the result names both heads. Null when
+   * every worktree moved.
    */
   async fastForward(parent: RunEntity, repos: string[], branch: string): Promise<string | null> {
     const hosts = await this.hostsFor(parent);
@@ -120,11 +95,15 @@ export class SubtaskWorktrees {
             () => false,
             () => true,
           );
-          if (!ahead) throw error;
+          // Edits that conflict with the branch stay in the worktree: the epic's own-edits path parks them for implement.
+          const edited = await this.hasEdits({ repo, path });
+          if (!ahead && !edited) throw error;
           const local = await git(['-C', path, 'rev-parse', 'HEAD']);
           const tip = await git(['-C', path, 'rev-parse', remote]);
           notes.push(
-            `the worktree of ${repo} stays at ${local}: it has commits that ${remote} at ${tip} lacks, so it was not moved to the feature branch`,
+            ahead
+              ? `the worktree of ${repo} stays at ${local}: it has commits that ${remote} at ${tip} lacks, so it was not moved to the feature branch`
+              : `the worktree of ${repo} stays at ${local}: its uncommitted edits conflict with ${remote} at ${tip}, so it was not moved to the feature branch`,
           );
         }
       });

@@ -660,7 +660,6 @@ test('only the own-change files say what a move carries', () => {
   for (const door of [
     'server/src/git/rebase/own-change.ts',
     'server/src/pipeline/parent-tree-sync.ts',
-    'server/src/pipeline/subtask-worktrees.ts',
     'server/src/pipeline/parent-tree-sync.spec.ts',
   ]) {
     assert.deepEqual(check({ [door]: onto + mergeBase }), [], door);

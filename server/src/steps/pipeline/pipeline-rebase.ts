@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import type { RunRepository } from '../../history/run.repository';
 import type { RunRebase } from '../run-rebase';
 import type { StepContext } from '../base-step';
@@ -6,6 +7,7 @@ import { ARTIFACTS } from '../contract/artifacts';
 import { writeRunState } from '../../history/run-state';
 import { isHostOutage } from '../../core/swarmloop-error';
 import { ERROR_CODES } from '../../contract/error-codes';
+import { subtasksWait } from './subtasks-wait';
 
 /** What runs once the visit that asked for an automatic rebase is closed: the rebase itself, and the waits and blocks it can end in. */
 export function automaticRebase(input: {
@@ -33,6 +35,14 @@ export function automaticRebase(input: {
           fresh.stepStartedAt = null;
         });
         return { ...ended, message: error.message };
+      }
+      if (error instanceof ConflictException && error.message === ERROR_CODES.SUBTASKS_RUNNING) {
+        const wait = subtasksWait(ctx.clock.now());
+        await runs.change(run.key, (fresh) => {
+          writeRunState(fresh, { status: 'waiting', reason: wait });
+          fresh.stepStartedAt = null;
+        });
+        return { ...ended, message: wait.message };
       }
       const detail = `automatic rebase failed: ${error instanceof Error ? error.message : 'unknown error'}`;
       await ctx.write(ARTIFACTS.error, `${detail}\n`);

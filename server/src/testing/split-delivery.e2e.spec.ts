@@ -467,46 +467,41 @@ describe('a split run is reviewed and delivered as one merge request', () => {
     await assertInvariants(app);
   });
 
-  it("blocks with PARENT_TREE_CONFLICT naming the file when the parent's edits touch the lines a merged task changed", async () => {
+  it("waits naming the file while a task is open, then hands the conflict of the parent's edits to implement once every task settled", async () => {
+    const blocks = new BlockAgentRunner();
+    const answer = blocks.run.bind(blocks);
+    jest.spyOn(blocks, 'run').mockImplementation((input) => {
+      if (input.prompt?.includes(OWN_CONFLICT_LEAD)) {
+        writeFileSync(join(app.root, 'worktrees', KEY, 'demo', 'src', 'shared.ts'), lines('task one + own one'));
+      }
+      return answer(input);
+    });
     const { parentTree, originHead, before, tick, worktreeHead } = await behindWithEdits(
       (shared) => writeFileSync(shared, lines('own one')),
       [task('a'), task('b')],
+      { blocks },
     );
 
     for (let count = 0; count < 3; count++) await tick();
 
-    const parent = (await parentRun(app))!;
-    const { state, reason } = storedState(parent);
-    expect(state).toBe('blocked');
-    expect(reason?.code).toBe('PARENT_TREE_CONFLICT');
-    expect(reason?.message).toContain('src/shared.ts');
-    expect(reason?.message).toContain(before);
-    expect(reason?.message).toContain(worktreeHead);
-    expect(reason?.message).not.toContain('merge --ff-only');
-    expect(reason?.message).not.toContain('resolve the files');
-    expect(reason?.message).toContain('the implement agent resolves it once every task is settled');
+    const waiting = storedState((await parentRun(app))!);
+    expect(waiting.state).not.toBe('blocked');
+    expect(waiting.reason?.code).not.toBe('PARENT_TREE_CONFLICT');
+    expect(waiting.reason?.message).toContain('src/shared.ts');
+    expect(waiting.reason?.message).toContain(before);
+    expect(waiting.reason?.message).toContain(worktreeHead);
+    expect(waiting.reason?.message).not.toContain('resolve the files');
+    expect(waiting.reason?.message).toContain('the implement agent resolves it once every task is settled');
     expect(git(parentTree, ['status', '--porcelain'])).toContain('src/shared.ts');
     expect(originHead()).toBe(before);
-    await assertInvariants(app);
-  });
+    expect(blocks.prompts.filter((launch) => launch.prompt.includes(OWN_CONFLICT_LEAD))).toHaveLength(0);
 
-  it('goes on after Resume once the person resolved the conflicting file', async () => {
-    const { parentTree, shared, bare, feature, tick } = await behindWithEdits(
-      (file) => writeFileSync(file, lines('own one')),
-      [task('a'), task('b')],
-    );
-    expect(storedState((await parentRun(app))!).reason?.code).toBe('PARENT_TREE_CONFLICT');
-
-    writeFileSync(shared, lines('task one', 'own five'));
-    await app.app.get(CommandService).accept('resume', KEY, { ...PERSON_RESUME });
-    await settle(app);
-    // The Resume pass committed the resolved edits and pushed them; b, still running, is cut from that head and delivered.
     await deliver('b', { 'src/b.ts': 'export const b = 1;\n' });
-    await tick();
+    for (let count = 0; count < 3; count++) await tick();
 
-    expect((await parentRun(app))?.currentStep).not.toBe('implement');
-    expect(git(bare, ['show', `refs/heads/${feature}:src/shared.ts`])).toBe(lines('task one', 'own five').trimEnd());
-    expect(git(parentTree, ['status', '--porcelain'])).toBe('');
+    expect(blocks.prompts.filter((launch) => launch.prompt.includes(OWN_CONFLICT_LEAD))).toHaveLength(1);
+    expect(storedState((await parentRun(app))!).reason?.code).not.toBe('PARENT_TREE_CONFLICT');
+    await assertInvariants(app);
   });
 
   it('waits for the CI of a head a subtask merge moved and returns to implement on its red', async () => {

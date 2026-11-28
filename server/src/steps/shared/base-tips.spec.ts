@@ -59,4 +59,46 @@ describe('BaseTips', () => {
       await db.close();
     }
   });
+
+  it('takes a move of the own edits onto the feature branch for no base the run stands on', async () => {
+    const { db, runs, documents, part, tips } = await setup();
+    try {
+      await tips.record(part, { web: 'main-tip' });
+      const journal = runJournal(documents, part);
+      await journal.put('web', {
+        ...ENTRY,
+        oldHead: 'o',
+        baseSha: 'feature-tip',
+        ownEdits: true,
+        checkpoint: 'applied',
+      });
+
+      await tips.recordMoved((await runs.findRun(part.key))!, journal);
+      await journal.advance('web', 'completed');
+
+      const run = (await runs.findRun(part.key))!;
+      expect(run.baseTips).toEqual({ web: 'main-tip' });
+      expect((await tips.known(run, ['web'])).web).toEqual(['main-tip']);
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('knows no base from the completed own edits of a run that recorded none', async () => {
+    const { db, documents, part, tips } = await setup();
+    try {
+      const journal = runJournal(documents, part);
+      await journal.put('web', {
+        ...ENTRY,
+        oldHead: 'o',
+        baseSha: 'feature-tip',
+        ownEdits: true,
+        checkpoint: 'completed',
+      });
+
+      expect((await tips.known(part, ['web'])).web).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
 });

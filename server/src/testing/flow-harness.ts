@@ -264,7 +264,10 @@ function useDisk(harness: FlowHarness, bytes: number): void {
 }
 
 function wire(harness: FlowHarness, key: string, taskWorktrees = false): void {
-  if (!taskWorktrees) jest.spyOn(harness.app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
+  if (!taskWorktrees) {
+    jest.spyOn(harness.app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
+    jest.spyOn(harness.app.app.get(SubtaskOps), 'catchUp').mockResolvedValue();
+  }
   const registry = harness.app.app.get(CodeHostRegistry);
   jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue(harness.host as unknown as CodeHost);
   // The fake host stands for the door, so a run needs no real token in the environment.

@@ -5,16 +5,27 @@ import type { DocumentRepository } from '../history/document.repository';
 import type { RunRepository } from '../history/run.repository';
 import { writeRunState } from '../history/run-state';
 import type { RebaseEvent, SubtaskMergeRequest } from '../steps/shared/subtask-ops';
+import type { RunRebase } from '../steps/run-rebase';
 import type { CommandService } from './command.service';
 import { SubtaskRebases } from './subtask-rebases';
 
 const EVENT: RebaseEvent = { tip: 'web@abc', note: 'rebased onto the epic' };
 const REQUEST: SubtaskMergeRequest = { repo: 'web', project: 'acme/web', iid: 1 };
 
+interface StoredCommand {
+  idempotencyKey: string | null;
+  state: string;
+  result?: string | null;
+}
+
 interface Setup {
   accepted: { payload: Record<string, unknown>; key: string | undefined }[];
   documents: Map<string, string>;
   rebases: SubtaskRebases;
+  /** The types of the commands accepted and not yet run. */
+  pending: Set<string>;
+  /** The arguments of each Rebase the catch-up ran. */
+  moves: unknown[][];
 }
 
 /** The rebase commands of one part with the given state, worktrees and merge requests; `asking` says it waits on a question. */
@@ -25,20 +36,37 @@ function setup(
     asking?: boolean;
     tip?: string | null;
     dead?: string[];
-    newest?: { idempotencyKey: string | null; state: string; result?: string | null } | null;
+    newest?: StoredCommand | null;
+    /** The commands of the run in the order listForRun gives them; the last one is the newest. */
+    stored?: StoredCommand[];
+    rebaser?: boolean;
+    outage?: boolean;
   } = {},
 ): Setup {
-  const { worktrees = true, requests = [], asking = false, tip = null, dead = [], newest = null } = options;
+  const {
+    worktrees = true,
+    requests = [],
+    asking = false,
+    tip = 'web@def',
+    dead = [],
+    newest = null,
+    stored,
+  } = options;
+  const { rebaser = false, outage = false } = options;
+  const pending = new Set<string>();
+  const moves: unknown[][] = [];
   const documents = new Map<string, string>(worktrees ? [[ARTIFACTS.repos.kind, 'web']] : []);
   const accepted: Setup['accepted'] = [];
   const commands = {
     accept: (_type: string, _key: string, payload: Record<string, unknown>, options?: { idempotencyKey?: string }) => {
       const key = options?.idempotencyKey;
       accepted.push({ payload, key });
+      pending.add('rebase');
       const died = key !== undefined && dead.includes(key);
       return Promise.resolve({ replayed: died, command: { state: died ? 'failed' : 'done', id: 7 } });
     },
-    latestOfRun: () => Promise.resolve(newest),
+    latestOfRun: () => Promise.resolve(stored ? (stored[stored.length - 1] ?? null) : newest),
+    hasPending: (_run: RunEntity, type: string) => Promise.resolve(pending.has(type)),
   } as unknown as CommandService;
   const store = {
     latestBody: (_key: string, kind: string) => Promise.resolve(documents.get(kind) ?? null),
@@ -51,13 +79,20 @@ function setup(
     {} as RunRepository,
     store,
     commands,
-    undefined,
+    rebaser
+      ? ({
+          rebase: (...args: unknown[]) => {
+            moves.push(args);
+            return outage ? Promise.reject(new Error('host is down')) : Promise.resolve('stay');
+          },
+        } as unknown as RunRebase)
+      : undefined,
     () => Promise.resolve(asking),
     () => Promise.resolve(requests),
     () => Promise.resolve(tip),
     { warn: () => undefined } as unknown as Logger,
   );
-  return { accepted, documents, rebases };
+  return { accepted, documents, rebases, pending, moves };
 }
 
 function part(change: Parameters<typeof writeRunState>[1]): RunEntity {
@@ -148,10 +183,31 @@ describe('SubtaskRebases', () => {
     ]);
   });
 
-  it('keys the plain move by revision and generation when the parent has no tip', async () => {
-    const { accepted, rebases } = setup({ requests: [REQUEST] });
-    await rebases.rebase(part({ status: 'done', currentStep: 'pipeline' }));
-    expect(accepted.map((sent) => sent.key)).toEqual(['subtask-rebase-1-1']);
+  it('sends no move when the parent has no tip', async () => {
+    const { accepted, rebases } = setup({ requests: [REQUEST], tip: null });
+    expect(await rebases.rebase(part({ status: 'done', currentStep: 'pipeline' }))).toBe(false);
+    expect(await rebases.rebase(part({ status: 'done', currentStep: 'pipeline' }), undefined)).toBe(false);
+    expect(accepted).toEqual([]);
+  });
+
+  it('reads a run as moving while its rebase command has not run', async () => {
+    const run = part({ status: 'done', currentStep: 'pipeline' });
+    const { rebases, pending } = setup({ requests: [REQUEST], tip: 'web@def' });
+    expect(await rebases.moving(run)).toBe(false);
+    await rebases.rebase(run);
+    expect(await rebases.moving(run)).toBe(true);
+    pending.clear();
+    expect(await rebases.moving(run)).toBe(false);
+  });
+
+  it('catches a child up through its Rebase, leaving a conflict parked for its implement agent', async () => {
+    const { rebases, moves } = setup({ rebaser: true });
+    await rebases.catchUp(part({ status: 'waiting', currentStep: 'research' }));
+    expect(moves).toEqual([['f1-a', false, true, false, true]]);
+    const failing = setup({ rebaser: true, outage: true });
+    await expect(failing.rebases.catchUp(part({ status: 'waiting', currentStep: 'research' }))).rejects.toThrow(
+      'host is down',
+    );
   });
 
   describe('the move of a part that its parent sent', () => {
@@ -166,6 +222,19 @@ describe('SubtaskRebases', () => {
     it('reads failed with the error the move stored once it failed', async () => {
       const result = JSON.stringify({ error: { message: 'push refused' } });
       expect(await moveOf({ idempotencyKey: MOVE, state: 'failed', result })).toEqual({
+        kind: 'failed',
+        reason: 'push refused',
+      });
+    });
+
+    it('reads the command stored second of two created in the same millisecond', async () => {
+      const blocked = part({ status: 'blocked', currentStep: 'checks' });
+      const result = JSON.stringify({ error: { message: 'push refused' } });
+      const died = { idempotencyKey: MOVE, state: 'failed', result };
+      const queued = { idempotencyKey: `${MOVE}-after-7`, state: 'accepted' };
+      expect(await setup({ stored: [died, queued] }).rebases.moveOf(blocked)).toEqual({ kind: 'moving' });
+      const later = { idempotencyKey: `${MOVE}-after-7`, state: 'failed', result };
+      expect(await setup({ stored: [queued, later] }).rebases.moveOf(blocked)).toEqual({
         kind: 'failed',
         reason: 'push refused',
       });

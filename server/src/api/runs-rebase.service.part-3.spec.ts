@@ -231,7 +231,7 @@ describe('runs api', () => {
       }
     });
 
-    it('goes to code review as today when the base moved and the head moved', async () => {
+    it('goes to checks when the base moved and the head moved', async () => {
       const { tree, clone, app, runs, documents } = await bootDone('proj-82');
       try {
         const head = git(tree, ['rev-parse', 'HEAD']);
@@ -241,7 +241,7 @@ describe('runs api', () => {
         git(clone, ['commit', '-m', 'base']);
         git(clone, ['push', 'origin', 'main']);
         await app.get(RunRebaseService).rebase('proj-82', false, undefined, false, text);
-        expect((await runs.findRun('proj-82'))?.currentStep).toBe('code-review');
+        expect((await runs.findRun('proj-82'))?.currentStep).toBe('checks');
         expect(await documents.latestBody('proj-82', 'rebase_conflict')).not.toBe(hostConflictMarker(text));
         expect(git(tree, ['rev-parse', 'HEAD'])).not.toBe(head);
       } finally {

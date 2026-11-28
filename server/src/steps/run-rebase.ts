@@ -11,7 +11,6 @@ import { RunNames } from './shared/run-names';
 import { RunAuthor } from './shared/run-author';
 import { completeRebase, rebaseFeatureRepos } from '../git/rebase';
 import { hostConflictMarker } from './shared/host-conflict-marker';
-import { sameOwnDiff } from '../git/rebase/own-diff';
 import { git } from '../git/git';
 import { withWorktrees } from '../git/worktree-lock';
 import { isSubtask } from '../contract/subtask';
@@ -29,9 +28,10 @@ import { takesMain } from './shared/epic-between-passes';
 import { RebasedPublisher } from './shared/rebased-publisher';
 import type { RebaseStop } from '../git/rebase/types';
 import { BaseTips } from './shared/base-tips';
+import { stampGate, worktreesFingerprint } from './shared/gate';
 
-/** The steps that read a review or a CI result. */
-const AFTER_REVIEW: readonly string[] = ['commit', 'merge-request', 'pipeline'];
+/** The steps a run is at once its review has passed. */
+const PAST_REVIEW: readonly string[] = ['commit', 'merge-request', 'pipeline'];
 
 export abstract class RunRebaseEnvironment {
   abstract refreshAfterRebase(
@@ -93,7 +93,7 @@ export class RunRebase {
     const names = repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
     const paths = this.worktreePaths(run, names);
     const { heads, moved, stop } = await withWorktrees(paths, async () => {
-      const heads = status === 'done' || hostConflict !== null ? await this.heads(run) : new Map<string, string>();
+      const heads = hostConflict !== null ? await this.heads(run) : new Map<string, string>();
       try {
         const stop = await this.rebaseWorktrees(run, bases, journal);
         await this.environments.refreshAfterRebase(
@@ -131,19 +131,33 @@ export class RunRebase {
     if (await this.checklistUnfinished(run)) {
       return this.startAtImplement(run);
     }
+    return this.afterCleanMove(key, run, status, paths);
+  }
+
+  /**
+   * A move without a conflict keeps the reviews: a run that is done or past review has its review gate counted on the
+   * moved head and starts at checks, so checks and CI run again. Any other run resumes where it was.
+   */
+  private async afterCleanMove(
+    key: string,
+    run: RunEntity,
+    status: string,
+    paths: string[],
+  ): Promise<'resume' | 'start'> {
+    if (status !== 'done' && !PAST_REVIEW.includes(run.currentStep)) return 'resume';
     if (status === 'done') {
       await this.documents.putDocument(await this.requireRun(key), ARTIFACTS.rebaseMergeSkip.kind, 'skip\n');
-      const stands = await withWorktrees(paths, () => this.reviewStands(run, heads, bases, journal));
-      return stands ? this.startAtChecks(run) : this.startAtReview(key);
     }
-    // Every review and CI result of the old generation is stale: a step that reads them goes back through code-review.
-    return AFTER_REVIEW.includes(run.currentStep) ? this.startAtReview(key) : 'resume';
+    const fingerprint = await withWorktrees(paths, () => worktreesFingerprint(paths));
+    await stampGate(this.documents, await this.requireRun(key), ARTIFACTS.reviewReport.kind, fingerprint);
+    return this.startAtChecks(run);
   }
 
   /** A conflict only the code host sees goes to the implement agent, as a conflict of the move does. */
   private async handHostConflict(key: string, text: string): Promise<'resolve'> {
     const run = await this.requireRun(key);
-    await this.documents.putDocument(run, ARTIFACTS.rebaseConflict.kind, hostConflictMarker(text));
+    const said = text.trim() === '' ? 'the code host reported a conflict and gave no reason' : text;
+    await this.documents.putDocument(run, ARTIFACTS.rebaseConflict.kind, hostConflictMarker(said));
     await this.startAtImplement(run);
     return 'resolve';
   }
@@ -234,38 +248,12 @@ export class RunRebase {
     return heads;
   }
 
-  /** A review of a branch stands when the rebase left what the branch changes as it was. */
-  private async reviewStands(
-    run: RunEntity,
-    heads: ReadonlyMap<string, string>,
-    bases: ReadonlyMap<string, string>,
-    journal: RebaseJournal,
-  ): Promise<boolean> {
-    if (!isSubtask(run) || heads.size === 0) return false;
-    for (const [repo, before] of heads) {
-      const base = bases.get(repo);
-      const ownBase = (await journal.entry(repo))?.ownBase;
-      const cwd = worktreePath(root(this.config), run.key, repo);
-      if (!base || !ownBase || !(await sameOwnDiff(cwd, ownBase, before, base).catch(() => false))) return false;
-    }
-    return true;
-  }
-
-  /** The rebase changed nothing in the branch's own diff: its code review stands, so the checks and CI run again. */
+  /** The reviews stand after a clean move: the checks and CI run again. */
   private async startAtChecks(run: RunEntity): Promise<'start'> {
     const checks = (await this.flows.activePhases(run.id)).includes('checks');
     await this.flows.noteFlow(run.key, checks ? ['checks', 'ci'] : ['ci'], checks ? 'checks' : 'commit', 'rebase');
     await this.runs.change(run.key, (next) => {
       writeRunState(next, { status: 'waiting', currentStep: checks ? 'checks' : 'commit' });
-      next.stepStartedAt = null;
-    });
-    return 'start';
-  }
-
-  private async startAtReview(key: string): Promise<'start'> {
-    await this.flows.noteFlow(key, ['code-review', 'ci'], 'code-review', 'rebase');
-    await this.runs.change(key, (next) => {
-      writeRunState(next, { status: 'waiting', currentStep: 'code-review' });
       next.stepStartedAt = null;
     });
     return 'start';

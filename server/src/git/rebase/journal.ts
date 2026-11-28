@@ -33,6 +33,8 @@ export interface JournalEntry {
   checkpoint: Checkpoint;
   /** The commit the run's own change is measured from. Absent in an entry the squash made before own-change moves. */
   ownBase?: string;
+  /** True for the parent's own edits moved onto its own feature branch: that tip is not a base the run stands on. */
+  ownEdits?: boolean;
   /** The squashed commit, recorded before the worktree is reset to it. */
   squashSha?: string;
   /** The generation of the run that began this rebase: a journal of an older generation is history. */
