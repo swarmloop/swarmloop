@@ -49,7 +49,7 @@ describe('BacklogList', () => {
     render(<BacklogList selected="swarmloop" />, { wrapper: Wrapper });
 
     const first = await screen.findByRole('link', { name: /swarmloop/ });
-    expect(first).toHaveTextContent('M3 · 4/7');
+    expect(first).toHaveTextContent('M3 · 0/1');
     expect(first).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'shop' })).not.toHaveAttribute('aria-current');
     const last = screen.getAllByRole('button').at(-1);

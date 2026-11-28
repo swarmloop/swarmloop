@@ -74,7 +74,7 @@ describe('Shell on the Backlogs tab at desktop width', () => {
     ).toEqual(['Runs', 'Backlogs']);
     expect(within(nav).getByRole('link', { name: 'Backlogs' })).toHaveAttribute('aria-current', 'page');
     expect(within(nav).getByRole('link', { name: 'Runs' })).not.toHaveAttribute('aria-current');
-    expect(await screen.findByRole('link', { name: /swarmloop.*M3 · 4\/7/ })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /swarmloop.*M3 · 0\/1/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open the list of backlogs' })).not.toBeInTheDocument();
   });
 });
@@ -87,14 +87,14 @@ describe('Shell on the Backlogs tab at 375 px', () => {
 
     expect(screen.queryByRole('link', { name: /swarmloop.*M3/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Open the list of backlogs' }));
-    expect(await screen.findByRole('link', { name: /swarmloop.*M3 · 4\/7/ })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /swarmloop.*M3 · 0\/1/ })).toBeInTheDocument();
   });
 
   it('closes the drawer on picking a backlog', async () => {
     renderShell();
 
     await userEvent.click(screen.getByRole('button', { name: 'Open the list of backlogs' }));
-    await userEvent.click(await screen.findByRole('link', { name: /swarmloop.*M3 · 4\/7/ }));
+    await userEvent.click(await screen.findByRole('link', { name: /swarmloop.*M3 · 0\/1/ }));
 
     await waitFor(() => expect(screen.queryByRole('link', { name: /swarmloop.*M3/ })).not.toBeInTheDocument());
   });

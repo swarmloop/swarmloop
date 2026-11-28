@@ -36,6 +36,8 @@ export const resumeBacklogTurn = (name: string): Promise<BacklogChatView> =>
   api<BacklogChatView>(`${backlog(name)}/turns/resume`, post());
 export const runMilestone = (name: string, number: number): Promise<BacklogView> =>
   api<BacklogView>(`${backlog(name)}/milestones/${number}/run`, post());
+export const acceptMilestone = (name: string, number: number): Promise<BacklogView> =>
+  api<BacklogView>(`${backlog(name)}/milestones/${number}/accept`, post());
 export const runBacklog = (name: string): Promise<BacklogView> => api<BacklogView>(`${backlog(name)}/run`, post());
 export const pauseBacklog = (name: string): Promise<BacklogView> => api<BacklogView>(`${backlog(name)}/pause`, post());
 export const unpauseBacklog = (name: string): Promise<BacklogView> =>
