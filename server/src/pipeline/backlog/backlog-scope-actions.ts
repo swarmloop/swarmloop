@@ -25,7 +25,10 @@ export class BacklogScopeActions {
     private readonly remote: RemoteRepositories,
   ) {}
 
-  /** The picked repositories that are not cloned yet are cloned first, so a backlog stores checkout folders. */
+  /**
+   * The picked repositories that are not cloned yet are cloned first, so a backlog stores checkout folders.
+   * Adding a repository to a backlog clones its pick the same way.
+   */
   async createBacklog(actor: string | null, body: CreateBacklogBody): Promise<BacklogView> {
     const who = this.support.person(actor);
     const name = checkBacklogName(body.name);
@@ -49,9 +52,11 @@ export class BacklogScopeActions {
   }
 
   async addRepository(actor: string | null, name: string, body: AddRepositoryBody): Promise<BacklogView> {
+    await this.support.owned(actor, name); // refuses another person before anything is cloned
+    const [repository] = checkRepositories(await clonePicked(this.remote, actor, [body.repository]), this.checkouts());
+    // The clone can take long, so the scope is read after it: a repository added meanwhile is not overwritten.
     const { who, backlog } = await this.support.owned(actor, name);
-    const [repository] = checkRepositories([body.repository], this.checkouts());
-    if (backlog.repositories.includes(repository)) throw new ConflictException(`${repository} is already in scope`);
+    if (backlog.repositories.includes(repository)) return this.queries.view(name);
     await this.backlogs.transaction(async (writers) => {
       await writers.saveBacklog({ ...backlog, repositories: [...backlog.repositories, repository] });
       await this.support.record(writers, backlog.id as number, who, 'add repository', { repository });

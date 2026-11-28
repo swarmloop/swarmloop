@@ -4,7 +4,7 @@ import { isHostOutage } from '../../core/swarmloop-error';
 import type { RemoteRepositories } from '../../steps/prepare/remote-repositories.service';
 
 /**
- * The repositories of a new backlog with each pick of a remote repository (`owner/name`) cloned and replaced by its checkout folder,
+ * The repositories of a new backlog, or the one added to a backlog, with each pick of a remote repository (`owner/name`) cloned and replaced by its checkout folder,
  * by the same path a new run uses. Anything that is not a pick is left for checkRepositories to judge.
  * A host outage passes on as it is; any other failure names the repository and the reason.
  */

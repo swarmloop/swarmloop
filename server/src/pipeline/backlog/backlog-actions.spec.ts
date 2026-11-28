@@ -5,6 +5,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { HostUnavailable } from '../../core/swarmloop-error';
 import { actionsHarness } from './backlog.spec-helpers';
 
 async function withActions(body: (harness: Awaited<ReturnType<typeof actionsHarness>>) => Promise<void>) {
@@ -147,9 +148,6 @@ describe('BacklogActions', () => {
       await expect(harness.actions.addRepository('ada', 'shop', { repository: 'elsewhere' })).rejects.toThrow(
         'not a checkout project',
       );
-      await expect(harness.actions.addRepository('ada', 'shop', { repository: 'web' })).rejects.toThrow(
-        ConflictException,
-      );
       await expect(harness.actions.addRequirements('ada', 'shop', 1, { texts: ['  '] })).rejects.toThrow('empty');
       await expect(harness.actions.addRequirements('ada', 'shop', 9, { texts: ['x'] })).rejects.toThrow(
         NotFoundException,
@@ -174,6 +172,37 @@ describe('BacklogActions', () => {
         'web',
         'server',
       ]);
+    }));
+
+  it('adds a picked repository by cloning it, stores its folder, and changes nothing for one already in scope', () =>
+    withActions(async (harness) => {
+      await harness.actions.createBacklog('ada', NEW);
+      const added = await harness.actions.addRepository('ada', 'shop', { repository: 'acme/demo' });
+      expect(added.repositories).toEqual(['web', 'demo']);
+      const again = await harness.actions.addRepository('ada', 'shop', { repository: 'acme/demo' });
+      expect(again.repositories).toEqual(['web', 'demo']);
+      const folder = await harness.actions.addRepository('ada', 'shop', { repository: 'web' });
+      expect(folder.repositories).toEqual(['web', 'demo']);
+      const adds = (await harness.actionEvents('shop')).filter((event) => event.facts.action === 'add repository');
+      expect(adds.map((event) => event.facts.repository)).toEqual(['demo']);
+    }));
+
+  it('refuses a picked repository that cannot be cloned with the reason, passes a host outage on, and writes nothing', () =>
+    withActions(async (harness) => {
+      await harness.actions.createBacklog('ada', NEW);
+      await expect(harness.actions.addRepository('ada', 'shop', { repository: 'acme/missing' })).rejects.toThrow(
+        new BadRequestException(
+          'acme/missing cannot be cloned: acme/missing is not a repository of the connected code hosts',
+        ),
+      );
+      const outage: unknown = await harness.actions
+        .addRepository('ada', 'shop', { repository: 'acme/down' })
+        .catch((error: unknown) => error);
+      expect(outage).toBeInstanceOf(HostUnavailable);
+      expect((outage as Error).message).not.toContain('cannot be cloned');
+      expect((await harness.queries.view('shop')).repositories).toEqual(['web']);
+      const adds = (await harness.actionEvents('shop')).filter((event) => event.facts.action === 'add repository');
+      expect(adds).toEqual([]);
     }));
 
   it('pauses and unpauses and records a decision with text, who and time', () =>
