@@ -20,6 +20,7 @@ export function task(overrides: Partial<Task> = {}): Task {
     description: 'Add the card form.',
     covers: ['M3.R1'],
     depends: [],
+    files: ['checkout/card-form.tsx'],
     milestone: 3,
     status: 'running',
     note: '',

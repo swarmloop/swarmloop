@@ -12,6 +12,7 @@ const task = (id: string, extra: object = {}) => ({
   description: `Today: nothing.\nDo ${id}.`,
   repositories: ['web'],
   milestone: 1,
+  files: [`${id}.ts`],
   ...extra,
 });
 
@@ -160,7 +161,14 @@ describe('planner scenarios: scripted turn results', () => {
         turnResult('Main is red: one fix goes first.', {
           action: 'addTasks',
           tasks: [
-            { id: 'fix-main', title: 'Fix main', description: 'Fix it.', repositories: ['web'], fixesMain: 'web' },
+            {
+              id: 'fix-main',
+              title: 'Fix main',
+              description: 'Fix it.',
+              repositories: ['web'],
+              files: ['fix-main.ts'],
+              fixesMain: 'web',
+            },
           ],
         }),
       );

@@ -21,6 +21,7 @@ import {
   backlogTasks,
   candidates,
   dependencyWait,
+  filesWait,
   mainWait,
   placeWait,
   repositoriesOf,
@@ -219,7 +220,8 @@ export class BacklogScheduler implements OnModuleDestroy {
         ? ''
         : lost
           ? (mainWait(task, pass.tasks, mains) ?? '')
-          : (dependencyWait(task, pass.tasks) ??
+          : (filesWait(task) ??
+            dependencyWait(task, pass.tasks) ??
             mainWait(task, pass.tasks, mains) ??
             (taken.has(task.id) ? '' : placeWait(started)));
       await this.update(pass, task.id, { note });

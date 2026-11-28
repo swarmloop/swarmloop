@@ -65,6 +65,20 @@ describe('BacklogScheduler', () => {
       expect(h.started()).toEqual(['a', 'c']);
     }));
 
+  it('does not start a task with no files, and starts it on the next pass once its files are saved', () =>
+    withHarness(async (h) => {
+      const { id, milestoneId } = await activeBacklog(h);
+      await h.seedTask(id, 'bare', { milestoneId, files: [] });
+      await h.seedTask(id, 'named', { milestoneId });
+      await h.tick();
+      expect(h.started()).toEqual(['named']);
+      expect((await h.task(id, 'bare')).note).toBe('waits for its files');
+
+      await h.backlogs.saveTask({ ...(await h.task(id, 'bare')), files: ['bare.ts'] });
+      await h.tick();
+      expect(h.started()).toEqual(['named', 'bare']);
+    }));
+
   it('keeps one active milestone before it starts anything: a task of the later of two active milestones does not start', () =>
     withHarness(async (h) => {
       const { id, milestoneId } = await activeBacklog(h);

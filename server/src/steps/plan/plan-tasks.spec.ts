@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { planItemParts } from '../../contract/plan-item';
+import type { Subtask } from '../../contract/subtask';
 import { ARTIFACTS } from '../contract/artifacts';
 import { plan } from '../../agent-result/definitions/plan';
 import type { ContractItem, SplitFields, SplitTask } from '../../agent-result/definitions/split-fields';
@@ -8,6 +9,7 @@ import { readResult } from '../../agent-result/read-result';
 import {
   addTasksCheck,
   buildGraph,
+  chainSharedFiles,
   isSplit,
   planItemsFromTasks,
   reaches,
@@ -257,6 +259,30 @@ describe('shared files', () => {
     const result = stored([task('a', [], ['x.ts', 'y.ts']), task('b', [], ['x.ts', 'y.ts'])]);
     expect(result.depends.b).toEqual(['a']);
     expect(result.contract.match(/depends on/g)).toHaveLength(1);
+  });
+
+  const plain = (id: string, files: string[]): Subtask => ({
+    id,
+    title: id,
+    description: id,
+    depends: [],
+    files,
+    proof: '',
+    status: 'pending',
+  });
+
+  it('counts a started task as earlier than every task that has not started, and never adds an edge to it', () => {
+    const [b, a] = [plain('b', ['x.ts']), plain('a', ['x.ts'])];
+    const lines = chainSharedFiles([b, a], new Set(['a']));
+    expect(a.depends).toEqual([]);
+    expect(b.depends).toEqual(['a']);
+    expect(lines).toEqual(['b depends on a: both change x.ts']);
+  });
+
+  it('leaves two started tasks that share a file as they are', () => {
+    const [a, b] = [plain('a', ['x.ts']), plain('b', ['x.ts'])];
+    expect(chainSharedFiles([a, b], new Set(['a', 'b']))).toEqual([]);
+    expect(b.depends).toEqual([]);
   });
 
   it('reaches answers a direct path, a transitive path and no path', () => {

@@ -1,11 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { BacklogView } from '../../contract/backlog';
 import type { AddItemBody, AddTaskBody, ChangeTaskBody, MoveItemBody } from '../../contract/backlog-actions';
-import type { Subtask } from '../../contract/subtask';
 import { Clock } from '../../core/clock';
 import type { BacklogWriters } from '../../history/backlog-writers';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
-import { chainSharedFiles } from '../../steps/plan/plan-tasks';
 import {
   BacklogActionSupport,
   outcome,
@@ -15,6 +13,7 @@ import {
   type PlannerContext,
 } from './backlog-action-support';
 import { BacklogQueries } from './backlog-queries';
+import { chainBacklog, saveEdges, type ChainedBacklog } from './backlog-file-chain';
 import { checkText } from './backlog-rules';
 import { claimOrRefuse } from './task-claim';
 import { TaskRunSkip } from './task-run-skip';
@@ -22,6 +21,7 @@ import {
   checkNewSlugs,
   checkNotSettled,
   checkNotStartedForChange,
+  checkFiles,
   checkNotStartedForDelete,
   checkRunnable,
   checkTasks,
@@ -40,7 +40,7 @@ export class BacklogTaskActions {
     private readonly support: BacklogActionSupport,
   ) {}
 
-  /** Tasks added together go to the end of the plan order; the ones that share a file are chained. */
+  /** Tasks added together go to the end of the plan order; every task that shares a file with another is chained. */
   async addTasks<Context extends PlannerContext | undefined = undefined>(
     actor: string | null,
     name: string,
@@ -60,13 +60,12 @@ export class BacklogTaskActions {
     const last = existing.reduce((top, task) => Math.max(top, task.position), 0);
     const added = body.map((task, index) => this.newTask(backlog, slugs[index], task, last + index + 1, milestones));
     if (context) this.fixesFirst(added, existing);
-    const scope = await this.scope(backlog, existing, reads);
-    checkTasks(added, scope);
+    added.forEach(checkFiles);
     added.forEach(checkRunnable);
-    this.chain(added);
-    checkTasks(added, scope);
+    const { chained, mine } = await this.chainChecked(backlog, existing, added, reads);
     await this.support.write(context, async (writers) => {
-      for (const task of added) await writers.saveTask(task);
+      for (const task of mine) await writers.saveTask(task);
+      await this.writeEdges(writers, backlog, chained, mine, who);
       await this.support.record(writers, backlog.id as number, who, 'add tasks', { tasks: slugs.join(', ') }, context);
     });
     return outcome(this.queries, name, context);
@@ -98,18 +97,14 @@ export class BacklogTaskActions {
       proof: body.proof ?? task.proof,
       milestoneId: body.milestone === undefined ? task.milestoneId : this.milestoneId(milestones, body.milestone),
     };
-    checkTasks(
-      [changed],
-      await this.scope(
-        backlog,
-        existing.filter((other) => other.slug !== slug),
-        reads,
-      ),
-    );
+    checkFiles(changed);
     checkRunnable(changed);
+    const others = existing.filter((other) => other.slug !== slug);
+    const { chained, mine } = await this.chainChecked(backlog, others, [changed], reads);
     await this.support.write(context, async (writers) => {
       await claimOrRefuse(writers, task, body.expectedRevision ?? task.revision ?? 0);
-      await writers.saveTask(changed);
+      await writers.saveTask(mine[0]);
+      await this.writeEdges(writers, backlog, chained, mine, who);
       await this.support.record(writers, backlog.id as number, who, 'change task', { task: slug }, context);
     });
     return outcome(this.queries, name, context);
@@ -209,14 +204,18 @@ export class BacklogTaskActions {
     const who = this.support.person(actor);
     const backlog = await this.support.load(name, context);
     const reads = this.support.reads(context);
-    const task = this.find(await reads.tasks(backlog.id as number), slug);
+    const existing = await reads.tasks(backlog.id as number);
+    const task = this.find(existing, slug);
     checkNotStartedForChange(task);
     checkNotSettled(task);
     const milestoneId = this.milestoneId(await reads.milestones(backlog.id as number), body.milestone);
     checkRunnable({ ...task, milestoneId });
+    const others = existing.filter((other) => other.slug !== slug);
+    const { chained, mine } = await this.chainChecked(backlog, others, [{ ...task, milestoneId }], reads);
     await this.support.write(context, async (writers) => {
       await claimOrRefuse(writers, task, task.revision ?? 0);
-      await writers.saveTask({ ...task, milestoneId });
+      await writers.saveTask(mine[0]);
+      await this.writeEdges(writers, backlog, chained, mine, who);
       await this.support.record(
         writers,
         backlog.id as number,
@@ -322,22 +321,32 @@ export class BacklogTaskActions {
     });
   }
 
-  /** Chains the tasks that share a file within the batch, and copies the added dependencies onto them. */
-  private chain(added: BacklogTaskRecord[]): void {
-    const inBatch = new Set(added.map((task) => task.slug));
-    const copies: Subtask[] = added.map((task) => ({
-      id: task.slug,
-      title: task.title,
-      description: task.description,
-      depends: task.depends.filter((id) => inBatch.has(id)),
-      files: task.files,
-      proof: '',
-      status: 'pending',
-    }));
-    const kept = copies.map((copy) => copy.depends.length);
-    chainSharedFiles(copies);
-    copies.forEach((copy, index) => {
-      added[index].depends = [...added[index].depends, ...copy.depends.slice(kept[index])];
-    });
+  /**
+   * The own tasks checked, then chained with every other task of the backlog by their files, then checked again with
+   * the chained others, so an edge that closes a cycle through a requirement refuses the action.
+   */
+  private async chainChecked(
+    backlog: Backlog,
+    others: BacklogTaskRecord[],
+    own: BacklogTaskRecord[],
+    reads: Pick<BacklogWriters, 'requirements' | 'milestones'>,
+  ): Promise<{ chained: ChainedBacklog; mine: BacklogTaskRecord[] }> {
+    const scope = await this.scope(backlog, others, reads);
+    checkTasks(own, scope);
+    const chained = chainBacklog([...others, ...own], await reads.milestones(backlog.id as number));
+    const mine = chained.tasks.slice(others.length);
+    checkTasks(mine, { ...scope, others: chained.tasks.slice(0, others.length) });
+    return { chained, mine };
+  }
+
+  private writeEdges(
+    writers: BacklogWriters,
+    backlog: Backlog,
+    chained: ChainedBacklog,
+    mine: BacklogTaskRecord[],
+    who: string,
+  ): Promise<void> {
+    const edit = { backlogId: backlog.id as number, who, at: this.clock.iso() };
+    return saveEdges(writers, chained, new Set(mine.map((task) => task.slug)), edit);
   }
 }

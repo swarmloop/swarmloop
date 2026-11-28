@@ -26,7 +26,7 @@ async function withTurn(
 
 const outside = {
   action: 'addTasks' as const,
-  tasks: [{ id: 'other', title: 'other', description: 'Do other', repositories: ['elsewhere'] }],
+  tasks: [{ id: 'other', title: 'other', description: 'Do other', repositories: ['elsewhere'], files: ['other.ts'] }],
 };
 
 describe('BacklogTurnRunner', () => {

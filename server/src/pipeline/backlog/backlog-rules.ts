@@ -160,3 +160,22 @@ export function repairActiveMilestones(milestones: QueuedMilestone[]): Milestone
   }
   return moves;
 }
+
+/**
+ * The ids of the milestones in the order they start in: each active milestone, lowest number first, followed by the
+ * chain queued behind it, then every other milestone by number.
+ */
+export function milestoneStartOrder(milestones: QueuedMilestone[]): number[] {
+  const byNumber = [...milestones].sort((left, right) => left.number - right.number);
+  const order: number[] = [];
+  for (const active of byNumber.filter((milestone) => milestone.status === 'active')) {
+    let at: number | undefined = active.id;
+    while (at !== undefined && !order.includes(at)) {
+      order.push(at);
+      const behind: number = at;
+      at = byNumber.find((other) => other.status === 'queued' && other.queuedAfterId === behind)?.id;
+    }
+  }
+  for (const milestone of byNumber) if (!order.includes(milestone.id)) order.push(milestone.id);
+  return order;
+}

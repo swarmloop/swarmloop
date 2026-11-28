@@ -135,7 +135,7 @@ describe('EventFacts', () => {
   it("reads the files outside the plan from the commit paths and the run's plan when the task lists none, and every unmet review item", () =>
     withFacts(async (h, facts) => {
       const id = await h.addBacklog();
-      await h.addTask(id, 'a', { runKey: 'a-1' });
+      await h.addTask(id, 'a', { runKey: 'a-1', files: [] });
       const plan = { summary: [], plan: ['Do a - files: src/a.ts - proof: a.spec.ts'], questions: [] };
       const review = {
         decision: 'ok',

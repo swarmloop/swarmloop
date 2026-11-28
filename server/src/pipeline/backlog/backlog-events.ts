@@ -19,7 +19,8 @@ import { headsOf } from '../../steps/shared/visit-input';
 import { backlogProgress } from './backlog-progress';
 import { heldBack } from './held-back';
 import { readMains } from './main-readings';
-import { backlogTasks, type MainReading, type RunFacts } from './task-readiness';
+import { backlogTasks, mayStart, type MainReading, type RunFacts } from './task-readiness';
+import { isStarted } from './task-rules';
 
 type Backlog = Awaited<ReturnType<BacklogRepository['listBacklogs']>>[number];
 
@@ -65,6 +66,7 @@ export class BacklogEvents {
       await this.observeChats(id, records);
       await this.observeMains(backlog, records, mains);
       await this.observeProgress(id, records);
+      await this.observeFiles(id, records);
     }
   }
 
@@ -207,6 +209,23 @@ export class BacklogEvents {
         await this.backlogs.recordEvent(id, `main-green:${repository}:${head}`, 'main-green', { repository, head });
       }
     }
+  }
+
+  /**
+   * One event asks the planner to name the files of every task that may start and names none. The key names the set of
+   * tasks, so a pass that finds the same set adds nothing and a changed set asks again for the tasks that are left.
+   */
+  private async observeFiles(backlogId: number, records: BacklogTaskRecord[]): Promise<void> {
+    const milestones = await this.backlogs.milestones(backlogId);
+    const active = new Set(milestones.filter((milestone) => milestone.status === 'active').map((m) => m.id as number));
+    const bare = records
+      .filter((task) => !settled(task) && !isStarted(task) && task.files.length === 0 && mayStart(task, active))
+      .map((task) => task.slug)
+      .sort();
+    if (bare.length === 0) return;
+    await this.backlogs.recordEvent(backlogId, `tasks-need-files:${bare.join(',')}`, 'tasks-need-files', {
+      tasks: bare.join(', '),
+    });
   }
 
   private async observeProgress(backlogId: number, records: BacklogTaskRecord[]): Promise<void> {

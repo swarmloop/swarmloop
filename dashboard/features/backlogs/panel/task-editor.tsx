@@ -25,16 +25,25 @@ export function openMilestones(view: BacklogView): BacklogView['milestones'] {
   return view.milestones.filter((item) => item.status !== 'accepted');
 }
 
+/** The files a person typed, one path per line: trimmed, with the empty lines left out. */
+function filesOf(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+}
+
 /** The changed fields of an edit, only. */
 function changes(
   task: Task,
-  next: Required<Pick<ChangeTaskBody, 'title' | 'description' | 'repositories' | 'depends' | 'milestone'>>,
+  next: Required<Pick<ChangeTaskBody, 'title' | 'description' | 'repositories' | 'depends' | 'files' | 'milestone'>>,
 ): ChangeTaskBody {
   const body: ChangeTaskBody = {};
   if (next.title !== task.title) body.title = next.title;
   if (next.description !== task.description) body.description = next.description;
   if (next.repositories.join('\n') !== task.repositories.join('\n')) body.repositories = next.repositories;
   if (next.depends.join('\n') !== task.depends.join('\n')) body.depends = next.depends;
+  if (next.files.join('\n') !== task.files.join('\n')) body.files = next.files;
   if (next.milestone !== task.milestone) body.milestone = next.milestone;
   return body;
 }
@@ -60,6 +69,7 @@ export function TaskEditorDialog({
   const [preview, setPreview] = useState(false);
   const [repositories, setRepositories] = useState<string[]>(task?.repositories ?? view.repositories);
   const [depends, setDepends] = useState<string[]>(task?.depends ?? []);
+  const [filesText, setFilesText] = useState((task?.files ?? []).join('\n'));
   const [target, setTarget] = useState<number | null>(task ? task.milestone : milestone);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState('');
@@ -68,7 +78,14 @@ export function TaskEditorDialog({
     setBusy(true);
     setRefusal('');
     try {
-      const next = { title: title.trim(), description, repositories, depends, milestone: target };
+      const next = {
+        title: title.trim(),
+        description,
+        repositories,
+        depends,
+        files: filesOf(filesText),
+        milestone: target,
+      };
       onView(
         opened
           ? await changeBacklogTask(view.name, opened.slug, {
@@ -151,6 +168,15 @@ export function TaskEditorDialog({
             </MenuItem>
           ))}
         </TextField>
+        <TextField
+          label="Files"
+          helperText="Every file the task changes, docs included, one path per line"
+          multiline
+          minRows={2}
+          size="small"
+          value={filesText}
+          onChange={(event) => setFilesText(event.target.value)}
+        />
         <TextField
           select
           label="Milestone"

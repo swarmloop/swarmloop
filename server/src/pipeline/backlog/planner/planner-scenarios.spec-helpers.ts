@@ -140,7 +140,7 @@ export async function plannerHarness() {
         repositories: ['web'],
         covers: [],
         depends: [],
-        files: [],
+        files: [`${slug}.ts`],
         proof: [],
         manual: false,
         fixesMain: null,

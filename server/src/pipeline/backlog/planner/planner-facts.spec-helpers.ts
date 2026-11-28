@@ -107,7 +107,7 @@ export async function plannerFacts() {
         repositories: ['web'],
         covers: [],
         depends: [],
-        files: [],
+        files: [`${slug}.ts`],
         proof: [],
         manual: false,
         fixesMain: null,

@@ -37,6 +37,14 @@ export interface RunFacts {
   currentStep: string;
 }
 
+/** True when the task is in an active milestone, or the owner asked to run it now: the one rule for a task that may start. */
+export function mayStart(
+  record: Pick<BacklogTaskRecord, 'runNow' | 'milestoneId'>,
+  activeMilestones: ReadonlySet<number>,
+): boolean {
+  return record.runNow || (record.milestoneId !== null && activeMilestones.has(record.milestoneId));
+}
+
 /** Every task of a backlog as a task with its shown status: a merged or skipped task keeps its status, any other shows its run. */
 export function backlogTasks(
   records: BacklogTaskRecord[],
@@ -63,7 +71,7 @@ export function backlogTasks(
       cycle: settled(record) ? null : cycleFrom(record.slug, unsettled),
       fixesMain: record.fixesMain,
       runKey: record.runKey,
-      mayStart: record.runNow || (record.milestoneId !== null && activeMilestones.has(record.milestoneId)),
+      mayStart: mayStart(record, activeMilestones),
       ...(unread === undefined ? {} : { unreadMerge: unread }),
     };
     const run = record.runKey === null ? undefined : runs.get(record.runKey);
@@ -71,11 +79,16 @@ export function backlogTasks(
   });
 }
 
-/** The tasks that may start now, in plan order: ready by the epic's rules, never started, allowed to start, and no merge they depend on unread. */
+/** The tasks that may start now, in plan order: ready by the epic's rules, never started, allowed to start, naming their files, and no merge they depend on unread. */
 export function candidates(tasks: BacklogTask[]): BacklogTask[] {
   return readyTasks(tasks, Infinity).filter(
-    (task) => task.mayStart && task.runKey === null && task.unreadMerge === undefined,
+    (task) => task.mayStart && task.runKey === null && task.unreadMerge === undefined && task.files.length > 0,
   );
+}
+
+/** The words for a task that names no file: it does not start until its files are named, so the shared files can order it. */
+export function filesWait(task: Pick<BacklogTask, 'files'>): string | null {
+  return task.files.length === 0 ? 'waits for its files' : null;
 }
 
 /** The repositories that the candidates touch, so the scheduler reads each main once. */

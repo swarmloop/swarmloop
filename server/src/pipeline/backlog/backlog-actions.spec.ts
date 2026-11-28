@@ -167,7 +167,7 @@ describe('BacklogActions', () => {
       await withMilestones(harness, 1);
       await harness.actions.runMilestone('ada', 'shop', 1);
       await harness.actions.addTasks('ada', 'shop', [
-        { id: 'a', title: 'A', description: 'A', milestone: 1, repositories: ['web'] },
+        { id: 'a', title: 'A', description: 'A', milestone: 1, repositories: ['web'], files: ['a.ts'] },
       ]);
       await expect(harness.actions.acceptMilestone('ada', 'shop', 1)).rejects.toThrow(
         'M1 is not done: 1 task is not merged or skipped',
@@ -383,7 +383,7 @@ describe('BacklogActions', () => {
     withActions(async (harness) => {
       await withMilestones(harness, 1);
       await harness.actions.runMilestone('ada', 'shop', 1);
-      const task = { title: 'T', description: 'D', repositories: ['web'], milestone: 1 };
+      const task = { title: 'T', description: 'D', repositories: ['web'], milestone: 1, files: ['t.ts'] };
       await harness.actions.addTasks('ada', 'shop', [{ id: 'one', ...task }]);
       await harness.actions.addTasks('ada', 'shop', [{ id: 'fix', ...task, fixesMain: 'web' }]);
       expect((await harness.backlogs.tasks(1)).map((record) => record.slug)).toEqual(['one', 'fix']);

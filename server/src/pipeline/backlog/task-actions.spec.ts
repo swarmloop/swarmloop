@@ -23,6 +23,7 @@ const task = (id: string, extra: Record<string, unknown> = {}) => ({
   title: `Title ${id}`,
   description: `Do ${id}`,
   repositories: ['web'],
+  files: [`${id}.ts`],
   ...extra,
 });
 
@@ -78,6 +79,99 @@ describe('task actions', () => {
         ]),
       ).rejects.toThrow('circle');
       expect(await tasksOf(harness)).toEqual([]);
+    }));
+
+  it('chains an added task behind a running task that shares a file, and shows why in the decisions', () =>
+    withActions(async (harness) => {
+      await started(harness, 'live');
+      const view = await harness.actions.addTasks('ada', 'shop', [task('next', { files: ['live.ts', 'other.ts'] })]);
+      expect((await tasksOf(harness)).map((record) => record.depends)).toEqual([[], ['live']]);
+      expect(view.tasks[1].files).toEqual(['live.ts', 'other.ts']);
+      expect(view.decisions).toMatchObject([{ text: 'next depends on live: both change live.ts', who: 'ada' }]);
+    }));
+
+  it('chains a changed task that now shares a file, and the later task that shares its new file', () =>
+    withActions(async (harness) => {
+      await harness.actions.addTasks('ada', 'shop', [task('a'), task('b'), task('c')]);
+      const view = await harness.actions.changeTask('ada', 'shop', 'b', { files: ['a.ts', 'c.ts'] });
+      const tasks = await tasksOf(harness);
+      expect(tasks.map((record) => record.depends)).toEqual([[], ['a'], ['b']]);
+      expect(tasks.map((record) => record.revision)).toEqual([0, 1, 1]);
+      expect(view.decisions.map(({ text }) => text)).toEqual([
+        'b depends on a: both change a.ts',
+        'c depends on b: both change c.ts',
+      ]);
+    }));
+
+  it('chains a task moved into a milestone before the items that share its file', () =>
+    withActions(async (harness) => {
+      await harness.actions.proposeMilestone('ada', 'shop', { title: 'One', goal: '' });
+      await harness.actions.addTasks('ada', 'shop', [task('a'), task('b')]);
+      const stored = (await tasksOf(harness))[1];
+      await harness.backlogs.saveTask({ ...stored, files: ['a.ts'] });
+      const view = await harness.actions.moveItem('ada', 'shop', 'b', { milestone: 1 });
+      expect((await tasksOf(harness)).map((record) => record.depends)).toEqual([['b'], []]);
+      expect(view.decisions.map(({ text }) => text)).toEqual(['a depends on b: both change a.ts']);
+    }));
+
+  it('gives the depend to the task moved into a later milestone, never to the task of the active one', () =>
+    withActions(async (harness) => {
+      await harness.actions.proposeMilestone('ada', 'shop', { title: 'One', goal: '' });
+      await harness.actions.proposeMilestone('ada', 'shop', { title: 'Two', goal: '' });
+      await harness.actions.runBacklog('ada', 'shop');
+      await harness.actions.addTasks('ada', 'shop', [task('old', { files: ['x.ts'] })]);
+      await harness.actions.addTasks('ada', 'shop', [task('now', { milestone: 1, files: ['x.ts'] })]);
+      await harness.actions.moveItem('ada', 'shop', 'old', { milestone: 2 });
+      expect((await tasksOf(harness)).map((record) => [record.slug, record.depends])).toEqual([
+        ['old', ['now']],
+        ['now', []],
+      ]);
+    }));
+
+  it('never makes a task of the active milestone wait for a task of a queued one', () =>
+    withActions(async (harness) => {
+      await harness.actions.proposeMilestone('ada', 'shop', { title: 'One', goal: '' });
+      await harness.actions.proposeMilestone('ada', 'shop', { title: 'Two', goal: '' });
+      await harness.actions.runMilestone('ada', 'shop', 2);
+      await harness.actions.runMilestone('ada', 'shop', 1);
+      await harness.actions.addTasks('ada', 'shop', [task('queued', { milestone: 1, files: ['x.ts'] })]);
+      await harness.actions.addTasks('ada', 'shop', [task('active', { milestone: 2, files: ['x.ts'] })]);
+      expect((await tasksOf(harness)).map((record) => [record.slug, record.depends])).toEqual([
+        ['queued', ['active']],
+        ['active', []],
+      ]);
+    }));
+
+  it('adds an edge to a task that has not started and never to a started one that is later in the plan', () =>
+    withActions(async (harness) => {
+      await harness.actions.addTasks('ada', 'shop', [task('early'), task('late')]);
+      const late = (await tasksOf(harness))[1];
+      await harness.backlogs.saveTask({ ...late, files: ['early.ts'], runKey: 'late-1', status: 'running' });
+      await harness.actions.addTasks('ada', 'shop', [task('third', { files: ['early.ts'] })]);
+      expect((await tasksOf(harness)).map((record) => [record.slug, record.depends])).toEqual([
+        ['early', ['late']],
+        ['late', []],
+        ['third', ['early']],
+      ]);
+      expect((await tasksOf(harness))[0].revision).toBe(1);
+    }));
+
+  it('refuses a task with no files, for an add and a change, and writes nothing', () =>
+    withActions(async (harness) => {
+      await harness.actions.proposeMilestone('ada', 'shop', { title: 'One', goal: '' });
+      await harness.actions.addTasks('ada', 'shop', [task('one')]);
+      const [stored] = await tasksOf(harness);
+      await harness.backlogs.saveTask({ ...stored, files: [] });
+      const before = await harness.actionEvents('shop');
+      const words = (slug: string) => `task ${slug} has no file to change`;
+      await expect(harness.actions.addTasks('ada', 'shop', [task('two', { files: [] })])).rejects.toThrow(words('two'));
+      await expect(harness.actions.changeTask('ada', 'shop', 'one', { title: 'New' })).rejects.toThrow(words('one'));
+      await expect(harness.actions.changeTask('ada', 'shop', 'one', { milestone: 1 })).rejects.toThrow(words('one'));
+      await expect(harness.actions.changeTask('ada', 'shop', 'one', { files: [] })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect((await tasksOf(harness)).map((record) => record.slug)).toEqual(['one']);
+      expect(await harness.actionEvents('shop')).toEqual(before);
     }));
 
   it('refuses invalid scope, ids and statuses and writes nothing', () =>
@@ -161,7 +255,7 @@ describe('task actions', () => {
       await expect(harness.actions.deleteTask('ada', 'shop', 'one', undefined, 0)).rejects.toThrow(
         'one changed since it was read',
       );
-      expect((await tasksOf(harness))[0]).toMatchObject({ title: 'First', files: [], revision: 1 });
+      expect((await tasksOf(harness))[0]).toMatchObject({ title: 'First', files: ['one.ts'], revision: 1 });
 
       const second = await harness.actions.changeTask('ada', 'shop', 'one', { title: 'Second' });
       expect(second.tasks[0].revision).toBe(2);
@@ -261,7 +355,7 @@ describe('task actions', () => {
       await expect(harness.actions.moveItem('ada', 'shop', 'idea', { milestone: 1 })).rejects.toThrow(
         BadRequestException,
       );
-      await harness.actions.changeTask('ada', 'shop', 'idea', { repositories: ['web'] });
+      await harness.actions.changeTask('ada', 'shop', 'idea', { repositories: ['web'], files: ['idea.ts'] });
       await harness.actions.moveItem('ada', 'shop', 'idea', { milestone: 1 });
       expect((await tasksOf(harness))[0].milestoneId).not.toBeNull();
     }));
@@ -284,7 +378,7 @@ describe('task actions', () => {
         BadRequestException,
       );
 
-      await harness.actions.changeTask('ada', 'shop', 'idea', { repositories: ['web'] });
+      await harness.actions.changeTask('ada', 'shop', 'idea', { repositories: ['web'], files: ['idea.ts'] });
       await harness.actions.moveItem('ada', 'shop', 'idea', { milestone: 1 });
       expect((await tasksOf(harness))[0].milestoneId).not.toBeNull();
       await expect(harness.actions.moveItem('ada', 'shop', 'idea', { milestone: 5 })).rejects.toThrow(

@@ -88,6 +88,7 @@ export class BacklogQueries {
         description: task.description,
         covers: task.covers,
         depends: task.depends,
+        files: task.files,
         milestone: numberOf(task.milestoneId),
         status: task.status,
         note: task.note,

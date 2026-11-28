@@ -15,7 +15,9 @@ describe('PlannerTurnActions', () => {
           { action: 'recordDecision', text: 'Use the helper' },
           {
             action: 'addTasks',
-            tasks: [{ id: 'one', title: 'One', description: 'D', repositories: ['web'], milestone: 1 }],
+            tasks: [
+              { id: 'one', title: 'One', description: 'D', repositories: ['web'], milestone: 1, files: ['one.ts'] },
+            ],
           },
           { action: 'addItem', id: 'item', title: 'Item', description: 'D' },
           { action: 'closeRequirement', id: 'M1.R1', evidence: 'on main' },
@@ -133,7 +135,16 @@ describe('PlannerTurnActions', () => {
         'Planned.',
         {
           action: 'addTasks',
-          tasks: [{ id: 'far', title: 'F', description: 'D', repositories: ['elsewhere'], milestone: 1 }],
+          tasks: [
+            {
+              id: 'far',
+              title: 'F',
+              description: 'D',
+              repositories: ['elsewhere'],
+              milestone: 1,
+              files: ['far.ts'],
+            },
+          ],
         },
         { action: 'closeRequirement', id: 'M1.R9', evidence: 'x' },
         { action: 'recordDecision', text: 'kept' },

@@ -94,6 +94,19 @@ describe('task editing', () => {
     expect(onView).toHaveBeenCalledWith(answer);
   });
 
+  it('adds a task with the files given, one path per line', async () => {
+    render(<TaskEditorDialog view={view} milestone={3} onView={vi.fn()} onClose={vi.fn()} />);
+    await user.click(screen.getByLabelText('Title'));
+    await user.paste('Pay by card');
+    await user.click(screen.getByLabelText('Files'));
+    await user.paste('src/pay.ts\n  ARCHITECTURE.md \n\n');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(addBacklogTasks).toHaveBeenCalledWith('swarmloop', [
+      expect.objectContaining({ id: 'pay-by-card', files: ['src/pay.ts', 'ARCHITECTURE.md'] }),
+    ]);
+  });
+
   it('adds a backlog item with a null milestone', async () => {
     render(<BacklogSections view={view} chat={backlogChatView()} login="ada" onView={vi.fn()} onChat={vi.fn()} />);
     await user.click(screen.getByRole('button', { name: /Backlog items/ }));
@@ -153,6 +166,21 @@ describe('task editing', () => {
     expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', {
       repositories: ['shop', 'api'],
       depends: ['later'],
+      expectedRevision: 4,
+    });
+  });
+
+  it('shows the files of the task and sends them only when an edit changes them', async () => {
+    const opened = task({ slug: 'pay', title: 'Pay by card', revision: 4 });
+    render(<TaskEditorDialog view={view} task={opened} milestone={null} onView={vi.fn()} onClose={vi.fn()} />);
+    const files = screen.getByLabelText('Files');
+    expect(files).toHaveValue('checkout/card-form.tsx');
+    await user.click(files);
+    await user.paste('\nskills/pay/SKILL.md');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', {
+      files: ['checkout/card-form.tsx', 'skills/pay/SKILL.md'],
       expectedRevision: 4,
     });
   });

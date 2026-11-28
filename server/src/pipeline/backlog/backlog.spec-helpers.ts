@@ -368,7 +368,7 @@ export async function backlogHarness(parallel = 3) {
         repositories: ['web'],
         covers: [],
         depends: [],
-        files: [],
+        files: [`${slug}.ts`],
         proof: [],
         manual: false,
         fixesMain: null,

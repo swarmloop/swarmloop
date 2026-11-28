@@ -476,7 +476,7 @@ describe('a task a person changes while the planner works is not overwritten by 
     const { actions } = flow.backlog();
     await actions.createBacklog(OWNER, { name: BACKLOG, repositories: ['demo'], mergeMode: 'green' });
     await actions.addTasks(OWNER, BACKLOG, [
-      { id: 'a', title: 'Task a', description: 'Do a.', repositories: ['demo'] },
+      { id: 'a', title: 'Task a', description: 'Do a.', repositories: ['demo'], files: ['src/a.ts'] },
     ]);
 
     await flow.app.app.get(BacklogChatService).post(OWNER, BACKLOG, 'Tidy task a.', 'first');

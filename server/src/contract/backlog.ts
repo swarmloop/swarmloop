@@ -18,6 +18,7 @@ export type BacklogEventKind =
   | 'run-chat'
   | 'requirement-ready'
   | 'milestone-ready'
+  | 'tasks-need-files'
   | 'command-refused'
   | 'action';
 
@@ -59,6 +60,8 @@ export interface BacklogTaskView {
   covers: string[];
   /** The slugs of the tasks it waits for. */
   depends: string[];
+  /** Every file the task changes, docs included. */
+  files: string[];
   milestone: number | null;
   status: SubtaskStatus;
   /** What the task waits for, in words. */

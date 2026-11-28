@@ -312,6 +312,37 @@ describe('BacklogEvents', () => {
       expect(await events(h, id, 'milestone-ready')).toMatchObject([{ facts: { milestone: '1' } }]);
     }));
 
+  it('asks the planner once for the files of every task that may start and has none, and again for the ones left', () =>
+    withHarness(async (h) => {
+      const id = (await h.seedBacklog('one')).id as number;
+      const milestone = (await h.seedMilestone(id, 1)).id as number;
+      await h.seedTask(id, 'b', { milestoneId: milestone, files: [] });
+      await h.seedTask(id, 'a', { milestoneId: milestone, files: [] });
+
+      await h.tick();
+      await h.tick();
+      expect(await events(h, id, 'tasks-need-files')).toMatchObject([{ facts: { tasks: 'a, b' } }]);
+
+      await h.backlogs.saveTask({ ...(await h.task(id, 'a')), files: ['a.ts'] });
+      await h.tick();
+      await h.tick();
+      expect((await events(h, id, 'tasks-need-files')).map((event) => event.facts.tasks)).toEqual(['b', 'a, b']);
+    }));
+
+  it('asks for no files for a task that names them, one that has started, a settled one or an item outside a milestone', () =>
+    withHarness(async (h) => {
+      const id = (await h.seedBacklog('one')).id as number;
+      const milestone = (await h.seedMilestone(id, 1)).id as number;
+      await h.seedTask(id, 'named', { milestoneId: milestone });
+      await h.seedTask(id, 'running', { milestoneId: milestone, files: [], runKey: 'running-1', status: 'running' });
+      await h.seedTask(id, 'done', { milestoneId: milestone, files: [], status: 'merged' });
+      await h.seedTask(id, 'item', { files: [] });
+
+      await h.tick();
+
+      expect(await events(h, id, 'tasks-need-files')).toEqual([]);
+    }));
+
   it('closes a requirement for a task MergeWatch saw merged, in a paused backlog and a milestone that is not active', () =>
     withHarness(async (h) => {
       h.setMain('web');

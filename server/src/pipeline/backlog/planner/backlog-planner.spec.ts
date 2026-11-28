@@ -28,7 +28,7 @@ async function backlogOf(h: Harness): Promise<number> {
 
 const addTask = (id: string, extra: object = {}): BacklogTurnAction => ({
   action: 'addTasks',
-  tasks: [{ id, title: id, description: `Do ${id}`, repositories: ['web'], ...extra }],
+  tasks: [{ id, title: id, description: `Do ${id}`, repositories: ['web'], files: [`${id}.ts`], ...extra }],
 });
 
 async function launched(h: Harness, count: number): Promise<void> {

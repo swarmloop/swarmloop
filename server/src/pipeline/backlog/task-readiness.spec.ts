@@ -3,7 +3,9 @@ import {
   backlogTasks,
   candidates,
   dependencyWait,
+  filesWait,
   mainWait,
+  mayStart,
   placeWait,
   repositoriesOf,
   type MainReading,
@@ -20,7 +22,7 @@ function record(slug: string, overrides: Partial<BacklogTaskRecord> = {}): Backl
     repositories: ['web'],
     covers: [],
     depends: [],
-    files: [],
+    files: [`${slug}.ts`],
     proof: ['a.spec.ts', 'b.spec.ts'],
     manual: false,
     fixesMain: null,
@@ -79,6 +81,11 @@ describe('candidates', () => {
       record('started', { runKey: 'started-1' }),
     ]);
     expect(candidates(tasks).map((task) => task.id)).toEqual(['active', 'now']);
+  });
+
+  it('leaves out a ready task that names no file', () => {
+    const tasks = tasksOf([record('bare', { files: [] }), record('named')]);
+    expect(candidates(tasks).map((task) => task.id)).toEqual(['named']);
   });
 
   it('expands a requirement a task depends on to the tasks that cover it', () => {
@@ -182,6 +189,21 @@ describe('dependencyWait', () => {
     ]);
     expect(dependencyWait(list[1], list)).toBe("waits for M3.R1's tasks");
     expect(dependencyWait(list[2], list)).toBe("waits for M3.R2's tasks");
+  });
+});
+
+describe('mayStart and filesWait', () => {
+  it('lets a task start in an active milestone or when run now, and in no other place', () => {
+    expect(mayStart({ runNow: false, milestoneId: 1 }, ACTIVE)).toBe(true);
+    expect(mayStart({ runNow: true, milestoneId: null }, ACTIVE)).toBe(true);
+    expect(mayStart({ runNow: false, milestoneId: 2 }, ACTIVE)).toBe(false);
+    expect(mayStart({ runNow: false, milestoneId: null }, ACTIVE)).toBe(false);
+  });
+
+  it('words the wait of a task with no file, and says nothing for one that names files', () => {
+    const [bare, named] = tasksOf([record('bare', { files: [] }), record('named')]);
+    expect(filesWait(bare)).toBe('waits for its files');
+    expect(filesWait(named)).toBeNull();
   });
 });
 

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { settled } from '../../contract/subtask';
 import type { BacklogTaskRecord } from '../../history/backlog.repository';
+import { noFileWords } from '../../steps/plan/plan-tasks';
 import { findCycle, REQUIREMENT_REF } from './task-graph';
 
 const SLUG = /^[a-z][a-z0-9-]{0,38}$/;
@@ -69,6 +70,11 @@ export function checkRunnable(task: Pick<BacklogTaskRecord, 'slug' | 'repositori
   if ((task.milestoneId !== null || task.runNow) && task.repositories.length === 0) {
     throw new BadRequestException(`${task.slug} needs at least one repository to run`);
   }
+}
+
+/** A task names every file it changes, as an epic's task does: one with no file is refused, in the epic's words. */
+export function checkFiles(task: Pick<BacklogTaskRecord, 'slug' | 'files'>): void {
+  if (checkList(task.files, 'files').length === 0) throw new BadRequestException(noFileWords(task.slug));
 }
 
 /** Repositories in scope, covers and depends that exist, no cycle, and fixes_main among the task's repositories. */

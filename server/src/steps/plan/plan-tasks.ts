@@ -178,6 +178,11 @@ export function withDecisions(contract: string, decisions: string[]): string {
   return lines.join('\n');
 }
 
+/** The words for a task that names no file: the one rule of an epic and of a backlog. */
+export function noFileWords(id: string): string {
+  return `task ${id} has no file to change`;
+}
+
 function graphErrors(tasks: SplitTask[]): string[] {
   const errors: string[] = [];
   const ids = new Set<string>();
@@ -200,7 +205,7 @@ function graphErrors(tasks: SplitTask[]): string[] {
       errors.push(`task ${task.id} has no description`);
     }
     if (task.files.length === 0) {
-      errors.push(`task ${task.id} has no file to change`);
+      errors.push(noFileWords(task.id));
     }
     for (const missing of task.depends.filter((id) => !ids.has(id))) {
       errors.push(`task ${task.id} depends on unknown task ${missing}`);
@@ -243,12 +248,18 @@ function topologicalOrder(tasks: Subtask[]): Subtask[] {
 
 /**
  * Chains tasks that name one file with no dependency path between them: the later task in a topological order
- * depends on the earlier one, so no cycle can appear. Returns one decisions line per added edge.
+ * depends on the earlier one, so no cycle can appear. The tasks in `started` go before the others, so a started task
+ * counts as earlier than every task that has not started, and no edge is ever added to one. Returns one decisions
+ * line per added edge.
  */
-export function chainSharedFiles(tasks: Subtask[]): string[] {
-  const ordered = topologicalOrder(tasks);
+export function chainSharedFiles(tasks: Subtask[], started: ReadonlySet<string> = new Set()): string[] {
+  const ordered = topologicalOrder([
+    ...tasks.filter((task) => started.has(task.id)),
+    ...tasks.filter((task) => !started.has(task.id)),
+  ]);
   const decisions: string[] = [];
   ordered.forEach((later, position) => {
+    if (started.has(later.id)) return;
     for (const earlier of ordered.slice(0, position).reverse()) {
       const shared = later.files.find((file) => earlier.files.includes(file));
       if (shared && !reaches(tasks, later.id, earlier.id) && !reaches(tasks, earlier.id, later.id)) {
