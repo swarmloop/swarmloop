@@ -1,4 +1,5 @@
 {"type":"system","subtype":"init","session_id":"chat-rec-1"}
-{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1795886400,"rateLimitType":"five_hour","overageStatus":"rejected","isUsingOverage":false,"unifiedWindows":{}}}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1796331600,"rateLimitType":"seven_day","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":false,"unifiedWindows":{"seven_day":{"utilization":0.42,"resetsAt":1796331600,"status":"allowed"}}},"uuid":"00000000-0000-4000-8000-000000000001","session_id":"00000000-0000-4000-8000-000000000002"}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1796331600,"rateLimitType":"seven_day","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":true,"unifiedWindows":{"seven_day":{"utilization":0.42,"resetsAt":1796331600,"status":"allowed"}}},"uuid":"00000000-0000-4000-8000-000000000001","session_id":"00000000-0000-4000-8000-000000000002"}
 {"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}
 {"type":"result","subtype":"success","is_error":false,"result":"Done.","session_id":"chat-rec-1"}
