@@ -124,8 +124,8 @@ export class StarterInbox {
   }
 
   /**
-   * The planner's answer for a subtask, or its escalation, or null when it gave none. An answer the subtask refused is sent again instead
-   * of asked again, and `held` says it is still refused.
+   * The planner's answer for a subtask, or its escalation, or null when it gave none. A subtask that holds a start the
+   * door refused is not asked again: `held` says the epic sends that start first.
    */
   private async asked(
     ctx: StepContext,
@@ -134,16 +134,8 @@ export class StarterInbox {
     state: InboxState,
   ): Promise<StarterAnswerResult | Escalated | 'held' | null> {
     const { subtasks } = this.deps;
-    if (subtasks.replyPending(child)) return (await subtasks.resend(child)) ?? 'held';
+    if (await subtasks.held(child)) return 'held';
     const { contract, tasks, requirements } = state;
-    const answer = await subtasks.answer(
-      ctx.opened,
-      child,
-      task,
-      contract,
-      { tasks, requirements },
-      implementStart(ctx.options),
-    );
-    return answer === null && subtasks.replyPending(child) ? 'held' : answer;
+    return subtasks.answer(ctx.opened, child, task, contract, { tasks, requirements }, implementStart(ctx.options));
   }
 }

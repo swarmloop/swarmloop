@@ -420,13 +420,7 @@ describe('BacklogEvents', () => {
       const epic = (await runs.findRun('a-1'))!;
       const child = await runs.openSubtask('a-1-b', epic.id, 'b');
       const conversation = { chat: h.db.app.get(PlanChatStore), clock: h.db.clock } as unknown as PlanConversation;
-      const planner = new SubtaskPlannerAnswer(
-        documents,
-        undefined as never,
-        undefined as never,
-        conversation,
-        undefined as never,
-      );
+      const planner = new SubtaskPlannerAnswer(documents, undefined as never, undefined as never, conversation);
       const chain = new PlannerChain(
         {
           askAbout: () => Promise.resolve(null),

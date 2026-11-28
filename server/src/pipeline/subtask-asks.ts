@@ -1,6 +1,5 @@
 import type { RunEntity } from '../history/entities';
 import type { DocumentRepository } from '../history/document.repository';
-import type { VisitRepository } from '../history/visit.repository';
 import type { LookStart } from '../steps/shared/look-start';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import type { OpenedStep } from '../steps/step-run';
@@ -17,7 +16,7 @@ import type { RunRepository } from '../history/run.repository';
 import type { PlanChatStore } from '../history/plan-chat.store';
 import type { PlanChange, StarterPlan } from '../steps/implement/starter-actions';
 import type { StarterAnswerResult } from '../agent-result/definitions/starter-answer';
-import { isEscalated, type Escalated, type SubtaskStart } from '../steps/shared/subtask-ops';
+import { isEscalated, type Delivery, type Escalated, type SubtaskStart } from '../steps/shared/subtask-ops';
 import { buildRevision } from '../steps/shared/plan-revision';
 
 /** The asks of subtask runs and the answers they get, as the port hands them to the implement pass. */
@@ -27,13 +26,12 @@ export class SubtaskAsks {
 
   constructor(
     private readonly documents: DocumentRepository,
-    commands: CommandService,
+    private readonly commands: CommandService,
     private readonly gate: StartGate,
     conversation: PlanConversation,
-    visits: VisitRepository,
     private readonly runs: RunRepository,
   ) {
-    this.planner = new SubtaskPlannerAnswer(documents, commands, gate, conversation, visits);
+    this.planner = new SubtaskPlannerAnswer(documents, commands, gate, conversation);
     this.chat = conversation.chat;
   }
 
@@ -50,10 +48,6 @@ export class SubtaskAsks {
     start?: LookStart,
   ): Promise<StarterAnswerResult | Escalated | null> {
     return this.planner.answer(opened, child, task, contract, plan, start);
-  }
-
-  resend(child: RunEntity): Promise<StarterAnswerResult | null> {
-    return this.planner.resend(child);
   }
 
   /**
@@ -73,11 +67,29 @@ export class SubtaskAsks {
     }
   }
 
-  replyPending(child: RunEntity): boolean {
-    return this.planner.replyPending(child);
+  async held(child: RunEntity): Promise<boolean> {
+    return (await this.planner.deliveries.held(child)) !== null;
   }
 
-  deliverAnswer(child: RunEntity, text: string): Promise<void> {
+  /** Sends the start of a part again that the door refused as held: the one dispatch of a stored record. */
+  async sendHeld(child: RunEntity): Promise<Delivery> {
+    const record = await this.planner.deliveries.held(child);
+    if (!record) return 'sent';
+    const level = record.level ?? undefined;
+    const send =
+      record.type === 'resume'
+        ? () => this.gate.resume(child, { by: record.by, level, event: record.key })
+        : () =>
+            this.commands.submit(
+              'answer',
+              child.key,
+              { answers: record.answers ?? [] },
+              { idempotencyKey: record.key },
+            );
+    return this.planner.deliveries.start(child, record, send);
+  }
+
+  deliverAnswer(child: RunEntity, text: string): Promise<Delivery> {
     return this.planner.deliver(child, text);
   }
 
@@ -108,10 +120,15 @@ export class SubtaskAsks {
   /**
    * Hands the answers to the needs back to the run and resumes it, as the start it is given. The event names the needs
    * and the lines, so the same ask is one start however many visits came between. A run a person stopped is left as
-   * it is; a refused or held-back resume puts the needs and the handoff back.
+   * it is; a held-back resume puts the needs and the handoff back. A start the door refuses as held keeps what was
+   * written and is stored on the run, so the epic sends it again at its next pass.
    */
-  async rerun(run: RunEntity, lines: string[], start: SubtaskStart = { by: 'machine', level: null }): Promise<void> {
-    if (await this.gate.stopped(run)) return;
+  async rerun(
+    run: RunEntity,
+    lines: string[],
+    start: SubtaskStart = { by: 'machine', level: null },
+  ): Promise<Delivery> {
+    if (await this.gate.stopped(run)) return 'sent';
     const needs = await this.documents.latestBody(run.key, ARTIFACTS.needs.kind);
     const handoff = await this.documents.latestBody(run.key, ARTIFACTS.handoff.kind);
     await this.documents.putDocument(run, ARTIFACTS.needs.kind, '');
@@ -124,14 +141,18 @@ export class SubtaskAsks {
       .update(JSON.stringify([needs ?? '', lines]))
       .digest('hex');
     const event = `subtask-needs-${run.key}-${digest}`;
-    let resumed: Awaited<ReturnType<StartGate['resume']>>;
+    let resumed: Awaited<ReturnType<StartGate['resume']>> | undefined;
+    const record = { type: 'resume', key: event, by: start.by, level: start.level } as const;
     try {
-      resumed = await this.gate.resume(run, { by: start.by, level: start.level ?? undefined, event });
+      const delivery = await this.planner.deliveries.start(run, record, async () => {
+        resumed = await this.gate.resume(run, { by: start.by, level: start.level ?? undefined, event });
+      });
+      if (resumed === 'stopped') await this.restore(run, needs, handoff);
+      return delivery;
     } catch (error) {
       await this.restore(run, needs, handoff);
       throw error;
     }
-    if (resumed === 'stopped') await this.restore(run, needs, handoff);
   }
 
   private async restore(run: RunEntity, needs: string | null, handoff: string | null): Promise<void> {

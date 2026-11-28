@@ -31,6 +31,7 @@ function world(options: {
   reports?: Record<string, unknown>;
   asking?: string[];
   needs?: string[];
+  held?: string[];
   answers?: (task: Subtask) => StarterAnswerResult | Escalated | null;
   taken?: string[];
 }) {
@@ -50,7 +51,7 @@ function world(options: {
     find: async (_run: RunEntity, id: string) => ({ key: `epic-${id}`, currentStep: 'implement' }),
     asking: async (child: RunEntity) => (options.asking ?? []).includes(child.key),
     needsOf: async (child: RunEntity) => ((options.needs ?? []).includes(child.key) ? [{ id: 'x', what: 'y' }] : []),
-    replyPending: () => false,
+    held: async (child: RunEntity) => (options.held ?? []).includes(child.key),
     answer: async (_opened: unknown, child: RunEntity, given: Subtask) => {
       asked.push(child.key);
       return options.answers?.(given) ?? null;
@@ -156,6 +157,15 @@ describe('StarterInbox asks', () => {
     await inbox.take(ctx, tasks(), '', ['c']);
 
     expect(asked).toEqual([]);
+  });
+
+  it('does not ask the planner about a part whose start the door refused as held', async () => {
+    const { inbox, asked } = world({ asking: ['epic-a'], held: ['epic-a'], answers: () => ({ decision: 'x' }) });
+
+    const pass = await inbox.take(ctx, tasks(), '- api (owner a): the api\n', []);
+
+    expect(asked).toEqual([]);
+    expect(pass).toMatchObject({ asks: [], contract: '- api (owner a): the api\n' });
   });
 
   it('puts the question to the person who started the run when the planner gave no usable answer', async () => {

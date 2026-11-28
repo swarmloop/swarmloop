@@ -18,6 +18,9 @@ export interface ChainQuestion {
   text: string;
 }
 
+/** `sent` when a start reached a part; `held` when the door refused it because the part is held, and it waits to be sent again. */
+export type Delivery = 'sent' | 'held';
+
 /** Who a question reached, the level of the planner that did, and its answer. No answer means it waits for the person. */
 export interface ChainAsked {
   asked: 'run-planner' | 'epic-planner' | 'starter';
@@ -136,14 +139,20 @@ export abstract class SubtaskOps {
     plan?: StarterPlan,
     start?: LookStart,
   ): Promise<StarterAnswerResult | Escalated | null>;
-  /** Sends a subtask run the answer again that it refused, so the planner is not asked twice. Null while it is refused. */
-  abstract resend(child: RunEntity): Promise<StarterAnswerResult | null>;
   /** Writes the changes of an answer as plan revisions with their reasons, in the parent's chat and in the chat of each changed task. */
   abstract recordRevisions(parent: RunEntity, changes: PlanChange[], at: string): Promise<void>;
-  /** True when the planner answered a subtask run and the delivery was refused, so `answer` sends that reply again. */
-  abstract replyPending(child: RunEntity): boolean;
-  /** Sends a subtask run the answer of the person to its open questions through the Answer command. */
-  abstract deliverAnswer(child: RunEntity, text: string): Promise<void>;
+  /** True when the door refused a start of a subtask run because it is held, and the start waits to be sent again. */
+  abstract held(child: RunEntity): Promise<boolean>;
+  /**
+   * Sends the start of a subtask run again that the door refused as held, once, with the key it had. `held` when the
+   * run is still held, and the start stays stored; `sent` when it went, or when none waited.
+   */
+  abstract sendHeld(child: RunEntity): Promise<Delivery>;
+  /**
+   * Sends a subtask run the answer of the person to its open questions through the Answer command. `held` when the
+   * run is held: the answer is stored on it and `sendHeld` sends it.
+   */
+  abstract deliverAnswer(child: RunEntity, text: string): Promise<Delivery>;
   /** The needs a subtask run ended its step with: the sibling tasks it waits for. None when it asked for nothing. */
   abstract needsOf(run: RunEntity): Promise<Need[]>;
   /** The merge request text of a subtask run, or an empty string. */
@@ -156,9 +165,10 @@ export abstract class SubtaskOps {
    * Ends the wait of a subtask run that asked for needs: the needs are cleared, the lines go into its handoff, and the
    * step that asked runs again in its chat, as the machine's start unless `start` says who asks. A run a person
    * stopped is left as it is: nothing is written and nothing runs, unless a person (or a planner on a person's
-   * message) asks.
+   * message) asks. `held` when the door refused the start because the run is held: what was written stays and the
+   * start waits for `sendHeld`.
    */
-  abstract rerun(run: RunEntity, lines: string[], start?: SubtaskStart): Promise<void>;
+  abstract rerun(run: RunEntity, lines: string[], start?: SubtaskStart): Promise<Delivery>;
   /**
    * Asks the planner of the parent, in the parent's own chat, a question about a task. Null when it gave no usable
    * answer; an escalation when it could not settle the question.

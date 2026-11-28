@@ -7,6 +7,7 @@ import { AppConfig } from '../config/env';
 import { testEnv } from '../config/env.spec-helpers';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import type { PlanChatEntry } from '../contract/plan-chat';
+import { conflict } from '../history/command.repository';
 import type { RunEntity } from '../history/entities';
 import { sessionFileName, sessionHome } from '../history/session-group';
 import type { VisitDraft } from '../history/visit';
@@ -76,7 +77,8 @@ async function asked(
       { findRun: async (key: string) => ({ key }) } as never,
       {
         latestBody: async (_key: string, kind: string) =>
-          stored[kind] ?? (['research_result', 'plan_result', 'implementation_result'].includes(kind) ? null : 'app\n'),
+          stored[kind] ??
+          (['research_result', 'plan_result', 'implementation_result', 'part_start'].includes(kind) ? null : 'app\n'),
         latestDocument: async () => null,
         putDocument: async (_run: unknown, kind: string, body: string) => void (written[kind] = body),
       } as never,
@@ -450,7 +452,6 @@ describe('the parent finds what a subtask asks at plan and implement', () => {
       { submit } as never,
       { resume } as never,
       { chat, clock: new FakeClock() } as never,
-      { listStats: async () => [] } as never,
     );
     return { planner, appended, taken, resume, submit };
   }
@@ -494,7 +495,7 @@ describe('the parent finds what a subtask asks at plan and implement', () => {
     const { planner, appended, taken, resume } = answerer({}, [escalation]);
     resume.mockResolvedValue('stopped');
 
-    await expect(planner.deliver(run, 'Use a cursor.')).resolves.toBeUndefined();
+    await expect(planner.deliver(run, 'Use a cursor.')).resolves.toBe('sent');
 
     expect(appended).toMatchObject([{ key: 'answer-escalate-ask-1', kind: 'answer', text: 'Use a cursor.' }]);
     // The escalation is closed, so the answer is read once the person resumes the task, and no later pass asks again.
@@ -615,8 +616,10 @@ describe('SubtaskPort rerun', () => {
     const runs = { findRun: async () => (reads++ >= stopAfter ? stoppedRun : run), children: async () => [run] };
     const none = undefined as never;
     const door = new AgentDoor(none, runs as never, none, none, none, none, none, none, none);
+    let busy = false;
     const commands = {
       accept: async (...call: unknown[]) => {
+        if (busy) throw conflict('RUN_BUSY', 'child is already running', run);
         accepted.push(call);
         return { replayed: false };
       },
@@ -644,6 +647,7 @@ describe('SubtaskPort rerun', () => {
       accepted,
       submitted,
       stopBeforeResume: () => void (stopAfter = 1),
+      holdRun: (held: boolean) => void (busy = held),
     };
   }
 
@@ -664,6 +668,24 @@ describe('SubtaskPort rerun', () => {
 
     expect(bodies).toEqual({ needs, handoff: 'earlier note' });
     expect(accepted).toEqual([]);
+  });
+
+  it('keeps the needs and the handoff and stores the start when the door refuses it as held, and sends it again once', async () => {
+    const { port, run, bodies, accepted, holdRun } = rerunning(false);
+    holdRun(true);
+
+    await expect(port.rerun(run, lines)).resolves.toBe('held');
+
+    expect(bodies.needs).toBe('');
+    expect(bodies.handoff).toContain('state-source merged: done');
+    const stored = JSON.parse(bodies.part_start) as { type: string; key: string };
+    expect(stored).toMatchObject({ type: 'resume', by: 'machine', level: null });
+    holdRun(false);
+    await expect(port.held(run)).resolves.toBe(true);
+    await expect(port.sendHeld(run)).resolves.toBe('sent');
+    expect(accepted[0][3]).toEqual({ idempotencyKey: stored.key });
+    expect(bodies.part_start).toBe('');
+    await expect(port.held(run)).resolves.toBe(false);
   });
 
   it('does not resume a stopped task or parent for the machine, and resumes the recorded stopped tasks for a person', async () => {

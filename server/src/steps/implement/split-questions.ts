@@ -40,8 +40,8 @@ export class SplitQuestions {
   }
 
   /**
-   * Sends every answered question to its subtask: a task that waits in research gets the Answer command, a task that
-   * waits with needs gets a line in its handoff. Each answer is a decision in the contract with the time `at`, and its
+   * Sends first every start of a part that the door refused as held, then every answered question to its subtask: a task that waits in research gets the Answer command, a task that
+   * waits with needs gets a line in its handoff. A part that is held still keeps the answer, stored on it. Each answer is a decision in the contract with the time `at`, and its
    * question is closed. A question of a task that `tasks` reads skipped is dropped: it is handed to no one.
    */
   async deliver(
@@ -52,6 +52,10 @@ export class SplitQuestions {
     at: string,
     tasks: Subtask[],
   ): Promise<{ contract: string; body: string }> {
+    for (const task of tasks) {
+      const held = await this.subtasks.find(parent, task.id);
+      if (held && (await this.subtasks.held(held))) await this.subtasks.sendHeld(held);
+    }
     const stored = answered(answersBody);
     const open: string[] = [];
     let current = contract;
