@@ -1,6 +1,15 @@
 import type { ReviewResult } from '../../agent-result/definitions/review';
 import { askedQuestion, questionFor } from '../implement/split-questions';
-import { askedParts, keepOpen, readStoredQuestions, reviewParts, type StoredQuestion } from './question-parts';
+import {
+  answeredBefore,
+  askedParts,
+  keepOpen,
+  readStoredQuestions,
+  reviewParts,
+  type AnsweredQuestion,
+  type PlannerLine,
+  type StoredQuestion,
+} from './question-parts';
 
 const ASKED_AT = '2026-11-15T07:11:43.444Z';
 
@@ -68,6 +77,23 @@ describe('question parts', () => {
       askedAt: ASKED_AT,
     });
     expect(askedQuestion('a', 'Which one?', ASKED_AT).question).toBe(questionFor('a', 'Which one?', ASKED_AT));
+  });
+
+  it('gives a question that went up the chain one side per planner, in order', () => {
+    const lines: PlannerLine[] = [
+      { who: 'run planner', text: 'Not sure.' },
+      { who: 'epic planner', text: 'The planner gave no answer.' },
+    ];
+
+    expect(askedParts('Which one?', ASKED_AT, {}, lines).sides).toEqual(lines);
+  });
+
+  it('finds the answer already given to the same asker, whatever the whitespace and the time asked', () => {
+    const record: AnsweredQuestion[] = [{ asker: 'a', decide: ' Which\n one? ', answer: 'This one', at: ASKED_AT }];
+
+    expect(answeredBefore(record, 'a', 'Which   one?')).toBe('This one');
+    expect(answeredBefore(record, 'b', 'Which one?')).toBeNull();
+    expect(answeredBefore(record, 'a', 'Which other?')).toBeNull();
   });
 
   it('keeps the parts of the questions still open and adds the new ones', () => {
