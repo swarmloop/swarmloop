@@ -53,6 +53,12 @@ export class RepositoryHost {
     this.logger.log(cause ? `main of ${repo} reads ${state}: ${cause}` : `main of ${repo} reads ${state}`);
   }
 
+  /** The name of a repository's default branch. */
+  async defaultBranch(repo: string, person: string | null): Promise<string> {
+    const { host, project } = await this.hostOf(repo, person);
+    return (await host.readDefaultHead(project)).branch;
+  }
+
   /** The state of a repository's default branch. */
   async main(repo: string, person: string | null): Promise<RepositoryMainView> {
     const { host, project } = await this.hostOf(repo, person);

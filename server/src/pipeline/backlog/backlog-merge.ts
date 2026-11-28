@@ -14,9 +14,9 @@ import { storedDelivery } from '../run-delivery';
 import { parsePipelineRefs } from '../../steps/pipeline/pipeline-report';
 import { CommandService } from '../command.service';
 import { BacklogEvents } from './backlog-events';
-import { readMains } from './main-readings';
+import { mainWaitFor, readMains } from './main-readings';
 import { tryNote } from './try-note';
-import { CLOSED_NOTE, decideMerge, stillBehind, type MergeFacts } from './merge-rules';
+import { CLOSED_NOTE, decideMerge, stillBehind, type MergeFacts } from '../../steps/shared/merge-rules';
 import type { MainReading } from './task-readiness';
 
 type Backlog = Awaited<ReturnType<BacklogRepository['listBacklogs']>>[number];
@@ -142,15 +142,18 @@ export class BacklogMerge {
     const { repository, request } = target;
     await readMains(this.host, [repository], backlog.owner, mains);
     const facts: MergeFacts = {
-      mode: backlog.mergeMode,
-      manual: task.manual,
-      mergeOk: task.mergeOk,
       gate: await this.host.gate(run, request, branch),
       repository,
-      main: mains.get(repository),
-      fixesMainHere: task.fixesMain === repository,
-      rebaseSent: false,
       branch,
+      behind: false,
+      rebaseSent: false,
+      target: {
+        kind: 'main',
+        mode: backlog.mergeMode,
+        manual: task.manual,
+        mergeOk: task.mergeOk,
+        mainWait: mainWaitFor(repository, mains.get(repository), task.fixesMain === repository),
+      },
     };
     let decision = decideMerge(facts);
     if (decision.kind === 'rebase') {
