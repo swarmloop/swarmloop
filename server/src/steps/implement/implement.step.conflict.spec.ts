@@ -268,6 +268,80 @@ describe('implement with a parked conflict of a split parent’s own edits', () 
       await world.app.close();
     }
   });
+
+  it('resolves an own-edits conflict through the one loop and completes its journal', async () => {
+    const key = 'PROJ-707';
+    const tree = { path: '' };
+    const agent = jest.fn(async (input: AgentRunInput) => {
+      if (input.prompt.includes(OWN_TEXT))
+        writeFileSync(join(tree.path, 'src', 'field.ts'), 'export const field = 3;\n');
+      return result(rebaseReply);
+    });
+    const world = await splitWorld(key, agent);
+    tree.path = world.tree;
+    try {
+      const run = (await world.runs.findRun(key))!;
+      await world.documents.putDocument(run, REBASE_CONFLICT, ownConflictMarker(OWN_TEXT));
+      const head = git(world.tree, ['rev-parse', 'origin/main']);
+      // The feature branch is on origin, as it is for a parent that has merged tasks: the resolution goes on top of it.
+      git(world.tree, ['push', 'origin', `origin/main:refs/heads/${BRANCH(key)}`]);
+      git(world.tree, ['fetch', 'origin']);
+      const journal = runJournal(world.documents, run);
+      await journal.put('billing-api', {
+        path: world.tree,
+        branch: BRANCH(key),
+        oldHead: head,
+        fingerprint: await fingerprintOf(world.tree),
+        protectRef: `refs/swarmloop/pre-rebase/${BRANCH(key)}`,
+        expectedRemoteTip: null,
+        baseSha: head,
+        ownBase: head,
+        checkpoint: 'conflict',
+      });
+
+      const done = await world.app.get(PipelineService).step('implement', key);
+
+      expect(done.exitCode).toBe(0);
+      expect(agent.mock.calls.map((call) => call[0].prompt)).toHaveLength(1);
+      expect(agent.mock.calls[0]?.[0].prompt).toContain(OWN_TEXT);
+      expect(git(world.tree, ['status', '--porcelain'])).toBe('');
+      expect(git(world.tree, ['ls-remote', 'origin', `refs/heads/${BRANCH(key)}`])).toContain(
+        git(world.tree, ['rev-parse', 'HEAD']),
+      );
+      expect((await journal.entry('billing-api'))?.checkpoint).toBe('completed');
+      expect((await world.runs.findRun(key))?.currentStep).toBe('checks');
+    } finally {
+      await world.app.close();
+    }
+  });
+
+  it('leaves a planner answer to another question pending when it settles the conflict', async () => {
+    const key = 'PROJ-708';
+    const tree = { path: '' };
+    const agent = jest.fn(async (input: AgentRunInput) => {
+      if (input.prompt.includes(OWN_TEXT))
+        writeFileSync(join(tree.path, 'src', 'field.ts'), 'export const field = 3;\n');
+      return result(rebaseReply);
+    });
+    const world = await splitWorld(key, agent);
+    tree.path = world.tree;
+    try {
+      const run = (await world.runs.findRun(key))!;
+      await world.documents.putDocument(run, REBASE_CONFLICT, ownConflictMarker(OWN_TEXT));
+      const chat = world.app.get(PlanChatStore);
+      await chat.appendEntry(key, ANSWER);
+
+      await world.app.get(PipelineService).step('implement', key);
+
+      expect(agent).toHaveBeenCalledTimes(1);
+      const prompt = agent.mock.calls[0]?.[0].prompt;
+      expect(prompt).toContain(OWN_TEXT);
+      expect(prompt).not.toContain('Keep the base version.');
+      expect((await chat.answerFor(key, 'implement'))?.key).toBe(ANSWER.key);
+    } finally {
+      await world.app.close();
+    }
+  });
 });
 
 describe('implement resuming a part whose move the squash from git merge base parked', () => {

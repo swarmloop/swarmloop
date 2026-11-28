@@ -97,7 +97,7 @@ export class SubtaskPort extends SubtaskOps {
     @Optional() holds?: QuestionHolds,
   ) {
     super();
-    this.worktrees = new SubtaskWorktrees(config, clock, new BaseTips(runs, documents), publisher);
+    this.worktrees = new SubtaskWorktrees(config, clock, new BaseTips(runs, documents), publisher, documents);
     const planning =
       conversation ?? new PlanConversation(door, visits, documents, config, clock, new PlanChatStore(runs, documents));
     this.asks = new SubtaskAsks(documents, commands, gate, planning, visits, runs);
