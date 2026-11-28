@@ -189,10 +189,13 @@ export async function backlogHarness(parallel = 3) {
     holdServices(db.app, db.clock).holds,
     config,
   );
-  // No git in a unit spec: the record stores the merged_files document with one file.
+  // No git in a unit spec: the record stores the merged_files document with one file, once every head is known.
   const record = {
-    record: async (run: RunEntity, merged: Record<string, string>) => {
-      if (Object.keys(merged).length > 0) await documents.putDocument(run, 'merged_files', 'src/a.ts');
+    record: async (run: RunEntity, repos: string[], headOf: (repo: string) => Promise<string>) => {
+      const heads = await Promise.all(repos.map(headOf)).catch(() => []);
+      if (repos.length > 0 && heads.length === repos.length && heads.every(Boolean)) {
+        await documents.putDocument(run, 'merged_files', 'src/a.ts');
+      }
     },
   } as unknown as MergedFilesRecord;
   const landing = new MergeLanding(host, record);

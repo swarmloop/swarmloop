@@ -138,7 +138,7 @@ describe('BacklogMerge', () => {
       expect(h.fake.calls.slice(before).some((call) => call.args[1] === 6)).toBe(false);
     }));
 
-  it('makes a task merged from a run MergeWatch merged, with its commits and no host call', () =>
+  it('makes a task merged from a run MergeWatch merged, with its commits, reading only the head of its request', () =>
     withHarness(async (h) => {
       h.setMain('web');
       const id = (await h.seedBacklog('one')).id as number;
@@ -150,7 +150,7 @@ describe('BacklogMerge', () => {
       h.fake.calls.length = 0;
       await h.tick();
       expect(await h.task(id, 'a')).toMatchObject({ status: 'merged', merged: { web: 'abc' } });
-      expect(h.fake.calls).toEqual([]);
+      expect(h.fake.calls.map((call) => call.name)).toEqual(['readMergeGate']);
     }));
 
   it('notes a done run without a merge request', () =>
@@ -382,6 +382,32 @@ describe('BacklogMerge', () => {
       expect(seen['task-merged:a']).not.toBeNull();
       expect(seen['task-merged:c']).not.toBeNull();
       expect(Object.keys(seen)).toHaveLength(2);
+    }));
+
+  it('stores the merged files of a task whose first repository merged in an earlier pass', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      h.setMain('server');
+      const id = (await h.seedBacklog('one', { repositories: ['web', 'server'] })).id as number;
+      await h.seedTask(id, 'a', {
+        runKey: 'a-1',
+        repositories: ['web', 'server'],
+        merged: { web: 'acme/web-merge-1' },
+      });
+      await h.seedDoneRun('a-1', [
+        { repo: 'web', iid: 5 },
+        { repo: 'server', iid: 6 },
+      ]);
+      h.fake.setGate('acme/web', 5, { state: 'merged', sha: 'acme/web-merge-1' });
+      let stored: string | null = null;
+      const record = h.backlogs.recordEvent.bind(h.backlogs);
+      jest.spyOn(h.backlogs, 'recordEvent').mockImplementation(async (backlogId, key, kind, facts) => {
+        if (kind === 'task-merged') stored = await h.db.app.get(DocumentRepository).latestBody('a-1', 'merged_files');
+        return record(backlogId, key, kind, facts);
+      });
+      await h.tick();
+      expect(await h.task(id, 'a')).toMatchObject({ status: 'merged' });
+      expect(stored).not.toBeNull();
     }));
 
   it('marks a task merged when every repository its run publishes was merged before and it only read the other', () =>

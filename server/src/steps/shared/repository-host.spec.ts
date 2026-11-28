@@ -32,12 +32,6 @@ function setup(title: string | null = null) {
 describe('RepositoryHost', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('names the default branch of a repository', async () => {
-    const { host } = setup();
-
-    await expect(host.defaultBranch('web', 'ada')).resolves.toBe('main');
-  });
-
   it('reads a green main', async () => {
     const { fake, host } = setup();
     fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success', 4000)], 'https://ci/1'));
@@ -157,6 +151,13 @@ describe('RepositoryHost', () => {
       failing: ['lint'],
       pending: ['test', 'deploy'],
     });
+  });
+
+  it('reads the head the host reports for a merged request', async () => {
+    const { fake, host } = setup();
+    fake.setGate('acme/web', 7, { state: 'merged', sha: 'acme/web-merge-1', head: 'landed-head' });
+
+    await expect(host.requestHead(run, request)).resolves.toBe('landed-head');
   });
 
   it('merges with the head as a guard and moves main to a commit with no pipeline', async () => {

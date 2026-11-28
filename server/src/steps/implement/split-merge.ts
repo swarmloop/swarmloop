@@ -111,7 +111,6 @@ export class SplitMerge {
       refused: () => Promise.resolve(),
       // The landing hands back every commit it made, and the pass keeps them on the task.
       landed: () => Promise.resolve(),
-      targetBranch: () => this.subtasks.branchOf(parent),
     };
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { existsSync } from 'fs';
-import { fetchBranch } from '../../git/rebase';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { git } from '../../git/git';
 import { worktreePath } from '../../git/repo-names';
 import { withWorktree } from '../../git/worktree-lock';
@@ -9,30 +9,25 @@ import type { RunEntity } from '../../history/entities';
 import { root } from '../../history/run-paths';
 import { ARTIFACTS } from '../contract/artifacts';
 import { StepKernel } from '../step-kernel';
-import { RebasedPublisher } from './rebased-publisher';
 
-/** Stores the files a merge changed as the merged_files document of the run whose requests merged. */
+/** Stores the files a merge put on its target branch as the merged_files document of the run whose requests merged. */
 @Injectable()
 export class MergedFilesRecord {
   private readonly logger = new Logger(MergedFilesRecord.name);
 
   constructor(
     private readonly kernel: StepKernel,
-    private readonly publisher: RebasedPublisher,
     private readonly documents: DocumentRepository,
   ) {}
 
   /**
-   * Reads the files each merge commit changed from the run's own worktrees, after fetching the target branch of each
-   * repository, and stores them. A merge git cannot read stores none and leaves a warning; it never throws.
+   * Stores the run's own change in each repository, from the base tip the run recorded to the head that landed. It is
+   * the same for a squash, a rebase and a merge commit, whoever made the merge. A change git cannot read, a run with no
+   * recorded base tip or a head nobody reports stores none and leaves a warning; it never throws.
    */
-  async record(
-    run: RunEntity,
-    merged: Record<string, string>,
-    targetBranch: (repo: string) => Promise<string>,
-  ): Promise<void> {
+  async record(run: RunEntity, repos: string[], headOf: (repo: string) => Promise<string>): Promise<void> {
     try {
-      const files = await this.changedFiles(run, merged, targetBranch);
+      const files = await this.changedFiles(run, repos, headOf);
       await this.documents.putDocument(run, ARTIFACTS.mergedFiles.kind, files.join('\n'));
     } catch (error) {
       this.logger.warn(
@@ -41,25 +36,21 @@ export class MergedFilesRecord {
     }
   }
 
-  /** The files of each merge commit. A path is prefixed with its repository when the task merged into more than one. */
+  /** The files of each repository's change. A path is prefixed with its repository when the task merged into more than one. */
   private async changedFiles(
     run: RunEntity,
-    merged: Record<string, string>,
-    targetBranch: (repo: string) => Promise<string>,
+    repos: string[],
+    headOf: (repo: string) => Promise<string>,
   ): Promise<string[]> {
-    const hosts = await this.publisher.hostsFor(run);
-    const repos = Object.entries(merged).filter(([, sha]) => sha);
     const files: string[] = [];
-    for (const [repo, sha] of repos) {
+    for (const repo of repos) {
       const path = worktreePath(root(this.kernel.config), run.key, repo);
       if (!existsSync(path)) continue;
-      const branch = await targetBranch(repo);
-      const names = await withWorktree(path, async () =>
-        (await fetchBranch(path, repo, branch, hosts))
-          ? git(['-C', path, 'diff', '--name-only', `${sha}^`, sha])
-          : null,
-      );
-      if (names === null) continue;
+      const base = run.baseTips?.[repo];
+      if (!base) throw new SwarmloopError(`${run.key} has no recorded base tip in ${repo}`);
+      const head = await headOf(repo);
+      if (!head) throw new SwarmloopError(`the head that landed in ${repo} for ${run.key} is not known`);
+      const names = await withWorktree(path, () => git(['-C', path, 'diff', '--name-only', base, head]));
       files.push(
         ...names
           .split('\n')

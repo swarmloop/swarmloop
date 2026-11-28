@@ -53,12 +53,6 @@ export class RepositoryHost {
     this.logger.log(`main of ${repo} reads ${state}`);
   }
 
-  /** The name of a repository's default branch. */
-  async defaultBranch(repo: string, person: string | null): Promise<string> {
-    const { host, project } = await this.hostOf(repo, person);
-    return (await host.readDefaultHead(project)).branch;
-  }
-
   /** The state of a repository's default branch. */
   async main(repo: string, person: string | null): Promise<RepositoryMainView> {
     const { host, project } = await this.hostOf(repo, person);
@@ -103,6 +97,12 @@ export class RepositoryHost {
       failing: namesOf(snapshot, ['failed', 'canceled']),
       pending: namesOf(snapshot, ['running', 'manual']),
     };
+  }
+
+  /** The head of a request as the host reports it now, also for a merged one; '' when the host gives none. */
+  async requestHead(run: HostRun, request: MergeRequestRef): Promise<string> {
+    const host = await this.hosts.hostFor(run);
+    return (await host.readMergeGate(request.project, request.iid)).head;
   }
 
   /** Merges a request of a task, guarded by its head commit, with the method the repository allows; the commit it made. */

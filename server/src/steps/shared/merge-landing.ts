@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RunEntity } from '../../history/entities';
-import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
+import { FetchFailed, MergeConflict, SwarmloopError } from '../../core/swarmloop-error';
 import { decideMerge, type MergeFacts, type MergeTarget } from './merge-rules';
 import { MergedFilesRecord } from './merged-files-record';
 import { RepositoryHost } from './repository-host';
@@ -24,16 +24,15 @@ export interface LandingQueue {
   refused(request: LandingRequest, head: string, message: string): Promise<void>;
   /** Keeps the commit of a repository at once. */
   landed(repo: string, sha: string): Promise<void>;
-  /** The target branch of a repository, for reading what the merge changed. */
-  targetBranch(repo: string): Promise<string>;
 }
 
 export interface LandingItem {
   /** The run whose host and title format are used: the parent for a child, the run itself for a backlog task. */
   hostRun: Parameters<RepositoryHost['merge']>[0];
-  /** The run whose requests merge; its worktrees give the files. */
+  /** The run whose requests merge; its worktrees and its recorded base tips give the files. */
   run: RunEntity;
   title: string;
+  /** Every request of the item, the merged ones included: a merged one gives the head to read the files from. */
   requests: LandingRequest[];
   /** What is already merged, by repository. */
   merged: Record<string, string>;
@@ -49,7 +48,7 @@ interface Hold {
 export type Landing =
   { kind: 'merged'; merged: Record<string, string> } | { kind: 'held'; merged: Record<string, string>; holds: Hold[] };
 
-type Step = { sha: string } | { hold: Omit<Hold, 'repo'> };
+type Step = { sha: string; head: string } | { hold: Omit<Hold, 'repo'> };
 
 /**
  * The one place that merges a request. Both queues, the epic's split pass and the backlog's merge into main, offer
@@ -69,16 +68,19 @@ export class MergeLanding {
 
   /**
    * Merges the requests of an item that are not merged yet, in order. A request held for a wait or a person does not stop
-   * the others; a rebase that was sent does. The files of the merge are recorded before it returns merged.
+   * the others; a rebase that was sent does. The files of the merge are recorded before it returns merged: the run's
+   * change up to the head each request merged with, which the host reports for a request merged in an earlier pass.
    */
   async land(item: LandingItem): Promise<Landing> {
     const merged = { ...item.merged };
+    const heads: Record<string, string> = {};
     const holds: Hold[] = [];
     for (const request of item.requests) {
       if (request.repo in merged) continue;
       const step = await this.landOne(item, request);
       if ('sha' in step) {
         merged[request.repo] = step.sha;
+        heads[request.repo] = step.head;
         await item.queue.landed(request.repo, step.sha);
         continue;
       }
@@ -86,19 +88,34 @@ export class MergeLanding {
       if (step.hold.kind === 'rebased') break;
     }
     if (item.requests.every((request) => request.repo in merged)) {
-      await this.files.record(item.run, merged, (repo) => item.queue.targetBranch(repo));
+      await this.recordFiles(item.hostRun, item.run, Object.keys(merged), item.requests, heads);
       return { kind: 'merged', merged };
     }
     return { kind: 'held', merged, holds };
   }
 
-  /** Records the files of a merge the host already made; the host is asked nothing. */
-  async adopt(
+  /** Records the files of a merge the host already made, from the head the host reports for each of its requests. */
+  async adopt(run: RunEntity, merged: Record<string, string>, requests: LandingRequest[]): Promise<void> {
+    await this.recordFiles(run, run, Object.keys(merged), requests, {});
+  }
+
+  /** Records the files of the repositories; a head this pass did not see comes from the host, a repository with no request has none. */
+  private async recordFiles(
+    hostRun: LandingItem['hostRun'],
     run: RunEntity,
-    merged: Record<string, string>,
-    targetBranch: (repo: string) => Promise<string>,
+    repos: string[],
+    requests: LandingRequest[],
+    heads: Record<string, string>,
   ): Promise<void> {
-    await this.files.record(run, merged, targetBranch);
+    await this.files.record(run, repos, (repo) => {
+      const seen = heads[repo];
+      if (seen !== undefined) return Promise.resolve(seen);
+      const request = requests.find((found) => found.repo === repo);
+      if (!request) {
+        return Promise.reject(new SwarmloopError(`no merge request of ${run.key} in ${repo} to read its head from`));
+      }
+      return this.host.requestHead(hostRun, request);
+    });
   }
 
   private async landOne(item: LandingItem, request: LandingRequest): Promise<Step> {
@@ -112,7 +129,7 @@ export class MergeLanding {
     };
     const decision = decideMerge(facts);
     if (decision.kind === 'rebase') return this.rebase(item, request, gate.head);
-    if (decision.kind === 'merged') return { sha: decision.sha };
+    if (decision.kind === 'merged') return { sha: decision.sha, head: gate.head };
     if (decision.kind === 'merge') return this.merge(item, request, decision.head);
     return { hold: decision };
   }
@@ -126,7 +143,7 @@ export class MergeLanding {
   /** Merges with the head as guard. A conflict is a request that is behind; a refusal of the host is held and told to the queue. */
   private async merge(item: LandingItem, request: LandingRequest, head: string): Promise<Step> {
     try {
-      return { sha: await this.host.merge(item.hostRun, request.repo, item.title, request, head) };
+      return { sha: await this.host.merge(item.hostRun, request.repo, item.title, request, head), head };
     } catch (error) {
       if (error instanceof MergeConflict) return this.rebase(item, request, head);
       if (!(error instanceof FetchFailed)) throw error;
