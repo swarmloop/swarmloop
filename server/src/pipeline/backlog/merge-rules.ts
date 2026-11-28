@@ -16,10 +16,6 @@ export interface MergeFacts {
   main: MainReading | undefined;
   /** The task repairs the main of this very repository. */
   fixesMainHere: boolean;
-  /** A rebase was already sent for this head. */
-  rebaseSent: boolean;
-  /** The branch of the run in this repository. */
-  branch: string;
 }
 
 type MergeDecision =
@@ -30,11 +26,6 @@ type MergeDecision =
   | { kind: 'merged'; sha: string };
 
 export const CLOSED_NOTE = 'its merge request was closed without a merge';
-
-/** What a request that is still behind after a rebase asks of a person. */
-export function stillBehind(branch: string): string {
-  return `still behind ${branch} after a rebase; needs a person`;
-}
 
 function mainNote(repository: string, main: MainReading | undefined): string | null {
   if (mainPasses(main)) return null;
@@ -52,9 +43,7 @@ export function decideMerge(facts: MergeFacts): MergeDecision {
   if (gate.state === 'merged') return { kind: 'merged', sha: gate.sha ?? gate.head };
   if (gate.draft) return { kind: 'wait', note: 'waits for its merge request to leave draft' };
   if (gate.mergeability === 'unknown') return { kind: 'wait', note: 'waits for the host to tell whether it merges' };
-  if (gate.mergeability === 'behind' || gate.mergeability === 'conflicting') {
-    return facts.rebaseSent ? { kind: 'person', note: stillBehind(facts.branch) } : { kind: 'rebase' };
-  }
+  if (gate.mergeability === 'behind' || gate.mergeability === 'conflicting') return { kind: 'rebase' };
   if (gate.failing.length > 0)
     return { kind: 'person', note: `checks failing: ${gate.failing.join(', ')}; needs a person` };
   if (gate.pending.length > 0)
