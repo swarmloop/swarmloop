@@ -41,6 +41,8 @@ const JSON_BODIES: Record<string, string> = {
   review_report_result: '{"whatChanged":"fixed the parser","codeReview":"every check is ok"}\n',
   passed_on: '[{"question":"Q","line":"Only you can choose.","at":"t"}]\n',
   question_parts: '[{"question":"Q","parts":{"decide":"Is it?","sides":[],"full":"","askedAt":"t"}}]\n',
+  answered_questions: '[{"asker":"a","decide":"Which?","answer":"This","at":"t"}]\n',
+  part_start: '{"type":"answer","key":"k","by":"planner","level":null}\n',
   rebase_resolution_result: '{"summary":["kept both sides"]}\n',
   requirement_list: '[{"id":"R1","text":"first"}]\n',
   requirement_coverage: '[{"id":"R1","text":"first","items":["item"]}]\n',
