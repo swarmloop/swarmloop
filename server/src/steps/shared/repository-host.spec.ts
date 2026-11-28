@@ -32,6 +32,12 @@ function setup(title: string | null = null) {
 describe('RepositoryHost', () => {
   afterEach(() => jest.restoreAllMocks());
 
+  it('names the default branch of a repository', async () => {
+    const { host } = setup();
+
+    await expect(host.defaultBranch('web', 'ada')).resolves.toBe('main');
+  });
+
   it('reads a green main', async () => {
     const { fake, host } = setup();
     fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success', 4000)], 'https://ci/1'));
@@ -164,6 +170,20 @@ describe('RepositoryHost', () => {
       method: 'squash',
       title: 'Ship: Add it',
     });
+  });
+
+  it('deletes a branch on the host of the run', async () => {
+    const deleted: string[][] = [];
+    const registry = {
+      hostFor: async () => ({
+        deleteBranch: async (project: string, branch: string) => void deleted.push([project, branch]),
+      }),
+    } as unknown as CodeHostRegistry;
+    const host = new RepositoryHost({} as RepositoryOrigins, registry, {} as RunNames);
+
+    await host.deleteBranch(run, 'acme/web', 'task-1');
+
+    expect(deleted).toEqual([['acme/web', 'task-1']]);
   });
 
   it('passes an outage through', async () => {

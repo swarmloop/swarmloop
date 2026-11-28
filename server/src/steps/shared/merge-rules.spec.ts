@@ -1,15 +1,14 @@
 import { CLOSED_NOTE, decideMerge, type MergeFacts } from './merge-rules';
 
+type MainTarget = Extract<MergeFacts['target'], { kind: 'main' }>;
+
 function facts(overrides: Partial<MergeFacts> = {}, gate: Partial<MergeFacts['gate']> = {}): MergeFacts {
   return {
-    mode: 'green',
-    manual: false,
-    mergeOk: false,
     repository: 'web',
-    main: { state: 'green' },
-    fixesMainHere: false,
+    behind: false,
     rebaseSent: false,
     branch: 'swarmloop/t1',
+    target: main(),
     gate: {
       state: 'open',
       sha: null,
@@ -25,14 +24,17 @@ function facts(overrides: Partial<MergeFacts> = {}, gate: Partial<MergeFacts['ga
   };
 }
 
+function main(overrides: Partial<MainTarget> = {}): MergeFacts['target'] {
+  return { kind: 'main', mode: 'green', manual: false, mergeOk: false, mainWait: null, ...overrides };
+}
+
 describe('decideMerge', () => {
   it('merges a clean request on a green main with the head as guard', () => {
     expect(decideMerge(facts())).toEqual({ kind: 'merge', head: 'h1' });
   });
 
-  it('merges on a main with no CI in mode green, and waits for the OK in mode ok', () => {
-    expect(decideMerge(facts({ main: { state: 'none' } }))).toEqual({ kind: 'merge', head: 'h1' });
-    expect(decideMerge(facts({ main: { state: 'none' }, mode: 'ok' })).kind).toBe('wait');
+  it('waits for the OK in mode ok', () => {
+    expect(decideMerge(facts({ target: main({ mode: 'ok' }) })).kind).toBe('wait');
   });
 
   it('names a request closed without a merge', () => {
@@ -64,6 +66,14 @@ describe('decideMerge', () => {
     });
   });
 
+  it('rebases a request the target reads as behind, once, though the host calls it clean', () => {
+    expect(decideMerge(facts({ behind: true }))).toEqual({ kind: 'rebase' });
+    expect(decideMerge(facts({ behind: true, rebaseSent: true }))).toEqual({
+      kind: 'person',
+      note: 'still behind swarmloop/t1 after a rebase; needs a person',
+    });
+  });
+
   it('names failing checks before pending checks before reviews', () => {
     const blocked = { mergeability: 'blocked', blockedBy: 'review required' } as const;
     expect(decideMerge(facts({}, { ...blocked, failing: ['lint'], pending: ['e2e'] }))).toEqual({
@@ -84,34 +94,30 @@ describe('decideMerge', () => {
     });
   });
 
-  it('waits for a green main, and says why one cannot be read', () => {
-    expect(decideMerge(facts({ main: { state: 'red' } }))).toEqual({
+  it('waits for the words of a main that does not pass', () => {
+    expect(decideMerge(facts({ target: main({ mainWait: 'waits for a green main of web' }) }))).toEqual({
       kind: 'wait',
       note: 'waits for a green main of web',
     });
-    expect(decideMerge(facts({ main: undefined }))).toEqual({ kind: 'wait', note: 'waits for a green main of web' });
-    expect(decideMerge(facts({ main: { state: 'unreadable', note: 'host down' } }))).toEqual({
-      kind: 'wait',
-      note: 'waits for a green main of web: host down',
-    });
-  });
-
-  it('merges the task that fixes this main on its red main', () => {
-    expect(decideMerge(facts({ main: { state: 'red' }, fixesMainHere: true }))).toEqual({ kind: 'merge', head: 'h1' });
   });
 
   it('waits for the owner in mode ok and for a manual task, until the OK is given', () => {
     const wait = { kind: 'wait', note: 'waits for your OK to merge' };
-    expect(decideMerge(facts({ mode: 'ok' }))).toEqual(wait);
-    expect(decideMerge(facts({ manual: true }))).toEqual(wait);
-    expect(decideMerge(facts({ mode: 'ok', mergeOk: true }))).toEqual({ kind: 'merge', head: 'h1' });
-    expect(decideMerge(facts({ manual: true, mergeOk: true }))).toEqual({ kind: 'merge', head: 'h1' });
+    expect(decideMerge(facts({ target: main({ mode: 'ok' }) }))).toEqual(wait);
+    expect(decideMerge(facts({ target: main({ manual: true }) }))).toEqual(wait);
+    expect(decideMerge(facts({ target: main({ mode: 'ok', mergeOk: true }) }))).toEqual({ kind: 'merge', head: 'h1' });
+    expect(decideMerge(facts({ target: main({ manual: true, mergeOk: true }) }))).toEqual({
+      kind: 'merge',
+      head: 'h1',
+    });
   });
 
-  it('puts a red main before the owner OK', () => {
-    expect(decideMerge(facts({ mode: 'ok', main: { state: 'pending' } }))).toEqual({
-      kind: 'wait',
-      note: 'waits for a green main of web',
-    });
+  it('puts the wait for a main before the owner OK', () => {
+    const target = main({ mode: 'ok', mainWait: 'waits for a green main of web' });
+    expect(decideMerge(facts({ target }))).toEqual({ kind: 'wait', note: 'waits for a green main of web' });
+  });
+
+  it('never makes a feature branch wait for a main or an OK', () => {
+    expect(decideMerge(facts({ target: { kind: 'branch' } }))).toEqual({ kind: 'merge', head: 'h1' });
   });
 });

@@ -12,6 +12,7 @@ import { writeRunState } from '../history/run-state';
 import { remoteProject } from '../integrations/code-host/remote-project';
 import { branchName, summaryForBranch } from '../git/naming/git-names';
 import { renderMergeRequest } from '../steps/merge-request/merge-request-record';
+import { EventFacts } from '../pipeline/backlog/planner/event-facts';
 import { FAKE_MODEL_KEY } from './env.spec-helpers';
 import { createFlowHarness } from './flow-harness';
 import { git, save } from './runs.spec-helpers';
@@ -159,7 +160,8 @@ describe('a task merges with the method the repository allows', () => {
     const DEFAULT_BRANCH = `feature/b01-ship-the-field`;
     const OWNER = 'owner';
 
-    async function deliver(slug: string, runKey: string, project: string): Promise<void> {
+    /** The run's branch gets a commit of the part's file when given, then the commit of the task's own file; its run is done. */
+    async function deliver(slug: string, runKey: string, project: string, partFile?: string): Promise<void> {
       const run = (await runs().findRun(runKey))!;
       const tree = join(flow.app.root, 'worktrees', runKey, 'demo');
       const branch = `feature/${runKey}`;
@@ -167,9 +169,15 @@ describe('a task merges with the method the repository allows', () => {
       mkdirSync(join(tree, '..'), { recursive: true });
       git(clone(), ['worktree', 'add', '-b', branch, tree, `origin/${DEFAULT_BRANCH}`]);
       mkdirSync(join(tree, 'src'), { recursive: true });
+      const identity = ['-c', 'user.name=Dev', '-c', 'user.email=dev@example.com'];
+      if (partFile) {
+        writeFileSync(join(tree, partFile), 'export const part = 1;\n');
+        git(tree, ['add', partFile]);
+        git(tree, [...identity, 'commit', '-m', 'feat: a part']);
+      }
       writeFileSync(join(tree, `src/${slug}.ts`), `export const ${slug} = 1;\n`);
       git(tree, ['add', `src/${slug}.ts`]);
-      git(tree, ['-c', 'user.name=Dev', '-c', 'user.email=dev@example.com', 'commit', '-m', `feat: ${slug}`]);
+      git(tree, [...identity, 'commit', '-m', `feat: ${slug}`]);
       git(tree, ['push', 'origin', branch]);
       const sha = git(tree, ['rev-parse', 'HEAD']);
       flow.host.ci.pass(sha);
@@ -184,12 +192,14 @@ describe('a task merges with the method the repository allows', () => {
       await documents().putDocument(run, 'requirements', requirements);
       await documents().putDocument(run, 'merge_request', renderMergeRequest([record]));
       await documents().putDocument(run, 'pipeline_ref', `project: ${project}\nref: ${branch}\nsha: ${sha}\n`);
+      await documents().putDocument(run, 'commit', `demo\tsrc/${slug}.ts\n`);
       run.codeHost = 'gitlab';
       writeRunState(run, { status: 'done', currentStep: 'done' });
       await storeRun(runs(), run);
     }
 
-    it('merges the same way, with the title template and the task title', async () => {
+    /** A backlog with the task `a` over `demo`, delivered by the test and merged by the backlog queue. */
+    async function mergeBacklogTask(partFile?: string) {
       flow = await createFlowHarness('b01', {
         env: { CHECKOUTS_ROOT: '.', ...FAKE_MODEL_KEY },
         realImplement: false,
@@ -226,15 +236,32 @@ describe('a task merges with the method the repository allows', () => {
         const [found] = await backlogs.tasks(id);
         if (found.status === 'merged') break;
         if (found.runKey !== null && (await runs().findRun(found.runKey)) && flow.host.opened === 0) {
-          await deliver(found.slug, found.runKey, project);
+          await deliver(found.slug, found.runKey, project, partFile);
         }
         await flow.tick();
       }
 
+      return { backlogs, id };
+    }
+
+    it('merges the same way, with the title template and the task title', async () => {
+      const { backlogs, id } = await mergeBacklogTask();
       const [merged] = await backlogs.tasks(id);
       expect(merged.status).toBe('merged');
       git(clone(), ['fetch', 'origin']);
       expect(commitOf(clone(), merged.merged.demo)).toEqual({ subject: 'Merge Place orders', parents: 2 });
+    });
+
+    it('records the files of the whole merge, so the task-merged facts name a file a part changed outside the plan', async () => {
+      const { backlogs, id } = await mergeBacklogTask('src/part.ts');
+
+      const [merged] = await backlogs.tasks(id);
+      expect(merged.status).toBe('merged');
+      const files = await documents().latestBody(merged.runKey as string, 'merged_files');
+      expect(files?.split('\n').sort()).toEqual(['src/a.ts', 'src/part.ts']);
+      const [event] = (await backlogs.events(id, 100)).filter((found) => found.kind === 'task-merged');
+      const facts = await flow.app.app.get(EventFacts).of(OWNER, event, 'turn');
+      expect(facts.marks).toBe('its merge request changed files outside its plan: src/part.ts');
     });
   });
 });

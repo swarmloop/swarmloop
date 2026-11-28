@@ -20,6 +20,8 @@ import { writeRunState, type RunStateChange } from '../../history/run-state';
 import type { MergeOutcome } from '../../contract/run-state';
 import { LiveHub } from '../../live/live.hub';
 import type { RemoteRepositories } from '../../steps/prepare/remote-repositories.service';
+import { MergeLanding } from '../../steps/shared/merge-landing';
+import type { MergedFilesRecord } from '../../steps/shared/merged-files-record';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import type { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import type { RunNames } from '../../steps/shared/run-names';
@@ -184,7 +186,14 @@ export async function backlogHarness(parallel = 3) {
     holdServices(db.app, db.clock).holds,
     config,
   );
-  const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands, events);
+  // No git in a unit spec: the record stores the merged_files document with one file.
+  const record = {
+    record: async (run: RunEntity, merged: Record<string, string>) => {
+      if (Object.keys(merged).length > 0) await documents.putDocument(run, 'merged_files', 'src/a.ts');
+    },
+  } as unknown as MergedFilesRecord;
+  const landing = new MergeLanding(host, record);
+  const merge = new BacklogMerge(backlogs, runs, documents, repositoryOrigins, host, commands, events, landing);
   const epics = { idle: true, held: new Set<string>() };
   const rebases = new MainRebaseSend(commands, events, db.clock);
   const epicMoves = new EpicMainMoves(

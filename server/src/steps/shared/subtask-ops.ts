@@ -86,8 +86,8 @@ export abstract class SubtaskOps {
   /** The branch of a subtask run. */
   abstract branchOf(run: RunEntity): Promise<string>;
   /**
-   * Records the merge outcome of a done subtask run whose requests the parent merged, so the run reads merged at once,
-   * and the files its merge changed.
+   * Records the merge outcome of a done subtask run whose requests the parent merged, so the run reads merged at once.
+   * The files its merge changed are recorded by the merge landing.
    */
   abstract recordMerged(parent: RunEntity, run: RunEntity, merged: Record<string, string>): Promise<void>;
   /**

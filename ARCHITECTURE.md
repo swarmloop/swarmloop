@@ -271,14 +271,17 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 - children into the epic's branch, one at a time as they turn green;
 - backlog tasks into `main`, in backlog order, by the backlog's merge mode: `green` merges on green, `ok` waits for the owner. Both wait for a green `main`; a `main` with no CI counts as green: the code host has no pipeline at all for its default branch, or it refuses the pipelines read with 403.
 
+Every merge stores the files it changed, as the run's `merged_files` document, before its merge is recorded, so what a merged task changed outside its plan is read from its whole merge.
+
+Both queues use one order rule per target branch: ready items are offered to the merge in queue order, and the first ready item that comes back held with a wait, a person or a refusal holds every later ready item of the same target branch for that pass. An item that comes back rebased is running again, so it holds nothing; an item that is not ready never holds.
+
 A run that is not in a backlog is merged by a person on the host. The merge watch reads how every done run's merge requests ended, every `MERGE_WATCH_MIN`, and marks the run merged or closed. A merge method is tried in its order (squash, rebase, merge commit).
 
-**Today.** Three places decide merges:
-- the epic's split pass (children);
-- `pipeline/backlog/backlog-merge.ts` (backlog tasks), which also rebases a task that is behind `main` and walks the repositories of the run's delivery list that are not `read`, so a repository the run only read is never asked for a request;
-- `pipeline/merge-watch.ts`, which only reads and settles nothing while a repository of the delivery list is `publishing`.
+**Today.** One merge path holds: `steps/shared/merge-landing.ts`, with the rules of `merge-rules.ts` and the files of `merged-files-record.ts`, used by two queues:
+- the epic's split pass (`steps/implement/split-merge.ts`), children into the epic's branch, one green child at a time in task order: it has no merge path of its own, offers each child to the landing, rebases a child that is behind the feature branch through it, and stops at the first child held by a wait, a person or a refusal;
+- `pipeline/backlog/backlog-merge.ts`, backlog tasks into `main`, which also rebases a task that is behind `main`, walks only the repositories of the run's delivery list that are not `read`, so a repository the run only read is never asked for a request, and adopts a run the merge watch saw merged. It lands each task through `MergeLanding`, which records the merged files before the task is saved merged and `task-merged` is recorded, on a merge and on an adopt. A later done task of a repository that an earlier task still has to merge into waits behind it, with the note `waits for <slug> to merge first`.
 
-They follow similar rules but separate code. One merge path is planned after M1.
+`pipeline/merge-watch.ts` only reads how a done run's merge requests ended, and settles nothing while a repository of the delivery list is `publishing`.
 
 ## 3.10 Epics
 

@@ -53,6 +53,12 @@ export class RepositoryHost {
     this.logger.log(cause ? `main of ${repo} reads ${state}: ${cause}` : `main of ${repo} reads ${state}`);
   }
 
+  /** The name of a repository's default branch. */
+  async defaultBranch(repo: string, person: string | null): Promise<string> {
+    const { host, project } = await this.hostOf(repo, person);
+    return (await host.readDefaultHead(project)).branch;
+  }
+
   /** The state of a repository's default branch. */
   async main(repo: string, person: string | null): Promise<RepositoryMainView> {
     const { host, project } = await this.hostOf(repo, person);
@@ -104,5 +110,10 @@ export class RepositoryHost {
     const host = await this.hosts.hostFor(run);
     const how = await mergeHow(host, request.project, await this.names.taskTitle(run, repo, taskTitle));
     return (await host.mergeMergeRequest(request.project, request.iid, head, how)).sha;
+  }
+
+  /** Deletes a branch of a project on the host a run talks to. */
+  async deleteBranch(run: HostRun, project: string, branch: string): Promise<void> {
+    await (await this.hosts.hostFor(run)).deleteBranch(project, branch);
   }
 }

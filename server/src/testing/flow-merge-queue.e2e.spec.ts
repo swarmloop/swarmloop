@@ -176,6 +176,8 @@ describe('the feature branch stays green: every merge is of a task tested on top
     expect(await noteOf('b')).toBe('rebased onto the epic: the feature branch moved on');
 
     pushed(second.tree, second.branch, 'pass');
+    // The rebase put its request back to draft; the merge request step that follows the gates takes it out of draft.
+    await flow.host.setDraft('demo', second.iid, false);
     await finish('b');
     // The last merge sends the epic on to its checks, which this spec does not run.
     await flow.app.pipeline.whenIdle(KEY);

@@ -49,30 +49,6 @@ function rewriteEpicOnOrigin(tree: string, clone: string, branch: string): { old
   return { oldTip, newTip: git(clone, ['rev-parse', 'HEAD']) };
 }
 
-describe('the files a task changed by its merge', () => {
-  it('lists the files of the merge commit, not the files the plan named', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-merged-files-'));
-    const { tree } = featureWorktree(root, 'proj-91');
-    const branch = 'feature/proj-91-ship-the-field';
-    writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
-    writeFileSync(join(tree, 'src', 'helper.ts'), 'export const helper = 1;\n');
-    git(tree, ['add', '.']);
-    git(tree, ['commit', '-m', 'field']);
-    git(tree, ['push', 'origin', branch]);
-    const sha = git(tree, ['rev-parse', 'HEAD']);
-    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
-    const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
-
-    const files = await new SubtaskWorktrees(config, clock, memoryTips().tips).changedFiles(
-      { key: 'proj-91' } as RunEntity,
-      { demo: sha },
-      branch,
-    );
-
-    expect(files.sort()).toEqual(['src/field.ts', 'src/helper.ts']);
-  });
-});
-
 describe('moving the worktree of the parent to the feature branch', () => {
   const branch = 'feature/proj-92-ship-the-field';
   const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
