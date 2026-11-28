@@ -26,6 +26,7 @@ import { ISSUE_TRACKER } from '../../integrations/issue-tracker/tokens';
 import { BaseStep, StepContext, VisitLeftOpen } from '../base-step';
 import type { StepSnapshot } from '../step';
 import { isSubtask } from '../../contract/subtask';
+import { placeProjects } from './requirements-clones';
 import { readPrompt, unreadSource } from './requirements-input';
 import {
   emptyWrite,
@@ -34,7 +35,8 @@ import {
   requirementsVisit,
   stopReason,
 } from './requirements-visit';
-import { assertRepoAllowed, storedProjects } from '../../config/checkout-path';
+import { assertRepoAllowed, renderProjects, storedProjects } from '../../config/checkout-path';
+import { repositoryPick } from '../../config/repository-pick';
 import { starterOf } from '../../history/run-starter';
 import { RemoteRepositories } from '../prepare/remote-repositories.service';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -130,17 +132,15 @@ export class RequirementsStep extends BaseStep<typeof INPUTS> {
       if (unread) {
         throw new SwarmloopError(unread);
       }
-      for (const name of storedProjects(opened.run.projects)) {
+      const projects = storedProjects(opened.run.projects);
+      for (const name of projects.filter((project) => repositoryPick(project) === null)) {
         assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, name);
       }
-      for (const name of storedProjects(opened.run.projects)) {
-        if (!this.remote.hasFolder(name)) {
-          await ctx.activity(
-            `Clone ${name}`,
-            () => this.remote.clone(name, opened.run.startedBy),
-            () => 'cloned',
-          );
-        }
+      const folders = await placeProjects(ctx, this.remote, projects, opened.run.startedBy);
+      if (folders.some((folder, index) => folder !== projects[index])) {
+        opened.run = await this.runs.change(key, (row) => {
+          row.projects = renderProjects(folders);
+        });
       }
       const fetched = await this.collect(
         ctx,

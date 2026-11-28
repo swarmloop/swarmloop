@@ -70,6 +70,7 @@ import { PlannerOwnTurn } from './planner-own-turn';
 import { RunReopen } from './run-reopen';
 import { BacklogActions } from './backlog/backlog-actions';
 import { BacklogActionSupport } from './backlog/backlog-action-support';
+import { BacklogScopeActions } from './backlog/backlog-scope-actions';
 import { BacklogTaskActions } from './backlog/backlog-task-actions';
 import { TaskRunSkip } from './backlog/task-run-skip';
 import { BacklogQueries } from './backlog/backlog-queries';
@@ -184,6 +185,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     PlannerOwnTurn,
     PlanConversation,
     BacklogActionSupport,
+    BacklogScopeActions,
     BacklogTaskActions,
     TaskRunSkip,
     BacklogActions,

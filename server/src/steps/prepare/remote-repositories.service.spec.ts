@@ -21,7 +21,7 @@ function sh(cwd: string, ...args: string[]): void {
 /** A fake host. Its repositories are bare repositories on disk, so a clone reads a real one. */
 function fakeHost(name: 'github' | 'gitlab', remotes: string, repositories: RemoteRepository[]) {
   const owners: RepositoryOwner[] = [{ host: name, login: 'acme', kind: 'organization' }];
-  const bare = (project: string): string => join(remotes, `${name}-${project.replace('/', '-')}.git`);
+  const bare = (project: string): string => join(remotes, `${name}-${project.replaceAll('/', '-')}.git`);
   const seed = (project: string): void => {
     const work = mkdtempSync(join(tmpdir(), 'swarmloop-seed-'));
     sh(work, 'init', '-b', 'main');
@@ -172,26 +172,79 @@ describe('RemoteRepositories', () => {
     expect(readFileSync(join(checkouts, 'demo', '.git', 'config'), 'utf8')).not.toContain(TOKEN);
   });
 
-  it('refuses a name whose folder belongs to another remote, and says why', async () => {
-    const { service, checkouts, github } = harness({ github: [repo('github', 'acme', 'demo')] });
-    github.seed('acme/demo');
-    mkdirSync(join(checkouts, 'demo'));
-    sh(join(checkouts, 'demo'), 'init', '-b', 'main');
-    sh(join(checkouts, 'demo'), 'remote', 'add', 'origin', 'https://elsewhere.example/x/demo.git');
+  /** A folder under the checkouts that is a clone of `url`. */
+  function cloneOf(checkouts: string, folder: string, url: string): void {
+    mkdirSync(join(checkouts, folder));
+    sh(join(checkouts, folder), 'init', '-b', 'main');
+    sh(join(checkouts, folder), 'remote', 'add', 'origin', url);
+  }
+
+  it('lists a repository whose bare folder belongs to another remote as not cloned, with no block', async () => {
+    const { service, checkouts } = harness({ github: [repo('github', 'acme', 'demo')] });
+    cloneOf(checkouts, 'demo', 'https://elsewhere.example/x/demo.git');
     const [entry] = (await service.list()).repositories;
-    expect(entry?.cloned).toBe(false);
-    expect(entry?.blocked).toBe('demo already exists as a folder for https://elsewhere.example/x/demo.git');
-    await expect(service.clone('demo', null)).rejects.toThrow('demo already exists as a folder for https://');
+    expect(entry).toMatchObject({ owner: 'acme', name: 'demo', cloned: false });
+    expect(entry?.blocked).toBeUndefined();
   });
 
-  it('refuses a name that two owners share', async () => {
-    const { service } = harness({
+  it('lists a repository cloned into its owner folder as cloned', async () => {
+    const { service, checkouts } = harness({ github: [repo('github', 'acme', 'demo')] });
+    cloneOf(checkouts, 'demo', 'https://elsewhere.example/x/demo.git');
+    cloneOf(checkouts, 'demo-acme', 'https://github.example/acme/demo.git');
+    const [entry] = (await service.list()).repositories;
+    expect(entry).toMatchObject({ cloned: true });
+    expect(await service.clone('acme/demo', null)).toBe('demo-acme');
+  });
+
+  it('blocks a repository whose bare folder and owner folder both belong to other remotes, and says why', async () => {
+    const { service, checkouts, github } = harness({ github: [repo('github', 'acme', 'demo')] });
+    github.seed('acme/demo');
+    cloneOf(checkouts, 'demo', 'https://elsewhere.example/x/demo.git');
+    cloneOf(checkouts, 'demo-acme', 'https://elsewhere.example/y/demo.git');
+    const [entry] = (await service.list()).repositories;
+    expect(entry).toMatchObject({ cloned: false });
+    expect(entry?.blocked).toBe('acme/demo cannot be cloned: the folders demo and demo-acme hold other remotes');
+    await expect(service.clone('acme/demo', null)).rejects.toThrow('acme/demo cannot be cloned: the folders demo and');
+  });
+
+  it('picks a repository by owner and name when two owners share its name', async () => {
+    const { service, checkouts, github, gitlab } = harness({
       github: [repo('github', 'acme', 'demo')],
       gitlab: [repo('gitlab', 'team', 'demo')],
     });
+    github.seed('acme/demo');
+    gitlab.seed('team/demo');
     await expect(service.clone('demo', null)).rejects.toThrow(
       'demo matches several repositories: acme/demo, team/demo',
     );
+    expect(await service.offers('team/demo')).toBe(true);
+    expect(await service.offers('other/demo')).toBe(false);
+    expect(await service.clone('team/demo', null)).toBe('demo');
+    expect(existsSync(join(checkouts, 'demo', 'README.md'))).toBe(true);
+  });
+
+  it('clones a fork into <name>-<owner> when its upstream holds the bare folder, and finds it cloned there', async () => {
+    const { service, checkouts, github } = harness({
+      github: [repo('github', 'alice', 'demo'), repo('github', 'acme', 'demo')],
+    });
+    github.seed('alice/demo');
+    cloneOf(checkouts, 'demo', 'https://github.example/acme/demo.git');
+    expect(await service.clone('Alice/demo', null)).toBe('demo-alice');
+    expect(existsSync(join(checkouts, 'demo-alice', 'README.md'))).toBe(true);
+    sh(join(checkouts, 'demo-alice'), 'remote', 'set-url', 'origin', 'https://github.example/alice/demo.git');
+    // A second clone would fail, so a folder returned here was left alone.
+    failClone('fatal: Authentication failed', 99);
+    expect(await service.clone('alice/demo', null)).toBe('demo-alice');
+  });
+
+  it('puts a repository of a nested owner in a folder named by the whole owner path', async () => {
+    const { service, checkouts, gitlab } = harness({
+      gitlab: [repo('gitlab', 'acme/team/apps', 'demo'), repo('gitlab', 'alice', 'demo')],
+    });
+    gitlab.seed('acme/team/apps/demo');
+    cloneOf(checkouts, 'demo', 'https://gitlab.example/alice/demo.git');
+    expect(await service.clone('acme/team/apps/demo', null)).toBe('demo-acme-team-apps');
+    expect(existsSync(join(checkouts, 'demo-acme-team-apps', 'README.md'))).toBe(true);
   });
 
   it('leaves out a repository whose name cannot be a checkout folder', async () => {

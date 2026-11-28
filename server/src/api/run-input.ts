@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { CHECKOUT_NAME, storedProjects } from '../config/checkout-path';
+import { isProjectName, storedProjects } from '../config/checkout-path';
+import { repositoryPick } from '../config/repository-pick';
 import { assertKey, normalizePhases } from '../core/pipeline-result';
 import type { PhaseName } from '../contract/steps';
 
@@ -12,11 +13,11 @@ export function phaseNames(input?: string[]): PhaseName[] {
   }
 }
 
-/** The distinct, sorted project names a request names. A name that is not a checkout is a 400. */
+/** The distinct, sorted projects a request names: checkout names, and `owner/name` picks of remote repositories. Any other value is a 400. */
 function projectNames(input?: string[]): string[] {
   const names = [...new Set((input ?? []).map((name) => name.trim()).filter((name) => name.length > 0))].sort();
   for (const name of names) {
-    if (name.startsWith('.') || name.startsWith('run-') || !CHECKOUT_NAME.test(name)) {
+    if (repositoryPick(name) === null && !isProjectName(name)) {
       throw new BadRequestException(`${name} is not a project`);
     }
   }

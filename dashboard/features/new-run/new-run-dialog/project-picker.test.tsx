@@ -85,7 +85,7 @@ describe('ProjectPicker', () => {
     expect(options.map((option) => option.textContent)).toEqual(['swarmloop', 'privateacme/billingnot cloned']);
   });
 
-  it('searches the owner and name of remote entries and picks one by its folder name', async () => {
+  it('searches the owner and name of remote entries and picks one by its owner and name', async () => {
     const user = userEvent.setup({ delay: null });
     const onChange = vi.fn();
     render(
@@ -102,7 +102,26 @@ describe('ProjectPicker', () => {
     expect(screen.queryByRole('option', { name: /tool/ })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('option', { name: /acme\/billing/ }));
 
-    expect(onChange).toHaveBeenCalledWith(['docs', 'billing']);
+    expect(onChange).toHaveBeenCalledWith(['docs', 'acme/billing']);
+  });
+
+  it('offers a fork whose upstream is a local folder, and picks it by owner and name', async () => {
+    const user = userEvent.setup({ delay: null });
+    const onChange = vi.fn();
+    render(
+      <ProjectPicker
+        frozenProjects={false}
+        projectOptions={['app']}
+        pickedProjects={[]}
+        onChange={onChange}
+        remote={view([entry('alice', 'app')])}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Projects' }));
+    await user.click(await screen.findByRole('option', { name: /alice\/app/ }));
+
+    expect(onChange).toHaveBeenCalledWith(['alice/app']);
   });
 
   it('disables a blocked entry and shows why', async () => {

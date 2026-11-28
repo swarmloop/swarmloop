@@ -7,6 +7,7 @@ import type { MergeMode, MilestoneStatus, RequirementStatus } from '../../contra
 import type { PipelineCheck } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { AppConfig } from '../../config/env';
+import { SwarmloopError } from '../../core/swarmloop-error';
 import { testEnv } from '../../config/env.spec-helpers';
 import { BacklogChatRepository } from '../../history/backlog-chat.repository';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
@@ -18,6 +19,7 @@ import { VisitRepository } from '../../history/visit.repository';
 import { writeRunState, type RunStateChange } from '../../history/run-state';
 import type { MergeOutcome } from '../../contract/run-state';
 import { LiveHub } from '../../live/live.hub';
+import type { RemoteRepositories } from '../../steps/prepare/remote-repositories.service';
 import { RepositoryHost } from '../../steps/shared/repository-host';
 import type { RepositoryOrigins } from '../../steps/shared/repository-origins';
 import type { RunNames } from '../../steps/shared/run-names';
@@ -28,6 +30,7 @@ import { BacklogActions } from './backlog-actions';
 import { holdServices } from '../../steps/shared/question-holds.spec-helpers';
 import { BacklogEvents } from './backlog-events';
 import { BacklogQueries } from './backlog-queries';
+import { BacklogScopeActions } from './backlog-scope-actions';
 import { BacklogTaskActions } from './backlog-task-actions';
 import { TaskRunSkip } from './task-run-skip';
 import { BacklogMerge } from './backlog-merge';
@@ -64,8 +67,29 @@ export type StartMode = 'ok' | 'timeout' | 'lost';
 /** `no-ci` is a branch with no pipeline at all; `no-pipeline` is a new head with no pipeline yet on a branch that has CI. */
 export type MainStyle = 'green' | 'red' | 'pending' | 'no-pipeline' | 'no-ci';
 
+/** The remote repositories the actions harness can clone, by owner and name. */
+const REMOTE_REPOSITORIES = ['acme/demo'];
+
+/** A remote whose clone makes the checkout of a known `owner/name` and answers its folder, and refuses any other. */
+function remoteOf(checkouts: string | null, known: string[]): RemoteRepositories {
+  return {
+    clone: async (value: string) => {
+      if (checkouts === null || !known.includes(value)) {
+        throw new SwarmloopError(`${value} is not a repository of the connected code hosts`);
+      }
+      const name = value.slice(value.lastIndexOf('/') + 1);
+      mkdirSync(join(checkouts, name, '.git'), { recursive: true });
+      return name;
+    },
+  } as unknown as RemoteRepositories;
+}
+
 /** The action service over a database, with a command door that only records the stops it is asked for. */
-function actionParts(db: Awaited<ReturnType<typeof repositoryDatabase>>, config: AppConfig) {
+function actionParts(
+  db: Awaited<ReturnType<typeof repositoryDatabase>>,
+  config: AppConfig,
+  remote: RemoteRepositories,
+) {
   const backlogs = db.app.get(BacklogRepository);
   const queries = new BacklogQueries(backlogs, db.app.get(RunRepository));
   const hub = new LiveHub();
@@ -90,7 +114,14 @@ function actionParts(db: Awaited<ReturnType<typeof repositoryDatabase>>, config:
     queries,
     stops,
     taskRun,
-    actions: new BacklogActions(backlogs, queries, db.clock, config, support, taskActions),
+    actions: new BacklogActions(
+      backlogs,
+      queries,
+      db.clock,
+      support,
+      new BacklogScopeActions(backlogs, queries, db.clock, config, support, remote),
+      taskActions,
+    ),
   };
 }
 
@@ -178,7 +209,7 @@ export async function backlogHarness(parallel = 3) {
     return key;
   });
   let position = 0;
-  const { actions, stops, taskRun } = actionParts(db, config);
+  const { actions, stops, taskRun } = actionParts(db, config, remoteOf(null, []));
 
   const make = () =>
     new BacklogScheduler(
@@ -361,7 +392,7 @@ export async function actionsHarness(projects: string[] = ['web', 'server']) {
   for (const project of projects) mkdirSync(join(checkouts, project, '.git'), { recursive: true });
   const config = new AppConfig(testEnv({ SWARMLOOP_ROOT: db.root, CHECKOUTS_ROOT: checkouts }));
   const backlogs = db.app.get(BacklogRepository);
-  const { queries, actions, stops, hub } = actionParts(db, config);
+  const { queries, actions, stops, hub } = actionParts(db, config, remoteOf(checkouts, REMOTE_REPOSITORIES));
   return {
     backlogs,
     /** The live hub the actions tell after a person's write. */

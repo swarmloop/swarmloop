@@ -31,7 +31,10 @@ describe('ProjectAppendService', () => {
     const prepare = { listProjects: () => ({ projects: ['billing-api', 'worker', 'handbook'] }) };
     const worktrees = { ensureDetached: jest.fn(async () => undefined) };
     const branch = { ensure: jest.fn(async () => undefined) };
-    const remote = { offers: jest.fn(async (name: string) => name === 'fresh'), clone: jest.fn(async () => undefined) };
+    const remote = {
+      offers: jest.fn(async (name: string) => name === 'fresh'),
+      clone: jest.fn(async (name: string) => name),
+    };
     const service = new ProjectAppendService(
       runs as never,
       documents as never,
@@ -60,12 +63,31 @@ describe('ProjectAppendService', () => {
     const { run, remote, worktrees, service } = harness('waiting');
     run.startedBy = 'ana';
     const order: string[] = [];
-    remote.clone.mockImplementation(async () => void order.push('clone'));
+    remote.clone.mockImplementation(async (name: string) => {
+      order.push('clone');
+      return name;
+    });
     worktrees.ensureDetached.mockImplementation(async () => void order.push('worktree'));
     const result = await service.add('PROJ-20', 'fresh');
     expect(result.projects).toEqual(['billing-api', 'fresh']);
     expect(remote.clone).toHaveBeenCalledWith('fresh', 'ana');
     expect(order).toEqual(['clone', 'worktree']);
+  });
+
+  it('adds the folder the clone placed the repository in', async () => {
+    const { remote, service } = harness('waiting');
+    remote.clone.mockResolvedValue('fresh-acme');
+    const result = await service.add('PROJ-20', 'fresh');
+    expect(result.projects).toEqual(['billing-api', 'fresh-acme']);
+  });
+
+  it('takes a repository picked by owner and name, and leaves a folder the run already has', async () => {
+    const { remote, service } = harness('waiting');
+    remote.offers.mockImplementation(async (name: string) => name === 'acme/fresh');
+    remote.clone.mockResolvedValue('fresh');
+    expect((await service.add('PROJ-20', 'acme/fresh')).projects).toEqual(['billing-api', 'fresh']);
+    expect(await service.add('PROJ-20', 'acme/fresh')).toEqual({ projects: ['billing-api', 'fresh'], applied: true });
+    await expect(service.add('PROJ-20', 'acme/../x')).rejects.toThrow('checkout name is invalid');
   });
 
   it('does not clone a local checkout, and still refuses a name no host offers', async () => {

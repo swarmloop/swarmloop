@@ -4,6 +4,7 @@ import type { Type } from '@nestjs/common';
 import { AppConfig } from '../../../config/env';
 import { testEnv } from '../../../config/env.spec-helpers';
 import type { Clock } from '../../../core/clock';
+import { SwarmloopError } from '../../../core/swarmloop-error';
 import type { BacklogChatRepository } from '../../../history/backlog-chat.repository';
 import type { BacklogRepository, BacklogTaskRecord } from '../../../history/backlog.repository';
 import { RunRepository } from '../../../history/run.repository';
@@ -12,10 +13,12 @@ import type { CommandService } from '../../command.service';
 import { BacklogActionSupport } from '../backlog-action-support';
 import { BacklogActions } from '../backlog-actions';
 import { BacklogQueries } from '../backlog-queries';
+import { BacklogScopeActions } from '../backlog-scope-actions';
 import { BacklogTaskActions } from '../backlog-task-actions';
 import { TaskRunSkip } from '../task-run-skip';
 import { DocumentRepository } from '../../../history/document.repository';
 import { PlanChatStore } from '../../../history/plan-chat.store';
+import type { RemoteRepositories } from '../../../steps/prepare/remote-repositories.service';
 import { holdServices } from '../../../steps/shared/question-holds.spec-helpers';
 import { LeftQuestions } from './left-questions';
 import { PlannerTurnActions } from './planner-actions';
@@ -52,7 +55,13 @@ export function plannerTurnActions({ app, backlogs, chat, runs, clock, config, c
   const support = new BacklogActionSupport(backlogs, clock);
   const taskRun = new TaskRunSkip(backlogs, runs, app.get(DocumentRepository), app.get(PlanChatStore), commands);
   const taskActions = new BacklogTaskActions(backlogs, queries, taskRun, clock, support);
-  const actions = new BacklogActions(backlogs, queries, clock, config, support, taskActions);
+  const remote = {
+    clone: async (value: string) => {
+      throw new SwarmloopError(`${value} is not a repository of the connected code hosts`);
+    },
+  } as unknown as RemoteRepositories;
+  const scope = new BacklogScopeActions(backlogs, queries, clock, config, support, remote);
+  const actions = new BacklogActions(backlogs, queries, clock, support, scope, taskActions);
   const rules = new PlannerRules(backlogs, runs);
   const calls = new PlannerBacklogCalls(actions, support, backlogs);
   const { holds, passOn } = holdServices(app, clock);

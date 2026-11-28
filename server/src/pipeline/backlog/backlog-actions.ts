@@ -12,12 +12,8 @@ import type {
   ProposeMilestoneBody,
   RecordDecisionBody,
 } from '../../contract/backlog-actions';
-import { listGitProjects } from '../../config/checkout-path';
-import { AppConfig } from '../../config/env';
-import { SwarmloopError } from '../../core/swarmloop-error';
 import { Clock } from '../../core/clock';
 import { BacklogRepository } from '../../history/backlog.repository';
-import { root } from '../../history/run-paths';
 import {
   BacklogActionSupport,
   outcome,
@@ -26,17 +22,9 @@ import {
   type PlannerContext,
 } from './backlog-action-support';
 import { BacklogQueries } from './backlog-queries';
+import { BacklogScopeActions } from './backlog-scope-actions';
 import { BacklogTaskActions } from './backlog-task-actions';
-import {
-  checkBacklogName,
-  checkMergeMode,
-  checkRepositories,
-  checkText,
-  checkTransition,
-  nextMilestoneNumber,
-  nextRequirementRefs,
-  queueBacklog,
-} from './backlog-rules';
+import { checkText, checkTransition, nextMilestoneNumber, nextRequirementRefs, queueBacklog } from './backlog-rules';
 
 /** The only writer of backlogs: it validates, writes in one transaction and records who did it and when. */
 @Injectable()
@@ -45,31 +33,13 @@ export class BacklogActions {
     private readonly backlogs: BacklogRepository,
     private readonly queries: BacklogQueries,
     private readonly clock: Clock,
-    private readonly config: AppConfig,
     private readonly support: BacklogActionSupport,
+    private readonly scope: BacklogScopeActions,
     private readonly taskActions: BacklogTaskActions,
   ) {}
 
-  async createBacklog(actor: string | null, body: CreateBacklogBody): Promise<BacklogView> {
-    const who = this.support.person(actor);
-    const name = checkBacklogName(body.name);
-    const repositories = checkRepositories(body.repositories, this.checkouts());
-    const mergeMode = checkMergeMode(body.mergeMode);
-    if ((await this.backlogs.findBacklog(name)) !== null) throw new ConflictException(`backlog ${name} exists`);
-    await this.backlogs.transaction(async (writers) => {
-      const saved = await writers.saveBacklog({
-        name,
-        owner: who,
-        repositories,
-        mergeMode,
-        paused: false,
-        createdAt: this.clock.iso(),
-      });
-      await this.support.record(writers, saved.id as number, who, 'create backlog', {
-        repositories: repositories.join(', '),
-      });
-    });
-    return this.queries.view(name);
+  createBacklog(actor: string | null, body: CreateBacklogBody): Promise<BacklogView> {
+    return this.scope.createBacklog(actor, body);
   }
 
   async proposeMilestone<Context extends PlannerContext | undefined = undefined>(
@@ -211,15 +181,8 @@ export class BacklogActions {
     return this.setPaused(actor, name, false, context);
   }
 
-  async addRepository(actor: string | null, name: string, body: AddRepositoryBody): Promise<BacklogView> {
-    const { who, backlog } = await this.support.owned(actor, name);
-    const [repository] = checkRepositories([body.repository], this.checkouts());
-    if (backlog.repositories.includes(repository)) throw new ConflictException(`${repository} is already in scope`);
-    await this.backlogs.transaction(async (writers) => {
-      await writers.saveBacklog({ ...backlog, repositories: [...backlog.repositories, repository] });
-      await this.support.record(writers, backlog.id as number, who, 'add repository', { repository });
-    });
-    return this.queries.view(name);
+  addRepository(actor: string | null, name: string, body: AddRepositoryBody): Promise<BacklogView> {
+    return this.scope.addRepository(actor, name, body);
   }
 
   async recordDecision<Context extends PlannerContext | undefined = undefined>(
@@ -353,15 +316,5 @@ export class BacklogActions {
       await this.support.record(writers, backlog.id as number, who, paused ? 'pause' : 'unpause', {}, context);
     });
     return outcome(this.queries, name, context);
-  }
-
-  private checkouts(): string[] {
-    const { CHECKOUTS_ROOT, SWARMLOOP_REPOS } = this.config.env;
-    try {
-      return listGitProjects(root(this.config), CHECKOUTS_ROOT, SWARMLOOP_REPOS);
-    } catch (error) {
-      if (error instanceof SwarmloopError) throw new BadRequestException(error.message);
-      throw error;
-    }
   }
 }

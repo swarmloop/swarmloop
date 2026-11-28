@@ -1,31 +1,51 @@
 import { existsSync } from 'fs';
-import { join, sep } from 'path';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConnectionsService } from '../../auth/connections.service';
 import { AppConfig } from '../../config/env';
-import { assertRepoAllowed, isProjectName, repoAllowed, resolveCheckoutPath } from '../../config/checkout-path';
+import { assertRepoAllowed, isProjectName, repoAllowed } from '../../config/checkout-path';
+import { repositoryPick } from '../../config/repository-pick';
 import type { CreateRepositoryBody, RemoteEntry, RemoteListView, RemoteRepository } from '../../contract/api';
 import { Clock } from '../../core/clock';
 import { isHostOutage, SwarmloopError } from '../../core/swarmloop-error';
 import { git, gitDetail } from '../../git/git';
 import { withGitHostRetries } from '../../git/host-retry';
 import { CheckoutRepository } from '../../history/checkout.repository';
-import { root } from '../../history/run-paths';
 import { codeHostAdapter, codeHostAdapters } from '../../integrations/code-host/code-host-adapters';
 import { CodeHostRegistry, type CodeHostName } from '../../integrations/code-host/code-host.registry';
 import type { CodeHost } from '../../integrations/code-host/code-host';
 import type { RunHosts } from '../../integrations/code-host/run-hosts';
-import { remoteProject } from '../../integrations/code-host/remote-project';
+import { CheckoutPlacement, type Placement } from './checkout-placement';
 import { type HostSnapshot, RemoteCache } from './remote-cache';
 
 const MAX_PAGES = 20;
 
-/** The repositories of the connected code hosts, and the clone and create that put them under the checkouts root. */
+/** The listed repositories a value names: `owner/name` by its label, a bare name by its name. */
+function named(repositories: RemoteEntry[], value: string): RemoteEntry[] {
+  if (repositoryPick(value) === null) {
+    return repositories.filter((repository) => repository.name === value);
+  }
+  return repositories.filter(
+    (repository) => `${repository.owner}/${repository.name}`.toLowerCase() === value.toLowerCase(),
+  );
+}
+
+/** The listed form of a repository in the place it was given. */
+function entryOf(repository: RemoteRepository, placed: Placement): RemoteEntry {
+  return 'blocked' in placed
+    ? { ...repository, cloned: false, blocked: placed.blocked }
+    : { ...repository, cloned: placed.cloned };
+}
+
+/**
+ * The repositories of the connected code hosts, and the clone and create that put them under the checkouts root.
+ * A repository is picked by owner and name; its folder is its bare name, or `<name>-<owner>` when another remote holds that.
+ */
 @Injectable()
 export class RemoteRepositories {
   private readonly logger = new Logger(RemoteRepositories.name);
   /** By person and host: each person sees the repositories their own token reaches. */
   private readonly cache: RemoteCache;
+  private readonly placement: CheckoutPlacement;
 
   constructor(
     private readonly config: AppConfig,
@@ -35,6 +55,7 @@ export class RemoteRepositories {
     @Optional() private readonly connections?: ConnectionsService,
   ) {
     this.cache = new RemoteCache(clock);
+    this.placement = new CheckoutPlacement(config, hosts);
   }
 
   async list(actor: string | null = null): Promise<RemoteListView> {
@@ -111,9 +132,9 @@ export class RemoteRepositories {
     this.cache.dropFailures(actor);
   }
 
-  /** True when the name is a repository of a connected host. */
-  async offers(name: string, actor: string | null = null): Promise<boolean> {
-    return (await this.list(actor)).repositories.some((repository) => repository.name === name);
+  /** True when the value, an `owner/name` or a bare name, is a repository of a connected host. */
+  async offers(value: string, actor: string | null = null): Promise<boolean> {
+    return named((await this.list(actor)).repositories, value).length > 0;
   }
 
   /** True when a folder of that name is under the checkouts root. A name that cannot be a project or a missing root is left for prepare to report. */
@@ -122,7 +143,7 @@ export class RemoteRepositories {
       return true;
     }
     try {
-      return existsSync(this.folder(name));
+      return existsSync(this.placement.folder(name));
     } catch (error) {
       if (error instanceof SwarmloopError) {
         return true;
@@ -131,9 +152,14 @@ export class RemoteRepositories {
     }
   }
 
-  /** Clones a repository of a connected host into `<checkouts root>/<name>`. One that is already cloned from it is left alone. */
-  async clone(name: string, actor: string | null): Promise<void> {
-    assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, name);
+  /**
+   * Clones a repository of a connected host, named by `owner/name` or by a bare name no other repository shares, and returns its folder.
+   * One that is already cloned is left alone.
+   */
+  async clone(value: string, actor: string | null): Promise<string> {
+    if (repositoryPick(value) === null) {
+      assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, value);
+    }
     const listed = await this.list(actor);
     if (listed.reason) {
       throw new SwarmloopError(
@@ -142,22 +168,24 @@ export class RemoteRepositories {
           .join(' or ')}, or set a token in .env`,
       );
     }
-    const matches = listed.repositories.filter((repository) => repository.name === name);
-    if (matches.some((repository) => repository.cloned)) {
-      return;
-    }
+    const matches = named(listed.repositories, value);
     const [repository] = matches;
     if (!repository) {
-      throw new SwarmloopError(`${name} is not a repository of the connected code hosts`);
+      throw new SwarmloopError(`${value} is not a repository of the connected code hosts`);
     }
     if (matches.length > 1) {
       const owners = matches.map((match) => `${match.owner}/${match.name}`).join(', ');
-      throw new SwarmloopError(`${name} matches several repositories: ${owners}`);
+      throw new SwarmloopError(`${value} matches several repositories: ${owners}`);
     }
-    if (repository.blocked) {
-      throw new SwarmloopError(repository.blocked);
+    const placed = await this.placement.place(repository);
+    if ('blocked' in placed) {
+      throw new SwarmloopError(placed.blocked);
     }
-    await this.cloneInto(await this.hosts.forRun(actor, repository.host), repository, actor);
+    assertRepoAllowed(this.config.env.SWARMLOOP_REPOS, placed.folder);
+    if (!placed.cloned) {
+      await this.cloneInto(await this.hosts.forRun(actor, repository.host), repository, placed.folder, actor);
+    }
+    return placed.folder;
   }
 
   async create(body: CreateRepositoryBody, actor: string | null): Promise<RemoteEntry> {
@@ -187,12 +215,17 @@ export class RemoteRepositories {
       await this.connections?.addRepository(actor, `${repository.owner}/${repository.name}`);
     }
     this.logger.log(`${actor ?? 'nobody'} created ${repository.owner}/${repository.name} on ${repository.host}`);
-    await this.cloneInto(hosts, repository, actor);
+    await this.cloneInto(hosts, repository, name, actor);
     await this.checkouts.saveCheckout(repository.name, '');
     return { ...repository, cloned: true };
   }
 
-  private async cloneInto(hosts: RunHosts, repository: RemoteRepository, actor: string | null): Promise<void> {
+  private async cloneInto(
+    hosts: RunHosts,
+    repository: RemoteRepository,
+    folder: string,
+    actor: string | null,
+  ): Promise<void> {
     const host = hosts.byName(repository.host);
     const project = `${repository.owner}/${repository.name}`;
     const url = host.cloneUrl(project);
@@ -200,7 +233,7 @@ export class RemoteRepositories {
       await withGitHostRetries(
         url,
         this.clock,
-        () => git(['clone', url, this.folder(repository.name)], host.cloneEnv()),
+        () => git(['clone', url, this.placement.folder(folder)], host.cloneEnv()),
         host.selected().token,
       );
     } catch (error) {
@@ -210,16 +243,6 @@ export class RemoteRepositories {
       throw new SwarmloopError(`clone of ${project} failed: ${gitDetail(error)}`);
     }
     this.logger.log(`${actor ?? 'nobody'} cloned ${project} from ${repository.host}`);
-  }
-
-  /** The folder of a project, which is always inside the checkouts root. */
-  private folder(name: string): string {
-    const base = resolveCheckoutPath(root(this.config), this.config.env.CHECKOUTS_ROOT, '', '');
-    const path = resolveCheckoutPath(root(this.config), this.config.env.CHECKOUTS_ROOT, name, '');
-    if (!path.startsWith(`${base}${sep}`)) {
-      throw new SwarmloopError(`${name} is not inside the checkouts root`);
-    }
-    return path;
   }
 
   private configured(hosts: RunHosts): CodeHostName[] {
@@ -271,8 +294,12 @@ export class RemoteRepositories {
     const repositories: RemoteEntry[] = [];
     for (const repository of snapshots.flatMap((snapshot) => snapshot.repositories)) {
       // A name the checkouts root would not list as a project cannot be cloned into it.
-      if (isProjectName(repository.name) && repoAllowed(allowedNames, repository.name)) {
-        repositories.push(await this.entry(repository));
+      if (!isProjectName(repository.name)) {
+        continue;
+      }
+      const placed = await this.placement.place(repository);
+      if (repoAllowed(allowedNames, 'folder' in placed ? placed.folder : repository.name)) {
+        repositories.push(entryOf(repository, placed));
       }
     }
     return {
@@ -283,36 +310,5 @@ export class RemoteRepositories {
       loading,
       error,
     };
-  }
-
-  /** Whether the folder of a repository is a clone of it, or holds the name for another remote. */
-  private async entry(repository: RemoteRepository): Promise<RemoteEntry> {
-    const path = this.folder(repository.name);
-    if (!existsSync(path)) {
-      return { ...repository, cloned: false };
-    }
-    let origin = '';
-    if (existsSync(join(path, '.git'))) {
-      origin = await git(['-C', path, 'remote', 'get-url', 'origin'], undefined, { answers: [2] }).catch(() => '');
-    }
-    if (origin && this.sameRemote(repository, origin)) {
-      return { ...repository, cloned: true };
-    }
-    return {
-      ...repository,
-      cloned: false,
-      blocked: `${repository.name} already exists as a folder for ${origin || 'no remote'}`,
-    };
-  }
-
-  private sameRemote(repository: RemoteRepository, origin: string): boolean {
-    try {
-      return (
-        this.hosts.forOrigin(origin) === repository.host &&
-        remoteProject(origin).project.toLowerCase() === `${repository.owner}/${repository.name}`.toLowerCase()
-      );
-    } catch {
-      return false;
-    }
   }
 }
