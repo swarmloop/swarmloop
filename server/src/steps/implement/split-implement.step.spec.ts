@@ -6,6 +6,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { RunCommandsService } from '../../api/run-commands.service';
 import { ERROR_CODES } from '../../contract/error-codes';
+import { conflict } from '../../history/command.repository';
+import { ARTIFACTS } from '../contract/artifacts';
 import { DocumentEntity } from '../../history/entities';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
@@ -353,6 +355,34 @@ describe('split implement', () => {
     expect(await statuses(app)).toEqual({ a: 'merged', b: 'merged' });
     expect((await tasksOf(app))[1]?.merged).toEqual({ demo: 'abc' });
     expect(await app.app.get(RunRepository).findRun(KEY)).toMatchObject({ currentStep: 'checks', status: 'waiting' });
+  });
+
+  it('waits on a held part as running, keeps its start, and sends it again once the door takes it', async () => {
+    const built = await world();
+    app = built.app;
+    const parent = await seedParent(app, [task('a')]);
+    await pass(app);
+    const part = await child(app, 'a');
+    const start = { type: 'resume', key: 'subtask-needs-a-1', by: 'machine', level: null } as const;
+    await app.app
+      .get(DocumentRepository)
+      .putDocument(part, ARTIFACTS.partStart.kind, ARTIFACTS.partStart.format(start));
+    const accept = jest.spyOn(app.app.get(CommandService), 'accept');
+    accept.mockRejectedValueOnce(conflict('RUN_BUSY', `${part.key} is already running`, part, 'running'));
+
+    await pass(app);
+
+    expect(await statuses(app)).toEqual({ a: 'running' });
+    expect((await parentState(app)).reason).toMatchObject({ code: ERROR_CODES.SUBTASKS_RUNNING });
+    expect(await app.app.get(DocumentRepository).latestBody(part.key, ARTIFACTS.partStart.kind)).toBe(
+      ARTIFACTS.partStart.format(start),
+    );
+
+    await pass(app);
+
+    expect(accept).toHaveBeenLastCalledWith('resume', part.key, expect.anything(), { idempotencyKey: start.key });
+    expect(await app.app.get(DocumentRepository).latestBody(part.key, ARTIFACTS.partStart.kind)).toBe('');
+    expect(await app.app.get(RunRepository).findRun(parent.key)).toMatchObject({ status: 'waiting' });
   });
 
   it('reads a task whose move has not run as running, and merges nothing of it', async () => {
