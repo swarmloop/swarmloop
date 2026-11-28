@@ -32,6 +32,12 @@ function setup(title: string | null = null) {
 describe('RepositoryHost', () => {
   afterEach(() => jest.restoreAllMocks());
 
+  it('names the default branch of a repository', async () => {
+    const { host } = setup();
+
+    await expect(host.defaultBranch('web', 'ada')).resolves.toBe('main');
+  });
+
   it('reads a green main', async () => {
     const { fake, host } = setup();
     fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success', 4000)], 'https://ci/1'));

@@ -1,25 +1,33 @@
 import type { MergeMode } from '../../contract/backlog';
-import type { RepositoryHost } from '../../steps/shared/repository-host';
-import { mainPasses, type MainReading } from './task-readiness';
+import type { RepositoryHost } from './repository-host';
 
 /** What the host says of a merge request, with the names of the checks that fail and that still run on its head. */
 type GateReading = Awaited<ReturnType<RepositoryHost['gate']>>;
 
+/** What the target branch of a request adds to the rules: nothing for a feature branch, the main's own waits for a main. */
+export type MergeTarget =
+  | { kind: 'branch' }
+  | {
+      kind: 'main';
+      mode: MergeMode;
+      manual: boolean;
+      /** The owner said this task may merge. */
+      mergeOk: boolean;
+      /** The green-main words the task waits with, or null when the main passes or the task repairs it. */
+      mainWait: string | null;
+    };
+
 export interface MergeFacts {
-  mode: MergeMode;
-  manual: boolean;
-  /** The owner said this task may merge. */
-  mergeOk: boolean;
   gate: GateReading;
-  /** The repository the request is for, and how its main reads; null when it was not read. */
+  /** The repository the request is for. */
   repository: string;
-  main: MainReading | undefined;
-  /** The task repairs the main of this very repository. */
-  fixesMainHere: boolean;
-  /** A rebase was already sent for this head. */
-  rebaseSent: boolean;
   /** The branch of the run in this repository. */
   branch: string;
+  /** The target's own tip reading says the head is behind it. */
+  behind: boolean;
+  /** A rebase was already sent for this head. */
+  rebaseSent: boolean;
+  target: MergeTarget;
 }
 
 type MergeDecision =
@@ -36,12 +44,6 @@ export function stillBehind(branch: string): string {
   return `still behind ${branch} after a rebase; needs a person`;
 }
 
-function mainNote(repository: string, main: MainReading | undefined): string | null {
-  if (mainPasses(main)) return null;
-  const base = `waits for a green main of ${repository}`;
-  return main?.state === 'unreadable' ? `${base}: ${main.note}` : base;
-}
-
 /**
  * What to do with one merge request of a done run, by the queue runner's rules in their order. The checks come before
  * the reviews because the host's `blocked` also covers required checks.
@@ -52,7 +54,7 @@ export function decideMerge(facts: MergeFacts): MergeDecision {
   if (gate.state === 'merged') return { kind: 'merged', sha: gate.sha ?? gate.head };
   if (gate.draft) return { kind: 'wait', note: 'waits for its merge request to leave draft' };
   if (gate.mergeability === 'unknown') return { kind: 'wait', note: 'waits for the host to tell whether it merges' };
-  if (gate.mergeability === 'behind' || gate.mergeability === 'conflicting') {
+  if (facts.behind || gate.mergeability === 'behind' || gate.mergeability === 'conflicting') {
     return facts.rebaseSent ? { kind: 'person', note: stillBehind(facts.branch) } : { kind: 'rebase' };
   }
   if (gate.failing.length > 0)
@@ -62,10 +64,12 @@ export function decideMerge(facts: MergeFacts): MergeDecision {
   if (gate.mergeability === 'blocked') {
     return { kind: 'person', note: `reviews: ${gate.blockedBy ?? 'blocked'}; needs a person` };
   }
-  const main = facts.fixesMainHere ? null : mainNote(facts.repository, facts.main);
-  if (main) return { kind: 'wait', note: main };
-  if ((facts.mode === 'ok' || facts.manual) && !facts.mergeOk) {
-    return { kind: 'wait', note: 'waits for your OK to merge' };
+  const { target } = facts;
+  if (target.kind === 'main') {
+    if (target.mainWait) return { kind: 'wait', note: target.mainWait };
+    if ((target.mode === 'ok' || target.manual) && !target.mergeOk) {
+      return { kind: 'wait', note: 'waits for your OK to merge' };
+    }
   }
   return { kind: 'merge', head: gate.head };
 }

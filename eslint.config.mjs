@@ -312,6 +312,7 @@ export default tseslint.config(
       'server/src/steps/code-review/review-report.ts', // reads the handoff the report is written from
       'server/src/steps/shared/report-facts.ts', // reads the stored documents and visits a report is rendered from
       'server/src/steps/shared/run-report.ts', // reads the stored parts of the report the merge request shows
+      'server/src/steps/shared/merged-files-record.ts', // stores the files of a merge as a document of the run that merged, after its queue's pass and outside any visit
       'server/src/steps/shared/rebase-journal.ts', // keeps the rebase journal as a document of the run
       'server/src/steps/shared/run-names.ts', // reads the stored plan and implement changes, and stores the branch names of the run
       'server/src/steps/shared/git-refusal.ts', // the answer to a host refusal is stored and read outside any visit: it happens inside the push or the open of another step
