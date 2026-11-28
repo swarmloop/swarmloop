@@ -142,8 +142,21 @@ export function queueMilestones(chosen: QueuedMilestone[], milestones: QueuedMil
   return moves;
 }
 
-/** With more than one active milestone the lowest-numbered stays active and the later ones queue behind the end of the queue, in number order. */
+/**
+ * With more than one active milestone the result is one chain. The lowest-numbered active milestone stays active and keeps its own chain.
+ * Each later active milestone, in number order, queues behind the end of the chain so far, followed by its own existing chain in its existing order.
+ * Every move goes through `checkTransition`; a milestone already in the right place gets no move.
+ */
 export function repairActiveMilestones(milestones: QueuedMilestone[]): MilestoneMove[] {
-  const active = milestones.filter((milestone) => milestone.status === 'active').sort((a, b) => a.number - b.number);
-  return queueMilestones(active.slice(1), milestones);
+  const [first, ...later] = milestones
+    .filter((milestone) => milestone.status === 'active')
+    .sort((a, b) => a.number - b.number);
+  if (first === undefined) return [];
+  let end = endOfChain(first, milestones);
+  const moves: MilestoneMove[] = [];
+  for (const milestone of later) {
+    moves.push({ id: milestone.id, status: checkTransition(milestone.status, 'queued'), queuedAfterId: end });
+    end = endOfChain(milestone, milestones);
+  }
+  return moves;
 }

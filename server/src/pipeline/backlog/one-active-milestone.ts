@@ -4,7 +4,7 @@ import { repairActiveMilestones } from './backlog-rules';
 
 type Backlog = Awaited<ReturnType<BacklogRepository['listBacklogs']>>[number];
 
-/** Keeps one active milestone in a backlog: of several, the lowest-numbered stays and the later ones queue behind the queue, in number order. */
+/** Keeps one active milestone in a backlog: of several, the lowest-numbered stays and the later ones join one queue chain in number order, each followed by its own existing queue. */
 @Injectable()
 export class OneActiveMilestone {
   private readonly logger = new Logger(OneActiveMilestone.name);
