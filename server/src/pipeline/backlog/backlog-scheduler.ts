@@ -11,6 +11,7 @@ import { RepositoryHost } from '../../steps/shared/repository-host';
 import { BacklogEvents } from './backlog-events';
 import { BacklogMerge } from './backlog-merge';
 import { EpicMainMoves } from './epic-main-moves';
+import { OneActiveMilestone } from './one-active-milestone';
 import { MainWaitWake } from './main-wait-wake';
 import { TaskRunSkip } from './task-run-skip';
 import { BacklogStartPort } from './backlog-start-port';
@@ -68,6 +69,7 @@ export class BacklogScheduler implements OnModuleDestroy {
     private readonly epicMoves: EpicMainMoves,
     private readonly taskRun: TaskRunSkip,
     private readonly mainWake: MainWaitWake,
+    private readonly oneActive: OneActiveMilestone,
   ) {}
 
   /** Calls `listener` at the end of each events pass, before tasks are chosen. Returns the way to stop. */
@@ -114,6 +116,7 @@ export class BacklogScheduler implements OnModuleDestroy {
   private async run(): Promise<void> {
     const backlogs = await this.backlogs.listBacklogs();
     if (backlogs.length === 0) return;
+    await this.oneActive.run(backlogs);
     await this.taskRun.endSkipped();
     const mains = new Map<string, MainReading>();
     await this.merge.run(backlogs, mains);

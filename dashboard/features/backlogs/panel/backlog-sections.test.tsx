@@ -56,6 +56,23 @@ describe('BacklogSections', () => {
     expect(screen.getByText(/^ada · /)).toBeInTheDocument();
   });
 
+  it('lists the queued milestones in queue order, then the proposed ones', async () => {
+    sections('ada', {
+      ...view,
+      milestones: [
+        milestone(),
+        milestone({ number: 4, title: 'Shipping', status: 'proposed' }),
+        milestone({ number: 5, title: 'Returns', status: 'queued', queuedAfter: 6 }),
+        milestone({ number: 6, title: 'Support', status: 'queued', queuedAfter: 3 }),
+      ],
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Planned milestones (3)' }));
+
+    const names = screen.getAllByRole('button', { name: /^M\d · / }).map((button) => button.textContent);
+    expect(names).toEqual(['M6 · Support', 'M5 · Returns', 'M4 · Shipping']);
+  });
+
   it('unfolds a milestone in place', async () => {
     sections('ada');
 

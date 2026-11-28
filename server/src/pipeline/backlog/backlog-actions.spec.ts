@@ -27,6 +27,18 @@ async function withMilestones(harness: Awaited<ReturnType<typeof actionsHarness>
   }
 }
 
+/** Gives milestone `number` one closed requirement, so its work is done and it can be accepted. */
+async function finishWork(harness: Awaited<ReturnType<typeof actionsHarness>>, number: number) {
+  const backlog = (await harness.backlogs.findBacklog('shop')) as { id: number };
+  const milestone = (await harness.backlogs.milestones(backlog.id)).find((found) => found.number === number);
+  await harness.backlogs.saveRequirement({
+    milestoneId: milestone?.id as number,
+    ref: `M${number}.R9`,
+    text: 'Done',
+    status: 'closed',
+  });
+}
+
 const statuses = async (harness: Awaited<ReturnType<typeof actionsHarness>>) =>
   (await harness.queries.view('shop')).milestones.map((milestone) => milestone.status);
 
@@ -62,6 +74,7 @@ describe('BacklogActions', () => {
     withActions(async (harness) => {
       await withMilestones(harness, 1);
       await harness.actions.runBacklog('ada', 'shop');
+      await finishWork(harness, 1);
       const seen: Array<Promise<string[]>> = [];
       harness.hub.onBacklogWritten(() => seen.push(statuses(harness)));
       await harness.actions.acceptMilestone('ada', 'shop', 1);
@@ -89,6 +102,7 @@ describe('BacklogActions', () => {
       await withMilestones(harness, 3);
       await harness.actions.runBacklog('ada', 'shop');
       expect(await statuses(harness)).toEqual(['active', 'queued', 'queued']);
+      for (const number of [1, 2, 3]) await finishWork(harness, number);
 
       await harness.actions.proposeMilestone('ada', 'shop', { title: 'Later', goal: '' });
       expect(await statuses(harness)).toEqual(['active', 'queued', 'queued', 'proposed']);
@@ -106,6 +120,59 @@ describe('BacklogActions', () => {
       await harness.actions.runMilestone('ada', 'shop', 2);
       expect(await statuses(harness)).toEqual(['proposed', 'active']);
       await expect(harness.actions.runMilestone('ada', 'shop', 2)).rejects.toThrow(ConflictException);
+    }));
+
+  it('queues a milestone it runs behind the end of the queue while one is active', () =>
+    withActions(async (harness) => {
+      await withMilestones(harness, 4);
+      await harness.actions.runMilestone('ada', 'shop', 1);
+      await harness.actions.runMilestone('ada', 'shop', 3);
+      await harness.actions.runMilestone('ada', 'shop', 2);
+      expect(await statuses(harness)).toEqual(['active', 'queued', 'queued', 'proposed']);
+      const view = await harness.queries.view('shop');
+      expect(view.milestones.map((milestone) => milestone.queuedAfter)).toEqual([null, 3, 1, null]);
+      await expect(harness.actions.runMilestone('ada', 'shop', 2)).rejects.toThrow(ConflictException);
+    }));
+
+  it('queues every proposed milestone and makes none active while one is active', () =>
+    withActions(async (harness) => {
+      await withMilestones(harness, 3);
+      await harness.actions.runMilestone('ada', 'shop', 1);
+      await harness.actions.runBacklog('ada', 'shop');
+      expect(await statuses(harness)).toEqual(['active', 'queued', 'queued']);
+      expect((await harness.queries.view('shop')).milestones.map((milestone) => milestone.queuedAfter)).toEqual([
+        null,
+        1,
+        2,
+      ]);
+      await expect(harness.actions.runBacklog('ada', 'shop')).rejects.toThrow(ConflictException);
+    }));
+
+  it('refuses to accept a milestone while work is left, and leaves it active', () =>
+    withActions(async (harness) => {
+      await withMilestones(harness, 1);
+      await harness.actions.runMilestone('ada', 'shop', 1);
+      await expect(harness.actions.acceptMilestone('ada', 'shop', 1)).rejects.toThrow(
+        'M1 is not done: it has no tasks and no requirements',
+      );
+      await harness.actions.addRequirements('ada', 'shop', 1, { texts: ['First', 'Second'] });
+      await expect(harness.actions.acceptMilestone('ada', 'shop', 1)).rejects.toThrow(
+        'M1 is not done: 2 requirements are open',
+      );
+      expect(await statuses(harness)).toEqual(['active']);
+    }));
+
+  it('refuses to accept a milestone with a task that is not merged or skipped', () =>
+    withActions(async (harness) => {
+      await withMilestones(harness, 1);
+      await harness.actions.runMilestone('ada', 'shop', 1);
+      await harness.actions.addTasks('ada', 'shop', [
+        { id: 'a', title: 'A', description: 'A', milestone: 1, repositories: ['web'] },
+      ]);
+      await expect(harness.actions.acceptMilestone('ada', 'shop', 1)).rejects.toThrow(
+        'M1 is not done: 1 task is not merged or skipped',
+      );
+      expect(await statuses(harness)).toEqual(['active']);
     }));
 
   it('refuses the owner-only actions to another login and writes nothing', () =>
@@ -223,6 +290,10 @@ describe('BacklogActions', () => {
       await harness.actions.recordDecision('ada', 'shop', { text: 'd' });
       await harness.actions.addRepository('ada', 'shop', { repository: 'server' });
       await harness.actions.runMilestone('ada', 'shop', 1);
+      const backlog = (await harness.backlogs.findBacklog('shop')) as { id: number };
+      for (const requirement of await harness.backlogs.requirements(backlog.id)) {
+        await harness.backlogs.saveRequirement({ ...requirement, status: 'closed' });
+      }
       await harness.actions.acceptMilestone('ada', 'shop', 1);
       const events = await harness.actionEvents('shop');
       expect(events.map((event) => [event.facts.action, event.facts.who])).toEqual([
@@ -244,7 +315,9 @@ describe('BacklogActions', () => {
       await withMilestones(harness, 1);
       const view = await harness.queries.view('shop');
       expect(view.events.map((event) => event.kind)).toEqual(['action', 'action']);
-      expect(view.milestones).toEqual([{ number: 1, title: 'Part 1', goal: 'Goal', status: 'proposed' }]);
+      expect(view.milestones).toEqual([
+        { number: 1, title: 'Part 1', goal: 'Goal', status: 'proposed', queuedAfter: null },
+      ]);
     }));
 
   it('closes an open requirement with its evidence, and refuses a closed or unknown one and another login', () =>

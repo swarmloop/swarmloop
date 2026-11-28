@@ -45,6 +45,7 @@ import type { MainHeld } from './main-held';
 import type { RunRebase } from '../../steps/run-rebase';
 import { takesMain } from '../../steps/shared/epic-between-passes';
 import type { RunEntity } from '../../history/entities';
+import { OneActiveMilestone } from './one-active-milestone';
 import { BacklogScheduler } from './backlog-scheduler';
 import { BacklogStartPort, type BacklogStart } from './backlog-start-port';
 
@@ -247,6 +248,7 @@ export async function backlogHarness(parallel = 3) {
       epicMoves,
       taskRun,
       mainWake,
+      new OneActiveMilestone(backlogs),
     );
   let current = make();
 

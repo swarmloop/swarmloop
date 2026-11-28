@@ -87,12 +87,13 @@ function queriesOver(
   requirements: Row[],
   tasks: Row[],
   runRows: Record<string, Row> = {},
+  milestones: Row[] = [{ id: 10, number: 3, title: 'T', goal: 'G', status: 'active', queuedAfterId: null }],
 ): BacklogQueries {
   const backlog = { id: 1, name: 'shop', owner: 'ada', repositories: ['r'], mergeMode, paused: false };
   const repository = {
     listBacklogs: async () => [backlog],
     findBacklog: async () => backlog,
-    milestones: async () => [{ id: 10, number: 3, title: 'T', goal: 'G', status: 'active' }],
+    milestones: async () => milestones,
     requirements: async () => requirements,
     tasks: async () => tasks,
     decisions: async () => [],
@@ -121,6 +122,15 @@ const task = (slug: string, overrides: Row = {}): Row => ({
 });
 
 describe('BacklogQueries view', () => {
+  it('gives a queued milestone the number of the one it waits behind and an active one null', async () => {
+    const milestones = [
+      { id: 10, number: 3, title: 'T', goal: 'G', status: 'active', queuedAfterId: null },
+      { id: 11, number: 4, title: 'U', goal: 'H', status: 'queued', queuedAfterId: 10 },
+    ];
+    const view = await queriesOver('green', [], [], {}, milestones).view('shop');
+    expect(view.milestones.map((item) => item.queuedAfter)).toEqual([null, 3]);
+  });
+
   it('carries the description, covers and depends of each task', async () => {
     const queries = queriesOver('green', [], [task('a', { covers: ['M3.R1'], depends: ['b'] })]);
     const [view] = (await queries.view('shop')).tasks;

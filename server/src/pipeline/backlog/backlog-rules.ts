@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import type { MergeMode, MilestoneStatus } from '../../contract/backlog';
+import type { MergeMode, MilestoneStatus, RequirementStatus } from '../../contract/backlog';
+import { milestoneWorkDone } from '../../contract/milestone-work';
+import { settled, type Subtask } from '../../contract/subtask';
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const MERGE_MODES: MergeMode[] = ['green', 'ok'];
@@ -7,7 +9,7 @@ const MERGE_MODES: MergeMode[] = ['green', 'ok'];
 const TRANSITIONS: Record<MilestoneStatus, MilestoneStatus[]> = {
   proposed: ['queued', 'active'],
   queued: ['active'],
-  active: ['accepted'],
+  active: ['accepted', 'queued'],
   accepted: [],
 };
 
@@ -54,6 +56,24 @@ export function checkTransition(from: MilestoneStatus, to: MilestoneStatus): Mil
   return to;
 }
 
+/** A 409 that says what is left, unless the milestone's work is done (see `milestoneWorkDone`). */
+export function checkWorkDone(
+  number: number,
+  tasks: Pick<Subtask, 'status'>[],
+  requirements: { status: RequirementStatus }[],
+): void {
+  if (milestoneWorkDone(tasks, requirements)) return;
+  const unsettled = tasks.filter((task) => !settled(task)).length;
+  const open = requirements.filter((requirement) => requirement.status !== 'closed').length;
+  const left = [
+    unsettled > 0 ? `${unsettled} ${unsettled === 1 ? 'task is' : 'tasks are'} not merged or skipped` : '',
+    open > 0 ? `${open} ${open === 1 ? 'requirement is' : 'requirements are'} open` : '',
+  ].filter((part) => part !== '');
+  throw new ConflictException(
+    `M${number} is not done: ${left.length > 0 ? left.join(', ') : 'it has no tasks and no requirements'}`,
+  );
+}
+
 export function nextMilestoneNumber(numbers: number[]): number {
   return Math.max(0, ...numbers) + 1;
 }
@@ -73,6 +93,7 @@ interface QueuedMilestone {
   id: number;
   number: number;
   status: MilestoneStatus;
+  queuedAfterId?: number | null;
 }
 
 interface MilestoneMove {
@@ -81,17 +102,61 @@ interface MilestoneMove {
   queuedAfterId: number | null;
 }
 
-/** Run backlog: the chosen milestone is active; every other proposed one queues after the one before it, in number order. */
-export function queueBacklog(chosen: QueuedMilestone, milestones: QueuedMilestone[]): MilestoneMove[] {
-  checkTransition(chosen.status, 'active');
-  const moves: MilestoneMove[] = [{ id: chosen.id, status: 'active', queuedAfterId: null }];
-  let before = chosen.id;
-  const others = milestones
-    .filter((milestone) => milestone.id !== chosen.id && milestone.status === 'proposed')
-    .sort((left, right) => left.number - right.number);
-  for (const milestone of others) {
+/** The last milestone of the chain that starts at `start` and follows each queued milestone to the one queued behind it. */
+function endOfChain(start: QueuedMilestone, milestones: QueuedMilestone[]): number {
+  let end = start.id;
+  for (let step = 0; step < milestones.length; step += 1) {
+    const next = milestones.find((other) => other.status === 'queued' && other.queuedAfterId === end);
+    if (next === undefined) break;
+    end = next.id;
+  }
+  return end;
+}
+
+/**
+ * The one queue rule. With no active milestone the first chosen one, by number, becomes active and the other chosen ones queue in a chain behind it.
+ * With an active milestone every chosen one queues, in number order, behind the last milestone of the chain that starts at the active one.
+ * Every move goes through `checkTransition`, so a chosen milestone that cannot make the move is refused.
+ */
+export function queueMilestones(chosen: QueuedMilestone[], milestones: QueuedMilestone[]): MilestoneMove[] {
+  const ordered = [...chosen].sort((left, right) => left.number - right.number);
+  const taken = new Set(ordered.map((milestone) => milestone.id));
+  const active = milestones
+    .filter((milestone) => milestone.status === 'active' && !taken.has(milestone.id))
+    .sort((left, right) => left.number - right.number)[0];
+  const moves: MilestoneMove[] = [];
+  let before: number;
+  if (active === undefined) {
+    const [first, ...rest] = ordered;
+    if (first === undefined) return moves;
+    moves.push({ id: first.id, status: checkTransition(first.status, 'active'), queuedAfterId: null });
+    before = first.id;
+    ordered.splice(0, ordered.length, ...rest);
+  } else {
+    before = endOfChain(active, milestones);
+  }
+  for (const milestone of ordered) {
     moves.push({ id: milestone.id, status: checkTransition(milestone.status, 'queued'), queuedAfterId: before });
     before = milestone.id;
+  }
+  return moves;
+}
+
+/**
+ * With more than one active milestone the result is one chain. The lowest-numbered active milestone stays active and keeps its own chain.
+ * Each later active milestone, in number order, queues behind the end of the chain so far, followed by its own existing chain in its existing order.
+ * Every move goes through `checkTransition`; a milestone already in the right place gets no move.
+ */
+export function repairActiveMilestones(milestones: QueuedMilestone[]): MilestoneMove[] {
+  const [first, ...later] = milestones
+    .filter((milestone) => milestone.status === 'active')
+    .sort((a, b) => a.number - b.number);
+  if (first === undefined) return [];
+  let end = endOfChain(first, milestones);
+  const moves: MilestoneMove[] = [];
+  for (const milestone of later) {
+    moves.push({ id: milestone.id, status: checkTransition(milestone.status, 'queued'), queuedAfterId: end });
+    end = endOfChain(milestone, milestones);
   }
   return moves;
 }

@@ -81,7 +81,7 @@ Each fix is an action with a one-line reason in the chat. A clash that needs a p
 
 ## Finishing a milestone
 
-When every requirement is closed, accept the milestone and propose the next one from the backlog items, unless the owner already queued it with `Run backlog`.
+When the active milestone's work is done (every task merged or skipped and every requirement closed, a milestone with no requirements included), its milestone-ready event arrives. Accept it in that turn with `acceptMilestone`, then propose the next one from the backlog items, unless the owner already queued it with `Run backlog`.
 
 ## What you hand back
 

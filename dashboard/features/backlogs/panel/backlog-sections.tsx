@@ -11,6 +11,7 @@ import { FoldedSection } from './folded-section';
 import { AddTaskButton } from './task-editor';
 import { useTaskDrop } from './use-task-drop';
 import { MilestoneDetails } from './milestone-details';
+import { plannedMilestones } from './planned-order';
 
 interface BacklogSectionsProps {
   view: BacklogView;
@@ -24,7 +25,7 @@ export function BacklogSections({ view, login, onView }: BacklogSectionsProps): 
   const [refusal, setRefusal] = useState('');
   const [busy, setBusy] = useState(false);
   const owner = login !== null && login === view.owner;
-  const planned = view.milestones.filter((item) => item.status === 'proposed' || item.status === 'queued');
+  const planned = plannedMilestones(view);
   const drop = useTaskDrop(view.name, null, onView);
   const items = view.tasks.filter((task) => task.milestone === null);
   const start = async (call: () => Promise<BacklogView>): Promise<void> => {

@@ -133,6 +133,41 @@ describe('NowSection', () => {
     expect(within(card).queryByText(/left/)).not.toBeInTheDocument();
   });
 
+  it('counts a skipped task of a milestone as done', async () => {
+    load(
+      [],
+      [
+        milestoneOf([
+          task({ slug: 'a', status: 'merged' }),
+          task({ slug: 'b', status: 'skipped' }),
+          task({ slug: 'c' }),
+        ]),
+      ],
+    );
+    render(<NowSection />, { wrapper: PartsWrapper });
+    expect(await screen.findByText('2/3 tasks')).toBeInTheDocument();
+  });
+
+  it('counts a skipped subtask of an epic as done', async () => {
+    load([epicRun('epic-1', { taskCounts: { merged: 1, skipped: 1, running: 1 } })]);
+    render(<NowSection />, { wrapper: PartsWrapper });
+    expect(await screen.findByText('2/3 tasks')).toBeInTheDocument();
+  });
+
+  it('says a milestone whose work is done waits for acceptance, not Working', async () => {
+    const done = backlogView({
+      name: 'shop',
+      milestones: [milestone({ status: 'active' })],
+      requirements: [],
+      tasks: [task({ slug: 'a', status: 'merged' }), task({ slug: 'b', status: 'skipped' })],
+    });
+    load([], [done]);
+    render(<NowSection />, { wrapper: PartsWrapper });
+    const card = (await screen.findByText('Checkout')).closest('a') as HTMLElement;
+    expect(within(card).getByText('Waiting for acceptance')).toBeInTheDocument();
+    expect(within(card).queryByText('Working')).not.toBeInTheDocument();
+  });
+
   it('says when the runs cannot be read', async () => {
     vi.mocked(listBacklogs).mockResolvedValue([]);
     vi.mocked(listRuns).mockRejectedValue(new Error('down'));
