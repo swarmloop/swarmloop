@@ -2,6 +2,7 @@ import { ERROR_CODES } from '../../contract/error-codes';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import { git } from '../git';
 import { worktreeFingerprint } from '../worktree-git';
+import { isBeforeBranch } from './before-branch';
 
 /** The journal of a rebase: written before the first change and updated at each checkpoint. */
 export const REBASE_JOURNAL = 'rebase_journal';
@@ -130,7 +131,8 @@ export async function completeRebase(journal: RebaseJournal, key: string): Promi
       continue;
     }
     await journal.advance(repo, 'environment_refreshed');
-    if ((await git(['-C', entry.path, 'branch', '--show-current'])) !== entry.branch) {
+    const current = await git(['-C', entry.path, 'branch', '--show-current']);
+    if (current !== entry.branch && !(await isBeforeBranch(entry.path, current, entry.branch))) {
       throw new SwarmloopError(`${repo} branch is missing`, { code: ERROR_CODES.REBASE_CONFLICT });
     }
     await journal.advance(repo, 'verified');

@@ -19,8 +19,6 @@ import { NO_CI_NOTE } from './split-pass';
 import { noCiReason } from '../pipeline/pipeline-no-ci';
 import { git } from '../../testing/runs.spec-helpers';
 import { SubtaskOps } from '../shared/subtask-ops';
-
-import { SubtaskOps } from '../shared/subtask-ops';
 import {
   FakeHost,
   FEATURE,

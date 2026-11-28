@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { RunEntity } from '../../history/entities';
 import { FetchFailed, MergeConflict } from '../../core/swarmloop-error';
-import { decideMerge, stillBehind, type MergeFacts, type MergeTarget } from './merge-rules';
+import { decideMerge, type MergeFacts, type MergeTarget } from './merge-rules';
 import { MergedFilesRecord } from './merged-files-record';
 import { RepositoryHost } from './repository-host';
 
@@ -18,8 +18,8 @@ export interface LandingQueue {
   target(repo: string): MergeTarget;
   /** Whether the target's own tip reading says the head is behind it. */
   behind(request: LandingRequest, head: string): Promise<boolean>;
-  /** Asks for a rebase of the run. Null: this head was already asked. Sent false: not sent or refused, a wait with the note. */
-  rebase(request: LandingRequest, head: string): Promise<{ sent: boolean; note: string } | null>;
+  /** Asks for a rebase of the run. Sent false: nothing new was sent, a wait with the note. */
+  rebase(request: LandingRequest, head: string): Promise<{ sent: boolean; note: string }>;
   /** The host refused the merge of this head. */
   refused(request: LandingRequest, head: string, message: string): Promise<void>;
   /** Keeps the commit of a repository at once. */
@@ -107,9 +107,7 @@ export class MergeLanding {
     const facts: MergeFacts = {
       gate,
       repository: request.repo,
-      branch: request.branch,
       behind: await queue.behind(request, gate.head),
-      rebaseSent: false,
       target: queue.target(request.repo),
     };
     const decision = decideMerge(facts);
@@ -119,10 +117,9 @@ export class MergeLanding {
     return { hold: decision };
   }
 
-  /** Asks for the rebase of a request that is behind. A head that was already asked is still behind: a person decides. */
+  /** Asks for the rebase of a request that is behind; what the queue answers is a rebased hold or a wait. */
   private async rebase(item: LandingItem, request: LandingRequest, head: string): Promise<Step> {
     const sent = await item.queue.rebase(request, head);
-    if (!sent) return { hold: { kind: 'person', note: stillBehind(request.branch) } };
     return { hold: { kind: sent.sent ? 'rebased' : 'wait', note: sent.note } };
   }
 

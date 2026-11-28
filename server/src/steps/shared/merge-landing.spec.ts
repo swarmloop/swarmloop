@@ -35,15 +35,10 @@ function setup(gates: Record<string, Gate>, mergeError?: Error) {
       log.push(`record ${JSON.stringify(merged)} on ${await target('web')}`);
     },
   } as unknown as MergedFilesRecord;
-  const asked: string[] = [];
   const queue: LandingQueue = {
     target: () => ({ kind: 'branch' }),
     behind: async () => false,
-    rebase: async (request, head) => {
-      if (asked.includes(head)) return null;
-      asked.push(head);
-      return { sent: true, note: `rebased ${request.repo}` };
-    },
+    rebase: async (request) => ({ sent: true, note: `rebased ${request.repo}` }),
     refused: async (request, _head, message) => void log.push(`refused ${request.repo}: ${message}`),
     landed: async (repo, sha) => void log.push(`landed ${repo} ${sha}`),
     targetBranch: async (repo) => `main-of-${repo}`,
@@ -105,18 +100,6 @@ describe('MergeLanding', () => {
     const result = await landing.land(item(['web'], { queue: refusing }));
 
     expect(result).toMatchObject({ kind: 'held', holds: [{ repo: 'web', kind: 'wait', note: 'rebase refused: no' }] });
-  });
-
-  it('needs a person when the head was already asked for a rebase', async () => {
-    const { landing, item } = setup({ web: gate({ mergeability: 'behind' }) });
-    await landing.land(item(['web']));
-
-    const result = await landing.land(item(['web']));
-
-    expect(result).toMatchObject({
-      kind: 'held',
-      holds: [{ repo: 'web', kind: 'person', note: 'still behind swarmloop/web after a rebase; needs a person' }],
-    });
   });
 
   it('asks for a rebase when the merge conflicts', async () => {
