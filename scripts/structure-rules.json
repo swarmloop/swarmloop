@@ -139,11 +139,7 @@
     {
       "include": "server/src/",
       "exclude": "\\.spec(-helpers)?\\.ts$",
-      "allowFiles": [
-        "server/src/git/rebase/own-change.ts",
-        "server/src/pipeline/parent-tree-sync.ts",
-        "server/src/pipeline/subtask-worktrees.ts"
-      ],
+      "allowFiles": ["server/src/git/rebase/own-change.ts", "server/src/pipeline/parent-tree-sync.ts"],
       "pattern": "'merge-base',\\s*'HEAD'|'--onto'"
     },
     {

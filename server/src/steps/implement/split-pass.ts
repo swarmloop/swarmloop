@@ -182,10 +182,12 @@ export class SplitPass {
       // A Stop of the parent stopped this run. Resume goes on where it stopped.
       await this.deps.subtasks.resume(child);
     }
-    const delivered = child.status === 'done' ? await this.deps.subtasks.deliveredNote(child) : null;
+    // A run whose move has not run is not read: its worktrees and its state are those before the move.
+    const moving = await this.deps.subtasks.moving(child);
+    const delivered = !moving && child.status === 'done' ? await this.deps.subtasks.deliveredNote(child) : null;
     if (delivered) return { ...task, status: 'skipped', note: delivered };
     const move = await this.deps.subtasks.moveOf(child);
-    const status = taskStatusOf(task, child, move);
+    const status = moving ? 'running' : taskStatusOf(task, child, move);
     if (status === 'merged') return { ...task, status, merged: mergedOf(child), note: undefined };
     if (move) return { ...task, status, note: moveNote(move) };
     const waits = status === 'running' ? runWaitNote(task, { state, stateReason: reason }) : undefined;

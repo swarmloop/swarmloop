@@ -62,7 +62,12 @@ export class SubtaskRebases {
       return !!event;
     }
     try {
-      await this.sendRebase(run, take.keepsWait, event);
+      const tip = event?.tip ?? (await this.parentTip(run));
+      if (!tip) {
+        this.logger.warn(`${run.key} was not rebased: its parent has no tip to move it onto`);
+        return false;
+      }
+      await this.sendRebase(run, tip, take.keepsWait);
     } catch (error) {
       this.logger.warn(`${run.key} was not rebased: ${error instanceof Error ? error.message : String(error)}`);
       return false;
@@ -74,23 +79,29 @@ export class SubtaskRebases {
   /**
    * Sends the Rebase. The key names the parent tip the run moves onto; when the command of that key died, the next
    * try is a new event named after the command that died, so a rebase that failed once is sent again and never the
-   * same one twice. A run whose parent has no tip keeps the key of its revision and generation.
+   * same one twice.
    */
-  private async sendRebase(run: RunEntity, keepsWait: boolean, event?: RebaseEvent): Promise<void> {
+  private async sendRebase(run: RunEntity, tip: string, keepsWait: boolean): Promise<void> {
     const payload = keepsWait ? { byParent: true, keepsWait: true } : { byParent: true };
-    const tip = event?.tip ?? (await this.parentTip(run));
-    if (!tip) {
-      await this.commands.accept('rebase', run.key, payload, {
-        idempotencyKey: `${MOVE_KEY}${run.revision}-${run.generation}`,
-      });
-      return;
-    }
     let idempotencyKey = `${MOVE_KEY}${run.key}-${tip}`;
     for (;;) {
       const sent = await this.commands.accept('rebase', run.key, payload, { idempotencyKey });
       if (!sent.replayed || sent.command.state !== 'failed') return;
       idempotencyKey = `${idempotencyKey}-after-${sent.command.id}`;
     }
+  }
+
+  /** True while the run has a rebase that was sent and has not run: its worktrees are not on the new tip yet. */
+  moving(run: RunEntity): Promise<boolean> {
+    return this.commands.hasPending(run, 'rebase');
+  }
+
+  /**
+   * Moves the run onto its parent's branch through its Rebase, by its parent. The run keeps its state for the rerun
+   * that follows; a conflict stays parked for its implement agent. An error goes to the caller.
+   */
+  async catchUp(run: RunEntity): Promise<void> {
+    await this.rebaser?.rebase(run.key, false, true, false, true);
   }
 
   /**

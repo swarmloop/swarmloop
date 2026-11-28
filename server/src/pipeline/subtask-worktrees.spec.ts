@@ -244,27 +244,6 @@ describe('asking a subtask worktree for the tip while another operation holds it
 describe('bringing a subtask worktree up to a feature branch that was rewritten', () => {
   const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
 
-  it('replays only the own change of the subtask on the new tip, and records that tip', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-catch-up-'));
-    const { tree, clone } = featureWorktree(root, 'proj-95');
-    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
-    const { oldTip, newTip } = rewriteEpicOnOrigin(tree, clone, 'feature/epic-ship');
-    writeFileSync(join(tree, 'src', 'part.ts'), 'part\n');
-    git(tree, ['add', '.']);
-    git(tree, ['commit', '-m', 'part']);
-    const { tips, recorded } = memoryTips([oldTip]);
-
-    await new SubtaskWorktrees(config, clock, tips).catchUp(
-      { key: 'proj-95' } as RunEntity,
-      ['demo'],
-      'feature/epic-ship',
-    );
-
-    expect(git(tree, ['rev-parse', 'HEAD~1'])).toBe(newTip);
-    expect(git(tree, ['diff', '--name-only', 'HEAD~1', 'HEAD'])).toBe('src/part.ts');
-    expect(recorded).toEqual([{ demo: newTip }]);
-  });
-
   it('commits the own edits of the parent on the new tip without the old commits of the branch', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-own-edits-rewritten-'));
     const { tree, clone } = featureWorktree(root, 'proj-96');

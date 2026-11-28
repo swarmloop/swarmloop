@@ -239,8 +239,12 @@ export class SubtaskPort extends SubtaskOps {
     return mergeSummaryOf(this.documents, run.key);
   }
 
-  override async catchUp(parent: RunEntity, run: RunEntity): Promise<void> {
-    await this.worktrees.catchUp(run, await this.reposOf(run), await this.branchOf(parent));
+  override moving(run: RunEntity): Promise<boolean> {
+    return this.rebases.moving(run);
+  }
+
+  override catchUp(_parent: RunEntity, run: RunEntity): Promise<void> {
+    return this.rebases.catchUp(run);
   }
 
   override async behindTip(parent: RunEntity, run: RunEntity): Promise<string | null> {

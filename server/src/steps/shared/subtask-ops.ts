@@ -148,7 +148,9 @@ export abstract class SubtaskOps {
   abstract needsOf(run: RunEntity): Promise<Need[]>;
   /** The merge request text of a subtask run, or an empty string. */
   abstract mergeSummary(run: RunEntity): Promise<string>;
-  /** Brings the worktrees of a subtask run, edits that are not committed included, up to the feature branch as it is on origin. */
+  /** True while a rebase of the run was sent and has not run: the run reads as running until it did. */
+  abstract moving(run: RunEntity): Promise<boolean>;
+  /** Moves a subtask run onto the feature branch through its Rebase, keeping its state; a conflict stays parked for its implement agent. */
   abstract catchUp(parent: RunEntity, run: RunEntity): Promise<void>;
   /**
    * Ends the wait of a subtask run that asked for needs: the needs are cleared, the lines go into its handoff, and the
