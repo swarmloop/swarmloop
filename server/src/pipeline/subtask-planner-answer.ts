@@ -23,7 +23,7 @@ import {
 } from '../steps/implement/starter-actions';
 import { handBackErrors } from '../steps/shared/hand-back';
 import { renderNeeds } from '../steps/shared/needs';
-import { askPerson } from '../steps/shared/person-questions';
+import { askPerson, partsOfOpen } from '../steps/shared/person-questions';
 import { readAnsweredQuestions, readStoredQuestions, type PlannerLine } from '../steps/shared/question-parts';
 import { askedQuestion } from '../steps/implement/split-questions';
 import { isEscalated, type Delivery, type Escalated } from '../steps/shared/subtask-ops';
@@ -113,9 +113,16 @@ export class SubtaskPlannerAnswer {
    * and puts nothing.
    */
   async handUp(parent: RunEntity, taskId: string, text: string, lines: PlannerLine[]): Promise<string | null> {
+    const open = openQuestions(
+      (await this.documents.latestBody(parent.key, ARTIFACTS.subtaskQuestions.kind)) ?? '',
+      [],
+    );
+    const stored = readStoredQuestions(
+      (await this.documents.latestBody(parent.key, ARTIFACTS.questionParts.kind)) ?? '',
+    );
     const held = {
-      lines: openQuestions((await this.documents.latestBody(parent.key, ARTIFACTS.subtaskQuestions.kind)) ?? '', []),
-      parts: readStoredQuestions((await this.documents.latestBody(parent.key, ARTIFACTS.questionParts.kind)) ?? ''),
+      lines: open,
+      parts: partsOfOpen(stored, open),
       answered: readAnsweredQuestions(
         (await this.documents.latestBody(parent.key, ARTIFACTS.answeredQuestions.kind)) ?? '',
       ),

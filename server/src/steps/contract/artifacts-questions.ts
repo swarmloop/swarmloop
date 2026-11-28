@@ -31,10 +31,10 @@ export const QUESTION_ARTIFACTS = {
     codec: jsonArrayCodec<PassedOn>(),
     summarize: (passed) => listSummary(passed.length, 'passed on questions', passed[0]?.line),
   }),
-  // The questions a person answered on this run, so none is asked again; written by the server, reread by the split pass.
+  // The questions a person answered on this run, so none is asked again; written by the server, reread by the steps that ask.
   answeredQuestions: artifact('answered_questions', {
     writers: [],
-    readers: ['implement'],
+    readers: ['code-review', 'implement'],
     external: true,
     codec: jsonArrayCodec<AnsweredQuestion>(),
     summarize: (answered) => listSummary(answered.length, 'answered questions', answered[0]?.decide),

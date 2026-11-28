@@ -7,7 +7,8 @@ import { ARTIFACTS } from '../contract/artifacts';
 import { renderQuestions } from '../research/research-record';
 import { reviewAnswerKey } from '../shared/review-answer-key';
 import { renderReview } from './code-review-record';
-import { reviewAsks, settleAsked } from './review-ask';
+import { askedParts, type StoredQuestion } from '../shared/question-parts';
+import { askReviewer, reviewAsks, settleAsked } from './review-ask';
 
 const ASKED_AT = '2026-11-15T07:11:43.444Z';
 
@@ -153,5 +154,67 @@ describe('settling the questions of a subtask review by the epic planner', () =>
     const { documents, planner, ctx, ended } = setup([earlier], { code: returned });
     await settleAsked(ctx, documents, planner);
     expect(ended).toMatchObject([{ moveTo: 'implement' }]);
+  });
+});
+
+describe('putting the questions of the reviewers to the person', () => {
+  const ask = (reviewer: string, decide: string): StoredQuestion => ({
+    question: `${reviewer} still returns: x. Which holds? (asked t)`,
+    parts: askedParts(decide, 't', { asker: `code-review-${reviewer}` }),
+  });
+  const recorded = [{ kind: 'review_code', body: 'review' }] as never;
+  const carried = { documents: recorded, call: null, usage: { tokensIn: 0, tokensOut: 0, usd: 0, samples: [] } };
+  const documents = {} as DocumentRepository;
+
+  function open() {
+    const ended: { moveTo?: string; visit: { documents: { kind: string; body: string }[] } }[] = [];
+    const ctx = {
+      opened: { run: { id: 1, key: 'run', attemptsReview: 0 }, startedAt: 't', started: 0 },
+      clock: { iso: () => 't', now: () => 0 },
+      reread: async () => '{"prompt":"Ship it."}',
+      end: async (result: never) => void ended.push(result),
+    } as unknown as StepContext;
+    return { ctx, ended };
+  }
+  const bodyOf = (ended: ReturnType<typeof open>['ended'], kind: string) =>
+    ended[0].visit.documents.find((document) => document.kind === kind)?.body;
+
+  it('waits for the person with the questions and their parts when none was answered before', async () => {
+    const { ctx, ended } = open();
+    const asks = [ask('code', 'Is the code review right?')];
+
+    await askReviewer(ctx, asks, [], carried, documents);
+
+    expect(ended[0].moveTo).toBeUndefined();
+    expect(bodyOf(ended, ARTIFACTS.reviewQuestions.kind)).toBe(renderQuestions([asks[0].question]));
+    expect(JSON.parse(bodyOf(ended, ARTIFACTS.questionParts.kind) ?? '[]')).toHaveLength(1);
+    expect(bodyOf(ended, ARTIFACTS.answers.kind)).toBeUndefined();
+  });
+
+  it('settles a question the person answered before as the person decided, and puts nothing', async () => {
+    const { ctx, ended } = open();
+    const record = [{ asker: 'code-review-code', decide: 'Is  the code review right?', answer: 'It holds.', at: 't' }];
+
+    await askReviewer(ctx, [ask('code', 'Is the code review right?')], record, carried, documents);
+
+    expect(ended[0].moveTo).toBe('implement');
+    expect(bodyOf(ended, ARTIFACTS.issues.kind)).toContain('The person decided: It holds.');
+    expect(bodyOf(ended, ARTIFACTS.reviewQuestions.kind)).toBe('');
+    expect(bodyOf(ended, 'review_code')).toBe('review');
+  });
+
+  it('waits for the questions not answered before and keeps the answers of the others', async () => {
+    const { ctx, ended } = open();
+    const [first, second] = [
+      ask('code', 'Is the code review right?'),
+      ask('behavior', 'Is the behavior review right?'),
+    ];
+    const record = [{ asker: 'code-review-code', decide: first.parts.decide, answer: 'It holds.', at: 't' }];
+
+    await askReviewer(ctx, [first, second], record, carried, documents);
+
+    expect(ended[0].moveTo).toBeUndefined();
+    expect(bodyOf(ended, ARTIFACTS.answers.kind)).toBe(`question: ${first.question}\nanswer: It holds.\n`);
+    expect(bodyOf(ended, ARTIFACTS.reviewQuestions.kind)).toBe(renderQuestions([first.question, second.question]));
   });
 });

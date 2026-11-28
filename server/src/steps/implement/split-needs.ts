@@ -119,8 +119,10 @@ export class SplitNeeds {
     needs: Need[],
   ): Promise<NeedsPass> {
     const text = needs.map((need) => `${task.id} needs ${need.id}: ${need.what}`).join('\n');
-    const { level, answer } = await this.subtasks.askUp(child, { from: 'implement', text }, 1);
-    if (answer === null) return { ...pass, asks: [...pass.asks, askedQuestion(task.id, text, opened.startedAt)] };
+    const { level, answer, lines } = await this.subtasks.askUp(child, { from: 'implement', text }, 1);
+    if (answer === null) {
+      return { ...pass, asks: [...pass.asks, askedQuestion(task.id, text, opened.startedAt, lines)] };
+    }
     await this.subtasks.rerun(child, [answer], { by: 'planner', level });
     return { ...pass, contract: withDecision(pass.contract, task.id, answer) };
   }

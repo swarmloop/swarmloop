@@ -68,6 +68,36 @@ describe('research step', () => {
     }
   });
 
+  it('does not ask a question the person answered before, and goes on to plan', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-answered-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-26', 'billing-api'), { recursive: true });
+    const agent = jest
+      .fn()
+      .mockResolvedValueOnce(answer({ questions: ['which field is optional?'] }))
+      .mockResolvedValueOnce(answer());
+    const app = await boot(root, agent);
+    const runs = app.get(RunRepository);
+    const documents = app.get(DocumentRepository);
+    const seeded = await runs.begin('PROJ-26', 'prepare');
+    seeded.status = 'waiting';
+    seeded.currentStep = 'research';
+    await storeRun(runs, seeded);
+    await documents.putDocument(seeded, 'requirements', '{"prompt":"ship it"}\n');
+    const record = [{ asker: 'research', decide: 'which  field is optional?', answer: 'The tax id.', at: 't' }];
+    await documents.putDocument(seeded, 'answered_questions', JSON.stringify(record));
+    await documents.putDocument(seeded, 'answers', 'question: which field is optional?\nanswer: The tax id.\n');
+    try {
+      await app.get(PipelineService).step('research', 'PROJ-26');
+      expect(agent).toHaveBeenCalledTimes(2);
+      expect(String((agent.mock.calls[1]?.[0] as AgentRunInput).prompt)).toContain('the person already answered');
+      expect(await documents.latestBody('PROJ-26', 'questions')).toBe('');
+      expect((await runs.findRun('PROJ-26'))?.currentStep).toBe('plan');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('mounts only the stored project', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-research-project-'));
     await writeEnv(root);

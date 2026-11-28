@@ -7,7 +7,7 @@ import type { FlowRepository } from '../../history/flow.repository';
 import type { VisitRepository } from '../../history/visit.repository';
 import { readyTasks, settled, runWaitNote, waitNote, withStatuses, type Subtask } from '../../contract/subtask';
 import { openQuestions } from '../shared/answers';
-import { askPerson, type PersonHeld } from '../shared/person-questions';
+import { askPerson, partsOfOpen, type PersonHeld } from '../shared/person-questions';
 import type { StoredQuestion } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
 import type { OwnEdits, SubtaskOps } from '../shared/subtask-ops';
@@ -105,7 +105,11 @@ export class SplitPass {
     const placed = await this.person(
       run,
       asks,
-      { lines: carried, parts: storedParts, answered: (await ctx.reread(ARTIFACTS.answeredQuestions)) ?? [] },
+      {
+        lines: carried,
+        parts: partsOfOpen(storedParts, carried),
+        answered: (await ctx.reread(ARTIFACTS.answeredQuestions)) ?? [],
+      },
       { contract: looked.contract, at: startedAt },
     );
     const open = placed.lines;

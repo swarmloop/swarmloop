@@ -8,6 +8,7 @@ import {
   reviewParts,
   type AnsweredQuestion,
   type PlannerLine,
+  askedAgain,
 } from './question-parts';
 
 const ASKED_AT = '2026-11-15T07:11:43.444Z';
@@ -108,5 +109,14 @@ describe('question parts', () => {
 
     expect(readAnsweredQuestions(JSON.stringify(record))).toEqual(record);
     expect(readAnsweredQuestions('')).toEqual([]);
+  });
+
+  it('names the answer of a question the asker was answered before, and nothing for the others', () => {
+    const record: AnsweredQuestion[] = [{ asker: 'plan', decide: 'Which  one?', answer: 'This', at: ASKED_AT }];
+
+    expect(askedAgain(['Which one?', 'Which other?'], record, 'plan')).toEqual([
+      'questions: the person already answered "Which one?" with "This"; decide with that answer',
+    ]);
+    expect(askedAgain(['Which one?'], record, 'research')).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import { askPerson } from './person-questions';
+import { askPerson, partsOfOpen } from './person-questions';
 import { askedParts, type AnsweredQuestion, type StoredQuestion } from './question-parts';
 
 const AT = '2026-11-28T10:00:00.000Z';
@@ -18,15 +18,23 @@ describe('askPerson', () => {
     expect(askPerson({ lines: first.lines, parts: first.parts, answered: [] }, next)).toEqual(first);
   });
 
-  it('drops the parts of lines that are no longer open', () => {
-    const closed = ask('subtask:a', 'Closed?');
-    const next = ask('subtask:b', 'Open?');
+  it('keeps the stored parts of other documents and replaces an earlier entry of the same question', () => {
+    const review = ask('reviewer', 'Review?');
+    const again = ask('subtask:b', 'Open?');
+    const next = { ...again, parts: askedParts('Open? Again', AT, { asker: 'subtask:b' }) };
 
-    expect(askPerson({ lines: [], parts: [closed], answered: [] }, next)).toEqual({
+    expect(askPerson({ lines: [again.question], parts: [review, again], answered: [] }, next)).toEqual({
       kind: 'asked',
-      lines: [next.question],
-      parts: [next],
+      lines: [again.question],
+      parts: [review, next],
     });
+  });
+
+  it('lists the stored parts of the open lines only', () => {
+    const closed = ask('subtask:a', 'Closed?');
+    const open = ask('subtask:b', 'Open?');
+
+    expect(partsOfOpen([closed, open], [open.question])).toEqual([open]);
   });
 
   it('gives the answer of an asker and decision answered before, and adds no line', () => {

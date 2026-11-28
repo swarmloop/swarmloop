@@ -145,6 +145,34 @@ describe('plan step', () => {
     }
   });
 
+  it('does not ask a question the person answered before, and goes on to plan improve', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-answered-'));
+    await writeEnv(root);
+    mkdirSync(join(root, 'worktrees', 'PROJ-49', 'billing-api'), { recursive: true });
+    const agent = jest
+      .fn()
+      .mockResolvedValueOnce(result(questionsBlock(['which  column type?'])))
+      .mockResolvedValueOnce(result(planBlock(['add the field'])));
+    const app = await boot(root, agent);
+    try {
+      const runs = app.get(RunRepository);
+      await seed(app, 'PROJ-49', '');
+      const run = (await runs.findRun('PROJ-49'))!;
+      const record = [{ asker: 'plan', decide: 'which column type?', answer: 'int', at: 't' }];
+      await app.get(DocumentRepository).putDocument(run, 'answered_questions', JSON.stringify(record));
+      await app.get(DocumentRepository).putDocument(run, 'answers', 'question: which column type?\nanswer: int\n');
+
+      await app.get(PipelineService).step('plan', 'PROJ-49');
+
+      expect(agent).toHaveBeenCalledTimes(2);
+      expect(String((agent.mock.calls[1]?.[0] as AgentRunInput).prompt)).toContain('the person already answered');
+      expect((await runs.findRun('PROJ-49'))?.currentStep).toBe('plan-improve');
+      expect(await app.get(DocumentRepository).latestBody('PROJ-49', 'questions')).toBeFalsy();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('continues the plan chat with a short prompt', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-plan-resume-'));
     await writeEnv(root);

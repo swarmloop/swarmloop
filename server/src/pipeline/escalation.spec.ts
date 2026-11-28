@@ -75,6 +75,31 @@ describe('an escalated question for the person', () => {
       await db.close();
     }
   });
+
+  it('keeps the stored parts of the review and part questions that other documents hold', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const run = await db.app.get(RunRepository).openWaiting('PROJ-1', '/target');
+      const documents = db.app.get(DocumentRepository);
+      const review = {
+        question: 'A review line',
+        parts: { decide: 'Review?', sides: [], full: '', askedAt: 'at', asker: 'reviewer' },
+      };
+      await documents.putDocument(run, 'review_questions', '- A review line\n');
+      await documents.putDocument(run, 'question_parts', JSON.stringify([review]));
+
+      await escalateToPerson(documents, run, escalation);
+
+      const stored = JSON.parse((await documents.latestBody('PROJ-1', 'question_parts')) ?? '[]');
+      expect(stored.map((item: { question: string }) => item.question)).toEqual([
+        'A review line',
+        escalationLine(escalation),
+      ]);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('says whether the question is among the open ones', async () => {
     const db = await repositoryDatabase();
     try {

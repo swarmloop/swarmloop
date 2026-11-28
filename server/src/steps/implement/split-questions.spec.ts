@@ -55,6 +55,14 @@ describe('SplitQuestions deliver', () => {
     expect(sent).toEqual(['held start', 'answer: The id column.']);
   });
 
+  it('leaves the held start of a skipped task alone: the door would refuse it and fail the epic', async () => {
+    const { questions, sent } = world({ asking: false, held: [true], delivered: 'sent' });
+
+    await questions.deliver(parent, '', '', '', AT, [{ id: 'a', status: 'skipped' }] as Subtask[]);
+
+    expect(sent).toEqual([]);
+  });
+
   it('sends nothing for a part that holds no start and has no answer', async () => {
     const { questions, sent } = world({ asking: false, held: [], delivered: 'sent' });
 

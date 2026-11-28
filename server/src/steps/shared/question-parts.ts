@@ -98,6 +98,19 @@ export function answeredBefore(record: AnsweredQuestion[], asker: string, decide
   return record.find((item) => item.asker === asker && collapsed(item.decide) === wanted)?.answer ?? null;
 }
 
+/**
+ * One error line per question that the person already answered for this asker: it names the answer, so the agent goes
+ * on with it and a step does not put the question again.
+ */
+export function askedAgain(questions: string[], record: AnsweredQuestion[], asker: string): string[] {
+  return questions.flatMap((question) => {
+    const answer = answeredBefore(record, asker, question);
+    return answer === null
+      ? []
+      : [`questions: the person already answered "${question.trim()}" with "${answer}"; decide with that answer`];
+  });
+}
+
 /** The stored list, or an empty one when the body is not a list of questions. */
 export function readStoredQuestions(body: string): StoredQuestion[] {
   try {

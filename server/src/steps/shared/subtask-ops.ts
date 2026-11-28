@@ -5,6 +5,7 @@ import type { Need } from './needs';
 import type { StarterAnswerResult } from '../../agent-result/definitions/starter-answer';
 import type { LookStart } from './look-start';
 import type { PlanChange, StarterPlan } from '../implement/starter-actions';
+import type { PlannerLine } from './question-parts';
 
 /** Who starts a step again: a person, a planner of some level, or the machine. */
 export interface SubtaskStart {
@@ -26,6 +27,8 @@ export interface ChainAsked {
   asked: 'run-planner' | 'epic-planner' | 'starter';
   level: number;
   answer: string | null;
+  /** The line of each planner that tried and gave no decision, lowest first; set when the question went to the starter. */
+  lines?: PlannerLine[];
 }
 
 /** What a planner gives instead of a decision when it cannot settle a part's question: what whoever started the run must decide. */

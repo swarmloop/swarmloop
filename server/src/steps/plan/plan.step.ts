@@ -15,6 +15,7 @@ import { AgentDoor } from '../shared/agent-door';
 import { appendImpact, assumptions, withHandoff, withImpact } from '../shared/handoff';
 import { skillPrompt } from '../shared/skill-prompt';
 import { unanswered } from '../shared/answers';
+import { askedAgain } from '../shared/question-parts';
 import { storedImpact } from '../shared/research-reads';
 import { checkedRepoNames, mountsForStep } from '../../git/repo-names';
 import { planFields, readPlan, renderSummary, withPlan } from './plan-record';
@@ -141,9 +142,15 @@ export class PlanStep extends AgentStep<typeof INPUTS> {
       : fullFor(runtime, received, Boolean(chat?.chatId));
     const exchange = new StarterExchange(undefined, this.clock);
     const contract = subtask ? await this.parentDocument(ctx.opened.run, CONTRACT_KIND) : null;
+    // A question the person answered before is not asked again: the agent is told the answer.
+    const record = await this.answeredQuestions(ctx.opened.run, answers);
     const check = (value: unknown): string[] => {
       const read = completePlan(value as Partial<PlanResult>);
-      return [...planErrors(read, limits, subtask), ...exchange.check(ctx.opened.run, read, contract)];
+      return [
+        ...planErrors(read, limits, subtask),
+        ...exchange.check(ctx.opened.run, read, contract),
+        ...(subtask ? [] : askedAgain(read.questions, record, this.name)),
+      ];
     };
     const first = await ctx.launch({
       prompt: finish(chosen),

@@ -89,13 +89,26 @@ export class PlannerChain {
       }
     }
     const stored = await this.storedAnswer(run, above[0] ?? null, question);
-    if (stored !== null) return { asked: 'starter', level: starter, answer: stored };
+    if (stored !== null) {
+      return { asked: 'starter', level: starter, answer: await this.recorded(run, question, stored) };
+    }
     if (!done.includes(starter)) {
       const given = await this.toStarter(run, above[0] ?? null, question, lines);
       await this.remember(run, levels, key, starter);
-      return { asked: 'starter', level: starter, answer: given };
+      const answer = given === null ? null : await this.recorded(run, question, given);
+      return { asked: 'starter', level: starter, answer, lines };
     }
     return { asked: 'starter', level: starter, answer: null };
+  }
+
+  /**
+   * An answer the person gave before goes into the run's handoff, as an epic planner's decision does, so the start the
+   * answer allows has another input than the start the door refused.
+   */
+  private async recorded(run: RunEntity, question: ChainQuestion, answer: string): Promise<string> {
+    const handoff = await this.documents.latestBody(run.key, ARTIFACTS.handoff.kind);
+    await this.documents.putDocument(run, ARTIFACTS.handoff.kind, mergeHandoff(handoff, question.from, answer));
+    return answer;
   }
 
   /** The question the chain left open in the run's plan chat for its planner, or null. */

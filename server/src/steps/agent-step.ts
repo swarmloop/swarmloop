@@ -29,6 +29,7 @@ import { HOST_VISIT, isModelOutage } from './shared/model-host-unavailable';
 import { recordHandoff } from './shared/handoff';
 import { modelVisit } from './shared/model-visit';
 import { StarterBriefing } from './shared/starter-briefing';
+import { readAnsweredQuestions, type AnsweredQuestion } from './shared/question-parts';
 import type { StepName } from '../contract/steps';
 import { artifact, firstLine } from './contract/artifact';
 import type { Artifact } from './contract/artifact';
@@ -95,6 +96,15 @@ export abstract class AgentStep<S extends InputSpec = InputSpec> extends BaseSte
     const parentId = run.parentRunId;
     const parent = typeof parentId === 'number' ? await this.runs.findById(parentId) : null;
     return parent ? this.documents.latestBody(parent.key, kind) : null;
+  }
+
+  /**
+   * The questions the person answered on the run, so the step does not put one of them again. The record is written
+   * with the `answers` the step already read, so a run without answers has none and nothing is read.
+   */
+  protected async answeredQuestions(run: RunEntity, answers: string): Promise<AnsweredQuestion[]> {
+    if (!answers.trim()) return [];
+    return readAnsweredQuestions((await this.documents.latestBody(run.key, ARTIFACTS.answeredQuestions.kind)) ?? '');
   }
 
   /** The runtime, model, mode, time limit and session policy of this step, known before it runs. */

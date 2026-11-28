@@ -78,7 +78,7 @@ describe('PlannerChain', () => {
       const again = await h.chain.askUp(h.task, question, 1);
 
       expect(first).toEqual({ asked: 'epic-planner', level: 1, answer: 'First decision.' });
-      expect(again).toEqual({ asked: 'starter', level: 2, answer: null });
+      expect(again).toEqual({ asked: 'starter', level: 2, answer: null, lines: [] });
     } finally {
       await h.db.close();
     }
@@ -106,7 +106,12 @@ describe('PlannerChain', () => {
 
       const asked = await h.chain.askUp(h.alone, question, 0);
 
-      expect(asked).toEqual({ asked: 'starter', level: 1, answer: null });
+      expect(asked).toEqual({
+        asked: 'starter',
+        level: 1,
+        answer: null,
+        lines: [{ who: 'run planner', text: 'The planner gave no answer.' }],
+      });
     } finally {
       await h.db.close();
     }
@@ -119,8 +124,9 @@ describe('PlannerChain', () => {
 
       const asked = await h.chain.askUp(h.task, question, 1);
 
-      expect(asked).toEqual({ asked: 'starter', level: 2, answer: null });
-      expect(h.sides).toEqual([[{ who: 'epic planner', text: 'The person picks the retry policy.' }]]);
+      const words = [{ who: 'epic planner', text: 'The person picks the retry policy.' }];
+      expect(asked).toEqual({ asked: 'starter', level: 2, answer: null, lines: words });
+      expect(h.sides).toEqual([words]);
       expect(h.epicAnswers).toEqual(['Never asked.']);
       expect(handoffText(await h.documents.latestBody('EPIC-1-a', 'handoff'))).toBe('');
     } finally {
@@ -174,6 +180,8 @@ describe('PlannerChain', () => {
       const asked = await h.chain.askUp(h.alone, question, 0);
 
       expect(asked).toEqual({ asked: 'starter', level: 1, answer: 'Retry twice.' });
+      // The answer is in the handoff, so the start it allows has another input than the start the door refused.
+      expect(handoffText(await h.documents.latestBody('ALONE-1', 'handoff'))).toBe('## implement\nRetry twice.\n');
       expect(await h.documents.latestBody('ALONE-1', 'questions')).toBeNull();
     } finally {
       await h.db.close();
@@ -201,8 +209,8 @@ describe('PlannerChain', () => {
       const asked = await h.chain.askUp(h.alone, question, 0);
       const again = await h.chain.askUp(h.alone, question, 0);
 
-      expect(asked).toEqual({ asked: 'starter', level: 1, answer: null });
-      expect(again).toEqual(asked);
+      expect(asked).toMatchObject({ asked: 'starter', level: 1, answer: null });
+      expect(again).toEqual({ asked: 'starter', level: 1, answer: null });
       const questions = (await h.documents.latestBody('ALONE-1', 'questions')) ?? '';
       expect(questions.match(/which retry policy wins/g)).toHaveLength(1);
       const run = (await h.runs.findRun('ALONE-1'))!;

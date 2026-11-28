@@ -17,7 +17,7 @@ import { limitRoute } from '../shared/limit-failover';
 import { stampGate } from '../shared/gate';
 import { textDocument } from '../shared/handoff';
 import { ARTIFACTS } from '../contract/artifacts';
-import { askPerson, reviewAsks } from './review-ask';
+import { askReviewer, reviewAsks } from './review-ask';
 import type { PlanChatStore } from '../../history/plan-chat.store';
 import { waitForPlanner } from '../implement/implement-question';
 import { isSubtask } from '../../contract/subtask';
@@ -160,7 +160,9 @@ export class ReviewSettle {
     }
     const asks = toPlanner ? [] : disagreed;
     if (asks.length > 0) {
-      const asked = await askPerson(ctx, asks, recorded, reportCall, written.usage);
+      const record = (await ctx.reread(ARTIFACTS.answeredQuestions)) ?? [];
+      const carried = { documents: recorded, call: reportCall, usage: written.usage };
+      const asked = await askReviewer(ctx, asks, record, carried, this.documents);
       await this.linkReport(deps, opened, written.startId);
       await this.stamp(opened.run, [...stored, ...written.documents], fingerprint);
       return asked;

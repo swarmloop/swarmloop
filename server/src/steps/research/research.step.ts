@@ -1,4 +1,5 @@
 import { agentFor } from '../../config/agents';
+import { askedAgain } from '../shared/question-parts';
 import type { RunEntity } from '../../history/entities';
 import { Injectable } from '@nestjs/common';
 import type { AgentProfile, InputSpec, StepCapabilities, StepInput, StepResult } from '../contract/step-contract';
@@ -95,6 +96,7 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
     const received = chat?.chatId ? (chat.resultName ?? null) : null;
     // A subtask hands back what it asks, decides and leaves out through the one exchange; a run that is not a subtask asks a person.
     const exchange = new StarterExchange(undefined, this.clock);
+    const record = await this.answeredQuestions(ctx.opened.run, answers);
     const contract = subtask ? await this.parentDocument(ctx.opened.run, CONTRACT_KIND) : null;
     const agentResult = await ctx.launch({
       prompt: promptFor(runtime, received, Boolean(chat?.chatId)),
@@ -106,7 +108,11 @@ export class ResearchStep extends AgentStep<typeof INPUTS> {
       check: (raw) =>
         subtask
           ? exchange.check(ctx.opened.run, raw as ResearchResult, contract)
-          : requirementErrors(storedList, (raw as ResearchResult).requirements),
+          : [
+              ...requirementErrors(storedList, (raw as ResearchResult).requirements),
+              // A question the person answered before is not asked again: the agent is told the answer.
+              ...askedAgain((raw as ResearchResult).questions, record, this.name),
+            ],
     });
     // A subtask asks `question`: its result has no `questions`.
     const given = agentResult.resultValue as ResearchResult;
