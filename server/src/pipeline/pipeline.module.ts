@@ -16,6 +16,8 @@ import { GitRulesWriter } from '../steps/shared/git-rules-writer';
 import { CheckoutService } from '../steps/shared/checkout.service';
 import { RebasedPublisher } from '../steps/shared/rebased-publisher';
 import { RepositoryHost } from '../steps/shared/repository-host';
+import { MergeLanding } from '../steps/shared/merge-landing';
+import { MergedFilesRecord } from '../steps/shared/merged-files-record';
 import { RepositoryOrigins } from '../steps/shared/repository-origins';
 import { MergeRequestStep } from '../steps/merge-request/merge-request.step';
 import { MergeRequestTemplate } from '../steps/merge-request/merge-request-template';
@@ -128,6 +130,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     RebasedPublisher,
     RepositoryOrigins,
     RepositoryHost,
+    MergeLanding,
+    MergedFilesRecord,
     CheckoutService,
     BranchCheckout,
     RunNames,
@@ -257,6 +261,8 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     CommitStep,
     RebasedPublisher,
     RepositoryHost,
+    MergeLanding,
+    MergedFilesRecord,
     HistoryModule,
     EnvironmentService,
     AgentLauncher,

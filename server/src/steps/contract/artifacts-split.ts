@@ -65,6 +65,6 @@ export const SPLIT_ARTIFACTS = {
     readers: ['plan-improve', 'implement', 'implement-improve'],
     summarize: firstLine,
   }),
-  /** The files a merged task changed, one path per line, read from its merge into the feature branch. */
+  /** The files a merged task changed, one path per line, read from the merge of the task into its target branch (the feature branch or main), written by every merge. */
   mergedFiles: artifact('merged_files', { writers: [], readers: [], external: true, summarize: firstLine }),
 } as const satisfies Record<string, Artifact<unknown>>;
