@@ -56,11 +56,20 @@ describe('the status a run gives its task', () => {
     expect(taskStatusOf(task('blocked'), checks)).toBe('blocked');
   });
 
-  it('is merged for a merged run whatever its move says', () => {
+  it('is running for a run whose move has not run, merged or not, and merged once its move failed', () => {
     const child = run({ status: 'done', currentStep: 'done', merge: merged });
 
-    expect(taskStatusOf(task('green'), child, { kind: 'moving' })).toBe('merged');
+    expect(taskStatusOf(task('green'), child, { kind: 'moving' })).toBe('running');
     expect(taskStatusOf(task('green'), child, { kind: 'failed', reason: 'no' })).toBe('merged');
+  });
+
+  it('is running for a done or a waiting run whose move has not run', () => {
+    const moving = { kind: 'moving' } as const;
+
+    expect(taskStatusOf(task('green'), run({ status: 'done', currentStep: 'done' }), moving)).toBe('running');
+    expect(taskStatusOf(task('waiting'), run({ status: 'waiting', currentStep: 'requirements' }), moving)).toBe(
+      'running',
+    );
   });
 
   it('says in words what the move is', () => {

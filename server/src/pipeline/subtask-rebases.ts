@@ -38,18 +38,20 @@ export class SubtaskRebases {
   }
 
   /**
-   * The move of a blocked or failed run that its parent sent, while it is the run's newest command: moving while it is
-   * queued or running, failed with its error once it failed. Any other run is read by its own state, and a later
-   * command of the run, or a move that succeeded, reads null.
+   * The one read of a part's move. The move is the run's newest Rebase command, whoever sent it (its epic, a person
+   * or a planner), by creation time, then stored order. It reads moving while that command is queued or running, in
+   * any state of the run; failed with its error while the run is blocked or failed and the command is the run's newest
+   * of any type; null otherwise: no Rebase, one that succeeded, or one a later command replaced.
    */
   async moveOf(run: RunEntity): Promise<TaskMove | null> {
+    const commands = await this.commands.listForRun(run.id);
+    const move = commands.filter((command) => command.type === 'rebase').pop();
+    if (!move) return null;
+    if (move.state === 'accepted' || move.state === 'executing') return { kind: 'moving' };
     const { state } = storedState(run);
+    if (move.state !== 'failed' || commands[commands.length - 1] !== move) return null;
     if (state !== 'blocked' && state !== 'failed') return null;
-    const newest = await this.commands.latestOfRun(run.id);
-    if (!newest?.idempotencyKey?.startsWith(MOVE_KEY)) return null;
-    if (newest.state === 'accepted' || newest.state === 'executing') return { kind: 'moving' };
-    if (newest.state !== 'failed') return null;
-    const stored = JSON.parse(newest.result ?? 'null') as { error?: { message?: string } } | null;
+    const stored = JSON.parse(move.result ?? 'null') as { error?: { message?: string } } | null;
     return { kind: 'failed', reason: stored?.error?.message ?? 'the move failed' };
   }
 
@@ -89,11 +91,6 @@ export class SubtaskRebases {
       if (!sent.replayed || sent.command.state !== 'failed') return;
       idempotencyKey = `${idempotencyKey}-after-${sent.command.id}`;
     }
-  }
-
-  /** True while the run has a rebase that was sent and has not run: its worktrees are not on the new tip yet. */
-  moving(run: RunEntity): Promise<boolean> {
-    return this.commands.hasPending(run, 'rebase');
   }
 
   /**

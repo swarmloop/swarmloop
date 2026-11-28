@@ -4,15 +4,16 @@ import { settled, type Subtask, type SubtaskStatus } from '../../contract/subtas
 import type { TaskMove } from './subtask-ops';
 
 /**
- * The status of a task that its run gives. A run whose merge is recorded is merged, whoever merged it. Until the move
- * its epic sent has run, the epic reads a blocked task by that move: running while it is queued or running, because
- * it is about to send the task on, and blocked once it failed.
+ * The status of a task that its run gives. A task whose move is queued or running is running, in any state of its
+ * run, because its worktrees are not on the new tip yet. Otherwise a run whose merge is recorded is merged, whoever
+ * merged it, and a blocked or failed run is blocked, with a failed move or none.
  */
 export function taskStatusOf(task: Subtask, child: RunEntity, move: TaskMove | null = null): SubtaskStatus {
+  if (move?.kind === 'moving') return 'running';
   const { state } = storedState(child);
   if (state === 'merged') return 'merged';
   if (child.status === 'done') return 'green';
-  if (state === 'blocked' || state === 'failed') return move?.kind === 'moving' ? 'running' : 'blocked';
+  if (state === 'blocked' || state === 'failed') return 'blocked';
   const launched = child.status !== 'waiting' || child.currentStep !== 'requirements';
   return task.status === 'running' || launched ? 'running' : 'waiting';
 }
