@@ -4,8 +4,6 @@ import type { RunEntity } from '../../history/entities';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { SubtaskOps } from '../shared/subtask-ops';
 
-const MOVED_NOTE = 'rebased onto the epic: the feature branch moved on';
-
 /** The start of every note this queue writes on a task, so a pass that refreshes the task keeps it while the task reruns. */
 export const REBASED_PREFIX = 'rebased onto the epic';
 
@@ -22,7 +20,7 @@ function rebasedNote(sibling: string, files: string[]): string {
 /**
  * The part of the merge queue that keeps every open task on top of the feature branch. After a merge, a task whose
  * merge request conflicts is rebased whatever its state, and a task that waits on a person or a sibling is moved
- * onto the new tip and keeps its wait; a green task behind the feature branch is rebased before it merges. A task a
+ * onto the new tip and keeps its wait; the landing rebases a green task that is behind it. A task a
  * person stopped is left as it is.
  */
 @Injectable()
@@ -42,14 +40,6 @@ export class SplitRebase {
       else next.push(task);
     }
     return next;
-  }
-
-  /** A green task whose head does not contain the feature branch is rebased and its gates run again. The task, or null when it is on top. */
-  async behind(parent: RunEntity, task: Subtask, child: RunEntity): Promise<Subtask | null> {
-    const tip = await this.subtasks.behindTip(parent, child);
-    if (!tip) return null;
-    const sent = await this.subtasks.rebase(child, { tip, note: MOVED_NOTE });
-    return sent ? { ...task, status: 'running', note: MOVED_NOTE } : task;
   }
 
   private async conflicts(parent: RunEntity, child: RunEntity): Promise<boolean> {

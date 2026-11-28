@@ -110,15 +110,7 @@ export class SubtaskPort extends SubtaskOps {
       runs,
       holds,
     );
-    this.mergeRecord = new SubtaskMergeRecord(
-      runs,
-      documents,
-      clock,
-      this.worktrees,
-      (parent) => this.branchOf(parent),
-      reportRefresh,
-      this.logger,
-    );
+    this.mergeRecord = new SubtaskMergeRecord(runs, documents, clock, reportRefresh, this.logger);
     this.wakes = new SubtaskWakes(runs, commands, gate, visits, documents, this.logger);
     this.rebases = new SubtaskRebases(
       runs,
