@@ -7,7 +7,7 @@ import type { MergeMode, MilestoneStatus, RequirementStatus } from '../../contra
 import type { PipelineCheck } from '../../integrations/code-host/code-host';
 import type { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
 import { AppConfig } from '../../config/env';
-import { SwarmloopError } from '../../core/swarmloop-error';
+import { HostUnavailable, SwarmloopError } from '../../core/swarmloop-error';
 import { testEnv } from '../../config/env.spec-helpers';
 import { BacklogChatRepository } from '../../history/backlog-chat.repository';
 import { BacklogRepository, type BacklogTaskRecord } from '../../history/backlog.repository';
@@ -71,10 +71,14 @@ export type MainStyle = 'green' | 'red' | 'pending' | 'no-pipeline' | 'no-ci';
 /** The remote repositories the actions harness can clone, by owner and name. */
 const REMOTE_REPOSITORIES = ['acme/demo'];
 
-/** A remote whose clone makes the checkout of a known `owner/name` and answers its folder, and refuses any other. */
+/**
+ * A remote whose clone makes the checkout of a known `owner/name` and answers its folder, and refuses any other.
+ * The pick `acme/down` meets a code host outage.
+ */
 function remoteOf(checkouts: string | null, known: string[]): RemoteRepositories {
   return {
     clone: async (value: string) => {
+      if (value === 'acme/down') throw new HostUnavailable('code.example', 'HTTP 503', '2026-11-28T12:00:00.000Z');
       if (checkouts === null || !known.includes(value)) {
         throw new SwarmloopError(`${value} is not a repository of the connected code hosts`);
       }
