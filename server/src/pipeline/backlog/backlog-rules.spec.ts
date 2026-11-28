@@ -110,4 +110,40 @@ describe('backlog rules', () => {
     ]);
     expect(repairActiveMilestones([milestone(1, 'active'), milestone(2, 'proposed')])).toEqual([]);
   });
+
+  it('repairs two active milestones that each have a queue into one chain', () => {
+    const milestones = [
+      milestone(1, 'active'),
+      milestone(2, 'active'),
+      milestone(3, 'queued', 1),
+      milestone(4, 'queued', 2),
+    ];
+    const moves = repairActiveMilestones(milestones);
+    expect(moves).toEqual([{ id: 2, status: 'queued', queuedAfterId: 3 }]);
+    const after = milestones.map((m) => {
+      const move = moves.find((other) => other.id === m.id);
+      return move === undefined ? m : { ...m, ...move };
+    });
+    const parents = after.filter((m) => m.status === 'queued').map((m) => m.queuedAfterId);
+    expect(new Set(parents).size).toBe(parents.length);
+    expect(after.map((m) => [m.id, m.status, m.queuedAfterId])).toEqual([
+      [1, 'active', null],
+      [2, 'queued', 3],
+      [3, 'queued', 1],
+      [4, 'queued', 2],
+    ]);
+  });
+
+  it('queues a third active milestone behind the end of the second one’s chain', () => {
+    const milestones = [
+      milestone(1, 'active'),
+      milestone(2, 'active'),
+      milestone(3, 'active'),
+      milestone(4, 'queued', 2),
+    ];
+    expect(repairActiveMilestones(milestones)).toEqual([
+      { id: 2, status: 'queued', queuedAfterId: 1 },
+      { id: 3, status: 'queued', queuedAfterId: 4 },
+    ]);
+  });
 });
