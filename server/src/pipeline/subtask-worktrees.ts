@@ -1,9 +1,8 @@
 import { existsSync } from 'fs';
-import { Logger } from '@nestjs/common';
 import type { AppConfig } from '../config/env';
 import type { Clock } from '../core/clock';
 import { FetchFailed } from '../core/swarmloop-error';
-import { fetchBranch, ownChangeBase } from '../git/rebase';
+import { fetchBranch } from '../git/rebase';
 import { withWorktree } from '../git/worktree-lock';
 import { originRef } from '../git/base-ref';
 import { git, type CommitAuthor } from '../git/git';
@@ -20,8 +19,6 @@ import { ParentTreeSync } from './parent-tree-sync';
 
 /** The git side of the subtask operations: what the worktrees of a parent and its subtask runs hold against the feature branch on origin. */
 export class SubtaskWorktrees {
-  private readonly logger = new Logger(SubtaskWorktrees.name);
-
   constructor(
     private readonly config: AppConfig,
     private readonly clock: Clock,
@@ -31,31 +28,6 @@ export class SubtaskWorktrees {
 
   private async hostsFor(run: RunEntity) {
     return (await this.publisher?.hostsFor(run)) ?? { ...this.config.env, clock: this.clock };
-  }
-
-  /**
-   * Brings the worktrees of a subtask run, edits that are not committed included, up to the feature branch as it is on
-   * origin. Only the run's own change is replayed, from the base tip it stands on, so a rewritten branch brings nothing else.
-   */
-  async catchUp(run: RunEntity, repos: string[], branch: string): Promise<void> {
-    const hosts = await this.hostsFor(run);
-    const known = await this.tips.known(run, repos);
-    for (const repo of repos) {
-      const path = worktreePath(root(this.config), run.key, repo);
-      if (!existsSync(path)) continue;
-      await withWorktree(path, async () => {
-        if (!(await fetchBranch(path, repo, branch, hosts))) return;
-        const remote = originRef(branch);
-        try {
-          const ownBase = await ownChangeBase(path, known[repo] ?? [], remote);
-          await git(['-C', path, 'rebase', '--autostash', '--onto', remote, ownBase]);
-          await this.tips.record(run, { [repo]: await git(['-C', path, 'rev-parse', remote]) });
-        } catch (error) {
-          await git(['-C', path, 'rebase', '--abort']).catch(() => undefined);
-          this.logger.warn(`${run.key} was not caught up: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    }
   }
 
   /**

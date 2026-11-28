@@ -10,7 +10,7 @@ import { ownConflictMarker } from './own-conflict-marker';
 
 /**
  * The tasks as their runs give them, read only: nothing is opened, launched or resumed. Null when a task has no run
- * or is not merged or skipped, so the parent still waits for it.
+ * or is not merged or skipped, or whose move has not run, so the parent still waits for it.
  */
 export async function settledView(
   subtasks: SubtaskOps,
@@ -24,7 +24,7 @@ export async function settledView(
       continue;
     }
     const child = await subtasks.find(parent, task.id);
-    if (!child) return null;
+    if (!child || (await subtasks.moving(child))) return null;
     const delivered = child.status === 'done' ? await subtasks.deliveredNote(child) : null;
     if (delivered) {
       view.push({ ...task, status: 'skipped', note: delivered });

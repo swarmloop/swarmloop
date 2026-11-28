@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { parseSubtasks } from '../../contract/subtask';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
+import { SubtaskOps } from '../../steps/shared/subtask-ops';
 import { createFlowHarness } from '../flow-harness';
 import { epicMerges } from './epic-merge.spec-helpers';
 import { assertSettled, settle } from './settle.spec-helpers';
@@ -34,6 +35,8 @@ describe('a server restart in an epic', () => {
     const landed = flow.host.merged.get(first.iid);
 
     await flow.restart();
+    // After the restart the part is on top of the epic branch: its own merge is the only move of the branch, so no move is queued for it.
+    jest.spyOn(flow.app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
     await settle(flow.app);
     await flow.tick();
     await settle(flow.app);
