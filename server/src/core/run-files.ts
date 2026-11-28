@@ -1,17 +1,17 @@
 import { readdir } from 'fs/promises';
 import { join } from 'path';
-import { REVIEW_STEPS, STEPS } from '../contract/steps';
+import { STEPS, STORED_REVIEW_STEPS } from '../contract/steps';
 
 /** Every step that writes an output file. */
-export const OUTPUT_STEPS: readonly string[] = [...STEPS, ...REVIEW_STEPS, 'code-review-report', 'chat'];
+export const OUTPUT_STEPS: readonly string[] = [...STEPS, ...STORED_REVIEW_STEPS, 'code-review-report', 'chat'];
 
 const OUTPUT_STEP_SET: ReadonlySet<string> = new Set(OUTPUT_STEPS);
 
 /** For each step, the suffixes of its sibling steps ("code-review" has "report"): an id that starts so is the file of the sibling. */
 const SIBLING_SUFFIXES: ReadonlyMap<string, readonly string[]> = new Map(
-  [...STEPS, ...REVIEW_STEPS].map((step) => [
+  [...STEPS, ...STORED_REVIEW_STEPS].map((step) => [
     step,
-    [...STEPS, ...REVIEW_STEPS]
+    [...STEPS, ...STORED_REVIEW_STEPS]
       .filter((other) => other !== step && other.startsWith(`${step}-`))
       .map((other) => other.slice(step.length + 1)),
   ]),

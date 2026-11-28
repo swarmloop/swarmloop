@@ -1,6 +1,6 @@
 import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
 import { opinionOf, renderReview, reportDocuments, reviewDocuments, summaryNote } from './code-review-record';
-import { CODE_REVIEWERS } from '../../contract/steps';
+import { RETIRED_REVIEWERS } from '../../contract/steps';
 import { storedReview } from '../../agent-result/stored-review';
 
 const RETURN = {
@@ -10,21 +10,34 @@ const RETURN = {
 };
 
 describe('review documents', () => {
-  it.each(CODE_REVIEWERS)('round-trips an old %s review containing a met line through its result codec', (name) => {
-    const entry = 'met: the parser keeps the segment (src/parser.ts)';
-    const kind = `review_${name}`;
-    const legacy = storedReview(name, [{ kind, body: `summary:\n- ${entry}\n\ndecision: ok\n` }]);
-    if (!legacy) {
-      throw new Error('the legacy review is missing');
-    }
-    const restored = storedReview(name, reviewDocuments(opinionOf(kind, legacy)));
-    expect(restored).toEqual(legacy);
-    expect(restored?.summary).toEqual([entry]);
-    expect(restored?.met).toEqual(name === 'requirements' ? ['src/parser.ts'] : undefined);
-  });
+  it.each(['requirements', ...RETIRED_REVIEWERS])(
+    'round-trips an old %s review containing a met line through its result codec',
+    (name) => {
+      const entry = 'met: the parser keeps the segment (src/parser.ts)';
+      const kind = `review_${name}`;
+      const legacy = storedReview(name, [{ kind, body: `summary:\n- ${entry}\n\ndecision: ok\n` }]);
+      if (!legacy) {
+        throw new Error('the legacy review is missing');
+      }
+      const restored = storedReview(name, reviewDocuments(opinionOf(kind, legacy)));
+      expect(restored).toEqual(legacy);
+      expect(restored?.summary).toEqual([entry]);
+      expect(restored?.met).toEqual(name === 'requirements' ? ['src/parser.ts'] : undefined);
+    },
+  );
 
   it('renders the review followed by the decision line', () => {
     expect(renderReview(RETURN)).toBe('summary:\n- The parser drops an empty segment\ndecision: return\n');
+  });
+
+  it('writes one line for each section that found something, and none for a section that is checked', () => {
+    const sections = { quality: 'checked', security: 'The query is built from the request.' };
+    expect(renderReview({ ...RETURN, sections })).toBe(
+      'summary:\n- The parser drops an empty segment\nsecurity: The query is built from the request.\ndecision: return\n',
+    );
+    expect(renderReview({ ...RETURN, sections: { quality: 'checked', security: 'checked' } })).toBe(
+      renderReview(RETURN),
+    );
   });
 
   it('writes one line for each requirement mark in id order before the decision line', () => {
@@ -44,8 +57,8 @@ describe('review documents', () => {
   });
 
   it('stores the rendered review next to the result it was rendered from', () => {
-    const documents = reviewDocuments(opinionOf('review_quality', RETURN));
-    expect(documents.map((document) => document.kind)).toEqual(['review_quality', 'review_quality_result']);
+    const documents = reviewDocuments(opinionOf('review_code', RETURN));
+    expect(documents.map((document) => document.kind)).toEqual(['review_code', 'review_code_result']);
     expect(documents[0].body).toBe('summary:\n- The parser drops an empty segment\ndecision: return\n');
     expect(JSON.parse(documents[1].body)).toEqual(RETURN);
   });
@@ -68,7 +81,7 @@ describe('report documents', () => {
       line: 'Parser fixed.',
       done: ['one thing'],
       worthALook: [],
-      notes: { requirements: 'a', quality: 'b', regressions: 'c', security: 'd', performance: 'e' },
+      notes: { requirements: 'a', code: 'b', behavior: 'c' },
       risk: 'low',
       riskReason: 'small',
     };

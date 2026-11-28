@@ -97,7 +97,7 @@ export function renderRunReport(facts: ReportFacts, parts: ReviewReportResult): 
     [
       `<details><summary>Reviewer notes (${facts.reviewers.length})</summary>`,
       '',
-      ...facts.reviewers.flatMap((reviewer) => reviewerLines(reviewer, parts.notes[reviewer.name])),
+      ...facts.reviewers.flatMap((reviewer) => reviewerLines(reviewer, parts.notes[reviewer.name] ?? '')),
       '</details>',
     ].join('\n'),
   ];

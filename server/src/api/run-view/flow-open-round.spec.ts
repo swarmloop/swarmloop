@@ -5,7 +5,7 @@ import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/en
 import type { OpenReviewRound } from '../../steps/shared/open-review-rounds';
 import { phases } from './flow';
 
-const ANGLES = ['requirements', 'quality', 'regressions', 'security', 'performance'];
+const ANGLES = ['requirements', 'code', 'behavior'];
 
 type Chip = { status: string; current: boolean; note?: string };
 
@@ -46,16 +46,14 @@ const shown = (chips: Record<string, Chip>, name: string): [string, boolean] => 
 
 describe('chips of an open code-review round', () => {
   const only: OpenReviewRound = { reviewers: ['requirements'], reportDue: false, reportStarted: false };
-  const stored = { quality: 'ok', regressions: 'return', security: 'ok', performance: 'ok' } as const;
+  const stored = { code: 'ok', behavior: 'return' } as const;
 
   it('shows a Run again reviewer as preparing, then running, and the others as stored', () => {
     expect(shown(board(only, {}, stored), 'code-review-requirements')).toEqual(['preparing', true]);
     const chips = board(only, { 'code-review-requirements': 'starting\n' }, stored);
     expect(shown(chips, 'code-review-requirements')).toEqual(['running', true]);
-    expect(shown(chips, 'code-review-quality')).toEqual(['done', false]);
-    expect(shown(chips, 'code-review-regressions')).toEqual(['done', false]);
-    expect(shown(chips, 'code-review-security')).toEqual(['done', false]);
-    expect(shown(chips, 'code-review-performance')).toEqual(['done', false]);
+    expect(shown(chips, 'code-review-code')).toEqual(['done', false]);
+    expect(shown(chips, 'code-review-behavior')).toEqual(['done', false]);
   });
 
   it('shows the stored status of the report when the round does not write it', () => {
@@ -67,20 +65,19 @@ describe('chips of an open code-review round', () => {
 
   it('shows reviewers kept from stored answers as stored and the others as running', () => {
     const round: OpenReviewRound = {
-      reviewers: ['requirements', 'quality', 'regressions'],
+      reviewers: ['requirements', 'code'],
       reportDue: true,
       reportStarted: false,
     };
-    const chips = board(round, { 'code-review-quality': 'starting\n' }, { security: 'ok', performance: 'return' });
-    expect(shown(chips, 'code-review-security')).toEqual(['done', false]);
-    expect(shown(chips, 'code-review-performance')).toEqual(['done', false]);
-    for (const name of ['requirements', 'quality', 'regressions']) {
+    const chips = board(round, { 'code-review-code': 'starting\n' }, { behavior: 'return' });
+    expect(shown(chips, 'code-review-behavior')).toEqual(['done', false]);
+    for (const name of ['requirements', 'code']) {
       expect(shown(chips, `code-review-${name}`)).toEqual(['running', true]);
     }
   });
 
   it("shows today's chips when the server has no open round", () => {
-    const logs = { 'code-review-quality': 'starting\n' };
+    const logs = { 'code-review-code': 'starting\n' };
     const chips = board(undefined, logs, stored);
     for (const name of ANGLES) {
       expect(shown(chips, `code-review-${name}`)).toEqual(['running', true]);
@@ -89,10 +86,23 @@ describe('chips of an open code-review round', () => {
   });
 
   it('shows a due report as waiting for the running reviewers until its agent starts, then running', () => {
-    const round: OpenReviewRound = { reviewers: ['quality', 'security'], reportDue: true, reportStarted: false };
-    const waiting = board(round, { 'code-review-quality': 'starting\n' }, { requirements: 'ok' })['code-review'];
-    expect(waiting).toMatchObject({ status: 'waiting', current: false, note: 'waits for quality and security' });
+    const round: OpenReviewRound = { reviewers: ['code', 'behavior'], reportDue: true, reportStarted: false };
+    const waiting = board(round, { 'code-review-code': 'starting\n' }, { requirements: 'ok' })['code-review'];
+    expect(waiting).toMatchObject({ status: 'waiting', current: false, note: 'waits for code and behavior' });
     const started = board({ ...round, reportStarted: true }, { 'code-review-report': 'starting\n' })['code-review'];
     expect(started).toMatchObject({ status: 'running', current: true });
+  });
+
+  it('shows the three reviewers of a new round on a run the retired five reviewed before', () => {
+    const round: OpenReviewRound = { reviewers: ANGLES, reportDue: true, reportStarted: false };
+    const chips = board(round, {}, { quality: 'return', security: 'ok' });
+    expect(Object.keys(chips)).toEqual([
+      'code-review-requirements',
+      'code-review-code',
+      'code-review-behavior',
+      'code-review',
+    ]);
+    expect(shown(chips, 'code-review-code')).toEqual(['preparing', true]);
+    expect(Object.keys(board(undefined, {}, { quality: 'return' }))).toContain('code-review-quality');
   });
 });

@@ -28,7 +28,7 @@ const account = block({
   implementation: ['No file changed: the parser keeps the last row'],
   summary: ['The reader keeps the last row, so the finding does not apply.'],
   rejected: [
-    { reviewer: 'quality', finding: 'The parser drops the last row.', reason: 'The last row is kept by the reader.' },
+    { reviewer: 'code', finding: 'The parser drops the last row.', reason: 'The last row is kept by the reader.' },
   ],
 });
 
@@ -41,7 +41,7 @@ describe('a run whose implement changes nothing after a return', () => {
 
   it('reviews once more by itself after an answer in implement’s account with no file change, and asks no one before that round', async () => {
     const blocks = new BlockAgentRunner({
-      'code-review-quality': [returns, asks],
+      'code-review-code': [returns, asks],
       implement: [account],
       'implement-improve': [account],
     });
@@ -55,9 +55,9 @@ describe('a run whose implement changes nothing after a return', () => {
 
     const ended = await flow.app.pipeline.runThrough(KEY, { auto: true });
 
-    expect(ended.message).toContain('quality still returns');
+    expect(ended.message).toContain('code still returns');
     for (const name of CODE_REVIEWERS) {
-      expect(blocks.steps.filter((step) => step === `code-review-${name}`)).toHaveLength(name === 'quality' ? 2 : 1);
+      expect(blocks.steps.filter((step) => step === `code-review-${name}`)).toHaveLength(name === 'code' ? 2 : 1);
     }
     const after = (await runs.findRun(KEY))!;
     expect(after.status).toBe('waiting');
@@ -65,12 +65,12 @@ describe('a run whose implement changes nothing after a return', () => {
       (entry) => entry.kind === 'question',
     );
     // The only question is the reviewer's, after round 2: none was asked between round 1 and round 2.
-    expect(asked.map((entry) => [entry.from, entry.state])).toEqual([['code-review-quality', 'pending']]);
+    expect(asked.map((entry) => [entry.from, entry.state])).toEqual([['code-review-code', 'pending']]);
     await assertInvariants(flow.app);
   });
 
   it('reviews again when implement changed a file and left it uncommitted', async () => {
-    const blocks = new BlockAgentRunner({ 'code-review-quality': [returns, ok], implement: [nothing] });
+    const blocks = new BlockAgentRunner({ 'code-review-code': [returns, ok], implement: [nothing] });
     flow = await createFlowHarness(KEY, {
       blocks,
       realImplement: 'all',
@@ -87,7 +87,7 @@ describe('a run whose implement changes nothing after a return', () => {
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 
-    expect(blocks.steps.filter((step) => step === 'code-review-quality')).toHaveLength(2);
+    expect(blocks.steps.filter((step) => step === 'code-review-code')).toHaveLength(2);
     await assertInvariants(flow.app);
   });
 });

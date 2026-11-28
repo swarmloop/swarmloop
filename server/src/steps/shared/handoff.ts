@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { DocumentDraft } from '../../history/visit';
-import { CODE_REVIEWERS } from '../../contract/steps';
+import { STORED_REVIEWERS } from '../../contract/steps';
 import type { Subtask } from '../../contract/subtask';
-import { reviewKinds, storedReview } from '../../agent-result/stored-review';
+import { reviewKinds, storedReview, storedReviewers } from '../../agent-result/stored-review';
 import { legacyHandoff, type HandoffEntry } from '../../agent-result/legacy/handoff';
 import { ARTIFACTS, REVIEWS } from '../contract/artifacts';
 import type { FailedCommand } from '../../environment/environment-types';
@@ -160,7 +160,7 @@ export function handoffSection(text: string | null, step: string): string {
 }
 
 /** The return notes: the stored ones, else the latest issues, else the ones the latest reviews and pipeline result call for. */
-export function composedReturn(documents: { kind: string; body: string }[]): string | null {
+export function composedReturn(documents: { id?: number; kind: string; body: string }[]): string | null {
   const latest = (kind: string): string | null =>
     [...documents].reverse().find((item) => item.kind === kind)?.body ?? null;
   const stored = latest(ARTIFACTS.return.kind);
@@ -174,7 +174,7 @@ export function composedReturn(documents: { kind: string; body: string }[]): str
     return returnNotes(issues).body;
   }
   const parts: { source: string; body: string }[] = [];
-  for (const source of CODE_REVIEWERS) {
+  for (const source of storedReviewers(documents)) {
     const body = latest(REVIEWS.of(source));
     if (body && storedReview(source, documents)?.decision === 'return') {
       parts.push({ source, body });
@@ -198,7 +198,7 @@ export async function returnedNotes(documents: DocumentRepository, runId: number
  */
 export async function latestReturnedNotes(documents: DocumentRepository, runId: number): Promise<string | null> {
   const kinds = new Set([ARTIFACTS.return.kind, ARTIFACTS.issues.kind, ARTIFACTS.pipelineLog.kind]);
-  for (const source of CODE_REVIEWERS) {
+  for (const source of STORED_REVIEWERS) {
     kinds.add(REVIEWS.of(source));
     for (const kind of reviewKinds(source)) kinds.add(kind);
   }

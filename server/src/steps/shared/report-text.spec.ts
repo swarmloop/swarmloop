@@ -15,7 +15,7 @@ const FACTS: ReportFacts = {
   requirements: { met: 9, total: 9 },
   checks: { passed: 12, total: 12 },
   ci: 'passed',
-  review: { ok: 5, total: 5 },
+  review: { ok: 3, total: 3 },
   returns: { count: 2, fixed: true },
   durationMs: 38 * 60_000,
   path: [
@@ -49,10 +49,8 @@ const PARTS: ReviewReportResult = {
   ],
   notes: {
     requirements: 'Both earlier findings are fixed.',
-    quality: 'Nothing new.',
-    regressions: 'Failover still prefers the prompt built for the new runtime.',
-    security: '`lstatSync` blocks a symlink.',
-    performance: 'One `lstat` per mount.',
+    code: 'Nothing new; `lstatSync` blocks a symlink.',
+    behavior: 'Failover still prefers the prompt built for the new runtime; one `lstat` per mount.',
   },
   risk: 'low',
   riskReason: 'a contained change',
@@ -63,7 +61,7 @@ const EXAMPLE = `## ✅ Ready to merge · risk: low
 
 | Requirements | Checks | CI | Review | Returns | Time |
 |---|---|---|---|---|---|
-| 9/9 met | 12/12 | 🟢 | 5/5 ok | 2, both fixed | 38 min |
+| 9/9 met | 12/12 | 🟢 | 3/3 ok | 2, both fixed | 38 min |
 
 **Done**
 - New \`project-rules.ts\` adds a \`Project rules (<repo>):\` section to every skill prompt.
@@ -76,19 +74,31 @@ const EXAMPLE = `## ✅ Ready to merge · risk: low
 **🧭 How it got here**
 implement → checks ❌ lint (\`import type\`) → fixed → review ↩ security: a committed symlink could pull a host file into the prompt → \`lstatSync\` → review ✅ → CI 🟢
 
-<details><summary>Reviewer notes (5)</summary>
+<details><summary>Reviewer notes (3)</summary>
 
 - **Requirements ✅** Both earlier findings are fixed.
-- **Quality ✅** Nothing new.
-- **Regressions ✅** Failover still prefers the prompt built for the new runtime.
-- **Security ✅** \`lstatSync\` blocks a symlink.
-- **Performance ✅** One \`lstat\` per mount.
+- **Code ✅** Nothing new; \`lstatSync\` blocks a symlink.
+- **Behavior ✅** Failover still prefers the prompt built for the new runtime; one \`lstat\` per mount.
 </details>
 `;
 
 describe('renderRunReport', () => {
   it("renders the brief's example exactly from facts and parts", () => {
     expect(renderRunReport(FACTS, PARTS)).toBe(EXAMPLE);
+  });
+
+  it('renders the notes of the retired reviewers of an old run by their own labels', () => {
+    const names = ['requirements', 'quality', 'regressions', 'security', 'performance'] as const;
+    const notes = Object.fromEntries(names.map((name) => [name, `${name} note`]));
+    const text = renderRunReport({ ...FACTS, reviewers: names.map((name) => reviewer(name)) }, { ...PARTS, notes });
+    expect(text).toContain('Reviewer notes (5)');
+    expect(text).toContain('- **Quality ✅** quality note');
+    expect(text).toContain('- **Performance ✅** performance note');
+  });
+
+  it('renders a reviewer without a note as an empty note', () => {
+    const text = renderRunReport(FACTS, { ...PARTS, notes: { requirements: 'Fixed.' } });
+    expect(text).toContain('- **Behavior ✅** \n');
   });
 
   it('shows a run sent back with its reason in the path', () => {
@@ -101,13 +111,13 @@ describe('renderRunReport', () => {
         { step: 'implement', mark: '', returned: false, reason: null, fix: null },
         { step: 'review', mark: '↩', returned: true, reason: 'quality: a test is missing', fix: null },
       ],
-      reviewers: CODE_REVIEWERS.map((name) => reviewer(name, name === 'quality' ? { decision: 'return' } : {})),
+      reviewers: CODE_REVIEWERS.map((name) => reviewer(name, name === 'code' ? { decision: 'return' } : {})),
     };
     const text = renderRunReport(facts, PARTS);
     expect(text).toContain('## ↩ Sent back · risk: low');
     expect(text).toContain('implement → review ↩ quality: a test is missing\n');
     expect(text).toContain('| 1 |');
-    expect(text).toContain('- **Quality ↩** Nothing new.');
+    expect(text).toContain('- **Code ↩** Nothing new; `lstatSync` blocks a symlink.');
   });
 
   it('shows a run that waits for CI', () => {
@@ -126,7 +136,7 @@ describe('renderRunReport', () => {
     const text = renderRunReport(FACTS, { ...PARTS, risk, riskReason: 'a new path\nwith a second line' });
     expect(text).toContain(`## ✅ Ready to merge · risk: ${risk}`);
     expect(text).toContain(
-      '| 9/9 met | 12/12 | 🟢 | 5/5 ok | 2, both fixed | 38 min |\n\n**Risk:** a new path with a second line\n\n**Done**',
+      '| 9/9 met | 12/12 | 🟢 | 3/3 ok | 2, both fixed | 38 min |\n\n**Risk:** a new path with a second line\n\n**Done**',
     );
   });
 
@@ -149,7 +159,7 @@ describe('renderRunReport', () => {
 
   it('shows a reviewer without a decision as a dash', () => {
     const facts = { ...FACTS, reviewers: CODE_REVIEWERS.map((name) => reviewer(name, { decision: null })) };
-    expect(renderRunReport(facts, PARTS)).toContain('- **Quality —** Nothing new.');
+    expect(renderRunReport(facts, PARTS)).toContain('- **Code —** Nothing new; `lstatSync` blocks a symlink.');
   });
 
   it('writes hours and minutes for a long run, and a Tasks column before Time for a split parent', () => {
@@ -178,18 +188,16 @@ describe('renderRunReport', () => {
     };
     const facts = {
       ...FACTS,
-      reviewers: CODE_REVIEWERS.map((name) =>
-        reviewer(name, name === 'quality' ? { decision: 'return', exchange } : {}),
-      ),
+      reviewers: CODE_REVIEWERS.map((name) => reviewer(name, name === 'code' ? { decision: 'return', exchange } : {})),
     };
     expect(renderRunReport(facts, PARTS)).toContain(
       [
-        '- **Quality ↩** Nothing new.',
+        '- **Code ↩** Nothing new; `lstatSync` blocks a symlink.',
         '  - Finding not fixed: The parser drops an empty segment.',
         "  - Implement's reason: The empty segment is invalid input.",
-        '  - Quality answered: Still a loss of data.',
+        '  - Code answered: Still a loss of data.',
         '  - The person decided: Keep the segment.',
-        '- **Regressions ✅**',
+        '- **Behavior ✅**',
       ].join('\n'),
     );
   });

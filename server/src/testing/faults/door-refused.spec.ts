@@ -26,7 +26,7 @@ const account = block({
   implementation: ['No file changed: the parser keeps the last row'],
   summary: ['The reader keeps the last row, so the finding does not apply.'],
   rejected: [
-    { reviewer: 'quality', finding: 'The parser drops the last row.', reason: 'The last row is kept by the reader.' },
+    { reviewer: 'code', finding: 'The parser drops the last row.', reason: 'The last row is kept by the reader.' },
   ],
 });
 
@@ -77,7 +77,7 @@ describe('a start refused at the door of an agent start inside the code-review s
 
   it('a reviewer refused for the same tree and the same account starts no review again, and the run waits with its question', async () => {
     const blocks = new BlockAgentRunner({
-      'code-review-quality': [returns, returns],
+      'code-review-code': [returns, returns],
       implement: [account, account],
       'implement-improve': [account, account],
     });

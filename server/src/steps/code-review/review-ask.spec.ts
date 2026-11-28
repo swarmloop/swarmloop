@@ -44,10 +44,21 @@ describe('review asks', () => {
 });
 
 describe('settling the questions of a subtask review by the epic planner', () => {
-  const question = 'quality still returns: x. Implement answered: nothing. Which holds? (asked t)';
+  const question = 'code still returns: x. Implement answered: nothing. Which holds? (asked t)';
   const answers = `question: ${question}\nanswer: stands\n`;
-  const returned: ReviewResult = { decision: 'return', review: 'The parser drops a row.', summary: ['one'] };
-  const passed: ReviewResult = { decision: 'ok', review: 'Fine.', summary: ['ok'], reason: 'fine' };
+  const returned: ReviewResult = {
+    decision: 'return',
+    review: 'The parser drops a row.',
+    summary: ['one'],
+    sections: { quality: 'The parser drops a row.', security: 'checked' },
+  };
+  const passed: ReviewResult = {
+    decision: 'ok',
+    review: 'Fine.',
+    summary: ['ok'],
+    reason: 'fine',
+    sections: { quality: 'checked', security: 'checked' },
+  };
 
   function setup(entries: object[], reviews: Record<string, ReviewResult>) {
     const taken: string[] = [];
@@ -55,6 +66,7 @@ describe('settling the questions of a subtask review by the epic planner', () =>
     const bodies: Record<string, string> = {};
     for (const [name, review] of Object.entries(reviews)) {
       bodies[`review_${name}`] = renderReview(review);
+      bodies[`review_${name}_result`] = JSON.stringify(review);
     }
     const stored = [
       { id: 5, kind: ARTIFACTS.reviewQuestions.kind, body: renderQuestions([question]) },
@@ -91,7 +103,7 @@ describe('settling the questions of a subtask review by the epic planner', () =>
   });
 
   it('closes the round as an ok round when the planner ruled the finding out', async () => {
-    const { documents, planner, ctx, taken, ended } = setup([entry('ruled-out')], { quality: returned });
+    const { documents, planner, ctx, taken, ended } = setup([entry('ruled-out')], { code: returned });
     await settleAsked(ctx, documents, planner);
     expect(ended).toMatchObject([
       {
@@ -107,10 +119,15 @@ describe('settling the questions of a subtask review by the epic planner', () =>
   });
 
   it('rules out only the asked return and sends the return of a reviewer that asked nothing to implement', async () => {
-    const other: ReviewResult = { decision: 'return', review: 'The cache leaks.', summary: ['two'] };
+    const other: ReviewResult = {
+      decision: 'return',
+      review: 'The cache leaks.',
+      summary: ['two'],
+      sections: { regressions: 'checked', performance: 'The cache leaks.' },
+    };
     const { documents, planner, ctx, taken, ended } = setup([entry('ruled-out')], {
-      quality: returned,
-      security: other,
+      code: returned,
+      behavior: other,
     });
     await settleAsked(ctx, documents, planner);
     expect(ended).toMatchObject([{ moveTo: 'implement' }]);
@@ -118,14 +135,14 @@ describe('settling the questions of a subtask review by the epic planner', () =>
   });
 
   it('sends the return to implement and takes the answer when the planner says it holds', async () => {
-    const { documents, planner, ctx, taken, ended } = setup([entry('holds')], { quality: returned });
+    const { documents, planner, ctx, taken, ended } = setup([entry('holds')], { code: returned });
     await settleAsked(ctx, documents, planner);
     expect(ended).toMatchObject([{ moveTo: 'implement' }]);
     expect(taken).toEqual([reviewAnswerKey(5)]);
   });
 
   it('sends the return to implement as before when the answer has no typed finding', async () => {
-    const { documents, planner, ctx, taken, ended } = setup([], { quality: returned, security: passed });
+    const { documents, planner, ctx, taken, ended } = setup([], { code: returned, behavior: passed });
     await settleAsked(ctx, documents, planner);
     expect(ended).toMatchObject([{ moveTo: 'implement' }]);
     expect(taken).toEqual([]);
@@ -133,7 +150,7 @@ describe('settling the questions of a subtask review by the epic planner', () =>
 
   it('does not read a taken answer of an earlier ask of the same question', async () => {
     const earlier = { ...entry('ruled-out'), key: reviewAnswerKey(2), state: 'taken' };
-    const { documents, planner, ctx, ended } = setup([earlier], { quality: returned });
+    const { documents, planner, ctx, ended } = setup([earlier], { code: returned });
     await settleAsked(ctx, documents, planner);
     expect(ended).toMatchObject([{ moveTo: 'implement' }]);
   });

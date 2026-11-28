@@ -63,20 +63,20 @@ describe('runs api', () => {
       run.stepStartedAt = new Date(Date.now() - 60_000).toISOString();
       await storeRun(runRepository, run);
       await writeFile(
-        join(root, 'data', 'proj-32-code-review-regressions-output.txt'),
+        join(root, 'data', 'proj-32-code-review-behavior-output.txt'),
         'thinking\nprocess killed: time\nthinking\n',
       );
-      await writeFile(join(root, 'data', 'proj-32-code-review-regressions-launches.txt'), '1\n1\n');
-      await writeFile(join(root, 'data', 'proj-32-code-review-quality-output.txt'), 'thinking\n');
-      await writeFile(join(root, 'data', 'proj-32-code-review-quality-launches.txt'), '1\n1\n');
+      await writeFile(join(root, 'data', 'proj-32-code-review-behavior-launches.txt'), '1\n1\n');
+      await writeFile(join(root, 'data', 'proj-32-code-review-code-output.txt'), 'thinking\n');
+      await writeFile(join(root, 'data', 'proj-32-code-review-code-launches.txt'), '1\n1\n');
       const runs = app.get(RunQueriesService);
       const chips = (await runs.flow('proj-32')).phases.flatMap((phase) => phase.steps);
-      expect(chips.find((step) => step.name === 'code-review-regressions')?.attempts).toBe(1);
-      expect(chips.find((step) => step.name === 'code-review-regressions')?.status).toBe('running');
-      expect(chips.find((step) => step.name === 'code-review-quality')?.attempts).toBe(1);
+      expect(chips.find((step) => step.name === 'code-review-behavior')?.attempts).toBe(1);
+      expect(chips.find((step) => step.name === 'code-review-behavior')?.status).toBe('running');
+      expect(chips.find((step) => step.name === 'code-review-code')?.attempts).toBe(1);
       expect(chips.find((step) => step.name === 'code-review')?.attempts).toBe(0);
-      const regressions = await runs.step('proj-32', 'code-review-regressions');
-      expect(regressions.visits.map((item) => item.attempt)).toEqual([1]);
+      const behavior = await runs.step('proj-32', 'code-review-behavior');
+      expect(behavior.visits.map((item) => item.attempt)).toEqual([1]);
       await writeFile(join(root, 'data', 'proj-32-code-review-report-output.txt'), 'thinking\n');
       await writeFile(join(root, 'data', 'proj-32-code-review-report-launches.txt'), '1\n1\n');
       const reporting = (await runs.flow('proj-32')).phases.flatMap((phase) => phase.steps);
@@ -274,12 +274,12 @@ describe('runs api', () => {
     const app = await seededBoot(root);
     try {
       await mkdir(join(root, 'data'), { recursive: true });
-      await writeFile(join(root, 'data', 'proj-23-code-review-quality-output.txt'), reviewLog('return'));
+      await writeFile(join(root, 'data', 'proj-23-code-review-code-output.txt'), reviewLog('return'));
       await save(app.get(RunRepository), 'proj-23', 'code-review', 'failed');
       const chips =
         (await app.get(RunQueriesService).flow('proj-23')).phases.find((phase) => phase.phase === 'code-review')
           ?.steps ?? [];
-      expect(chips.find((step) => step.name === 'code-review-quality')?.status).toBe('returned');
+      expect(chips.find((step) => step.name === 'code-review-code')?.status).toBe('returned');
     } finally {
       await app.close();
     }

@@ -1,8 +1,8 @@
 import type { DocumentRepository } from '../../history/document.repository';
-import { CODE_REVIEWERS } from '../../contract/steps';
+import { STORED_REVIEWERS } from '../../contract/steps';
 import type { Issue } from '../contract/step-contract';
 import type { ReviewResult } from '../../agent-result/definitions/review';
-import { latestReview } from '../../agent-result/stored-review';
+import { latestReview, reviewKinds, storedReviewers } from '../../agent-result/stored-review';
 import { issueOf } from '../shared/handoff';
 import { git, gitDetail, gitMissing } from '../../git/git';
 import { SwarmloopError } from '../../core/swarmloop-error';
@@ -55,14 +55,19 @@ async function ownChangeOn({ tree, branch, base, hosts }: BranchOnOrigin): Promi
  */
 export async function unchangedOutcome(
   documents: DocumentRepository,
-  key: string,
+  run: { id: number; key: string },
   branches: BranchOnOrigin[],
 ): Promise<UnchangedOutcome> {
+  const { key } = run;
   const requirements = await latestReview(documents, key, 'requirements');
   if (requirements?.decision === 'ok') {
     const found = locations(requirements);
+    // The reviewers this run was reviewed by: a run reviewed before the three reviewers has its retired ones.
+    const reviewed = await documents.latestDocuments([run.id], STORED_REVIEWERS.flatMap(reviewKinds));
     const others = await Promise.all(
-      CODE_REVIEWERS.filter((name) => name !== 'requirements').map((name) => latestReview(documents, key, name)),
+      storedReviewers(reviewed)
+        .filter((name) => name !== 'requirements')
+        .map((name) => latestReview(documents, key, name)),
     );
     if (found.length > 0 && others.every((review) => review === null || review.decision === 'ok')) {
       for (const entry of branches) {

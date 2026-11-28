@@ -214,7 +214,7 @@ describe('steps of an open relaunch', () => {
       );
     expect(chips(review)).toMatchObject({
       'code-review-requirements': 'idle',
-      'code-review-performance': 'idle',
+      'code-review-behavior': 'idle',
       'code-review': 'idle',
       commit: 'again',
       'merge-request': 'again',
@@ -302,11 +302,11 @@ describe('reviewer chip in a later round', () => {
   function chipOf(roundTwoOutput: string | null): { status: string; attempts: number } {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-chip-'));
     mkdirSync(join(root, 'data'));
-    const first = join(root, 'data', 'K-1-code-review-quality-zzz-output.txt');
+    const first = join(root, 'data', 'K-1-code-review-code-zzz-output.txt');
     writeFileSync(first, finished);
     utimesSync(first, new Date(1000), new Date(1000));
     if (roundTwoOutput !== null) {
-      const second = join(root, 'data', 'K-1-code-review-quality-aaa-output.txt');
+      const second = join(root, 'data', 'K-1-code-review-code-aaa-output.txt');
       writeFileSync(second, roundTwoOutput);
       utimesSync(second, new Date(2000), new Date(2000));
     }
@@ -318,7 +318,7 @@ describe('reviewer chip in a later round', () => {
       stepStartedAt: new Date(2000).toISOString(),
     } as RunEntity;
     const flow = phases(run, [], [], root);
-    const step = flow.flatMap((phase) => phase.steps).find((item) => item.name === 'code-review-quality');
+    const step = flow.flatMap((phase) => phase.steps).find((item) => item.name === 'code-review-code');
     return { status: step!.status, attempts: step!.attempts };
   }
 
@@ -333,8 +333,8 @@ describe('reviewer chip in a later round', () => {
   it('lists no folder when the run has attempt rows, and shows the same chip', () => {
     const root = mkdtempSync(join(tmpdir(), 'swarmloop-chip-rows-'));
     mkdirSync(join(root, 'data'));
-    writeFileSync(join(root, 'data', 'K-1-code-review-quality-zzz-output.txt'), finished);
-    writeFileSync(join(root, 'data', 'K-1-code-review-quality-aaa-output.txt'), 'process started\nthinking\n');
+    writeFileSync(join(root, 'data', 'K-1-code-review-code-zzz-output.txt'), finished);
+    writeFileSync(join(root, 'data', 'K-1-code-review-code-aaa-output.txt'), 'process started\nthinking\n');
     const run = {
       key: 'K-1',
       status: 'running',
@@ -345,7 +345,7 @@ describe('reviewer chip in a later round', () => {
     const listing = jest.spyOn(fs, 'readdirSync');
     try {
       const flow = phases(run, [{ attemptId: 'zzz', step: 'code-review' }] as StepStatEntity[], [], root);
-      const step = flow.flatMap((phase) => phase.steps).find((item) => item.name === 'code-review-quality');
+      const step = flow.flatMap((phase) => phase.steps).find((item) => item.name === 'code-review-code');
       expect(step!.status).toBe('running');
       expect(listing).not.toHaveBeenCalled();
     } finally {
@@ -360,11 +360,11 @@ describe('reviewer chip of a limited reviewer', () => {
     mkdirSync(join(root, 'data'));
     const run = { key: 'K-1', status: 'waiting', currentStep: 'code-review', activeAttempt: null } as RunEntity;
     const stats = [
-      { id: 1, step: 'code-review-quality', status: 'interrupted', killReason: 'RUNTIME_LIMIT', attempt: 1 },
+      { id: 1, step: 'code-review-code', status: 'interrupted', killReason: 'RUNTIME_LIMIT', attempt: 1 },
     ] as StepStatEntity[];
     const step = phases(run, stats, [], root)
       .flatMap((phase) => phase.steps)
-      .find((item) => item.name === 'code-review-quality');
+      .find((item) => item.name === 'code-review-code');
     expect(step?.status).toBe('waiting');
   });
 });
@@ -391,25 +391,25 @@ describe('chips of a code-review that is preparing', () => {
 
     expect(Object.keys(chips).length).toBeGreaterThan(2);
     expect(Object.values(chips).filter((status) => status === 'idle')).toEqual([]);
-    expect(chips['code-review-quality']).toBe('preparing');
+    expect(chips['code-review-code']).toBe('preparing');
     expect(chips['code-review']).toBe('preparing');
   });
 
   it('shows no card as preparing once a reviewer has started', () => {
-    const chips = reviewChips({}, { 'code-review-quality': 'starting\n' });
+    const chips = reviewChips({}, { 'code-review-code': 'starting\n' });
 
     expect(Object.values(chips)).not.toContain('preparing');
     expect(chips['code-review-requirements']).toBe('running');
   });
 
   it('keeps a card idle when the run is not in code-review', () => {
-    expect(reviewChips({ currentStep: 'implement' })['code-review-quality']).toBe('idle');
+    expect(reviewChips({ currentStep: 'implement' })['code-review-code']).toBe('idle');
   });
 });
 
 describe('chips of a second code-review round', () => {
   const finished = (decision: 'ok' | 'return') => reviewLog(decision);
-  const ANGLES = ['requirements', 'quality', 'regressions', 'security', 'performance'];
+  const ANGLES = ['requirements', 'code', 'behavior'];
   const roundOne = new Date(1000);
   const roundTwo = new Date(5000);
 
@@ -453,27 +453,69 @@ describe('chips of a second code-review round', () => {
   });
 
   it('shows a reviewer that is still starting, and the others, as running, not as round 1 left them', () => {
-    const shown = chips({ 'code-review-quality': 'starting\n' });
+    const shown = chips({ 'code-review-code': 'starting\n' });
     expect(Object.values(shown).filter((status) => NOT_YET.includes(status))).toEqual([]);
-    expect(shown['code-review-quality']).toBe('running');
+    expect(shown['code-review-code']).toBe('running');
     expect(shown['code-review']).toBe('running');
   });
 
   it('shows only the reviewer that decided in round 2 as decided, and the report as running', () => {
-    const shown = chips({ 'code-review-quality': finished('ok'), 'code-review-security': 'thinking\n' });
-    expect(shown['code-review-quality']).toBe('done');
-    expect(shown['code-review-security']).toBe('running');
+    const shown = chips({ 'code-review-code': finished('ok'), 'code-review-behavior': 'thinking\n' });
+    expect(shown['code-review-code']).toBe('done');
+    expect(shown['code-review-behavior']).toBe('running');
     expect(shown['code-review-requirements']).toBe('running');
     expect(shown['code-review']).toBe('running');
   });
 
   it('shows a reviewer that returned in round 2 as returned and the report as done once all decided', () => {
     const logs = Object.fromEntries(ANGLES.map((angle) => [`code-review-${angle}`, finished('ok')]));
-    logs['code-review-quality'] = finished('return');
+    logs['code-review-code'] = finished('return');
     const shown = chips({ ...logs, 'code-review-report': finished('ok') });
-    expect(shown['code-review-quality']).toBe('returned');
+    expect(shown['code-review-code']).toBe('returned');
     expect(shown['code-review-requirements']).toBe('done');
     expect(shown['code-review']).toBe('done');
+  });
+});
+
+describe('reviewers of a run on the board', () => {
+  const reviewers = (documents: Partial<DocumentEntity>[]): Record<string, string> => {
+    const run = { key: 'K-1', status: 'done', currentStep: 'done' } as RunEntity;
+    const steps = phases(run, [], documents as DocumentEntity[], '/nonexistent')
+      .filter((phase) => phase.phase === 'code-review')
+      .flatMap((phase) => phase.steps);
+    return Object.fromEntries(steps.map((step) => [step.name, step.status]));
+  };
+  const result = (kind: string, decision: string) => ({
+    id: 1,
+    kind,
+    body: JSON.stringify({ decision, review: 'r', summary: [] }),
+  });
+
+  it('shows the three reviewers and the report for a run with no review yet', () => {
+    expect(Object.keys(reviewers([]))).toEqual([
+      'code-review-requirements',
+      'code-review-code',
+      'code-review-behavior',
+      'code-review',
+    ]);
+  });
+
+  it('shows the five reviewers an old run was reviewed by, each with its stored decision', () => {
+    const shown = reviewers([
+      { ...result('review_requirements_result', 'ok'), id: 1 },
+      { ...result('review_quality_result', 'return'), id: 2 },
+      { ...result('review_security_result', 'ok'), id: 3 },
+    ]);
+    expect(Object.keys(shown)).toEqual([
+      'code-review-requirements',
+      'code-review-quality',
+      'code-review-regressions',
+      'code-review-security',
+      'code-review-performance',
+      'code-review',
+    ]);
+    expect(shown['code-review-quality']).toBe('returned');
+    expect(shown['code-review-security']).toBe('done');
   });
 });
 

@@ -96,7 +96,7 @@ describe('code-review step golden traces', () => {
         result(
           input.step.endsWith('report')
             ? reportReply('The change needs work.')
-            : reply(input.step, input.step.endsWith('quality') ? 'return' : 'ok'),
+            : reply(input.step, input.step.endsWith('code') ? 'return' : 'ok'),
           input.step,
         ),
       ),

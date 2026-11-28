@@ -7,7 +7,7 @@
 
 [![CI](https://github.com/swarmloop/swarmloop/actions/workflows/ci.yml/badge.svg)](https://github.com/swarmloop/swarmloop/actions/workflows/ci.yml)
 
-**Coding agents that have to pass five reviewers and your CI before they reach you. A sandbox around every step, a record of every dollar.**
+**Coding agents that have to pass three reviewers and your CI before they reach you. A sandbox around every step, a record of every dollar.**
 
 <p>
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
@@ -20,11 +20,11 @@
 
 </div>
 
-swarmloop takes a ticket or a prompt and walks a coding agent through requirements, research, a plan, and implementation. Then the work has to earn your attention. Five reviewers read the diff in parallel, and any finding sends it back to the agent. Only when they agree does the server commit, push a branch, open a merge request, and watch your pipeline. A red job sends the work back too. You open the merge request when the reviewers and every check in your pipeline have passed.
+swarmloop takes a ticket or a prompt and walks a coding agent through requirements, research, a plan, and implementation. Then the work has to earn your attention. Three reviewers read the diff in parallel, and any finding sends it back to the agent. Only when they agree does the server commit, push a branch, open a merge request, and watch your pipeline. A red job sends the work back too. You open the merge request when the reviewers and every check in your pipeline have passed.
 
 Every step runs in a locked container. Every prompt, diff, review, token, and dollar is stored. Cursor, Claude, or Codex is one line in `.env`.
 
-![One real swarmloop run through planning, implementation, checks, five reviewers and CI. Checks sent it back to implement once, code review twice and the pipeline once, then it merged.](swarmloop-pipeline.png)
+![One real swarmloop run through planning, implementation, checks, three reviewers and CI. Checks sent it back to implement once, code review twice and the pipeline once, then it merged.](swarmloop-pipeline.png)
 
 ![swarmloop over 30 days: 286 runs, 99% merged, and work sent back 922 times by checks, reviewers and CI before a person had to look.](swarmloop-stats.png)
 
@@ -36,7 +36,7 @@ Every step runs in a locked container. Every prompt, diff, review, token, and do
 | 🔀 **Cursor, Claude, or Codex** | One line in `.env`. Research, plan, and implementation each pick their own model. |
 | 🎫 **Jira, Confluence, Drive** | The ticket, its epic, links, subtasks, attachments, and the pages around it. |
 | 🌿 **GitHub and GitLab** | Feature branch, commit once the reviewers pass, merge request, pipeline watch. |
-| 🔍 **Five reviewers** | Requirements, quality, regressions, security, performance. A finding sends the work back. |
+| 🔍 **Three reviewers** | Requirements, code (quality and security), behavior (regressions and performance). A finding sends the work back. |
 | 🔄 **Rebase** | One button rebases onto the latest base branch, hands conflicts to the agent, and reviews again. The same rebase runs by itself when the host reports a merge conflict on the merge request. |
 | 💰 **Limits** | Dollars, tokens, time, silence, and retries are server settings, not the agent's choice. |
 | 🖥 **Live panel, CLI** | The panel updates as each step runs. The CLI starts the same runs, with the same steps, rules, and history. |
@@ -262,9 +262,9 @@ Every agent step ends its answer with one JSON block, and that block is all the 
 
 A project tailors swarmloop with `.swarmloop.json` and `skills/`, and puts its own rules in `AGENTS.md` at the repository root. Every step of every runtime gets that file, for every repository of a run.
 
-### 🔍 Five reviewers, and they can say no
+### 🔍 Three reviewers, and they can say no
 
-Requirements, quality, regressions, security, and performance review the diff at the same time, on a read-only mount. A report sums them up. Each reviewer ends with `decision: ok` or `decision: return`. A return sends the run back to implementation with the finding. A red pipeline does the same, on its own counter. `defaults.env` allows 10 review returns and 6 pipeline returns.
+Requirements, code (its quality and security sections), and behavior (its regressions and performance sections) review the diff at the same time, on a read-only mount. A report sums them up. Each reviewer ends with `decision: ok` or `decision: return`. A return sends the run back to implementation with the finding. A red pipeline does the same, on its own counter. `defaults.env` allows 10 review returns and 6 pipeline returns.
 
 A diff that was already reviewed is not returned a second time.
 

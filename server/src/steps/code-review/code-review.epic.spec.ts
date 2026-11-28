@@ -25,7 +25,7 @@ async function parentReview(key: string, reviewAgent: string) {
   await writeEnv(root, undefined, undefined, undefined, { AGENTS_REVIEW: reviewAgent });
   gitWorktree(join(root, 'worktrees', key, 'billing-api'));
   const agent = jest.fn(async (input: AgentRunInput) =>
-    result(input.step.endsWith('report') ? reportReply('It holds.') : reply('notes', 'ok'), input.step),
+    result(input.step.endsWith('report') ? reportReply('It holds.') : reply(input.step, 'ok'), input.step),
   );
   const app = await boot(root, agent);
   try {
@@ -68,7 +68,7 @@ describe('code review of a subtask', () => {
     await writeEnv(root);
     gitWorktree(join(root, 'worktrees', key, 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
-      result(input.step.endsWith('report') ? reportReply('It holds.') : reply('notes', 'ok'), input.step),
+      result(input.step.endsWith('report') ? reportReply('It holds.') : reply(input.step, 'ok'), input.step),
     );
     const app = await boot(root, agent);
     try {
@@ -117,20 +117,20 @@ describe('a resumed reviewer chat of a subtask', () => {
   ]);
   const CONTRACT =
     '- tool (owner b): the tool takes a path\n\ndecisions:\n- subtask b at 2026-11-20T09:00:00.000Z: paths are absolute\n';
-  const CHAT = 'quality-chat';
+  const CHAT = 'code-chat';
 
-  /** The quality reviewer's chat resumes; `seen` is what its chat was told before, null for a chat never told. */
+  /** The code reviewer's chat resumes; `seen` is what its chat was told before, null for a chat never told. */
   async function resumed(key: string, seen: object | null) {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-resumed-'));
     await writeEnv(root);
     gitWorktree(join(root, 'worktrees', key, 'billing-api'));
-    mkdirSync(agentStateDir(root, key, sessionHome('code-review-quality')), { recursive: true });
+    mkdirSync(agentStateDir(root, key, sessionHome('code-review-code')), { recursive: true });
     writeFileSync(
-      join(root, 'data', sessionFileName(key, 'code-review-quality')),
+      join(root, 'data', sessionFileName(key, 'code-review-code')),
       `${JSON.stringify({ runtime: 'claude', chatId: CHAT, resumed: true, completed: true, killReason: null, usd: 3 })}\n`,
     );
     const agent = jest.fn(async (input: AgentRunInput) => ({
-      ...result(input.step.endsWith('report') ? reportReply('It holds.') : reply('notes', 'ok'), input.step),
+      ...result(input.step.endsWith('report') ? reportReply('It holds.') : reply(input.step, 'ok'), input.step),
       chatId: `${input.step}-chat`,
     }));
     const app = await boot(root, agent);
@@ -147,12 +147,12 @@ describe('a resumed reviewer chat of a subtask', () => {
       await storeRun(runs, run);
       if (seen) await documents.putDocument(run, 'starter_briefing', JSON.stringify({ [CHAT]: seen }));
       await app.get(PipelineService).step('code-review', key);
-      const quality = agent.mock.calls.map((call) => call[0]).find((call) => call.step === 'code-review-quality');
+      const code = agent.mock.calls.map((call) => call[0]).find((call) => call.step === 'code-review-code');
       const record = JSON.parse((await documents.latestBody(key, 'starter_briefing')) ?? '{}') as Record<
         string,
         unknown
       >;
-      return { quality, record };
+      return { code, record };
     } finally {
       await app.close();
     }
@@ -160,14 +160,14 @@ describe('a resumed reviewer chat of a subtask', () => {
 
   it('is told a decision a sibling made since its last prompt, and the next round does not repeat it', async () => {
     const first = await resumed('PROJ-84', { decisions: [], merged: [], items: {} });
-    expect(first.quality?.resumeChatId).toBe(CHAT);
-    expect(first.quality?.prompt).toContain('New decisions since your last prompt');
-    expect(first.quality?.prompt).toContain('paths are absolute');
+    expect(first.code?.resumeChatId).toBe(CHAT);
+    expect(first.code?.prompt).toContain('New decisions since your last prompt');
+    expect(first.code?.prompt).toContain('paths are absolute');
 
-    const seen = first.record['code-review-quality-chat'];
+    const seen = first.record['code-review-code-chat'];
     const second = await resumed('PROJ-85', seen as object);
-    expect(second.quality?.prompt).not.toContain('New decisions since your last prompt');
-    expect(second.quality?.prompt).not.toContain('paths are absolute');
+    expect(second.code?.prompt).not.toContain('New decisions since your last prompt');
+    expect(second.code?.prompt).not.toContain('paths are absolute');
   });
 });
 
@@ -263,13 +263,13 @@ describe('code review of an epic whose resolution round is open', () => {
   });
 
   it('keeps the round open and moves no task when a reviewer returns', async () => {
-    const { after, ended, round, notes } = await epicReview('PROJ-91', 'open\n', 'quality', OPEN);
+    const { after, ended, round, notes } = await epicReview('PROJ-91', 'open\n', 'code', OPEN);
 
     expect(after.currentStep).toBe('implement');
     expect(after.attemptsReview).toBe(1);
     expect(ended).toEqual([]);
     expect(round?.trim()).toBe('open');
-    expect(notes).toContain('## quality');
+    expect(notes).toContain('## code');
   });
 
   it('tells every reviewer of the resolution and lists the open tasks', async () => {

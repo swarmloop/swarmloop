@@ -1,5 +1,5 @@
 import type { StoredAgents } from '../contract/api';
-import type { CODE_REVIEWERS, StepName } from '../contract/steps';
+import { isReviewStep, type CODE_REVIEWERS, type StepName } from '../contract/steps';
 import type { Effort } from '../contract/effort';
 import { effortsOfList, highestOf, isEffort, raisesEffort } from '../contract/effort';
 import { defaultLevelOf } from './default-levels';
@@ -79,10 +79,8 @@ export const ROLE_OF_STEP = {
   done: null,
   'code-review-report': 'review',
   'code-review-requirements': 'review',
-  'code-review-quality': 'review',
-  'code-review-regressions': 'review',
-  'code-review-security': 'review',
-  'code-review-performance': 'review',
+  'code-review-code': 'review',
+  'code-review-behavior': 'review',
   rebase: 'implement',
   'backlog-plan': 'plan',
   'plan-answers': 'plan',
@@ -93,8 +91,12 @@ type AgentUseName = {
   [K in keyof typeof ROLE_OF_STEP]: (typeof ROLE_OF_STEP)[K] extends null ? never : K;
 }[keyof typeof ROLE_OF_STEP];
 
+/** A retired reviewer's step is not in the table: an old run's step keeps the review role it had. */
 function roleFor(step: string): Role | null {
-  return Object.hasOwn(ROLE_OF_STEP, step) ? ROLE_OF_STEP[step as AgentUse] : null;
+  if (Object.hasOwn(ROLE_OF_STEP, step)) {
+    return ROLE_OF_STEP[step as AgentUse];
+  }
+  return isReviewStep(step) ? 'review' : null;
 }
 
 /**

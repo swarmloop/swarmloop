@@ -102,15 +102,15 @@ describe('a step asks the planner', () => {
 
   it('takes the question of a reviewer to the planner and runs only that reviewer again with the answer', async () => {
     const asking = block({ decision: 'ok', review: 'fine so far', summary: ['fine'], question: QUESTION });
-    await start({ 'code-review-quality': [asking], plan: [block({ reply: ANSWER, finding: 'holds' })] });
+    await start({ 'code-review-code': [asking], plan: [block({ reply: ANSWER, finding: 'holds' })] });
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 
     // The reviewer's decision counts as it gave it, so no reviewer runs again because the planner answered.
-    for (const reviewer of ['quality', 'requirements', 'regressions', 'security', 'performance']) {
+    for (const reviewer of ['code', 'requirements', 'behavior']) {
       expect(launches(`code-review-${reviewer}`)).toHaveLength(1);
     }
-    expect(blocks.steps.indexOf('plan', 3)).toBeGreaterThan(blocks.steps.indexOf('code-review-quality'));
+    expect(blocks.steps.indexOf('plan', 3)).toBeGreaterThan(blocks.steps.indexOf('code-review-code'));
     expect((await runOf())?.currentStep).toBe('done');
     await assertInvariants(flow.app);
   });

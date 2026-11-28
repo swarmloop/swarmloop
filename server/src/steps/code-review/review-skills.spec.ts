@@ -16,8 +16,20 @@ describe('code-review skills', () => {
     expect(text).toContain('an edit that keeps the expected value is no exception');
   });
 
-  it('words the failed-job rule the same in both skills', () => {
+  it('words the failed-job rule the same in the requirements and behavior skills', () => {
     expect(skill('requirements')).toContain(FAILED_JOB);
-    expect(skill('regressions')).toContain(FAILED_JOB);
+    expect(skill('behavior')).toContain(FAILED_JOB);
+  });
+
+  it('gives the code skill its Quality and Security sections and the behavior skill its Regressions and Performance', () => {
+    expect(skill('code')).toContain('\n## Quality\n');
+    expect(skill('code')).toContain('\n## Security\n');
+    expect(skill('behavior')).toContain('\n## Regressions\n');
+    expect(skill('behavior')).toContain('\n## Performance\n');
+  });
+
+  it('has each merged skill ask for one `sections` entry per section', () => {
+    expect(skill('code')).toContain('one `sections` entry for each section, `quality` and `security`');
+    expect(skill('behavior')).toContain('one `sections` entry for each section, `regressions` and `performance`');
   });
 });

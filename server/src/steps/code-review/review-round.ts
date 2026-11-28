@@ -229,7 +229,7 @@ function reviewJob(reviewer: Reviewer, input: RoundInput, changes: PlanChangesSe
     ? [conflictResolutionSection((input.subtasks ?? []).filter((task) => !settled(task)))]
     : [];
   const withRound = [...listed, ...resolution];
-  const kept = reviewer.name === 'regressions' ? withKeep(withRound, input.keep) : withRound;
+  const kept = reviewer.name === 'behavior' ? withKeep(withRound, input.keep) : withRound;
   const exchange = input.exchanges.get(reviewer.name);
   const answered = exchange ? exchangeSection(exchange.finding, exchange.answer) : null;
   const exchanged = answered ? [...kept, answered] : kept;

@@ -1,5 +1,13 @@
 import type { FlowView } from '@contract/api';
-import { PHASE_STEPS, PHASES, pipelineStepOf, REVIEW_STEPS, STEPS } from '@contract/steps';
+import {
+  isReviewStep,
+  PHASE_STEPS,
+  PHASES,
+  pipelineStepOf,
+  REVIEW_STEPS,
+  STEPS,
+  STORED_REVIEW_STEPS,
+} from '@contract/steps';
 import type { PhaseName } from '@contract/steps';
 import { phaseLabel } from '../../lib/phase-label';
 
@@ -68,12 +76,12 @@ export function keepOpenReviews<T extends { steps: { name: string; status: strin
 }
 
 function reviewChip(name: string): boolean {
-  return name === 'code-review' || REVIEW_STEPS.includes(name);
+  return name === 'code-review' || isReviewStep(name);
 }
 
 /** Live agent files are `implement-swarmloop`; the board watches `implement`. */
 export function liveLogStep(entry: string, watched: string): boolean {
-  const owner = [...STEPS, ...REVIEW_STEPS]
+  const owner = [...STEPS, ...STORED_REVIEW_STEPS]
     .filter((name) => entry === name || entry.startsWith(`${name}-`))
     .sort((left, right) => right.length - left.length)[0];
   return owner === watched;

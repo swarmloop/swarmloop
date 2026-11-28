@@ -24,7 +24,7 @@ One line for each reviewer: what that review found. Do not give its decision: th
 
 `low`, `medium` or `high`, with a reason of one line.
 
-Do not add a finding none of the five wrote. Do not change their decisions. Do not end with a decision line.
+Do not add a finding none of the three wrote. Do not change their decisions. Do not end with a decision line.
 
 [reading with a reader]
 

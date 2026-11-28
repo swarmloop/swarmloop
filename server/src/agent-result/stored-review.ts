@@ -1,3 +1,5 @@
+import { reviewerSetOf, STORED_REVIEWERS } from '../contract/steps';
+import type { StoredReviewer } from '../contract/steps';
 import { legacyRequirementsReview, legacyReview } from './legacy/review';
 import { reviewDefinition, reviewStoredDefinition } from './definitions/review';
 import type { ReviewResult } from './definitions/review';
@@ -39,4 +41,21 @@ export async function latestReview(
     }
   }
   return storedReview(name, stored);
+}
+
+/**
+ * The reviewers a run was reviewed by, read from the reviews it stored: the reviewer set of the newest reviewer other
+ * than requirements. The documents are put in id order first, because a reader may list them in any order; documents
+ * without an id keep the order they came in. `opened` names the reviewers of a round that is open and has stored
+ * nothing yet; they count as newer than every stored review.
+ */
+export function storedReviewers(
+  documents: { id?: number; kind: string }[],
+  opened: readonly string[] = [],
+): readonly StoredReviewer[] {
+  const names = [...documents]
+    .sort((left, right) => (left.id ?? 0) - (right.id ?? 0))
+    .map((document) => STORED_REVIEWERS.find((name) => reviewKinds(name).includes(document.kind)))
+    .filter((name) => name !== undefined);
+  return reviewerSetOf([...names, ...opened]);
 }

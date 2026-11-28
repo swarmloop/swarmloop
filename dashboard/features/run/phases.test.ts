@@ -40,24 +40,23 @@ void describe('liveLogStep', () => {
     ]);
     assert.deepEqual(
       expanded[0]?.steps.map((step) => step.name),
-      [
-        'code-review-requirements',
-        'code-review-quality',
-        'code-review-regressions',
-        'code-review-security',
-        'code-review-performance',
-      ],
+      ['code-review-requirements', 'code-review-code', 'code-review-behavior'],
     );
-    const locked = replaySelection([...PHASES], [...PHASES], 'code-review-quality');
+    const locked = replaySelection([...PHASES], [...PHASES], 'code-review-code');
     assert.equal(locked.locked.includes('code-review'), true);
-    const marked = markReviewFinished(expanded, 'code-review-quality', 'waiting');
-    assert.equal(marked[0]?.steps.find((step) => step.name === 'code-review-quality')?.status, 'waiting');
-    const passed = markReviewFinished(marked, 'code-review-quality', 'done');
-    assert.equal(passed[0]?.steps.find((step) => step.name === 'code-review-quality')?.status, 'done');
-    assert.equal(marked[0]?.steps.find((step) => step.name === 'code-review-security')?.status, 'running');
-    const live = markReviewLive(marked, 'code-review-quality');
-    assert.equal(live[0]?.steps.find((step) => step.name === 'code-review-quality')?.status, 'running');
-    assert.equal(live[0]?.steps.find((step) => step.name === 'code-review-security')?.status, 'running');
+    const marked = markReviewFinished(expanded, 'code-review-code', 'waiting');
+    assert.equal(marked[0]?.steps.find((step) => step.name === 'code-review-code')?.status, 'waiting');
+    const passed = markReviewFinished(marked, 'code-review-code', 'done');
+    assert.equal(passed[0]?.steps.find((step) => step.name === 'code-review-code')?.status, 'done');
+    assert.equal(marked[0]?.steps.find((step) => step.name === 'code-review-behavior')?.status, 'running');
+    const live = markReviewLive(marked, 'code-review-code');
+    assert.equal(live[0]?.steps.find((step) => step.name === 'code-review-code')?.status, 'running');
+    assert.equal(live[0]?.steps.find((step) => step.name === 'code-review-behavior')?.status, 'running');
+    const retired = keepOpenReviews(
+      [{ phase: 'code review', steps: [{ name: 'code-review-security', status: 'idle', current: false }] }],
+      new Set(['code-review-security']),
+    );
+    assert.equal(retired[0]?.steps[0]?.status, 'running', 'a retired reviewer of an old run is still a reviewer chip');
     const failed = markReviewFinished(
       [{ phase: 'code review', steps: [{ name: 'code-review-security', status: 'failed', current: false }] }],
       'code-review-security',

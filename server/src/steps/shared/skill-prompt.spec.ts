@@ -50,8 +50,8 @@ describe('impact skill rules', () => {
     expect(text).toContain('decision: return');
   });
 
-  it('regressions holds the reachability rule, the named-capability exception and the return lines', () => {
-    const text = skill('code-review/regressions');
+  it('behavior holds the reachability rule, the named-capability exception and the return lines', () => {
+    const text = skill('code-review/behavior');
     expect(text).toContain('Read the Impact section');
     expect(text).toContain('still reachable with the data the system writes now');
     expect(text).toContain('always true or always false counts as removal');
@@ -63,14 +63,7 @@ describe('impact skill rules', () => {
 });
 
 describe('review against the input', () => {
-  const reviewers = [
-    'code-review',
-    'code-review/requirements',
-    'code-review/quality',
-    'code-review/regressions',
-    'code-review/security',
-    'code-review/performance',
-  ];
+  const reviewers = ['code-review', 'code-review/requirements', 'code-review/code', 'code-review/behavior'];
   const authority =
     "the input says what must be true, the plan says how, implement's account says why it was done this way";
   const loosened =
@@ -96,7 +89,7 @@ describe('review against the input', () => {
     expect(text).not.toContain('already what the approved plan asks');
   });
 
-  it.each(['code-review/requirements', 'code-review/regressions'])(
+  it.each(['code-review/requirements', 'code-review/behavior'])(
     '%s returns a loosened assertion in a CI fix',
     (name) => {
       const text = skill(name);
@@ -225,8 +218,8 @@ describe('implement skill rules', () => {
     }
   });
 
-  it('returns the quality review on a function made more complex than its limit', () => {
-    const text = skill('code-review/quality');
+  it('returns the code review on a function made more complex than its limit', () => {
+    const text = skill('code-review/code');
     expect(text).toContain('A function this change makes more complex than 20');
     expect(text).toContain(
       "a function listed in the project's complexity baseline that the change makes more complex than its listed number",
@@ -242,8 +235,8 @@ describe('implement skill rules', () => {
     expect(text).toContain('It never adds an entry to the list');
   });
 
-  it('the security skill follows every outside value to its use', () => {
-    const text = skill('code-review/security');
+  it("the code skill's security section follows every outside value to its use", () => {
+    const text = skill('code-review/code');
     const phrases = [
       'HTTP path, query, body, headers and cookies',
       'uploaded files and their names',
@@ -268,8 +261,8 @@ describe('implement skill rules', () => {
     for (const phrase of phrases) expect(text).toContain(phrase);
   });
 
-  it('returns the quality review on squeezed code and on duplicated logic', () => {
-    const text = skill('code-review/quality');
+  it('returns the code review on squeezed code and on duplicated logic', () => {
+    const text = skill('code-review/code');
     expect(text).toContain('code was squeezed to pass a rule');
     expect(text).toContain('new logic duplicates existing code');
   });
@@ -341,10 +334,8 @@ describe('skillText', () => {
     'implement',
     'implement-improve',
     'code-review/requirements',
-    'code-review/quality',
-    'code-review/regressions',
-    'code-review/security',
-    'code-review/performance',
+    'code-review/code',
+    'code-review/behavior',
     'code-review/report',
   ])('gives the %s skill the asking text by its mark, once and never as a copy', (name) => {
     const text = skill(name);
@@ -397,14 +388,14 @@ describe('project rules in a skill prompt', () => {
 });
 
 describe('fix-the-cause sentence', () => {
-  it.each(['implement', 'implement-improve', 'code-review/quality', 'code-review/regressions'])(
+  it.each(['implement', 'implement-improve', 'code-review/code', 'code-review/behavior'])(
     '%s names the special case keyed on what the failure showed',
     (name) => {
       expect(skill(name)).toContain('keyed on the specific name, message text, id or value seen in the failure');
     },
   );
 
-  it.each(['code-review/quality', 'code-review/regressions'])(
+  it.each(['code-review/code', 'code-review/behavior'])(
     "%s reads implement's cause against the failure and the diff",
     (name) => {
       expect(skill(name)).toContain("Read implement's `cause:` against the failure and the diff");
@@ -443,7 +434,7 @@ describe('needs: a task that needs a sibling waits for it', () => {
     expect(text).toContain('named as the cause in `cause` and left alone');
   });
 
-  it.each(['code-review/requirements', 'code-review/regressions'])(
+  it.each(['code-review/requirements', 'code-review/behavior'])(
     '%s returns a change to the file of another task with no dependency path',
     (name) => {
       expect(skill(name)).toMatch(/a change to a file .* another task lists/);

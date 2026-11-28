@@ -1,5 +1,6 @@
 import Joi from 'joi';
-import { CODE_REVIEWERS } from '../../contract/steps';
+import { CODE_REVIEWERS, STORED_REVIEWERS } from '../../contract/steps';
+import type { StoredReviewer } from '../../contract/steps';
 import { defineResult } from '../result-definition';
 
 /** The place a person should read and why. */
@@ -13,7 +14,8 @@ export interface ReviewReportResult {
   line: string;
   done: string[];
   worthALook: WorthALook[];
-  notes: Record<(typeof CODE_REVIEWERS)[number], string>;
+  /** One note per reviewer of the round. A run reviewed by the retired reviewers has theirs, and none for the three. */
+  notes: Partial<Record<StoredReviewer, string>>;
   risk: 'low' | 'medium' | 'high';
   riskReason: string;
 }
@@ -46,9 +48,11 @@ const NOTES = Joi.object(
   ),
 );
 
-export const reviewReport = defineResult(
-  'review_report',
-  Joi.object({
+/** The notes of a stored report: any reviewer a run can have, none required, so a report of the retired five reads. */
+const STORED_NOTES = Joi.object(Object.fromEntries(STORED_REVIEWERS.map((name) => [name, Joi.string()])));
+
+function reportParts(notes: Joi.ObjectSchema): Joi.SchemaMap {
+  return {
     line: Joi.string().required().description('What the change gives, in one plain line'),
     done: Joi.array()
       .items(Joi.string())
@@ -63,11 +67,16 @@ export const reviewReport = defineResult(
       .max(MAX_WORTH_A_LOOK)
       .required()
       .description(`At most ${MAX_WORTH_A_LOOK} places to read with the reason; empty when nothing needs a look`),
-    notes: NOTES.required(),
+    notes: notes.required(),
     risk: Joi.string().valid('low', 'medium', 'high').required().description('How risky the change is to merge'),
     riskReason: Joi.string().required().description('The reason for the risk, in one line'),
-  }),
-);
+  };
+}
+
+export const reviewReport = defineResult('review_report', Joi.object(reportParts(NOTES)));
+
+/** The report as stored, validated for reading only: the same parts, with the notes of any stored reviewer. */
+export const storedReviewReport = defineResult('review_report', Joi.object(reportParts(STORED_NOTES)));
 
 /** The old shape, validated for reading only. */
 export const legacyReviewReport = defineResult(

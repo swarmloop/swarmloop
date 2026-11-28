@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import type { FlowView } from '@contract/api';
 import type { PlanRevision } from '@contract/plan-chat';
-import { pipelineStepOf, REVIEW_STEPS } from '@contract/steps';
+import { isReviewStep, pipelineStepOf } from '@contract/steps';
 import { resumeLabel, resumeTip } from '../../../../lib/ci-infra';
 import { StepDetail } from '../step-detail';
 
@@ -62,10 +62,7 @@ export function StepWindow({
       now={now}
       liveCommands={flow.checkCommands}
       onReplay={
-        step === 'code-review' ||
-        REVIEW_STEPS.includes(step) ||
-        flow.status === 'running' ||
-        !flow.actions.includes('replay')
+        step === 'code-review' || isReviewStep(step) || flow.status === 'running' || !flow.actions.includes('replay')
           ? undefined
           : () => onReplay(pipelineStepOf(step))
       }

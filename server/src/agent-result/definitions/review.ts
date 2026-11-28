@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import { CODE_REVIEWERS } from '../../contract/steps';
+import { STORED_REVIEWERS } from '../../contract/steps';
 import { defineResult } from '../result-definition';
 import type { ResultDefinition } from '../result-definition';
 import { QUESTION } from './starter-fields';
@@ -20,6 +20,8 @@ export interface ReviewResult {
   met?: string[];
   /** Only the requirements review has it: one mark for each id of the Requirements list. */
   requirements?: RequirementMark[];
+  /** Only a reviewer with named sections has it: one entry per section, `checked` or its findings. */
+  sections?: Record<string, string>;
   /** Only a reviewer that saw implement's answer to its last finding gives it. */
   reason?: string;
   /** One choice the reviewer cannot settle from the brief, the requirements, the plan and the decisions. */
@@ -31,6 +33,25 @@ const REQUIREMENT_MARK = Joi.object({
   status: Joi.string().valid('met', 'partial', 'missing').required(),
   note: Joi.string().required().description('What the diff does for it, or what is missing'),
 });
+
+/** The named sections of a reviewer that has them. Each one is answered in the result, as `checked` or its findings. */
+export const REVIEW_SECTIONS: Readonly<Record<string, readonly string[]>> = {
+  code: ['quality', 'security'],
+  behavior: ['regressions', 'performance'],
+};
+
+function sectionsSchema(sections: readonly string[]): Joi.ObjectSchema {
+  return Joi.object(
+    Object.fromEntries(
+      sections.map((section) => [
+        section,
+        Joi.string().required().description('checked when this section found nothing; else its findings'),
+      ]),
+    ),
+  )
+    .required()
+    .description(`One entry for each section: ${sections.join(', ')}`);
+}
 
 function reviewSchema(name: string): Joi.ObjectSchema {
   const requirements = name === 'requirements';
@@ -56,22 +77,22 @@ function reviewSchema(name: string): Joi.ObjectSchema {
       ),
     question: QUESTION,
   };
-  return Joi.object(
-    requirements
-      ? {
-          ...fields,
-          met: Joi.array().items(Joi.string()).description('where each required behavior already is'),
-          requirements: Joi.array()
-            .items(REQUIREMENT_MARK)
-            .description('One entry for each id of the Requirements list, with its mark'),
-        }
-      : fields,
-  );
+  const sections = REVIEW_SECTIONS[name];
+  if (requirements) {
+    return Joi.object({
+      ...fields,
+      met: Joi.array().items(Joi.string()).description('where each required behavior already is'),
+      requirements: Joi.array()
+        .items(REQUIREMENT_MARK)
+        .description('One entry for each id of the Requirements list, with its mark'),
+    });
+  }
+  return Joi.object(sections ? { ...fields, sections: sectionsSchema(sections) } : fields);
 }
 
-/** `review_<name>` for every reviewer of the code review. */
+/** `review_<name>` for every reviewer a run can have reviews of; a retired reviewer has no sections and is read only. */
 const REVIEW_DEFINITIONS: ReadonlyMap<string, ResultDefinition> = new Map(
-  CODE_REVIEWERS.map((name) => [name, defineResult(`review_${name}`, reviewSchema(name))]),
+  STORED_REVIEWERS.map((name) => [name, defineResult(`review_${name}`, reviewSchema(name))]),
 );
 
 const REASON = Joi.string()

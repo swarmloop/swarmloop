@@ -11,6 +11,7 @@ import {
   pipelineStepOf,
   requireReviewer,
 } from '../../contract/steps';
+import { storedReviewers } from '../../agent-result/stored-review';
 import { readLoopDetail } from '../../history/loop-detail';
 import type { LoopEventEntity } from '../../history/entities';
 import { ARTIFACTS } from '../../steps/contract/artifacts';
@@ -115,7 +116,13 @@ export function phases(
     returnNote(name, latestStats.get(pipelineStepOf(name)), documents, loops, rows).returnNote ??
     edges.find((edge) => edge.from === pipelineStepOf(name))?.words;
   return PHASES.map((phase) => {
-    const steps = phase.steps.map((name) => {
+    // A run shows the reviewers it was reviewed by: the retired five for an old run, the three for any other and for
+    // an old run whose new round is open.
+    const names =
+      phase.phase === 'code-review'
+        ? storedReviewers(documents, open?.reviewers).map((reviewer) => `code-review-${reviewer}`)
+        : phase.steps;
+    const steps = names.map((name) => {
       const parent = pipelineStepOf(name);
       const own = isReviewStep(name) ? latestStats.get(name) : undefined;
       const stat = own ?? latestStats.get(parent);

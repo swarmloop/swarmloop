@@ -5,9 +5,9 @@ import type { OutputFiles } from '../../core/attempt-output';
 import { runFileName } from '../../core/run-files';
 import type { DocumentEntity, RunEntity, StepStatEntity } from '../../history/entities';
 import { launchCount } from '../../agent/agent-launches';
-import { CODE_REVIEWERS, isReviewStep, pipelineStepOf, requireReviewer } from '../../contract/steps';
+import { isReviewStep, pipelineStepOf, requireReviewer } from '../../contract/steps';
 import { reviewLogDecision } from '../../contract/readable-log-review';
-import { storedReview } from '../../agent-result/stored-review';
+import { storedReview, storedReviewers } from '../../agent-result/stored-review';
 import { LIMIT_VISIT } from '../../history/visit.repository';
 import type { RelaunchView } from '../../contract/relaunch';
 import { stepStatus, latest } from './status';
@@ -271,9 +271,9 @@ export function reviewerOutcome(text: string, fallback: string): string {
 
 /** The verdict of the angles that decided: return when one of them returned, else ok, else null. */
 export function angleVerdict(documents: DocumentEntity[]): 'ok' | 'return' | null {
-  const decisions = CODE_REVIEWERS.map((reviewer) => storedDecision(documents, reviewer)).filter(
-    (item): item is 'ok' | 'return' => item !== null,
-  );
+  const decisions = storedReviewers(documents)
+    .map((reviewer) => storedDecision(documents, reviewer))
+    .filter((item): item is 'ok' | 'return' => item !== null);
   if (decisions.length === 0) {
     return null;
   }

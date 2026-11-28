@@ -1,4 +1,4 @@
-import { CODE_REVIEWERS, STEPS, type StepName } from '../../contract/steps';
+import { CODE_REVIEWERS, RETIRED_REVIEWERS, STEPS, type StepName, type StoredReviewer } from '../../contract/steps';
 import { REBASE_CONFLICT, REBASE_JOURNAL } from '../../git/rebase';
 import type { Issue } from './step-contract';
 import { SPLIT_ARTIFACTS } from './artifacts-split';
@@ -37,10 +37,13 @@ const WORK_STEPS: readonly StepName[] = STEPS.filter((step) => step !== 'done');
 const AGENT_STEPS: readonly StepName[] = ['research', 'plan', 'plan-improve', 'implement', 'implement-improve'];
 
 /** `review_<reviewer>_result`: one reviewer's validated object, stored and read through its own definition. */
-function reviewResultArtifact(reviewer: (typeof CODE_REVIEWERS)[number]): Artifact<ReviewResult> {
+function reviewResultArtifact(reviewer: StoredReviewer): Artifact<ReviewResult> {
   const definition = reviewDefinition(reviewer);
+  const retired = RETIRED_REVIEWERS.some((name) => name === reviewer);
   return artifact(definition.kind, {
-    writers: ['code-review'],
+    // A retired reviewer is never started again: its documents are only read, so no step writes them.
+    writers: retired ? [] : ['code-review'],
+    external: retired,
     readers: ['code-review', 'commit'],
     codec: resultArtifactCodec<ReviewResult>(reviewStoredDefinition(reviewer)),
     summarize: summarizeReviewResult,
@@ -282,6 +285,8 @@ export const ARTIFACTS = {
     summarize: (result) => firstLine(isLegacyReport(result) ? result.whatChanged : result.line),
   }),
   reviewRequirementsResult: reviewResultArtifact('requirements'),
+  reviewCodeResult: reviewResultArtifact('code'),
+  reviewBehaviorResult: reviewResultArtifact('behavior'),
   reviewQualityResult: reviewResultArtifact('quality'),
   reviewRegressionsResult: reviewResultArtifact('regressions'),
   reviewSecurityResult: reviewResultArtifact('security'),
@@ -323,9 +328,11 @@ export const INSTRUCTIONS: ArtifactFamily = artifactFamily('instructions:', AGEN
 /** `review_<reviewer>`, written by the code-review step. */
 export const REVIEWS: ArtifactFamily = artifactFamily('review_', CODE_REVIEWERS);
 
-/** The `review_<reviewer>_result` entry of each reviewer. */
-export const REVIEW_RESULTS: Readonly<Record<(typeof CODE_REVIEWERS)[number], Artifact<ReviewResult>>> = {
+/** The `review_<reviewer>_result` entry of each reviewer a run can have stored, the retired ones included. */
+export const REVIEW_RESULTS: Readonly<Record<StoredReviewer, Artifact<ReviewResult>>> = {
   requirements: ARTIFACTS.reviewRequirementsResult,
+  code: ARTIFACTS.reviewCodeResult,
+  behavior: ARTIFACTS.reviewBehaviorResult,
   quality: ARTIFACTS.reviewQualityResult,
   regressions: ARTIFACTS.reviewRegressionsResult,
   security: ARTIFACTS.reviewSecurityResult,

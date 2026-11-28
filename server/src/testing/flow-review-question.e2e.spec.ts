@@ -58,7 +58,7 @@ describe('a reviewer that returns with a question', () => {
   it('keeps its return: the planner says both returns stand, implement gets both, and review runs on its new head', async () => {
     await start({
       'code-review-requirements': [asks('The field is missing.', 'Is the field part of this change?', missing), met],
-      'code-review-quality': [asks('The parser drops a row.', 'Should rows be kept in order?'), passes],
+      'code-review-code': [asks('The parser drops a row.', 'Should rows be kept in order?'), passes],
       plan: [answers('holds', 'The field is part of it.'), answers('holds', 'Rows keep their order.')],
     });
 
@@ -73,7 +73,7 @@ describe('a reviewer that returns with a question', () => {
     const between = blocks.steps.slice(blocks.steps.indexOf('plan', 2), blocks.steps.lastIndexOf('implement'));
     expect(between.filter((step) => step.startsWith('code-review-'))).toEqual([]);
     expect(launches('code-review-requirements')).toHaveLength(2);
-    expect(launches('code-review-quality')).toHaveLength(2);
+    expect(launches('code-review-code')).toHaveLength(2);
     const entries = (await flow.app.app.get(PlanChatStore).read(KEY)).entries;
     expect(entries.filter((entry) => entry.kind === 'answer')).toMatchObject([
       { finding: 'holds', state: 'taken' },
@@ -92,7 +92,7 @@ describe('a reviewer that returns with a question', () => {
 
     expect(launches('implement')).toHaveLength(1);
     expect(launches('code-review-requirements')).toHaveLength(1);
-    expect(launches('code-review-quality')).toHaveLength(1);
+    expect(launches('code-review-code')).toHaveLength(1);
     const review = await flow.app.app.get(DocumentRepository).latestBody(KEY, 'review_requirements');
     expect(review).toContain('decision: ok');
     expect(review).toContain('reason: The planner ruled the finding out: The brief removes the field.');

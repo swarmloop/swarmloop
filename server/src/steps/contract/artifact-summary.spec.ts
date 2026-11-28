@@ -28,7 +28,13 @@ function goldenBodies(): Map<string, string> {
 }
 
 /** A kind no golden run stores, whose body is JSON. */
+const RETIRED_REVIEW = '{"decision":"ok","review":"fine","summary":["checked"]}\n';
+
 const JSON_BODIES: Record<string, string> = {
+  review_quality_result: RETIRED_REVIEW,
+  review_regressions_result: RETIRED_REVIEW,
+  review_security_result: RETIRED_REVIEW,
+  review_performance_result: RETIRED_REVIEW,
   answer_errors: '["items: \\"items\\" is required"]\n',
   implementation_result: '{"implementation":["changed the parser"],"summary":["why"]}\n',
   implementation_improve_result: '{"implementation":["fixed the case"],"summary":["why"]}\n',

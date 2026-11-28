@@ -17,7 +17,7 @@
       "kind": "review_report"
     },
     {
-      "body": "{\"line\":\"Ships the field.\",\"done\":[\"x\"],\"worthALook\":[],\"notes\":{\"requirements\":\"a\",\"quality\":\"b\",\"regressions\":\"c\",\"security\":\"d\",\"performance\":\"e\"},\"risk\":\"low\",\"riskReason\":\"small\"}\n",
+      "body": "{\"line\":\"Ships the field.\",\"done\":[\"x\"],\"worthALook\":[],\"notes\":{\"requirements\":\"a\",\"code\":\"b\",\"behavior\":\"c\"},\"risk\":\"low\",\"riskReason\":\"small\"}\n",
       "kind": "review_report_result"
     },
     {
@@ -165,7 +165,7 @@
           "draft": true,
           "project": "group/demo",
           "source": "feature/PROJ-200-ship-the-field",
-          "summary": "<!-- swarmloop:report -->\n## ⏳ Waiting for CI · risk: low\n> Ships the field.\n\n| Requirements | Checks | CI | Review | Returns | Time |\n|---|---|---|---|---|---|\n| — | — | ⏳ | — | 0 | 0 min |\n\n**Done**\n- x\n\n**🧭 How it got here**\n—\n\n<details><summary>Reviewer notes (5)</summary>\n\n- **Requirements —** a\n- **Quality —** b\n- **Regressions —** c\n- **Security —** d\n- **Performance —** e\n</details>\n<!-- /swarmloop:report -->",
+          "summary": "<!-- swarmloop:report -->\n## ⏳ Waiting for CI · risk: low\n> Ships the field.\n\n| Requirements | Checks | CI | Review | Returns | Time |\n|---|---|---|---|---|---|\n| — | — | ⏳ | — | 0 | 0 min |\n\n**Done**\n- x\n\n**🧭 How it got here**\n—\n\n<details><summary>Reviewer notes (3)</summary>\n\n- **Requirements —** a\n- **Code —** b\n- **Behavior —** c\n</details>\n<!-- /swarmloop:report -->",
           "target": "main",
           "title": "Ship the field"
         }
@@ -205,7 +205,7 @@
     {
       "documents": [
         {
-          "body": "project: group/demo\niid: 12\nurl: https://gitlab.example/group/demo/-/merge_requests/12\ndraft: true\n\n<!-- swarmloop:report -->\n## ⏳ Waiting for CI · risk: low\n> Ships the field.\n\n| Requirements | Checks | CI | Review | Returns | Time |\n|---|---|---|---|---|---|\n| — | — | ⏳ | — | 0 | 0 min |\n\n**Done**\n- x\n\n**🧭 How it got here**\n—\n\n<details><summary>Reviewer notes (5)</summary>\n\n- **Requirements —** a\n- **Quality —** b\n- **Regressions —** c\n- **Security —** d\n- **Performance —** e\n</details>\n<!-- /swarmloop:report -->\n",
+          "body": "project: group/demo\niid: 12\nurl: https://gitlab.example/group/demo/-/merge_requests/12\ndraft: true\n\n<!-- swarmloop:report -->\n## ⏳ Waiting for CI · risk: low\n> Ships the field.\n\n| Requirements | Checks | CI | Review | Returns | Time |\n|---|---|---|---|---|---|\n| — | — | ⏳ | — | 0 | 0 min |\n\n**Done**\n- x\n\n**🧭 How it got here**\n—\n\n<details><summary>Reviewer notes (3)</summary>\n\n- **Requirements —** a\n- **Code —** b\n- **Behavior —** c\n</details>\n<!-- /swarmloop:report -->\n",
           "kind": "merge_request"
         },
         {

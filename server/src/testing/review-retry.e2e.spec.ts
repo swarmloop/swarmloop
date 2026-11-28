@@ -15,7 +15,7 @@ describe('code-review retries after an invalid result', () => {
     await flow.close();
   });
 
-  it.each(['quality', 'report'])('tells the %s agent its errors on the next visit', async (name) => {
+  it.each(['code', 'report'])('tells the %s agent its errors on the next visit', async (name) => {
     const step = `code-review-${name}`;
     const blocks = new BlockAgentRunner({ [step]: Array.from({ length: 6 }, () => ({ text: 'no result block' })) });
     flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', realReview: true });

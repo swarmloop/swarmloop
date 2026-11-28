@@ -22,10 +22,18 @@ function markLines(result: ReviewResult): string {
   return marks.map((mark) => `${mark.id} ${mark.status}: ${mark.note}\n`).join('');
 }
 
-/** The `review_<name>` document: the review, the requirement marks, then the decision line. */
+/** One `<section>: <findings>` line for each section that found something, so implement and the report read it. */
+function sectionLines(result: ReviewResult): string {
+  return Object.entries(result.sections ?? {})
+    .filter(([, findings]) => findings.trim() !== 'checked')
+    .map(([section, findings]) => `${section}: ${findings.trim()}\n`)
+    .join('');
+}
+
+/** The `review_<name>` document: the review, the findings of its sections, the requirement marks, then the decision line. */
 export function renderReview(result: ReviewResult): string {
   const reason = result.reason ? `reason: ${result.reason}\n` : '';
-  return `${result.review.trimEnd()}\n${markLines(result)}decision: ${result.decision}\n${reason}`;
+  return `${result.review.trimEnd()}\n${sectionLines(result)}${markLines(result)}decision: ${result.decision}\n${reason}`;
 }
 
 export function opinionOf(kind: string, result: ReviewResult): Opinion {

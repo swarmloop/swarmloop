@@ -46,14 +46,14 @@ describe('open round of the code-review visit', () => {
     await seed(app, key);
   }
 
-  it('holds all five reviewers and a due report, and marks the report started when its agent launches', async () => {
+  it('holds all three reviewers and a due report, and marks the report started when its agent launches', async () => {
     await start('OPEN-2');
     await app.get(PipelineService).step('code-review', 'OPEN-2');
     const reviewers = seen.filter((item) => item.step !== 'code-review-report');
-    expect(reviewers).toHaveLength(5);
+    expect(reviewers).toHaveLength(3);
     for (const item of reviewers) {
       expect(item.round).toMatchObject({ reportDue: true, reportStarted: false });
-      expect(item.round?.reviewers).toHaveLength(5);
+      expect(item.round?.reviewers).toHaveLength(3);
     }
     expect(seen.find((item) => item.step === 'code-review-report')?.round).toMatchObject({ reportStarted: true });
     expect(rounds().of('OPEN-2')).toBeUndefined();
@@ -90,7 +90,7 @@ describe('open round of the code-review visit', () => {
         throw new StepStopped();
       };
       await app.get(PipelineService).step('code-review', 'OPEN-5');
-      expect(setDuring?.reviewers).toEqual(['requirements', 'quality', 'regressions', 'security', 'performance']);
+      expect(setDuring?.reviewers).toEqual(['requirements', 'code', 'behavior']);
       expect((await app.get(RunRepository).findRun('OPEN-5'))?.status).toBe('blocked');
       expect(rounds().of('OPEN-5')).toBeUndefined();
     });
@@ -103,7 +103,7 @@ describe('open round of the code-review visit', () => {
         throw new Error('docker is gone');
       };
       await app.get(PipelineService).step('code-review', 'OPEN-6');
-      expect(setDuring?.reviewers).toEqual(['requirements', 'quality', 'regressions', 'security', 'performance']);
+      expect(setDuring?.reviewers).toEqual(['requirements', 'code', 'behavior']);
       expect(rounds().of('OPEN-6')).toBeUndefined();
     });
   });

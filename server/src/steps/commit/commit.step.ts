@@ -183,7 +183,7 @@ export class CommitStep extends BaseStep<typeof INPUTS> {
         (await this.publisher.baseRev(tree, named)) ?? (await gitAt(tree, ['rev-parse', 'HEAD'], 'branch failed'));
       branches.push({ tree, branch: branch(tree.repo), base, hosts });
     }
-    const outcome = await unchangedOutcome(this.kernel.documents, opened.run.key, branches);
+    const outcome = await unchangedOutcome(this.kernel.documents, opened.run, branches);
     return 'delivered' in outcome
       ? deliveredResult(opened.startedAt, outcome.delivered)
       : undeliveredResult(opened.startedAt, outcome.issues);

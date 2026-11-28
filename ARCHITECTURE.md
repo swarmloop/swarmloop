@@ -1,6 +1,6 @@
 # swarmloop architecture
 
-swarmloop brings a task to a merged change. Agents write the code. The project's own checks and five reviewers judge it. A person is asked only what no planner can answer.
+swarmloop brings a task to a merged change. Agents write the code. The project's own checks and three reviewers judge it. A person is asked only what no planner can answer.
 
 This page is the yardstick for every change to swarmloop:
 
@@ -40,7 +40,7 @@ How the page is used:
 | **Planner** | The agent that owns a plan and answers questions about it. A run's planner is its plan chat, and an epic's planner answers for its child runs. The backlog planner works in *turns*. Planners form one chain: run → parent run → backlog → person. |
 | **Question** | What an agent or a planner cannot decide. It goes up the chain (rule 9). |
 | **Check** | A command from the project's `.swarmloop.json`, run in the project's image: tests, lint, types, build. The same commands run in CI. |
-| **Reviewer** | One of five agents that judge a change: `requirements`, `quality`, `regressions`, `security` and `performance`. A sixth visit writes the *report* a person reads. |
+| **Reviewer** | One of three agents that judge a change: `requirements`; `code`, with a quality and a security section; and `behavior`, with a regressions and a performance section. A fourth visit writes the *report* a person reads. |
 | **Merge request** | The change on the code host, with the report in its body. The host's CI judges it once more. |
 | **Command** | Every change asked of a run (start, resume, replay, rebase, answer, stop…) is a command. It is asked of a run, or of a scope when there is no run (a person's repositories), through the same executor. It has an idempotency key that names the event it is for. A planner sends the same commands a person does. |
 | **Wait** | A run that cannot go on now waits on one named thing (rule 10). |
@@ -123,7 +123,7 @@ The ESLint boundaries enforce these layers: input and output → orchestration �
 ## 2.2 Other parts
 
 - **Dashboard** (`dashboard/`, Next.js): Overview, Runs, the Run page (flow board, conversation, history, logs), Backlogs (board, chat with the planner, progress), Stats, Settings (agents, API tokens, and the read-only server settings, grouped and described as in `defaults.env` through `DefaultsLayout`), Connections and Login. It reaches the API only through `lib/api.ts`, and live events only through `features/shell/use-live-bridge.ts`.
-- **Skills** (`skills/`): one per agent step, plus `code-review/<reviewer>`, `backlog-plan` and `reader` (the prompt of a helper). `plan/planner-core.md` is the core text the three planners share; the `plan` and `backlog-plan` skills include it through one `[planner core]` line, and `backlog-plan` takes its list of actions and their fields through one `[backlog actions]` line, written from the backlog turn's definition. Every skill of a role that can have a reader (`research`, `plan`, `plan-improve`, `backlog-plan`, `implement`, `implement-improve`, the five reviewers and the report) takes the shared `skills/reader/asking.md` through one `[reading with a reader]` line; the reviewers', the report's and implement's skills add one line that the diff and the lines being edited are read by the agent itself.
+- **Skills** (`skills/`): one per agent step, plus `code-review/<reviewer>`, `backlog-plan` and `reader` (the prompt of a helper). `plan/planner-core.md` is the core text the three planners share; the `plan` and `backlog-plan` skills include it through one `[planner core]` line, and `backlog-plan` takes its list of actions and their fields through one `[backlog actions]` line, written from the backlog turn's definition. Every skill of a role that can have a reader (`research`, `plan`, `plan-improve`, `backlog-plan`, `implement`, `implement-improve`, the three reviewers and the report) takes the shared `skills/reader/asking.md` through one `[reading with a reader]` line; the reviewers', the report's and implement's skills add one line that the diff and the lines being edited are read by the agent itself.
 - **Images** (`docker/`): `server`, `dashboard`, `egress`, and one agent image per runtime. A project image is built from the project's own config, and the agent CLI is mounted into it.
 - **Data** (`data/`): the database, the run logs, the secret key and backups. The worktrees live in their own volume.
 
@@ -163,7 +163,7 @@ The key follows one rule, `^[a-z][a-z0-9-]{1,48}$`. A child run's key is `<paren
 | implement | agent, or server for an epic | Applies the checklist in the worktree; the agent never commits or pushes. For an epic, it runs the split pass (3.10). It also takes returns, conflicts and a planner's answers. | next; jump (to implement, commit, checks or code-review); wait |
 | implement-improve | agent | Looks for gaps in the change and fixes only those. An epic skips it, because each task checked its own work. | next |
 | checks | server, in the project image | Runs the project's checks on the worktree (3.6). | next; return to implement |
-| code-review | five agents, then a report | Judges the change (3.7). | next; return to implement |
+| code-review | three agents, then a report | Judges the change (3.7). | next; return to implement |
 | commit | server | Commits the planned paths as the starter and pushes only the repositories whose branch has a commit beyond its base (`hasOwnWork`), or starts CI again for a branch that is already pushed. A repository the run only read gets no push, no pipeline ref and no merge request. | next; return to implement (a refused name); jump to done (nothing to merge) |
 | merge-request | server and agent | Opens or updates the merge request, with the report in its body. It stays a draft until the run is done. | next; back to code-review on stale gates |
 | pipeline | server | Waits for CI on the head commit of each project that has CI. A red job goes back to implement with its trace (3.8). | next (done); return to implement; back to code-review |
@@ -243,14 +243,14 @@ Each check gets its own cores. Only as many checks run at once as fit with at le
 ## 3.7 Code review
 
 **Target.**
-1. A round starts the five reviewers together. Each one reads only its own skill and the diff, the brief, the requirements list, the plan and the decisions.
-2. Each answers `ok` or `return` with findings, and the server checks the requirements reviewer's answer against the requirements list.
+1. A round starts the three reviewers together. Each one reads only its own skill and the diff, the brief, the requirements list, the plan and the decisions.
+2. Each answers `ok` or `return` with findings, and the server checks the requirements reviewer's answer against the requirements list. The code and behavior reviewers answer each of their named sections (`quality` and `security`; `regressions` and `performance`) as `checked` or with its findings, and the server refuses a result that leaves a section out, as it refuses a missing decision.
 3. Any `return` sends the run to implement with the findings.
-4. When all five say `ok`, the report visit writes the report for the merge request: what was decided, where to look, and what was refused and why. The stored document and the merge request body head it from the facts of the checks and CI; the run page heads it from the run's outcome (`Merged` or `Closed without a merge`, else the same heading) through `RunReport.renderForPage`.
+4. When all three say `ok`, the report visit writes the report for the merge request: what was decided, where to look, and what was refused and why. The stored document and the merge request body head it from the facts of the checks and CI; the run page heads it from the run's outcome (`Merged` or `Closed without a merge`, else the same heading) through `RunReport.renderForPage`.
 5. A reviewer's question that it cannot settle goes up the chain (rule 8). A reviewer and the report read through a reader only when `READ_ROLES` names `code-review` or `code-review-report`; the reader is for searching and reading around the change, and the diff and the lines under review are read by the reviewer itself.
 6. A round interrupted by a restart resumes only its own reviewers' files.
 
-**Today.** Holds (`steps/code-review/`). A review reads each worktree's head commit plus a read-only fingerprint of its uncommitted changes, then the brief, the added instructions and implement's account (`implementation_result` and `implementation_improve_result`; `readVisitInput` in `steps/shared/visit-input.ts`, `changeFingerprint` in `git/change-fingerprint.ts`). Its prompt lists the files changed outside the plan through `MergeMarks`' rule (`outsideOwn`; a subtask's own files come from `StarterBriefing.ownFiles`), and the requirements reviewer returns each test among them that the plan or an answer does not approve.
+**Today.** Holds (`steps/code-review/`). A review reads each worktree's head commit plus a read-only fingerprint of its uncommitted changes, then the brief, the added instructions and implement's account (`implementation_result` and `implementation_improve_result`; `readVisitInput` in `steps/shared/visit-input.ts`, `changeFingerprint` in `git/change-fingerprint.ts`). Its prompt lists the files changed outside the plan through `MergeMarks`' rule (`outsideOwn`; a subtask's own files come from `StarterBriefing.ownFiles`), and the requirements reviewer returns each test among them that the plan or an answer does not approve. A run's stored reviews are read with the reviewer set they were written by (`reviewerSetOf` in `contract/steps.ts`, `storedReviewers` in `agent-result/stored-review.ts`): a run reviewed before the three reviewers keeps its five rows, with the retired names `quality`, `regressions`, `security` and `performance` read only and never started again.
 
 ## 3.8 Commit, merge request and CI
 

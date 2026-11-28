@@ -1,6 +1,7 @@
 import { OWN_CONFLICT_LEAD } from '../steps/implement/implement.prompts';
 import { NO_STEP_RUNS, PERSON_WORDS } from '../steps/plan/plan.prompts';
 import { CODE_REVIEWERS } from '../contract/steps';
+import { REVIEW_SECTIONS } from '../agent-result/definitions/review';
 import type { AgentRunResult } from '../agent/agent-result';
 import type { KillReason } from '../agent/limits';
 import type { LimitHit } from '../integrations/agent-runtime/runtime-limit';
@@ -67,7 +68,7 @@ const DEFAULT_REBASE = { summary: ['resolved the rebase'] };
 /** A reviewer that passes the change. */
 const DEFAULT_REVIEW = { decision: 'ok', review: 'reviewed the change', summary: ['reviewed the change'] };
 
-/** The report of five reviews that all passed. */
+/** The report of three reviews that all passed. */
 const DEFAULT_REPORT = {
   line: 'The field is changed.',
   done: ['changed the field'],
@@ -76,6 +77,15 @@ const DEFAULT_REPORT = {
   risk: 'low',
   riskReason: 'a small change',
 };
+
+/** The `sections` of a reviewer, given by its name or its step, that has named sections: each answered as checked. Nothing for any other reviewer. */
+export function checkedSections(reviewer: string): { sections?: Record<string, string> } {
+  const sections = REVIEW_SECTIONS[reviewer.replace('code-review-', '')];
+  return sections ? { sections: Object.fromEntries(sections.map((section) => [section, 'checked'])) } : {};
+}
+
+/** A reviewer that passes the change: the one with named sections answers each as checked. */
+const passingReview = (name: string): Record<string, unknown> => ({ ...DEFAULT_REVIEW, ...checkedSections(name) });
 
 /** The requirements reviewer marks the one requirement the default research lists. */
 const DEFAULT_REQUIREMENTS_REVIEW = {
@@ -87,7 +97,7 @@ const DEFAULT_REQUIREMENTS_REVIEW = {
 const DEFAULT_BACKLOG_TURN = { say: '', actions: [] };
 
 const DEFAULT_ANSWERS: Record<string, unknown> = {
-  ...Object.fromEntries(CODE_REVIEWERS.map((name) => [`code-review-${name}`, DEFAULT_REVIEW])),
+  ...Object.fromEntries(CODE_REVIEWERS.map((name) => [`code-review-${name}`, passingReview(name)])),
   'code-review-requirements': DEFAULT_REQUIREMENTS_REVIEW,
   'code-review-report': DEFAULT_REPORT,
   research: DEFAULT_RESEARCH,
@@ -119,10 +129,17 @@ function scriptOf(input: { step: string; prompt?: string }): string {
 export type ScriptedAnswer =
   { block: unknown; prose?: string } | { text: string } | { limit: LimitHit } | { outage: ModelHostOutage };
 
-function textOf(answer: ScriptedAnswer): string {
+/** A scripted block of a reviewer that has named sections, with its sections `checked` unless the script gave them. */
+function withSections(script: string, block: unknown): unknown {
+  return block && typeof block === 'object' && !('sections' in block)
+    ? { ...block, ...checkedSections(script) }
+    : block;
+}
+
+function textOf(answer: ScriptedAnswer, script: string): string {
   if ('limit' in answer) return 'limit';
   if ('outage' in answer) return 'outage';
-  return 'text' in answer ? answer.text : resultAnswer(answer.prose ?? 'Done.', answer.block);
+  return 'text' in answer ? answer.text : resultAnswer(answer.prose ?? 'Done.', withSections(script, answer.block));
 }
 
 /**
@@ -183,14 +200,14 @@ export class BlockAgentRunner {
       killReason: null,
       tokensIn: 10,
       tokensOut: 5,
-      responseText: textOf(answer),
+      responseText: textOf(answer, script),
       chatId,
     });
   }
 }
 
 /** The stored log of a reviewer that answered with a decision: its final message with the result block, then its exit line. */
-export function reviewLog(decision: 'ok' | 'return', prose = 'notes'): string {
-  const answer = resultAnswer(prose, { decision, review: prose, summary: [prose] });
+export function reviewLog(decision: 'ok' | 'return', prose = 'notes', reviewer = 'requirements'): string {
+  const answer = resultAnswer(prose, { decision, review: prose, summary: [prose], ...checkedSections(reviewer) });
   return `${JSON.stringify({ type: 'result', result: answer })}\nprocess exited 0\n`;
 }

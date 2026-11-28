@@ -25,7 +25,16 @@ import { clearGitFaults, failGit } from '../../testing/git-fault.spec-helpers';
 import { git } from '../../testing/git-fixture';
 import { checkoutFingerprint } from '../shared/gate';
 
-import { answerFor, reply, reportReply, result, boot, seed, writeEnv } from './code-review.step.spec-helpers';
+import {
+  answerFor,
+  checkedSections,
+  reply,
+  reportReply,
+  result,
+  boot,
+  seed,
+  writeEnv,
+} from './code-review.step.spec-helpers';
 
 import type * as GitFault from '../../testing/git-fault.spec-helpers';
 
@@ -121,7 +130,7 @@ describe('code-review step', () => {
     expect(prompt).toContain('Do not return that behavior again');
     expect(prompt).toContain('Your last finding and the answer of implement');
     expect(prompt).toContain('Implement gave no answer to this finding.');
-    expect(sent('code-review-quality')?.prompt ?? '').not.toContain('Your last finding');
+    expect(sent('code-review-code')?.prompt ?? '').not.toContain('Your last finding');
     const waiting = await runs.findRun('PROJ-98');
     expect(waiting?.currentStep).toBe('code-review');
     expect(waiting?.status).toBe('waiting');
@@ -243,6 +252,7 @@ describe('code-review step', () => {
               decision: 'ok',
               review: input.step,
               summary: [input.step],
+              ...checkedSections(input.step),
               question: 'Which of the two is meant?',
             }),
       ),
@@ -258,7 +268,7 @@ describe('code-review step', () => {
     expect(chat).toBeNull();
   });
 
-  it('gives the regressions reviewer of a split run the keep lines and makes no run from them', async () => {
+  it('gives the behavior reviewer of a split run the keep lines and makes no run from them', async () => {
     gitWorktree(join(root, 'worktrees', 'PROJ-97', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) => result(answerFor(input.step), input.step));
     current = agent;
@@ -278,7 +288,7 @@ describe('code-review step', () => {
     expect(done.exitCode).toBe(0);
     const sent = agent.mock.calls.map((call) => call[0]).filter((call) => call.step.startsWith('code-review-'));
     const holding = sent.filter((call) => call.prompt.includes('- login works (proof: login.spec.ts)'));
-    expect(holding.map((call) => call.step)).toEqual(['code-review-regressions']);
+    expect(holding.map((call) => call.step)).toEqual(['code-review-behavior']);
     expect(holding[0].prompt).toContain('Check each line against the merged diff');
     expect(await runs.children(run!)).toEqual([]);
   });
@@ -299,7 +309,7 @@ describe('code-review step', () => {
       const done = await app.get(PipelineService).step('code-review', 'PROJ-198', { path: checkout });
 
       expect(done.exitCode).toBe(0);
-      const stamp = await app.get(DocumentRepository).latestStamp('PROJ-198', 'review_quality');
+      const stamp = await app.get(DocumentRepository).latestStamp('PROJ-198', 'review_code');
       expect(stamp?.fingerprint).toBe(await checkoutFingerprint([checkout]));
     });
 
@@ -316,7 +326,7 @@ describe('code-review step', () => {
       expect(done.exitCode).toBe(1);
       expect(done.message).toContain('dubious ownership');
       expect(agent).not.toHaveBeenCalled();
-      expect(await app.get(DocumentRepository).latestStamp('PROJ-199', 'review_quality')).toBeNull();
+      expect(await app.get(DocumentRepository).latestStamp('PROJ-199', 'review_code')).toBeNull();
       expect((await app.get(RunRepository).findRun('PROJ-199'))?.status).toBe('failed');
     });
   });
