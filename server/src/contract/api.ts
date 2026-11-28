@@ -83,6 +83,7 @@ export interface RunRef {
 /** A question that waits for a person, in parts: what is decided, each side on the point in dispute, and the whole text. */
 export interface QuestionParts {
   decide: string;
+  /** A question that went up the chain has one side per planner that tried, lowest first; the dashboard keys sides by index. */
   sides: { who: string; text: string }[];
   full: string;
   /** When the question was asked, as an ISO time; the dashboard shows it in local time. */

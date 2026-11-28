@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { STEPS } from '../../contract/steps';
 import { GOLDEN_DIR } from '../../testing/step-trace.spec-helpers';
+import type { PartStart } from './artifacts-split';
 import { ARTIFACTS, INSTRUCTIONS, REVIEWS, REVIEW_RESULTS, SERVICE_KINDS } from './artifacts';
 import { RETIRED_REVIEWERS, STORED_REVIEWERS } from '../../contract/steps';
 
@@ -121,6 +122,21 @@ describe('artifact catalog', () => {
     const stored = [{ question: 'Q', parts }];
     expect(ARTIFACTS.questionParts.parse(ARTIFACTS.questionParts.format(stored))).toEqual(stored);
     expect(ARTIFACTS.questionParts.summarize(stored)).toBe('1 questions: Is it?');
+  });
+
+  it('round-trips the answered questions and the part start', () => {
+    const answered = [{ asker: 'a', decide: 'Which?', answer: 'This', at: '2026-11-15T07:11:43.444Z' }];
+    expect(ARTIFACTS.answeredQuestions.parse(ARTIFACTS.answeredQuestions.format(answered))).toEqual(answered);
+    expect(ARTIFACTS.answeredQuestions.summarize(answered)).toBe('1 answered questions: Which?');
+
+    const start: PartStart = { type: 'answer', key: 'k', by: 'planner', level: null };
+    const withAnswers = { ...start, answers: [{ kind: 'answers', id: 'q1', body: 'x' }] };
+    for (const value of [start, withAnswers]) {
+      expect(ARTIFACTS.partStart.parse(ARTIFACTS.partStart.format(value))).toEqual(value);
+    }
+    expect(ARTIFACTS.partStart.parse('')).toBeNull();
+    expect(ARTIFACTS.partStart.format(null)).toBe('');
+    expect(ARTIFACTS.partStart.summarize(start)).toBe('fields: type, key, by, level');
   });
 
   it('subtasks and contract are registered', () => {
