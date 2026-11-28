@@ -23,7 +23,8 @@ import {
 } from '../steps/implement/starter-actions';
 import { handBackErrors } from '../steps/shared/hand-back';
 import { renderNeeds } from '../steps/shared/needs';
-import { keepOpen, readStoredQuestions } from '../steps/shared/question-parts';
+import { askPerson } from '../steps/shared/person-questions';
+import { readAnsweredQuestions, readStoredQuestions, type PlannerLine } from '../steps/shared/question-parts';
 import { askedQuestion } from '../steps/implement/split-questions';
 import { isEscalated, type Delivery, type Escalated } from '../steps/shared/subtask-ops';
 import type { OpenedStep } from '../steps/step-run';
@@ -108,23 +109,26 @@ export class SubtaskPlannerAnswer {
   /**
    * Puts a question of a task among the questions the parent holds for the person who started the run, as the parent's
    * own pass does for a question its planner could not answer. The person's answer reaches the task through that pass.
-   * With the planner's `words` of what must be decided, they follow the question.
+   * The lines of the planners that tried follow the question. Gives the answer the person gave before when there is one,
+   * and puts nothing.
    */
-  async handUp(parent: RunEntity, taskId: string, text: string, words?: string): Promise<void> {
-    const ask = askedQuestion(taskId, text, this.clock.iso(), words);
-    const open = openQuestions(
-      (await this.documents.latestBody(parent.key, ARTIFACTS.subtaskQuestions.kind)) ?? '',
-      [],
-    );
-    const stored = readStoredQuestions(
-      (await this.documents.latestBody(parent.key, ARTIFACTS.questionParts.kind)) ?? '',
-    );
-    await this.documents.putDocument(parent, ARTIFACTS.subtaskQuestions.kind, renderQuestions([...open, ask.question]));
+  async handUp(parent: RunEntity, taskId: string, text: string, lines: PlannerLine[]): Promise<string | null> {
+    const held = {
+      lines: openQuestions((await this.documents.latestBody(parent.key, ARTIFACTS.subtaskQuestions.kind)) ?? '', []),
+      parts: readStoredQuestions((await this.documents.latestBody(parent.key, ARTIFACTS.questionParts.kind)) ?? ''),
+      answered: readAnsweredQuestions(
+        (await this.documents.latestBody(parent.key, ARTIFACTS.answeredQuestions.kind)) ?? '',
+      ),
+    };
+    const result = askPerson(held, askedQuestion(taskId, text, this.clock.iso(), lines));
+    if (result.kind === 'answered') return result.answer;
+    await this.documents.putDocument(parent, ARTIFACTS.subtaskQuestions.kind, renderQuestions(result.lines));
     await this.documents.putDocument(
       parent,
       ARTIFACTS.questionParts.kind,
-      ARTIFACTS.questionParts.format(keepOpen(stored, open, [ask])),
+      ARTIFACTS.questionParts.format(result.parts),
     );
+    return null;
   }
 
   /**

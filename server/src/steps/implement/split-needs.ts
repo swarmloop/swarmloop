@@ -144,7 +144,13 @@ export class SplitNeeds {
       .join('\n');
     const answer = await this.subtasks.askAbout(opened, task, question, pass.contract);
     if (isEscalated(answer)) {
-      return { ...pass, asks: [...pass.asks, askedQuestion(task.id, question, opened.startedAt, answer.escalate)] };
+      return {
+        ...pass,
+        asks: [
+          ...pass.asks,
+          askedQuestion(task.id, question, opened.startedAt, [{ who: 'epic planner', text: answer.escalate }]),
+        ],
+      };
     }
     const refused = reasons.flatMap(({ need, reason }) =>
       reason === null ? [] : [{ need, line: refusalLine(need, reason) }],

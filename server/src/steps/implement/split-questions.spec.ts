@@ -12,7 +12,7 @@ const body = renderQuestions([question]);
 const answers = `question: ${question}\nanswer: The id column.\n`;
 
 /** One part `a`, as far as the epic's delivery reads it. */
-function world(options: { asking: boolean; held: boolean[]; delivered: Delivery }) {
+function world(options: { asking: boolean; held: boolean[]; delivered: Delivery; needs?: string[] }) {
   const held = [...options.held];
   const sent: string[] = [];
   const subtasks = {
@@ -23,7 +23,11 @@ function world(options: { asking: boolean; held: boolean[]; delivered: Delivery 
       return held.shift() ? 'held' : 'sent';
     },
     asking: async () => options.asking,
-    needsOf: async () => [],
+    needsOf: async () => (options.needs ?? []).map((id) => ({ id, what: 'w', why: '' })),
+    rerun: async (_child: RunEntity, lines: string[]) => {
+      sent.push(`rerun: ${lines.join('|')}`);
+      return options.delivered;
+    },
     deliverAnswer: async (_child: RunEntity, text: string) => {
       sent.push(`answer: ${text}`);
       return options.delivered;
@@ -58,5 +62,25 @@ describe('SplitQuestions deliver', () => {
 
     expect(sent).toEqual([]);
     expect(result.body).toBe(body);
+  });
+});
+
+describe('SplitQuestions handDown', () => {
+  it('gives a part that asks the answer and writes the decision at the given time', async () => {
+    const { questions, sent } = world({ asking: true, held: [], delivered: 'sent' });
+
+    const contract = await questions.handDown(parent, 'a', 'The id column.', AT, '');
+
+    expect(sent).toEqual(['answer: The id column.']);
+    expect(contract).toContain('The id column.');
+  });
+
+  it('reruns a part that waits with needs with the answer as its line, and a held part keeps the decision', async () => {
+    const { questions, sent } = world({ asking: false, held: [], delivered: 'held', needs: ['b'] });
+
+    const contract = await questions.handDown(parent, 'a', 'Use b.', AT, '');
+
+    expect(sent).toEqual(['rerun: Use b.']);
+    expect(contract).toContain('Use b.');
   });
 });

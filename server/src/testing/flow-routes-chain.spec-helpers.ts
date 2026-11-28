@@ -53,7 +53,7 @@ export async function observeChain(): Promise<ObservedChain> {
       },
     } as unknown as PlanConversation;
     const chain = new PlannerChain(
-      { askAbout: () => Promise.resolve('The epic decides.'), handUp: () => Promise.resolve() },
+      { askAbout: () => Promise.resolve('The epic decides.'), handUp: () => Promise.resolve(null) },
       conversation,
       documents,
       runs,

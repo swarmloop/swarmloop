@@ -3,12 +3,11 @@ import { askedQuestion, questionFor } from '../implement/split-questions';
 import {
   answeredBefore,
   askedParts,
-  keepOpen,
+  readAnsweredQuestions,
   readStoredQuestions,
   reviewParts,
   type AnsweredQuestion,
   type PlannerLine,
-  type StoredQuestion,
 } from './question-parts';
 
 const ASKED_AT = '2026-11-15T07:11:43.444Z';
@@ -96,17 +95,18 @@ describe('question parts', () => {
     expect(answeredBefore(record, 'a', 'Which other?')).toBeNull();
   });
 
-  it('keeps the parts of the questions still open and adds the new ones', () => {
-    const entry = (question: string): StoredQuestion => ({ question, parts: askedParts(question, ASKED_AT) });
-
-    expect(keepOpen([entry('a'), entry('b')], ['b'], [entry('c')]).map((item) => item.question)).toEqual(['b', 'c']);
-  });
-
   it('reads a stored list, and an empty one from a body that is not a list', () => {
     const stored = [{ question: 'a', parts: askedParts('a', ASKED_AT) }];
 
     expect(readStoredQuestions(JSON.stringify(stored))).toEqual(stored);
     expect(readStoredQuestions('not json')).toEqual([]);
     expect(readStoredQuestions('{"a":1}')).toEqual([]);
+  });
+
+  it('reads the record of answers, and none from an empty body', () => {
+    const record: AnsweredQuestion[] = [{ asker: 'subtask:a', decide: 'Which?', answer: 'This', at: ASKED_AT }];
+
+    expect(readAnsweredQuestions(JSON.stringify(record))).toEqual(record);
+    expect(readAnsweredQuestions('')).toEqual([]);
   });
 });

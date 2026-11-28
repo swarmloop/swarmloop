@@ -57,6 +57,24 @@ describe('an escalated question for the person', () => {
     }
   });
 
+  it('does not put a question again that the person answered before, and returns the stored answer', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const run = await db.app.get(RunRepository).openWaiting('PROJ-1', '/target');
+      const documents = db.app.get(DocumentRepository);
+      const record = [
+        { asker: 'code-review-quality', decide: escalation.text.trim(), answer: 'Cursor', at: escalation.at },
+      ];
+      await documents.putDocument(run, 'answered_questions', JSON.stringify(record));
+
+      expect(await escalateToPerson(documents, run, escalation)).toEqual({ kind: 'answered', answer: 'Cursor' });
+
+      expect(await documents.latestBody('PROJ-1', 'questions')).toBeNull();
+      expect(await isAsked(documents, run, escalation)).toBe(false);
+    } finally {
+      await db.close();
+    }
+  });
   it('says whether the question is among the open ones', async () => {
     const db = await repositoryDatabase();
     try {

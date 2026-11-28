@@ -17,6 +17,7 @@ import type { PlanChatStore } from '../history/plan-chat.store';
 import type { PlanChange, StarterPlan } from '../steps/implement/starter-actions';
 import type { StarterAnswerResult } from '../agent-result/definitions/starter-answer';
 import { isEscalated, type Delivery, type Escalated, type SubtaskStart } from '../steps/shared/subtask-ops';
+import type { PlannerLine } from '../steps/shared/question-parts';
 import { buildRevision } from '../steps/shared/plan-revision';
 
 /** The asks of subtask runs and the answers they get, as the port hands them to the implement pass. */
@@ -105,8 +106,8 @@ export class SubtaskAsks {
     return given.decision.trim();
   }
 
-  handUp(parent: RunEntity, taskId: string, text: string, words?: string): Promise<void> {
-    return this.planner.handUp(parent, taskId, text, words);
+  handUp(parent: RunEntity, taskId: string, text: string, lines: PlannerLine[]): Promise<string | null> {
+    return this.planner.handUp(parent, taskId, text, lines);
   }
 
   /** The needs a subtask run waits on, with the questions it asked. */
