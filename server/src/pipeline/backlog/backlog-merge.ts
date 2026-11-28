@@ -21,6 +21,9 @@ import type { MainReading } from './task-readiness';
 
 type Backlog = Awaited<ReturnType<BacklogRepository['listBacklogs']>>[number];
 
+/** How a task's pass ended: merged whole, its run asked to rebase, or held. */
+type Settled = 'merged' | 'rebased' | 'held';
+
 const NO_REQUEST_NOTE = 'its run is done without a merge request; needs a person';
 
 function reasonOf(error: unknown): string {
@@ -94,6 +97,7 @@ export class BacklogMerge {
     await this.events.taskMerged(task.backlogId, task.slug);
   }
 
+  /** Merges what the task can; a task that does not reach its main holds the repositories it still has to merge into. */
   private async merge(
     backlog: Backlog,
     task: BacklogTaskRecord,
@@ -105,11 +109,59 @@ export class BacklogMerge {
     // The repositories the run publishes; a read one is never looked up, noted or merged.
     const publishing = toPublish(deliveryOf(await storedDelivery(this.documents, run.key), task.repositories));
     const repositories = publishing.map((entry) => entry.repo).filter((repo) => !(repo in task.merged));
-    if (!body || publishing.length === 0) return void (await this.save(task, { note: NO_REQUEST_NOTE }));
+    // What the task has merged so far in this pass, kept up to date by the landing, also when the pass ends on an error.
+    const progress = { merged: task.merged };
+    let settled: Settled = 'held';
+    try {
+      settled = await this.settle(
+        backlog,
+        task,
+        run,
+        { body, repositories, publishes: publishing.length > 0, progress },
+        mains,
+        held,
+      );
+    } finally {
+      if (settled === 'held') {
+        for (const repo of repositories) {
+          if (!(repo in progress.merged) && !held.has(repo)) held.set(repo, task.slug);
+        }
+      }
+    }
+  }
+
+  private async settle(
+    backlog: Backlog,
+    task: BacklogTaskRecord,
+    run: RunEntity,
+    {
+      body,
+      repositories,
+      publishes,
+      progress,
+    }: {
+      body: string | null;
+      repositories: string[];
+      publishes: boolean;
+      progress: { merged: Record<string, string> };
+    },
+    mains: Map<string, MainReading>,
+    held: Map<string, string>,
+  ): Promise<Settled> {
+    if (!body || !publishes) {
+      await this.save(task, { note: NO_REQUEST_NOTE });
+      return 'held';
+    }
     const earlier = repositories.map((repo) => held.get(repo)).find((slug) => slug !== undefined);
-    if (earlier !== undefined) return void (await this.save(task, { note: `waits for ${earlier} to merge first` }));
+    if (earlier !== undefined) {
+      await this.save(task, { note: `waits for ${earlier} to merge first` });
+      return 'held';
+    }
     const { requests, notes } = await this.requestsOf(run, body, repositories);
-    if (requests.length === 0 && notes.length > 0) return void (await this.save(task, { note: notes.join('; ') }));
+    if (requests.length === 0 && notes.length > 0) {
+      await this.save(task, { note: notes.join('; ') });
+      return 'held';
+    }
     await readMains(
       this.host,
       requests.map((request) => request.repo),
@@ -143,6 +195,7 @@ export class BacklogMerge {
         },
         landed: async (repo, sha) => {
           current = await this.save(current, { merged: { ...current.merged, [repo]: sha } });
+          progress.merged = current.merged;
           mains.set(repo, { state: 'pending' });
         },
         targetBranch: (repo) => this.host.defaultBranch(repo, backlog.owner),
@@ -151,14 +204,12 @@ export class BacklogMerge {
     if (landing.kind === 'merged' && notes.length === 0) {
       await this.save(current, { status: 'merged', note: '' });
       await this.events.taskMerged(task.backlogId, task.slug);
-      return;
+      return 'merged';
     }
     const holds = landing.kind === 'held' ? landing.holds : [];
     await this.save(current, { note: [...holds.map((hold) => hold.note), ...notes].join('; ') });
-    if (holds.some((hold) => hold.kind === 'rebased')) return;
-    for (const repo of repositories) {
-      if (!(repo in landing.merged) && !held.has(repo)) held.set(repo, task.slug);
-    }
+    // A task that sent its run a rebase is running again and holds nothing.
+    return holds.some((hold) => hold.kind === 'rebased') ? 'rebased' : 'held';
   }
 
   /** The requests of the run in the repositories still to merge, and the notes of those it cannot merge yet. */

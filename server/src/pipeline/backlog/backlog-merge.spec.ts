@@ -272,13 +272,67 @@ describe('BacklogMerge', () => {
       await h.seedTask(id, 'b', { runKey: 'b-1' });
       await h.seedDoneRun('a-1', [{ repo: 'web', iid: 5 }]);
       await h.seedDoneRun('x-1', [{ repo: 'server', iid: 6 }]);
-      await h.moveRun('x-1', { status: 'running' });
       await h.seedDoneRun('b-1', [{ repo: 'web', iid: 7 }]);
       await h.tick();
       expect((await h.task(id, 'a')).note).toBe('waits for your OK to merge');
       expect((await h.task(id, 'b')).note).toBe('waits for a to merge first');
       expect(h.fake.calls.some((call) => call.args[1] === 7)).toBe(false);
-      expect((await h.task(id, 'x')).note).not.toContain('to merge first');
+      expect((await h.task(id, 'x')).note).toBe('waits for your OK to merge');
+    }));
+
+  it('holds a later done task of the repository behind an earlier one that has no merge request', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      const id = (await h.seedBacklog('one')).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1' });
+      await h.seedTask(id, 'b', { runKey: 'b-1' });
+      await h.seedDoneRun('a-1', []);
+      await h.seedDoneRun('b-1', [{ repo: 'web', iid: 7 }]);
+      await h.tick();
+      expect((await h.task(id, 'a')).note).toBe('its run is done without a merge request; needs a person');
+      expect(await h.task(id, 'b')).toMatchObject({ merged: {}, note: 'waits for a to merge first' });
+      expect(mergeCalls(h)).toHaveLength(0);
+    }));
+
+  it('holds a later done task behind an earlier one whose merge requests are all missing in its repositories', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      h.setMain('server');
+      const id = (await h.seedBacklog('one', { repositories: ['web', 'server'] })).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1', repositories: ['web', 'server'] });
+      await h.seedTask(id, 'b', { runKey: 'b-1', repositories: ['server'] });
+      await h.seedDoneRun('a-1', []);
+      await h.seedDoneRun('b-1', [{ repo: 'server', iid: 7 }]);
+      await h.tick();
+      expect(await h.task(id, 'b')).toMatchObject({ merged: {}, note: 'waits for a to merge first' });
+      expect(mergeCalls(h)).toHaveLength(0);
+    }));
+
+  it('holds a later done task behind an earlier one whose pass ended on an outage', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      const id = (await h.seedBacklog('one')).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1' });
+      await h.seedTask(id, 'b', { runKey: 'b-1' });
+      await h.seedDoneRun('a-1', [{ repo: 'web', iid: 5 }]);
+      await h.seedDoneRun('b-1', [{ repo: 'web', iid: 7 }]);
+      h.fake.hostDown('2026-11-12T11:00:00Z');
+      await h.tick();
+      expect((await h.task(id, 'a')).note).toContain('next try at 2026-11-12T11:00:00Z');
+      expect((await h.task(id, 'b')).note).toBe('waits for a to merge first');
+    }));
+
+  it('does not hold a done task behind an earlier task whose run is not done', () =>
+    withHarness(async (h) => {
+      h.setMain('web');
+      const id = (await h.seedBacklog('one')).id as number;
+      await h.seedTask(id, 'a', { runKey: 'a-1' });
+      await h.seedTask(id, 'b', { runKey: 'b-1' });
+      await h.seedDoneRun('a-1', [{ repo: 'web', iid: 5 }]);
+      await h.moveRun('a-1', { status: 'running' });
+      await h.seedDoneRun('b-1', [{ repo: 'web', iid: 7 }]);
+      await h.tick();
+      expect(await h.task(id, 'b')).toMatchObject({ status: 'merged', merged: { web: 'acme/web-merge-1' } });
     }));
 
   it('stores the merged files before it records the task as merged, on a merge and on an adopt', () =>
