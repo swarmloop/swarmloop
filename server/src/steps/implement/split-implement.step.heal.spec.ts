@@ -134,6 +134,17 @@ describe('split implement, subtasks that heal or block', () => {
     const host = {
       readMergeRequest: (_project: string, iid: number) =>
         Promise.resolve({ state: 'open', sha: null, conflicts: iid !== 1, httpCalls: [] }),
+      readMergeGate: () =>
+        Promise.resolve({
+          state: 'open',
+          sha: null,
+          draft: false,
+          head: 'head',
+          mergeability: 'clean',
+          blockedBy: null,
+          httpCalls: [],
+        }),
+      readBranchPipeline: () => Promise.resolve({ snapshot: null, httpCalls: [] }),
       readMergeMethods: () => Promise.resolve({ methods: ['squash'], httpCalls: [] }),
       mergeMergeRequest: () => Promise.resolve({ sha: 'abc', httpCalls: [] }),
       deleteBranch: () => Promise.resolve({ httpCalls: [] }),

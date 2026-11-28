@@ -46,7 +46,7 @@ interface Hold {
   note: string;
 }
 
-type Landing =
+export type Landing =
   { kind: 'merged'; merged: Record<string, string> } | { kind: 'held'; merged: Record<string, string>; holds: Hold[] };
 
 type Step = { sha: string } | { hold: Omit<Hold, 'repo'> };

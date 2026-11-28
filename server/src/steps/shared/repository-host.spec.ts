@@ -172,6 +172,20 @@ describe('RepositoryHost', () => {
     });
   });
 
+  it('deletes a branch on the host of the run', async () => {
+    const deleted: string[][] = [];
+    const registry = {
+      hostFor: async () => ({
+        deleteBranch: async (project: string, branch: string) => void deleted.push([project, branch]),
+      }),
+    } as unknown as CodeHostRegistry;
+    const host = new RepositoryHost({} as RepositoryOrigins, registry, {} as RunNames);
+
+    await host.deleteBranch(run, 'acme/web', 'task-1');
+
+    expect(deleted).toEqual([['acme/web', 'task-1']]);
+  });
+
   it('passes an outage through', async () => {
     const { fake, host } = setup();
     fake.hostDown('2026-11-16T10:00:00.000Z');

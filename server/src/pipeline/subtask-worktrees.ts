@@ -169,33 +169,6 @@ export class SubtaskWorktrees {
     });
   }
 
-  /**
-   * The files each merge commit of a task changed, from the repository's own worktree of the run. A path is prefixed
-   * with its repository when the task merged into more than one.
-   */
-  async changedFiles(run: RunEntity, merged: Record<string, string>, branch: string): Promise<string[]> {
-    const hosts = await this.hostsFor(run);
-    const repos = Object.entries(merged).filter(([, sha]) => sha);
-    const files: string[] = [];
-    for (const [repo, sha] of repos) {
-      const path = worktreePath(root(this.config), run.key, repo);
-      if (!existsSync(path)) continue;
-      const names = await withWorktree(path, async () =>
-        (await fetchBranch(path, repo, branch, hosts))
-          ? git(['-C', path, 'diff', '--name-only', `${sha}^`, sha])
-          : null,
-      );
-      if (names === null) continue;
-      files.push(
-        ...names
-          .split('\n')
-          .filter(Boolean)
-          .map((name) => (repos.length > 1 ? `${repo}/${name}` : name)),
-      );
-    }
-    return files;
-  }
-
   /** The project the origin of a repository's worktree names, or null when the worktree or its origin cannot be read. */
   projectOf(run: RunEntity, repo: string): Promise<string | null> {
     const path = worktreePath(root(this.config), run.key, repo);

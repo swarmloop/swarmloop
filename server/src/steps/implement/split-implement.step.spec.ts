@@ -19,7 +19,9 @@ import { NO_CI_NOTE } from './split-pass';
 import { noCiReason } from '../pipeline/pipeline-no-ci';
 import { git } from '../../testing/runs.spec-helpers';
 
+import { SubtaskOps } from '../shared/subtask-ops';
 import {
+  FakeHost,
   FEATURE,
   KEY,
   child,
@@ -583,6 +585,94 @@ describe('split merge', () => {
     expect(state.reason?.message).toContain('At least 1 approving review is required');
     expect(built.rebased).toEqual([]);
     expect(await statuses(app)).toEqual({ a: 'green' });
+  });
+
+  it('does not merge a green task whose head has a failing check, names it to the parent, and merges no later task', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a'), task('b')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await opened(app, built.host, 'b', { demo: 2 });
+    await finish(app, 'a');
+    await finish(app, 'b');
+    built.host.failing.add(1);
+
+    await pass(app);
+
+    const state = await parentState(app);
+    expect(state.state).toBe('blocked');
+    expect(state.reason?.message).toContain('subtask a was not merged: checks failing: test');
+    expect(built.host.merges).toEqual([]);
+    expect(await statuses(app)).toEqual({ a: 'green', b: 'green' });
+  });
+
+  it('does not merge a green task whose request is a draft and waits for its next try', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+    built.host.drafts.add(1);
+
+    await pass(app);
+
+    const state = await parentState(app);
+    expect(state.state).toBe('waiting');
+    expect(state.reason?.code).toBe(ERROR_CODES.HOST_UNAVAILABLE);
+    expect(state.reason?.retryAt).toBeDefined();
+    expect(state.reason?.message).toContain('subtask a was not merged: waits for its merge request to leave draft');
+    expect(built.host.merges).toEqual([]);
+  });
+
+  it('merges a task with the head the gate read as the guard', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+
+    await pass(app);
+
+    expect(built.host.guards.get(1)).toBe(FakeHost.headOf(1));
+  });
+
+  it('stores the merged_files document of a task before its run records the merge', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+    const ops = app.app.get(SubtaskOps);
+    const record = ops.recordMerged.bind(ops);
+    const stored: Array<string | null> = [];
+    jest.spyOn(ops, 'recordMerged').mockImplementation(async (parent, run, merged) => {
+      stored.push(await app.app.get(DocumentRepository).latestBody(run.key, 'merged_files'));
+      return record(parent, run, merged);
+    });
+
+    await pass(app);
+
+    expect(stored).toEqual(['']);
+  });
+
+  it('rebases a task behind the feature branch and sets it running, and a later green task still merges', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    await seedMergeParent(app, [task('a'), task('b')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await opened(app, built.host, 'b', { demo: 2 });
+    await finish(app, 'a');
+    await finish(app, 'b');
+    jest
+      .spyOn(app.app.get(SubtaskOps), 'behindTip')
+      .mockImplementation((_parent, run) => Promise.resolve(run.key === `${KEY}-a` ? 'feature-tip' : null));
+
+    await pass(app);
+
+    expect(built.rebased).toEqual([`${KEY}-a`]);
+    expect(built.host.merges).toEqual([2]);
+    expect(await statuses(app)).toEqual({ a: 'running', b: 'merged' });
+    expect((await tasksOf(app))[0]?.note).toBe('rebased onto the epic: the feature branch moved on');
   });
 
   it('closes the merge requests of the subtasks on a Replay at plan', async () => {

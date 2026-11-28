@@ -120,6 +120,11 @@ export class FakeHost {
   readonly targets = new Map<number, string>();
   readonly merged = new Map<number, string>();
   readonly conflicts = new Set<number>();
+  /** The head each merge was guarded by, by request. */
+  readonly guards = new Map<number, string | undefined>();
+  /** The requests that are drafts, and those whose head has a failing check. */
+  readonly drafts = new Set<number>();
+  readonly failing = new Set<number>();
   crashOn: number | null = null;
   refusal: string | null = null;
   failClose = false;
@@ -131,11 +136,59 @@ export class FakeHost {
     return Promise.resolve({ state: sha ? 'merged' : 'open', sha, conflicts: this.conflicts.has(iid), httpCalls: [] });
   }
 
+  /** The head commit of a request, as the gate and the pipeline of the host name it. */
+  static headOf(iid: number): string {
+    return `head-${iid}`;
+  }
+
+  readMergeGate(_project: string, iid: number) {
+    const sha = this.merged.get(iid) ?? null;
+    return Promise.resolve({
+      state: sha ? 'merged' : 'open',
+      sha,
+      draft: this.drafts.has(iid),
+      head: FakeHost.headOf(iid),
+      mergeability: this.conflicts.has(iid) ? 'conflicting' : 'clean',
+      blockedBy: null,
+      httpCalls: [],
+    });
+  }
+
+  readBranchPipeline(ref: { sha?: string }) {
+    const failed = [...this.failing].some((iid) => FakeHost.headOf(iid) === ref.sha);
+    const checks = failed
+      ? [
+          {
+            id: 1,
+            name: 'test',
+            app: '',
+            status: 'failed',
+            durationMs: 1,
+            url: '',
+            summary: '',
+            annotations: [],
+            workflow: true,
+          },
+        ]
+      : [];
+    const snapshot = {
+      id: 1,
+      status: failed ? 'failed' : 'success',
+      url: '',
+      jobs: [],
+      runs: [],
+      checks,
+      awaiting: [],
+    };
+    return Promise.resolve({ snapshot, httpCalls: [] });
+  }
+
   readMergeMethods() {
     return Promise.resolve({ methods: ['squash'], httpCalls: [] });
   }
 
-  mergeMergeRequest(_project: string, iid: number) {
+  mergeMergeRequest(_project: string, iid: number, guard?: string) {
+    this.guards.set(iid, guard);
     if (this.targets.get(iid) !== FEATURE) return Promise.reject(new Error(`!${iid} does not target ${FEATURE}`));
     if (iid === this.crashOn) return Promise.reject(new Error('crash'));
     if (this.refusal) return Promise.reject(new FetchFailed(this.refusal));

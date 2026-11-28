@@ -2,6 +2,8 @@ import 'reflect-metadata';
 import { storeRun } from '../../testing/store-run.spec-helpers';
 import { DocumentRepository } from '../../history/document.repository';
 import { FetchFailed } from '../../core/swarmloop-error';
+import { RunHosts } from '../../integrations/code-host/run-hosts';
+import type { CodeHost } from '../../integrations/code-host/code-host';
 import { SubtaskOps } from '../shared/subtask-ops';
 import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { RunRepository } from '../../history/run.repository';
@@ -10,7 +12,17 @@ import { ERROR_CODES } from '../../contract/error-codes';
 import { COMMAND_TYPES } from '../../contract/command';
 import { actionsFor } from '../../contract/run-state';
 import type { TestApp } from '../../testing/test-app';
-import { child, parentState, pass, seedParent, task, tasksOf, work, world } from './split-implement.spec-helpers';
+import {
+  child,
+  parentState,
+  pass,
+  requirements,
+  seedParent,
+  task,
+  tasksOf,
+  work,
+  world,
+} from './split-implement.spec-helpers';
 
 async function block(app: TestApp, id: string): Promise<void> {
   const run = await child(app, id);
@@ -67,10 +79,18 @@ describe('split implement, a blocked task', () => {
     await block(app, 'a');
     const green = await child(app, 'b');
     const record = { project: 'demo', iid: 2, url: 'https://code.example/demo/2', draft: false, summary: '' };
+    await app.app.get(DocumentRepository).putDocument(green, 'requirements', requirements);
     await app.app.get(DocumentRepository).putDocument(green, 'repos', 'demo\n');
     await app.app.get(DocumentRepository).putDocument(green, 'merge_request', renderMergeRequest([record]));
     writeRunState(green, { status: 'done', currentStep: 'done' });
     await storeRun(app.app.get(RunRepository), green);
+    const open = { state: 'open', sha: null, draft: false, head: 'head', mergeability: 'clean', blockedBy: null };
+    const host = {
+      readMergeGate: () => Promise.resolve({ ...open, httpCalls: [] }),
+      readBranchPipeline: () => Promise.resolve({ snapshot: null, httpCalls: [] }),
+    };
+    jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue(host as unknown as CodeHost);
+    jest.spyOn(RunHosts.prototype, 'requiredCredentials').mockReturnValue({} as never);
     jest
       .spyOn(app.app.get(SubtaskOps), 'behindTip')
       .mockRejectedValue(new FetchFailed('main of demo could not be fetched'));

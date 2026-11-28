@@ -278,8 +278,13 @@ Both queues use one order rule per target branch: ready items are offered to the
 A run that is not in a backlog is merged by a person on the host. The merge watch reads how every done run's merge requests ended, every `MERGE_WATCH_MIN`, and marks the run merged or closed. A merge method is tried in its order (squash, rebase, merge commit).
 
 **Today.** One merge path holds: `steps/shared/merge-landing.ts`, with the rules of `merge-rules.ts` and the files of `merged-files-record.ts`, used by two queues:
+<<<<<<< HEAD
 - the epic's split pass (`steps/implement/split-merge.ts`), children into the epic's branch;
 - `pipeline/backlog/backlog-merge.ts`, backlog tasks into `main`, which also rebases a task that is behind `main`, walks only the repositories of the run's delivery list that are not `read`, so a repository the run only read is never asked for a request, and adopts a run the merge watch saw merged. It lands each task through `MergeLanding`, which records the merged files before the task is saved merged and `task-merged` is recorded, on a merge and on an adopt. A later done task of a repository that an earlier task still has to merge into waits behind it, with the note `waits for <slug> to merge first`.
+=======
+- the epic's split pass (`steps/implement/split-merge.ts`), children into the epic's branch, one green child at a time in task order: it has no merge path of its own, offers each child to the landing, rebases a child that is behind the feature branch through it, and stops at the first child held by a wait, a person or a refusal;
+- `pipeline/backlog/backlog-merge.ts`, backlog tasks into `main`, which also rebases a task that is behind `main`, walks only the repositories of the run's delivery list that are not `read`, so a repository the run only read is never asked for a request, and adopts a run the merge watch saw merged.
+>>>>>>> 7d803beb (own change)
 
 `pipeline/merge-watch.ts` only reads how a done run's merge requests ended, and settles nothing while a repository of the delivery list is `publishing`.
 

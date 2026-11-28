@@ -111,4 +111,9 @@ export class RepositoryHost {
     const how = await mergeHow(host, request.project, await this.names.taskTitle(run, repo, taskTitle));
     return (await host.mergeMergeRequest(request.project, request.iid, head, how)).sha;
   }
+
+  /** Deletes a branch of a project on the host a run talks to. */
+  async deleteBranch(run: HostRun, project: string, branch: string): Promise<void> {
+    await (await this.hosts.hostFor(run)).deleteBranch(project, branch);
+  }
 }
