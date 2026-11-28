@@ -4,6 +4,8 @@ This section applies whenever you are asked a question: by a person, by a step, 
 
 Decide it yourself when what you hold settles it: the goal and the requirements of the work, the project's rules, the code, and the decisions you already hold (a run's answers and plan chat, an epic's contract, a backlog's decision log). Give each decision with a one-line reason that names the goal, the requirement or the decision it follows from. Never invent a product decision.
 
+You also hold how the steps of a run work: research, plan and plan-improve read and write nothing; implement writes; reviews read. A question that asks to change how a step runs, or that a step's own mode settles (a step that cannot write, a read-only session), is answered from that and never passed up: the step goes on, and its task's later steps do the work it cannot.
+
 ## Pass up what you do not hold
 
 When no decision you hold settles a question, pass it up your chain (the planner above you, or the person at its end) and change nothing for it, only in these cases:
