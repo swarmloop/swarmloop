@@ -25,9 +25,10 @@ function setup(
     asking?: boolean;
     tip?: string | null;
     dead?: string[];
+    newest?: { idempotencyKey: string | null; state: string; result?: string | null } | null;
   } = {},
 ): Setup {
-  const { worktrees = true, requests = [], asking = false, tip = null, dead = [] } = options;
+  const { worktrees = true, requests = [], asking = false, tip = null, dead = [], newest = null } = options;
   const documents = new Map<string, string>(worktrees ? [[ARTIFACTS.repos.kind, 'web']] : []);
   const accepted: Setup['accepted'] = [];
   const commands = {
@@ -37,6 +38,7 @@ function setup(
       const died = key !== undefined && dead.includes(key);
       return Promise.resolve({ replayed: died, command: { state: died ? 'failed' : 'done', id: 7 } });
     },
+    latestOfRun: () => Promise.resolve(newest),
   } as unknown as CommandService;
   const store = {
     latestBody: (_key: string, kind: string) => Promise.resolve(documents.get(kind) ?? null),
@@ -150,6 +152,36 @@ describe('SubtaskRebases', () => {
     const { accepted, rebases } = setup({ requests: [REQUEST] });
     await rebases.rebase(part({ status: 'done', currentStep: 'pipeline' }));
     expect(accepted.map((sent) => sent.key)).toEqual(['subtask-rebase-1-1']);
+  });
+
+  describe('the move of a part that its parent sent', () => {
+    const MOVE = 'subtask-rebase-f1-a-web@def';
+    const moveOf = (newest: NonNullable<Parameters<typeof setup>[0]>['newest']) =>
+      setup({ newest }).rebases.moveOf(part({ status: 'blocked', currentStep: 'checks' }));
+
+    it.each(['accepted', 'executing'])('reads moving while the move is %s', async (state) => {
+      expect(await moveOf({ idempotencyKey: MOVE, state })).toEqual({ kind: 'moving' });
+    });
+
+    it('reads failed with the error the move stored once it failed', async () => {
+      const result = JSON.stringify({ error: { message: 'push refused' } });
+      expect(await moveOf({ idempotencyKey: MOVE, state: 'failed', result })).toEqual({
+        kind: 'failed',
+        reason: 'push refused',
+      });
+    });
+
+    it('reads nothing for a move that succeeded, for a part with no command and for another command', async () => {
+      expect(await moveOf({ idempotencyKey: MOVE, state: 'succeeded' })).toBeNull();
+      expect(await moveOf(null)).toBeNull();
+      expect(await moveOf({ idempotencyKey: 'resume-1', state: 'accepted' })).toBeNull();
+      expect(await moveOf({ idempotencyKey: null, state: 'failed' })).toBeNull();
+    });
+
+    it('reads nothing for a part that is not blocked or failed: its own state tells what it is', async () => {
+      const running = setup({ newest: { idempotencyKey: MOVE, state: 'executing' } });
+      expect(await running.rebases.moveOf(part({ status: 'done', currentStep: 'pipeline' }))).toBeNull();
+    });
   });
 
   it('says a part keeps its wait only while it waits on a question or a sibling', async () => {

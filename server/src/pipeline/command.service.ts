@@ -143,6 +143,12 @@ export class CommandService {
     return this.commands.latestByKeyPrefix(runId, prefix);
   }
 
+  /** The newest command of a run, whatever its type; null for a run with no command. */
+  async latestOfRun(runId: number): Promise<CommandEntity | null> {
+    const stored = await this.commands.listForRun(runId);
+    return stored[stored.length - 1] ?? null;
+  }
+
   /** Whether a blocked run's Resume is checked against a conflict parked for implement, read before the transaction. */
   private async parkedOf(type: CommandType, run: RunEntity | null, checked: boolean): Promise<boolean> {
     if (type !== 'resume' || !checked || !run || storedState(run).state !== 'blocked') return false;

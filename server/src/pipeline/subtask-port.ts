@@ -18,6 +18,7 @@ import {
   type SubtaskStart,
   type OwnEdits,
   type RebaseEvent,
+  type TaskMove,
   type ChainAsked,
   type ChainQuestion,
   type Escalated,
@@ -314,6 +315,10 @@ export class SubtaskPort extends SubtaskOps {
     return this.rebases.rebase(run, event);
   }
 
+  override moveOf(run: RunEntity): Promise<TaskMove | null> {
+    return this.rebases.moveOf(run);
+  }
+
   override keepsWait(run: RunEntity): Promise<boolean> {
     return this.rebases.keepsWait(run);
   }
@@ -371,7 +376,7 @@ export class SubtaskPort extends SubtaskOps {
     const tasks = withStatuses(parseSubtasks(await this.documents.latestBody(parent.key, SUBTASKS_KIND)));
     for (const task of tasks) {
       const child = settled(task) ? null : await this.runs.findSubtask(parent, task.id);
-      if (child && disagrees(task, child)) return true;
+      if (child && disagrees(task, child, await this.rebases.moveOf(child))) return true;
     }
     return false;
   }
