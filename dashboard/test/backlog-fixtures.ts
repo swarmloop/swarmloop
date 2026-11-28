@@ -28,6 +28,7 @@ export function task(overrides: Partial<Task> = {}): Task {
     waitsForOk: false,
     repositories: ['shop'],
     merged: {},
+    revision: 0,
     ...overrides,
   };
 }

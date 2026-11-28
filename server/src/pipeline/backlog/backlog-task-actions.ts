@@ -16,6 +16,7 @@ import {
 } from './backlog-action-support';
 import { BacklogQueries } from './backlog-queries';
 import { checkText } from './backlog-rules';
+import { claimOrRefuse } from './task-claim';
 import { TaskRunSkip } from './task-run-skip';
 import {
   checkNewSlugs,
@@ -107,6 +108,7 @@ export class BacklogTaskActions {
     );
     checkRunnable(changed);
     await this.support.write(context, async (writers) => {
+      await claimOrRefuse(writers, task, body.expectedRevision ?? task.revision ?? 0);
       await writers.saveTask(changed);
       await this.support.record(writers, backlog.id as number, who, 'change task', { task: slug }, context);
     });
@@ -118,8 +120,9 @@ export class BacklogTaskActions {
     name: string,
     slug: string,
     context?: Context,
+    expectedRevision?: number,
   ): Promise<Outcome<Context>> {
-    return this.remove(actor, name, slug, 'delete task', context);
+    return this.remove(actor, name, slug, 'delete task', context, expectedRevision);
   }
 
   /** The run of a task that has not ended is skipped first; then the task is. In a planner's turn the run is left to the tick. */
@@ -212,6 +215,7 @@ export class BacklogTaskActions {
     const milestoneId = this.milestoneId(await reads.milestones(backlog.id as number), body.milestone);
     checkRunnable({ ...task, milestoneId });
     await this.support.write(context, async (writers) => {
+      await claimOrRefuse(writers, task, task.revision ?? 0);
       await writers.saveTask({ ...task, milestoneId });
       await this.support.record(
         writers,
@@ -240,12 +244,14 @@ export class BacklogTaskActions {
     slug: string,
     action: string,
     context?: Context,
+    expectedRevision?: number,
   ): Promise<Outcome<Context>> {
     const who = this.support.person(actor);
     const backlog = await this.support.load(name, context);
     const task = this.find(await this.support.reads(context).tasks(backlog.id as number), slug);
     checkNotStartedForDelete(task);
     await this.support.write(context, async (writers) => {
+      await claimOrRefuse(writers, task, expectedRevision ?? task.revision ?? 0);
       await writers.deleteTask(task.id as number);
       await this.support.record(writers, backlog.id as number, who, action, { task: slug }, context);
     });

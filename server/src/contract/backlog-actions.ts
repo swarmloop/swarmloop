@@ -45,8 +45,11 @@ export interface AddTaskBody extends Partial<TaskFieldsBody> {
   description: string;
 }
 
-/** A change of a task that has not started: only the fields that are given. */
-export type ChangeTaskBody = Partial<Omit<TaskFieldsBody, 'manual' | 'fixesMain'>>;
+/**
+ * A change of a task that has not started: only the fields that are given. `expectedRevision` is the revision of the
+ * task as the caller read it; a task that changed since is refused with the task as it is now.
+ */
+export type ChangeTaskBody = Partial<Omit<TaskFieldsBody, 'manual' | 'fixesMain'>> & { expectedRevision?: number };
 
 /** A backlog item: only a title and a description until it is planned. */
 export interface AddItemBody {

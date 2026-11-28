@@ -7,6 +7,7 @@ function task(slug: string, overrides: Partial<TaskState> = {}): TaskState {
     title: slug,
     description: `Do ${slug}`,
     status: 'waiting',
+    revision: 0,
     wait: '',
     runKey: null,
     repositories: ['web'],
@@ -69,6 +70,15 @@ describe('turn changes', () => {
     expect(changes.changed[2].text).toContain('run start-1');
     expect(changes.gone).toEqual(['task:drop']);
     expect(changes.briefs).toEqual(['edit']);
+  });
+
+  it('shows a task whose revision moved as changed, with the new revision', () => {
+    const seen = decodeSeen(encodeSeen(stateOf([task('a'), task('b')])));
+
+    const changes = diffSeen(seen!, stateOf([task('a'), task('b', { revision: 3 })]));
+
+    expect(changes.changed.map((item) => item.key)).toEqual(['task:b']);
+    expect(changes.changed[0].text).toContain('revision 3');
   });
 
   it('shows a task named like an Object property as new when the seen state does not hold it', () => {

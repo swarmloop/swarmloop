@@ -39,14 +39,16 @@ describe('PlannerRules', () => {
       await harness.task(backlogId, null, 'going', { runKey: 'going-1', status: 'running' });
       await harness.task(backlogId, null, 'later');
       for (const action of [
-        { action: 'changeTask', task: 'going', description: 'new' },
-        { action: 'deleteTask', task: 'going' },
+        { action: 'changeTask', task: 'going', revision: 0, description: 'new' },
+        { action: 'deleteTask', task: 'going', revision: 0 },
         { action: 'moveItem', task: 'going', milestone: 1 },
       ] as BacklogTurnAction[]) {
         expect(await refusal(harness, action)).toContain('has started: skipBacklogTask skips it');
       }
       expect(await refusal(harness, { action: 'skipBacklogTask', task: 'going' })).toBeNull();
-      expect(await refusal(harness, { action: 'changeTask', task: 'later', description: 'new' })).toBeNull();
+      expect(
+        await refusal(harness, { action: 'changeTask', task: 'later', revision: 0, description: 'new' }),
+      ).toBeNull();
     }));
 
   it('refuses a command to a run that is not one of the backlog', () =>

@@ -127,6 +127,10 @@ export class BacklogTaskEntity {
   @Column({ type: 'text', default: '' })
   note!: string;
 
+  /** Moved by one on each change of the task by a person or the planner; a stale change is refused by it. */
+  @Column({ type: 'integer', default: 0 })
+  revision!: number;
+
   @Column({ name: 'run_now', type: 'boolean', default: false })
   runNow!: boolean;
 

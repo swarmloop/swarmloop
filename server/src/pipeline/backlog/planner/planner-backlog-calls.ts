@@ -82,11 +82,21 @@ export class PlannerBacklogCalls {
         return this.actions.addTasks(owner, name, action.tasks, context);
       case 'changeTask': {
         const { title, description, repositories, covers, depends, files, proof, milestone } = action;
-        const changes: ChangeTaskBody = { title, description, repositories, covers, depends, files, proof, milestone };
+        const changes: ChangeTaskBody = {
+          title,
+          description,
+          repositories,
+          covers,
+          depends,
+          files,
+          proof,
+          milestone,
+          expectedRevision: action.revision,
+        };
         return this.actions.changeTask(owner, name, action.task, changes, context);
       }
       case 'deleteTask':
-        return this.actions.deleteTask(owner, name, action.task, context);
+        return this.actions.deleteTask(owner, name, action.task, context, action.revision);
       case 'skipBacklogTask':
         return this.actions.skipTask(owner, name, action.task, context);
       case 'addItem':

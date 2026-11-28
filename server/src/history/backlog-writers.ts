@@ -5,6 +5,7 @@ import type { BacklogEventKind, MergeMode, MilestoneStatus, RequirementStatus, T
 import type { MessageAuthor, MessageKind, TurnStatus } from '../contract/backlog-chat';
 import type { AttachmentRef } from '../contract/attachments';
 import type { SubtaskStatus } from '../contract/subtask';
+import { conditionalUpdate } from './conditional-write';
 import {
   BacklogEntity,
   BacklogEventEntity,
@@ -73,6 +74,8 @@ export interface BacklogTaskRecord {
   madeBy: TaskMadeBy;
   position: number;
   createdAt: string;
+  /** How many changes by a person or the planner the task has had; set by the store, never by the caller. */
+  revision?: number;
 }
 
 export interface DecisionRecord {
@@ -140,6 +143,8 @@ export interface BacklogWriters {
   saveTask(record: BacklogTaskRecord): Promise<BacklogTaskRecord>;
   addDecision(record: DecisionRecord): Promise<DecisionRecord>;
   deleteTask(id: number): Promise<void>;
+  /** Moves the task's revision from the one a change read to the next; false when the task changed since. */
+  claimTask(id: number, expectedRevision: number): Promise<boolean>;
   /** Writes the event once per key; false when the key was written before. */
   recordEvent(backlogId: number, key: string, kind: BacklogEventKind, facts: Facts): Promise<boolean>;
   /** Writes the message once per backlog and key; false when the key was written before. */
@@ -168,7 +173,10 @@ export function toRequirement(row: RequirementEntity): RequirementRecord {
   return { ...row, status: row.status as RequirementStatus };
 }
 
-export function toTask(row: BacklogTaskEntity): BacklogTaskRecord {
+/** A task row as a whole-row write returns it: the revision is the store's own and a write does not name it. */
+type TaskRow = Omit<BacklogTaskEntity, 'revision'> & { revision?: number };
+
+export function toTask(row: TaskRow): BacklogTaskRecord {
   return {
     ...row,
     repositories: JSON.parse(row.repositories) as string[],
@@ -182,7 +190,8 @@ export function toTask(row: BacklogTaskEntity): BacklogTaskRecord {
   };
 }
 
-function fromTask(record: BacklogTaskRecord): BacklogTaskEntity {
+/** The revision stays out of the row: only `claimTask` moves it, so a whole-row write never lowers it. */
+function fromTask({ revision: _revision, ...record }: BacklogTaskRecord): Omit<BacklogTaskEntity, 'revision'> {
   return {
     ...record,
     id: record.id as number,
@@ -212,17 +221,17 @@ export function toTurn(row: BacklogTurnEntity): BacklogTurnRecord {
   return { ...row, status: row.status as TurnStatus };
 }
 
-async function saveRow<Row extends { id: number }>(
+async function saveRow<Row extends { id: number }, Left extends keyof Row = never>(
   manager: EntityManager,
   target: new () => Row,
-  row: Row,
-): Promise<Row> {
-  const { id, ...fields } = row;
+  row: Omit<Row, Left>,
+): Promise<Omit<Row, Left>> {
+  const { id, ...fields } = row as unknown as { id: number };
   if (id) {
-    await manager.update(target, id, fields as never);
+    await manager.update(target, id, fields);
     return row;
   }
-  const inserted = await manager.insert(target, fields as never);
+  const inserted = await manager.insert(target, fields);
   return { ...row, id: Number(inserted.identifiers[0]?.id) };
 }
 
@@ -246,13 +255,22 @@ export function writersOn(manager: EntityManager, clock: Clock): BacklogWriters 
       return toRequirement(await saveRow(manager, RequirementEntity, { ...record, id: record.id as number }));
     },
     async saveTask(record) {
-      return toTask(await saveRow(manager, BacklogTaskEntity, fromTask(record)));
+      const saved = toTask(await saveRow<BacklogTaskEntity, 'revision'>(manager, BacklogTaskEntity, fromTask(record)));
+      return { ...saved, revision: record.revision ?? 0 };
     },
     async addDecision(record) {
       return saveRow(manager, DecisionEntity, { ...record, id: record.id as number });
     },
     async deleteTask(id) {
       await manager.delete(BacklogTaskEntity, id);
+    },
+    claimTask(id, expectedRevision) {
+      return conditionalUpdate(
+        manager.getRepository(BacklogTaskEntity),
+        id,
+        { revision: expectedRevision + 1 },
+        () => expectedRevision,
+      );
     },
     async recordEvent(backlogId, key, kind, facts) {
       try {

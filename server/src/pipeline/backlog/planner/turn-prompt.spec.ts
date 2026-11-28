@@ -90,7 +90,7 @@ describe('BacklogTurnPrompt', () => {
 
       const text = (await prompt.build('alpha', 't1', mounts, ['web'])).fresh;
 
-      expect(text).toContain('Backlog items:\n- idea [waiting]: idea');
+      expect(text).toContain('Backlog items:\n- idea [waiting] revision 0: idea');
       expect(text).toContain('brief: 28 characters in /work/brief/tasks/idea.md');
       expect(text).not.toContain('Gives a thing.');
       expect(text).toContain('/work/web');
@@ -107,7 +107,7 @@ describe('BacklogTurnPrompt', () => {
       const text = (await prompt.build('alpha', 't1', mounts, ['web'])).fresh;
 
       expect(text).toContain(
-        '- done [merged] run done-1: done\n- dropped [skipped]: dropped\n- later [waiting]: later',
+        '- done [merged] revision 0 run done-1: done\n- dropped [skipped] revision 0: dropped\n- later [waiting] revision 0: later',
       );
       expect(text).not.toContain('files: done.ts');
       expect(text).toContain('files: later.ts');
@@ -135,7 +135,7 @@ describe('BacklogTurnPrompt', () => {
       const { prompt: changes, fresh } = await prompt.build('alpha', 't2', mounts, ['web']);
 
       expect(first.fresh).not.toContain('    reason: ');
-      expect(fresh).toContain('- a [blocked] run a-1: a');
+      expect(fresh).toContain('- a [blocked] revision 0 run a-1: a');
       expect(fresh).toContain(reason);
       expect(changes).toContain('Changed tasks, milestones and requirements:\n- a [blocked]');
       expect(changes).toContain(reason);
@@ -245,7 +245,7 @@ describe('BacklogTurnPrompt', () => {
         ),
       ).toBe(true);
       expect(text).toContain('Changed tasks, milestones and requirements:\n- keep [');
-      expect(text).toContain('- edit [waiting]: edit');
+      expect(text).toContain('- edit [waiting] revision 0: edit');
       expect(text).toContain('waits: waits for main');
       expect(text).toContain('no longer in the backlog: task:drop');
       expect(text).toContain('its brief changed: /work/brief/tasks/edit.md');

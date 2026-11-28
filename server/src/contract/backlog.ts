@@ -69,6 +69,8 @@ export interface BacklogTaskView {
   repositories: string[];
   /** The merged commit of each repository that is merged. */
   merged: Record<string, string>;
+  /** How many changes the task has had; a change names the one it read and a stale one is refused. */
+  revision: number;
 }
 
 interface BacklogDecisionView {

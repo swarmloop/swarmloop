@@ -45,6 +45,8 @@ export interface TaskState {
   title: string;
   description: string;
   status: Subtask['status'];
+  /** The revision a change of the task names; a change of a task that moved since is refused. */
+  revision: number;
   /** What the task waits for, in the scheduler's words. */
   wait: string;
   runKey: string | null;
@@ -193,6 +195,7 @@ export class BacklogTurnState {
         title: record.title,
         description: record.description,
         status: shown.get(record.slug) ?? record.status,
+        revision: record.revision ?? 0,
         wait: record.note,
         runKey: record.runKey,
         repositories: record.repositories,

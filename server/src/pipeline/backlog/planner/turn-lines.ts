@@ -25,7 +25,7 @@ function list(values: string[]): string {
 
 /** One task: its status and run, what it waits for, and its subtasks. A task that has not started also names the file of its brief. A settled task is its head line alone. */
 export function taskText(task: TaskState): string {
-  const head = `- ${task.slug} [${task.status}]${task.runKey === null ? '' : ` run ${task.runKey}`}: ${task.title}`;
+  const head = `- ${task.slug} [${task.status}] revision ${task.revision}${task.runKey === null ? '' : ` run ${task.runKey}`}: ${task.title}`;
   if (settled(task)) return head;
   const lines = [
     head,

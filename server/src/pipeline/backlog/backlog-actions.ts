@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import type { BacklogView } from '../../contract/backlog';
 import type {
   AddItemBody,
@@ -22,9 +22,10 @@ import {
   type PlannerContext,
 } from './backlog-action-support';
 import { BacklogQueries } from './backlog-queries';
+import { BacklogRequirementActions } from './backlog-requirement-actions';
 import { BacklogScopeActions } from './backlog-scope-actions';
 import { BacklogTaskActions } from './backlog-task-actions';
-import { checkText, checkTransition, nextMilestoneNumber, nextRequirementRefs, queueBacklog } from './backlog-rules';
+import { checkText, checkTransition, nextMilestoneNumber, queueBacklog } from './backlog-rules';
 
 /** The only writer of backlogs: it validates, writes in one transaction and records who did it and when. */
 @Injectable()
@@ -36,6 +37,7 @@ export class BacklogActions {
     private readonly support: BacklogActionSupport,
     private readonly scope: BacklogScopeActions,
     private readonly taskActions: BacklogTaskActions,
+    private readonly requirementActions: BacklogRequirementActions,
   ) {}
 
   createBacklog(actor: string | null, body: CreateBacklogBody): Promise<BacklogView> {
@@ -134,35 +136,14 @@ export class BacklogActions {
     return this.queries.view(name);
   }
 
-  async addRequirements<Context extends PlannerContext | undefined = undefined>(
+  addRequirements<Context extends PlannerContext | undefined = undefined>(
     actor: string | null,
     name: string,
     number: number,
     body: AddRequirementsBody,
     context?: Context,
   ): Promise<Outcome<Context>> {
-    const who = this.support.person(actor);
-    const backlog = await this.support.load(name, context);
-    const reads = this.support.reads(context);
-    const milestone = this.support.milestone(await reads.milestones(backlog.id as number), number);
-    if (!Array.isArray(body.texts) || body.texts.length === 0) throw new BadRequestException('no requirement given');
-    const texts = body.texts.map((text) => checkText(text, 'a requirement'));
-    const taken = (await reads.requirements(backlog.id as number)).map((requirement) => requirement.ref);
-    const refs = nextRequirementRefs(number, taken, texts.length);
-    await this.support.write(context, async (writers) => {
-      for (const [index, text] of texts.entries()) {
-        await writers.saveRequirement({ milestoneId: milestone.id as number, ref: refs[index], text, status: 'open' });
-      }
-      await this.support.record(
-        writers,
-        backlog.id as number,
-        who,
-        'add requirements',
-        { requirements: refs.join(', ') },
-        context,
-      );
-    });
-    return outcome(this.queries, name, context);
+    return this.requirementActions.addRequirements(actor, name, number, body, context);
   }
 
   pause<Context extends PlannerContext | undefined = undefined>(
@@ -201,33 +182,14 @@ export class BacklogActions {
     return outcome(this.queries, name, context);
   }
 
-  /** Closing is the owner's: an open requirement is closed by hand, with what shows it is met. */
-  async closeRequirement<Context extends PlannerContext | undefined = undefined>(
+  closeRequirement<Context extends PlannerContext | undefined = undefined>(
     actor: string | null,
     name: string,
     ref: string,
     body: CloseRequirementBody,
     context?: Context,
   ): Promise<Outcome<Context>> {
-    const { who, backlog } = await this.support.owned(actor, name, context);
-    const evidence = checkText(body.evidence, 'the evidence');
-    const requirement = (await this.support.reads(context).requirements(backlog.id as number)).find(
-      (other) => other.ref === ref,
-    );
-    if (requirement === undefined) throw new NotFoundException(`no requirement ${ref}`);
-    if (requirement.status === 'closed') throw new ConflictException(`${ref} is already closed`);
-    await this.support.write(context, async (writers) => {
-      await writers.saveRequirement({ ...requirement, status: 'closed' });
-      await this.support.record(
-        writers,
-        backlog.id as number,
-        who,
-        'close requirement',
-        { requirement: ref, evidence },
-        context,
-      );
-    });
-    return outcome(this.queries, name, context);
+    return this.requirementActions.closeRequirement(actor, name, ref, body, context);
   }
 
   addTasks<Context extends PlannerContext | undefined = undefined>(
@@ -254,8 +216,9 @@ export class BacklogActions {
     name: string,
     slug: string,
     context?: Context,
+    expectedRevision?: number,
   ): Promise<Outcome<Context>> {
-    return this.taskActions.deleteTask(actor, name, slug, context);
+    return this.taskActions.deleteTask(actor, name, slug, context, expectedRevision);
   }
 
   skipTask<Context extends PlannerContext | undefined = undefined>(
