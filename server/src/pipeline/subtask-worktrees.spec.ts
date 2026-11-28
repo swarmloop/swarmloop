@@ -10,6 +10,8 @@ import { git as runGit } from '../git/git';
 import { withWorktree } from '../git/worktree-lock';
 import { featureWorktree, git } from '../testing/runs.spec-helpers';
 import type { BaseTips } from '../steps/shared/base-tips';
+import type { DocumentRepository } from '../history/document.repository';
+import { REBASE_JOURNAL } from '../git/rebase';
 import { SubtaskWorktrees } from './subtask-worktrees';
 
 /** The record of what a run stood on, kept in memory: `stood` is what it knows, `recorded` what it was told since. */
@@ -24,6 +26,29 @@ function memoryTips(stood: string[] = []): { tips: BaseTips; recorded: Record<st
     },
   } as unknown as BaseTips;
   return { tips, recorded };
+}
+
+/** The documents of a run kept in memory: the rebase journal an own-edits commit writes is read back from them. */
+function memoryDocuments(): {
+  documents: DocumentRepository;
+  journal: () => Record<string, { checkpoint: string; ownBase?: string }>;
+} {
+  const bodies = new Map<string, string>();
+  const documents = {
+    latestBody: (key: string, kind: string) => Promise.resolve(bodies.get(`${key}/${kind}`) ?? null),
+    putDocument: (run: RunEntity, kind: string, body: string) => {
+      bodies.set(`${run.key}/${kind}`, body);
+      return Promise.resolve();
+    },
+  } as unknown as DocumentRepository;
+  return {
+    documents,
+    journal: () =>
+      JSON.parse(bodies.get(`proj-93/${REBASE_JOURNAL}`) ?? '{}') as Record<
+        string,
+        { checkpoint: string; ownBase?: string }
+      >,
+  };
 }
 
 /**
@@ -95,6 +120,34 @@ describe('moving the worktree of the parent to the feature branch', () => {
   });
 });
 
+describe('moving a parent worktree that holds conflicting edits', () => {
+  it('leaves the worktree and its edits where they are and names the edits', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-fast-forward-edits-'));
+    const { tree } = featureWorktree(root, 'proj-98');
+    const branch = 'feature/proj-98-ship-the-field';
+    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
+    const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
+    writeFileSync(join(tree, 'a.ts'), 'task\n');
+    git(tree, ['add', '.']);
+    git(tree, ['commit', '-m', 'a']);
+    git(tree, ['push', 'origin', branch]);
+    git(tree, ['reset', '--hard', 'HEAD~1']);
+    const head = git(tree, ['rev-parse', 'HEAD']);
+    writeFileSync(join(tree, 'a.ts'), 'own\n');
+
+    const note = await new SubtaskWorktrees(config, clock, memoryTips().tips).fastForward(
+      { key: 'proj-98' } as RunEntity,
+      ['demo'],
+      branch,
+    );
+
+    expect(note).toContain('uncommitted edits conflict');
+    expect(note).toContain(head);
+    expect(git(tree, ['rev-parse', 'HEAD'])).toBe(head);
+    expect(git(tree, ['status', '--porcelain'])).toContain('a.ts');
+  });
+});
+
 describe('committing the own edits of the parent before it is brought to the feature branch', () => {
   const branch = 'feature/proj-93-ship-the-field';
   const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
@@ -113,15 +166,16 @@ describe('committing the own edits of the parent before it is brought to the fea
     git(tree, ['push', 'origin', branch]);
     const tip = git(tree, ['rev-parse', 'HEAD']);
     git(tree, ['reset', '--hard', 'HEAD~1']);
+    const memory = memoryDocuments();
     const commit = (park = false) =>
-      new SubtaskWorktrees(config, clock, memoryTips().tips).commitOwnEdits(
+      new SubtaskWorktrees(config, clock, memoryTips().tips, undefined, memory.documents).commitOwnEdits(
         { key: 'proj-93' } as RunEntity,
         ['demo'],
         branch,
         async () => ({ message: () => 'own edits', author: null }),
         park,
       );
-    return { tree, shared, tip, commit };
+    return { tree, shared, tip, commit, journal: memory.journal };
   };
 
   it('leaves a clean parent tree as it is and reports nothing', async () => {
@@ -133,11 +187,13 @@ describe('committing the own edits of the parent before it is brought to the fea
   });
 
   it('commits edits to other lines on top of the feature branch and names the paths', async () => {
-    const { tree, shared, tip, commit } = await setup();
+    const { tree, shared, tip, commit, journal } = await setup();
     writeFileSync(shared, lines('one', 'own five'));
     writeFileSync(join(tree, 'src', 'own.ts'), 'own\n');
 
     const result = await commit();
+
+    expect(journal().demo?.checkpoint).toBe('completed');
 
     expect(result.conflict).toBeNull();
     expect(result.committed).toContain('src/shared.ts');
@@ -147,11 +203,13 @@ describe('committing the own edits of the parent before it is brought to the fea
   });
 
   it('leaves conflicting edits uncommitted and names the file and both heads', async () => {
-    const { tree, shared, tip, commit } = await setup();
+    const { tree, shared, tip, commit, journal } = await setup();
     const head = git(tree, ['rev-parse', 'HEAD']);
     writeFileSync(shared, lines('own one'));
 
     const result = await commit();
+
+    expect(journal()).toEqual({});
 
     expect(result.committed).toBeNull();
     expect(result.conflict).toContain('src/shared.ts');
@@ -164,10 +222,13 @@ describe('committing the own edits of the parent before it is brought to the fea
   });
 
   it('parks conflicting edits on top of the feature branch for the agent', async () => {
-    const { tree, shared, tip, commit } = await setup();
+    const { tree, shared, tip, commit, journal } = await setup();
     writeFileSync(shared, lines('own one'));
 
     const result = await commit(true);
+
+    expect(journal().demo?.checkpoint).toBe('conflict');
+    expect(journal().demo?.ownBase).toBeTruthy();
 
     expect(result.conflict).toContain('src/shared.ts');
     expect(result.conflict).toContain('implement agent resolves');
@@ -219,27 +280,6 @@ describe('asking a subtask worktree for the tip while another operation holds it
 
 describe('bringing a subtask worktree up to a feature branch that was rewritten', () => {
   const clock: Clock = { now: () => 0, iso: () => '2026-11-13T00:00:00.000Z' };
-
-  it('replays only the own change of the subtask on the new tip, and records that tip', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-catch-up-'));
-    const { tree, clone } = featureWorktree(root, 'proj-95');
-    const config = { env: { SWARMLOOP_ROOT: root, GITLAB_TOKEN: '', GITHUB_TOKEN: '' } } as unknown as AppConfig;
-    const { oldTip, newTip } = rewriteEpicOnOrigin(tree, clone, 'feature/epic-ship');
-    writeFileSync(join(tree, 'src', 'part.ts'), 'part\n');
-    git(tree, ['add', '.']);
-    git(tree, ['commit', '-m', 'part']);
-    const { tips, recorded } = memoryTips([oldTip]);
-
-    await new SubtaskWorktrees(config, clock, tips).catchUp(
-      { key: 'proj-95' } as RunEntity,
-      ['demo'],
-      'feature/epic-ship',
-    );
-
-    expect(git(tree, ['rev-parse', 'HEAD~1'])).toBe(newTip);
-    expect(git(tree, ['diff', '--name-only', 'HEAD~1', 'HEAD'])).toBe('src/part.ts');
-    expect(recorded).toEqual([{ demo: newTip }]);
-  });
 
   it('commits the own edits of the parent on the new tip without the old commits of the branch', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-own-edits-rewritten-'));

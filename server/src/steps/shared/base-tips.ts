@@ -1,9 +1,13 @@
 import { parseJournal, REBASE_JOURNAL } from '../../git/rebase';
-import { atOrPast } from '../../git/rebase/journal';
+import { atOrPast, type JournalEntry } from '../../git/rebase/journal';
 import type { Journal, KnownTips, RebaseJournal } from '../../git/rebase';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { RunEntity } from '../../history/entities';
 import type { RunRepository } from '../../history/run.repository';
+
+function isCompletedMove(entry: JournalEntry | undefined): entry is JournalEntry {
+  return entry?.checkpoint === 'completed' && !entry.ownEdits;
+}
 
 /**
  * The record of the base tip each repository of a run stands on, and of the commits it is known to have stood on:
@@ -26,7 +30,7 @@ export class BaseTips {
     for (const repo of repos) {
       const tips = [
         run.baseTips?.[repo],
-        ...own.map((journal) => (journal[repo]?.checkpoint === 'completed' ? journal[repo].baseSha : undefined)),
+        ...own.map((journal) => (isCompletedMove(journal[repo]) ? journal[repo].baseSha : undefined)),
         ...parents.flatMap((journal) => [journal[repo]?.oldHead, journal[repo]?.baseSha]),
       ];
       known[repo] = [...new Set(tips.filter((tip): tip is string => !!tip))];
@@ -34,11 +38,14 @@ export class BaseTips {
     return known;
   }
 
-  /** The tip each repository that a move just applied stands on: written with the move, before it completes. */
+  /**
+   * The tip each repository that a move just applied stands on: written with the move, before it completes. A move of
+   * the parent's own edits onto its feature branch is no move of the base and records nothing.
+   */
   async recordMoved(run: RunEntity, journal: RebaseJournal): Promise<void> {
     const moved: Record<string, string> = {};
     for (const [repo, entry] of Object.entries(await journal.read())) {
-      if (atOrPast(entry, 'applied') && entry.checkpoint !== 'completed') {
+      if (atOrPast(entry, 'applied') && entry.checkpoint !== 'completed' && !entry.ownEdits) {
         moved[repo] = entry.baseSha;
       }
     }

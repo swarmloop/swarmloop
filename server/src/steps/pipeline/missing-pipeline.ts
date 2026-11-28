@@ -11,13 +11,14 @@ import { originProject, type Seen } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
 import { automaticRebase } from './pipeline-rebase';
 import { waitForCi } from './ci-not-started';
+import { subtasksWait } from './subtasks-wait';
 
 /** Only the trigger is automatic. Rebase itself is the action used by the API button. */
 export async function missingPipeline(input: {
   ctx: StepContext;
   runs: RunRepository;
   events: EventRepository;
-  rebase: Pick<RunRebase, 'rebase'>;
+  rebase: Pick<RunRebase, 'rebase' | 'subtasksIdle'>;
   halted: () => boolean;
   root: string;
   limit: number;
@@ -66,6 +67,15 @@ export async function missingPipeline(input: {
   }
   const changed = await changedWorktree(input.root, run.key, ctx, records);
   if (changed) return end('blocked', changed);
+  if (!(await rebase.subtasksIdle(run))) {
+    const { code, message, retryAt } = subtasksWait(ctx.clock.now());
+    return {
+      route: { to: 'wait', code, reason: message, retryAt },
+      summary: `${ctx.opened.startedAt} ${message}\n${notes.join('\n')}`,
+      outputs: [],
+      visit: { status: 'waiting' },
+    };
+  }
   run.attemptsPipeline += 1;
   await events.recordLoop(run, 'pipeline', run.attemptsPipeline, 'merge conflict: automatic rebase');
   return {

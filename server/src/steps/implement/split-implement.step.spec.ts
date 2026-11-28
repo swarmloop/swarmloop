@@ -18,7 +18,6 @@ import { createTestApp, type TestApp } from '../../testing/test-app';
 import { NO_CI_NOTE } from './split-pass';
 import { noCiReason } from '../pipeline/pipeline-no-ci';
 import { git } from '../../testing/runs.spec-helpers';
-
 import { SubtaskOps } from '../shared/subtask-ops';
 import {
   FakeHost,
@@ -354,6 +353,27 @@ describe('split implement', () => {
     expect(await statuses(app)).toEqual({ a: 'merged', b: 'merged' });
     expect((await tasksOf(app))[1]?.merged).toEqual({ demo: 'abc' });
     expect(await app.app.get(RunRepository).findRun(KEY)).toMatchObject({ currentStep: 'checks', status: 'waiting' });
+  });
+
+  it('reads a task whose move has not run as running, and merges nothing of it', async () => {
+    const built = await world();
+    app = built.app;
+    const parent = await seedParent(app, [task('a')]);
+    await app.app.get(DocumentRepository).putDocument(parent, 'repos', 'demo\n');
+    await pass(app);
+    await setStatus(app, 'a', 'green');
+    await recordMerge(app, 'a');
+    jest.spyOn(app.app.get(SubtaskOps), 'moving').mockResolvedValue(true);
+
+    await pass(app);
+
+    expect(await statuses(app)).toEqual({ a: 'running' });
+    expect((await app.app.get(RunRepository).findRun(KEY))?.currentStep).toBe('implement');
+
+    jest.spyOn(app.app.get(SubtaskOps), 'moving').mockResolvedValue(false);
+    await pass(app);
+
+    expect(await statuses(app)).toEqual({ a: 'merged' });
   });
 
   it('is not quiet and is started by the timer when its subtasks say green for a child whose merge is recorded', async () => {

@@ -15,6 +15,7 @@ import { ownChangeBase } from './own-change';
 import { retakeSquashConflict } from './retake';
 import { commitAllowed, hideDeniedWorktree, restoreHiddenWorktree } from './hidden-worktree';
 import { storedBase } from './fetch';
+import { isBeforeBranch } from './before-branch';
 import { atOrPast, fingerprintOf, protectRef } from './journal';
 import type { JournalEntry, RebaseJournal } from './journal';
 import { gitAt, gitRawAt, rebaseStderr } from './workflow';
@@ -133,7 +134,7 @@ async function rebaseFeatureRepo(input: RepoMove): Promise<RebaseStop | null> {
   }
   await abortMountedRebase(cwd, repo, input.hosts);
   const current = await gitAt(cwd, repo, ['branch', '--show-current'], 'branch failed');
-  if (current !== input.branch) {
+  if (current !== input.branch && !(await isBeforeBranch(cwd, current, input.branch))) {
     throw new SwarmloopError(`${repo} branch is missing`);
   }
   const porcelain = await gitRawAt(cwd, repo, ['status', '--porcelain=v1', '-z', '-uall']);

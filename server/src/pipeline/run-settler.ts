@@ -71,7 +71,8 @@ export class RunSettler {
   /**
    * A journal below `completed` is read before the run continues or blocks. Files that no longer match the last
    * checkpoint block it with `REBASE_CONFLICT`; otherwise the rebase resumes through `RunRebase`, without a new
-   * generation. A repo in `conflict` waits for a person, so it is neither. A run with a rebase command still to run
+   * generation. A repo whose journal entry is at `conflict` is the parked conflict that implement resolves, not a wait for a
+   * person, so the reconciler leaves it to implement. A run with a rebase command still to run
    * is left to that command, which resumes the same journal.
    */
   async settleRebase(run: RunEntity): Promise<boolean> {

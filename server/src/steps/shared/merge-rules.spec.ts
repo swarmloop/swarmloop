@@ -6,8 +6,6 @@ function facts(overrides: Partial<MergeFacts> = {}, gate: Partial<MergeFacts['ga
   return {
     repository: 'web',
     behind: false,
-    rebaseSent: false,
-    branch: 'swarmloop/t1',
     target: main(),
     gate: {
       state: 'open',
@@ -57,21 +55,13 @@ describe('decideMerge', () => {
     });
   });
 
-  it('rebases a request that is behind or conflicting once, then needs a person', () => {
+  it('rebases a request that is behind or conflicting, never needs a person', () => {
     expect(decideMerge(facts({}, { mergeability: 'behind' }))).toEqual({ kind: 'rebase' });
     expect(decideMerge(facts({}, { mergeability: 'conflicting' }))).toEqual({ kind: 'rebase' });
-    expect(decideMerge(facts({ rebaseSent: true }, { mergeability: 'behind' }))).toEqual({
-      kind: 'person',
-      note: 'still behind swarmloop/t1 after a rebase; needs a person',
-    });
   });
 
-  it('rebases a request the target reads as behind, once, though the host calls it clean', () => {
+  it('rebases a request the target reads as behind, though the host calls it clean', () => {
     expect(decideMerge(facts({ behind: true }))).toEqual({ kind: 'rebase' });
-    expect(decideMerge(facts({ behind: true, rebaseSent: true }))).toEqual({
-      kind: 'person',
-      note: 'still behind swarmloop/t1 after a rebase; needs a person',
-    });
   });
 
   it('names failing checks before pending checks before reviews', () => {

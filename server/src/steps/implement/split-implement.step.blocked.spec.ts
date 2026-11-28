@@ -14,10 +14,16 @@ import { actionsFor } from '../../contract/run-state';
 import type { TestApp } from '../../testing/test-app';
 import {
   child,
+  finish,
+  KEY,
+  mergeWorld,
+  opened,
   parentState,
   pass,
   requirements,
+  seedMergeParent,
   seedParent,
+  statuses,
   task,
   tasksOf,
   work,
@@ -132,5 +138,48 @@ describe('split implement, a blocked task', () => {
     expect(resumed.message).not.toContain('has nothing new');
     expect((await tasksOf(app)).map((item) => item.status)).toEqual(['running', 'running']);
     expect((await parentState(app)).reason?.message).not.toContain('is blocked');
+  });
+
+  const OWN_CONFLICT = "the parent's own uncommitted edits in demo conflict with origin/feature in src/shared.ts";
+
+  it('goes on with its tasks and waits naming the conflict of its own edits', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    jest
+      .spyOn(app.app.get(SubtaskOps), 'commitOwnEdits')
+      .mockResolvedValue({ committed: null, conflict: OWN_CONFLICT });
+    await seedMergeParent(app, [task('a'), task('b'), task('c', ['a'])]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+
+    const result = await pass(app);
+
+    expect(built.host.merges).toEqual([1]);
+    expect(built.launched).toContain(`${KEY}-c`);
+    const state = await parentState(app);
+    expect(state.state).toBe('waiting');
+    expect(state.reason?.code).not.toBe(ERROR_CODES.PARENT_TREE_CONFLICT);
+    expect(state.reason?.message).toContain(OWN_CONFLICT);
+    expect(state.reason?.message).toContain('the implement agent resolves it once every task is settled');
+    expect(result.message).toContain(OWN_CONFLICT);
+    expect(await app.app.get(DocumentRepository).latestBody(KEY, 'rebase_conflict')).toBeNull();
+  });
+
+  it('parks the conflict of its own edits and goes to implement when the last task merges in the pass', async () => {
+    const built = await mergeWorld();
+    app = built.app;
+    const commit = jest
+      .spyOn(app.app.get(SubtaskOps), 'commitOwnEdits')
+      .mockResolvedValue({ committed: null, conflict: OWN_CONFLICT });
+    await seedMergeParent(app, [task('a')]);
+    await opened(app, built.host, 'a', { demo: 1 });
+    await finish(app, 'a');
+
+    await pass(app);
+
+    expect(await statuses(app)).toEqual({ a: 'merged' });
+    expect(commit.mock.calls.at(-1)?.[1]).toBe(true);
+    expect((await app.app.get(RunRepository).findRun(KEY))?.currentStep).toBe('implement');
+    expect(await app.app.get(DocumentRepository).latestBody(KEY, 'rebase_conflict')).toContain('parent-own-edits');
   });
 });

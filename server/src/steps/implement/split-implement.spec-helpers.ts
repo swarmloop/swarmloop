@@ -40,6 +40,7 @@ export async function world(env: Record<string, string> = {}) {
     sandbox: { stopRun: () => Promise.resolve('gone') },
   });
   jest.spyOn(app.app.get(SubtaskOps), 'behindTip').mockResolvedValue(null);
+  jest.spyOn(app.app.get(SubtaskOps), 'moving').mockResolvedValue(false);
   return { app, ...instrument(app) };
 }
 

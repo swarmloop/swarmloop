@@ -1,4 +1,3 @@
-import { ERROR_CODES } from '../../contract/error-codes';
 import { storedState } from '../../history/run-state';
 import type { RunEntity } from '../../history/entities';
 import type { AppConfig } from '../../config/env';
@@ -10,7 +9,7 @@ import { readyTasks, settled, runWaitNote, waitNote, withStatuses, type Subtask 
 import { openQuestions } from '../shared/answers';
 import { keepOpen } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
-import type { SubtaskOps } from '../shared/subtask-ops';
+import type { OwnEdits, SubtaskOps } from '../shared/subtask-ops';
 import { refusedRoute } from '../shared/start-refused';
 import { withoutSkipped } from '../shared/subtask-question-line';
 import { skippedByEpic } from '../shared/subtask-skip-reason';
@@ -35,6 +34,11 @@ function newlySkipped(stored: Subtask[], next: Subtask[]): Subtask[] {
   return next.filter(
     (task) => task.status === 'skipped' && stored.find((item) => item.id === task.id)?.status !== 'skipped',
   );
+}
+
+/** What a pass says of a conflict of the own edits that waits in the worktree while a task is open. */
+function ownConflictNote(own: OwnEdits): string | null {
+  return own.conflict ? `${own.conflict}; the implement agent resolves it once every task is settled` : null;
 }
 
 /** What one pass over the task graph reads and writes through. */
@@ -66,18 +70,9 @@ export class SplitPass {
     // Every task settled: the agent resolves a conflict of the parent's own edits, so it is parked for the agent.
     const view = await settledView(this.deps.subtasks, run, withStatuses(subtasks));
     const own = await this.deps.subtasks.commitOwnEdits(run, view !== null);
-    if (own.conflict) {
-      if (view) {
-        await this.closeSkipped(run, newlySkipped(withStatuses(subtasks), view));
-        return handOver(ctx, view, { ...own, conflict: own.conflict }, subtasks);
-      }
-      const reason = `${startedAt} ${own.conflict}; the implement agent resolves it once every task is settled; a Resume or a message then goes on`;
-      const text = [reason, own.committed].filter(Boolean).join('; ');
-      return {
-        route: { to: 'block', reason, code: ERROR_CODES.PARENT_TREE_CONFLICT },
-        summary: text,
-        outputs: [],
-      };
+    if (own.conflict && view) {
+      await this.closeSkipped(run, newlySkipped(withStatuses(subtasks), view));
+      return handOver(ctx, view, { ...own, conflict: own.conflict }, subtasks);
     }
     const stored = withStatuses(subtasks);
     // A task the list reads skipped may still hold open questions, its epic's copy among them: the one skip closes them.
@@ -96,7 +91,8 @@ export class SplitPass {
     const needed = await this.deps.needs.run(ctx.opened, gapped.tasks, gapped.contract, held);
     const followed = await this.refresh(run, needed.tasks);
     const { tasks: merged, refusal, unfetched, unmoved: mergeNote } = await this.deps.merges.run(run, followed.tasks);
-    const unmoved = [followed.unmoved, mergeNote].filter(Boolean).join('; ') || null;
+    // A conflict of the own edits waits in the worktree, uncommitted, while a task is open: the pass goes on as with none.
+    const unmoved = [followed.unmoved, mergeNote, ownConflictNote(own)].filter(Boolean).join('; ') || null;
     const requirements = (await ctx.reread(ARTIFACTS.requirementList)) ?? [];
     const looked = await this.deps.look.run(ctx, merged, needed.contract, requirements);
     // A refused look holds the dependents back: they start after the planner has seen the merge.
@@ -120,11 +116,43 @@ export class SplitPass {
         : [{ artifact: ARTIFACTS.questionParts, value: parts }]),
       ...taken,
     ];
+    // The last task merged in this pass: the conflict is parked now, so the epic goes to implement and not to checks.
+    const parked = await this.parkOwnEdits(
+      ctx,
+      { own, ready: !looked.refused && open.length === 0 },
+      tasks,
+      subtasks,
+      outputs,
+    );
+    if (parked) return parked;
     const result = looked.refused
       ? { route: refusedRoute(looked.refused), summary: `${startedAt} ${looked.refused.message}`, outputs }
       : await this.routing.route(ctx, tasks, open, outputs, { refusal, unfetched });
+    return this.noted(result, unmoved, own.committed);
+  }
+
+  /**
+   * A conflict of the own edits that waited while a task was open, and every task settled in this pass: the edits are
+   * committed again with the conflict parked and handed to implement. Null when there is nothing to park or they now go on cleanly.
+   */
+  private async parkOwnEdits(
+    ctx: StepContext,
+    waiting: { own: OwnEdits; ready: boolean },
+    tasks: Subtask[],
+    stored: Subtask[],
+    outputs: StepResult['outputs'],
+  ): Promise<StepResult | null> {
+    if (!waiting.own.conflict || !waiting.ready || !tasks.every(settled)) return null;
+    const own = await this.deps.subtasks.commitOwnEdits(ctx.opened.run, true);
+    if (!own.conflict) return null;
+    const handed = handOver(ctx, tasks, { ...own, conflict: own.conflict }, stored);
+    return { ...handed, outputs: [...outputs.filter((out) => out.artifact !== ARTIFACTS.subtasks), ...handed.outputs] };
+  }
+
+  /** The note of a worktree that kept its commits and the paths the own edits committed go into the summary. */
+  private noted(result: StepResult, unmoved: string | null, committed: string | null): StepResult {
     const noted = unmoved ? this.routing.withUnmoved(result, unmoved) : result;
-    return own.committed ? { ...noted, summary: `${noted.summary}; ${own.committed}` } : noted;
+    return committed ? { ...noted, summary: `${noted.summary}; ${committed}` } : noted;
   }
 
   /** The run of each of these skipped tasks is closed with the epic's reason. A run already skipped only has its questions closed. */
@@ -182,10 +210,12 @@ export class SplitPass {
       // A Stop of the parent stopped this run. Resume goes on where it stopped.
       await this.deps.subtasks.resume(child);
     }
-    const delivered = child.status === 'done' ? await this.deps.subtasks.deliveredNote(child) : null;
+    // A run whose move has not run is not read: its worktrees and its state are those before the move.
+    const moving = await this.deps.subtasks.moving(child);
+    const delivered = !moving && child.status === 'done' ? await this.deps.subtasks.deliveredNote(child) : null;
     if (delivered) return { ...task, status: 'skipped', note: delivered };
     const move = await this.deps.subtasks.moveOf(child);
-    const status = taskStatusOf(task, child, move);
+    const status = moving ? 'running' : taskStatusOf(task, child, move);
     if (status === 'merged') return { ...task, status, merged: mergedOf(child), note: undefined };
     if (move) return { ...task, status, note: moveNote(move) };
     const waits = status === 'running' ? runWaitNote(task, { state, stateReason: reason }) : undefined;
