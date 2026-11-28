@@ -185,4 +185,41 @@ describe('PlannerRules', () => {
         'no milestone is active',
       );
     }));
+  it('passes an offer of a proposed milestone and of an idle task outside the active milestone', () =>
+    withPlanner(async (harness) => {
+      const { backlogId } = await harness.seed();
+      await harness.backlogs.saveMilestone({
+        backlogId,
+        number: 2,
+        title: 'Next',
+        goal: 'G',
+        status: 'proposed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      await harness.task(backlogId, null, 'idle');
+      expect(await refusal(harness, { action: 'offerRun', milestone: 2 })).toBeNull();
+      expect(await refusal(harness, { action: 'offerRun', task: 'idle' })).toBeNull();
+    }));
+
+  it('refuses an offer that names neither or both, or a start the owner could not take now', () =>
+    withPlanner(async (harness) => {
+      const { backlogId, milestoneId } = await harness.seed();
+      await harness.task(backlogId, null, 'going', { runKey: 'going-1', status: 'running' });
+      await harness.task(backlogId, null, 'dropped', { status: 'skipped' });
+      await harness.task(backlogId, milestoneId, 'inside');
+      expect(await refusal(harness, { action: 'offerRun' })).toContain('a milestone or a task');
+      expect(await refusal(harness, { action: 'offerRun', milestone: 1, task: 'inside' })).toContain(
+        'a milestone or a task',
+      );
+      expect(await refusal(harness, { action: 'offerRun', milestone: 1 })).toBe('M1 is not a proposed milestone');
+      expect(await refusal(harness, { action: 'offerRun', milestone: 9 })).toBe('M9 is not a proposed milestone');
+      expect(await refusal(harness, { action: 'offerRun', task: 'nothing' })).toBe(
+        'nothing is not a task of this backlog',
+      );
+      expect(await refusal(harness, { action: 'offerRun', task: 'going' })).toBe('going has started');
+      expect(await refusal(harness, { action: 'offerRun', task: 'dropped' })).toBe('dropped is skipped');
+      expect(await refusal(harness, { action: 'offerRun', task: 'inside' })).toBe(
+        'inside is in the active milestone and starts by itself',
+      );
+    }));
 });

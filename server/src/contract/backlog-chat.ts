@@ -11,6 +11,9 @@ export type TurnStatus = 'running' | 'applied' | 'done' | 'failed' | 'waiting';
 /** Where a person's message stands: no running turn has it, the running turn has it, or the turn that took it was applied. */
 export type MessageState = 'waiting' | 'read' | 'answered';
 
+/** A start only the owner takes, which the planner offers with its message: a milestone, or a task by its id. */
+export type StartOffer = { milestone: number } | { task: string };
+
 /** A message of the conversation between a person and the planner of a backlog. */
 export interface BacklogMessageView {
   id: number;
@@ -19,6 +22,8 @@ export interface BacklogMessageView {
   text: string;
   /** The number of the milestone the planner offers to run right under this message; empty for any other message. */
   proposes: number | null;
+  /** The starts the planner offers with this message; the dashboard shows each one's button while it is still possible. */
+  offers: StartOffer[];
   createdAt: string;
   /** Where a person's message stands; a planner's message has none. */
   state?: MessageState;

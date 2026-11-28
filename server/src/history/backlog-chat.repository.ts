@@ -68,6 +68,7 @@ export class BacklogChatRepository {
       proposes: null,
       turn: null,
       attachments,
+      offers: [],
       createdAt: this.clock.iso(),
     });
     if (!stored) return null;

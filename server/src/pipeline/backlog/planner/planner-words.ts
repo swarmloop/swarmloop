@@ -64,5 +64,9 @@ function describeBacklogAction(action: Exclude<BacklogTurnAction, RunAction>): s
       return 'unpause the backlog';
     case 'closeRequirement':
       return `close ${action.id}`;
+    case 'offerRun':
+      return action.milestone === undefined
+        ? `offer to run ${action.task}`
+        : `offer to run milestone M${action.milestone}`;
   }
 }

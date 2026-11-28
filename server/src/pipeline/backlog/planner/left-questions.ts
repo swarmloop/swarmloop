@@ -83,6 +83,7 @@ export class LeftQuestions {
         proposes: null,
         turn: turnKey,
         attachments: [],
+        offers: [],
         createdAt: this.clock.iso(),
       });
     }

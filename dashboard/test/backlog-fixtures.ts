@@ -65,6 +65,7 @@ export function chatMessage(overrides: Partial<BacklogMessageView> = {}): Backlo
     kind: 'message',
     text: 'Plan the checkout',
     proposes: null,
+    offers: [],
     createdAt: '2026-01-01T10:00:00.000Z',
     ...overrides,
   };

@@ -261,6 +261,7 @@ export class BacklogPlanner implements OnModuleDestroy {
       proposes: null,
       turn: turnKey,
       attachments: [],
+      offers: [],
       createdAt: this.clock.iso(),
     });
   }

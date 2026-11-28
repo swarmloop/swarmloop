@@ -11,6 +11,7 @@ import { BacklogMessageBox } from './backlog-message-box';
 import { type ChatRow, chatRows } from './chat-rows';
 import { stateWord, toEntry } from './message-entry';
 import { ProposalEntry } from './proposal-entry';
+import { StartButtons } from './start-buttons';
 import { ThinkingRow } from './thinking-row';
 
 interface BacklogChatProps {
@@ -44,7 +45,9 @@ export function BacklogChat({ view, chat, login, onView, onChat }: BacklogChatPr
             entry={toEntry(row.message)}
             files={(row.message.attachments ?? []).map((file) => file.name)}
             meta={stateWord(row.message)}
-          />
+          >
+            {owner && row.offers.length > 0 ? <StartButtons view={view} offers={row.offers} onView={onView} /> : null}
+          </MessageBubble>
         );
       case 'proposal':
         return (
@@ -53,7 +56,7 @@ export function BacklogChat({ view, chat, login, onView, onChat }: BacklogChatPr
             view={view}
             message={row.message}
             number={row.milestone.number}
-            first={row.first}
+            offers={row.offers}
             owner={owner}
             onView={onView}
           />

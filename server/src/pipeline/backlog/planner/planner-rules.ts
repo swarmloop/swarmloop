@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { AddTaskBody } from '../../../contract/backlog-actions';
 import { settled } from '../../../contract/subtask';
 import { isRunAction } from '../../../agent-result/definitions/backlog-turn';
-import type { BacklogTurnAction, RunAction } from '../../../agent-result/definitions/backlog-turn';
+import type { BacklogTurnAction, OfferRun, RunAction } from '../../../agent-result/definitions/backlog-turn';
 import type { BacklogRecord, BacklogTaskRecord, BacklogWriters } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
 import { RunRepository } from '../../../history/run.repository';
@@ -68,6 +68,8 @@ export class PlannerRules {
       case 'moveItem':
       case 'dropItem':
         return this.verdict(action, this.startedRefusal(tasks, action.task));
+      case 'offerRun':
+        return this.verdict(action, await this.offerRefusal(reads, backlog, tasks, action));
       case 'proposeMilestone':
       case 'acceptMilestone':
       case 'addRequirements':
@@ -79,6 +81,31 @@ export class PlannerRules {
       case 'closeRequirement':
         return { action };
     }
+  }
+
+  /** An offer names one start that only the owner takes and that the owner could take now: a proposed milestone, or an idle task outside the active milestone. */
+  private async offerRefusal(
+    reads: BacklogWriters,
+    backlog: BacklogRecord,
+    tasks: BacklogTaskRecord[],
+    offer: OfferRun,
+  ): Promise<string | null> {
+    if ((offer.milestone === undefined) === (offer.task === undefined)) {
+      return 'an offer names a milestone or a task, one of the two';
+    }
+    const milestones = await reads.milestones(backlog.id as number);
+    if (offer.milestone !== undefined) {
+      const found = milestones.find((milestone) => milestone.number === offer.milestone);
+      return found?.status === 'proposed' ? null : `M${offer.milestone} is not a proposed milestone`;
+    }
+    const task = tasks.find((other) => other.slug === offer.task);
+    if (task === undefined) return `${offer.task} is not a task of this backlog`;
+    if (task.runKey) return `${offer.task} has started`;
+    if (settled(task)) return `${offer.task} is ${task.status}`;
+    const active = milestones.find((milestone) => milestone.status === 'active');
+    return active !== undefined && task.milestoneId === active.id
+      ? `${offer.task} is in the active milestone and starts by itself`
+      : null;
   }
 
   private verdict(action: BacklogTurnAction, refusal: string | null): Judgement {

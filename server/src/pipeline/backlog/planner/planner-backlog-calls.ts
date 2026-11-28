@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { BacklogTurnAction, RunAction } from '../../../agent-result/definitions/backlog-turn';
+import type { BacklogTurnAction, OfferRun, RunAction } from '../../../agent-result/definitions/backlog-turn';
 import type { ChangeTaskBody } from '../../../contract/backlog-actions';
 import type { BacklogRecord } from '../../../history/backlog-writers';
 import { BacklogRepository } from '../../../history/backlog.repository';
@@ -66,7 +66,7 @@ export class PlannerBacklogCalls {
   ) {}
 
   /** Runs a backlog action in the turn's transaction. */
-  async run(call: Call, action: Exclude<BacklogTurnAction, RunAction>): Promise<void> {
+  async run(call: Call, action: Exclude<BacklogTurnAction, RunAction | OfferRun>): Promise<void> {
     const { owner, backlog, context } = call;
     const name = backlog.name;
     switch (action.action) {

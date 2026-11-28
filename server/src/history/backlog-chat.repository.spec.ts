@@ -47,6 +47,19 @@ describe('BacklogChatRepository', () => {
       ]);
     }));
 
+  it('reads the starts a planner message offers back, and a person message with none', () =>
+    withPlanner(async (db) => {
+      const id = await db.addBacklog();
+      const offers = [{ milestone: 2 }, { task: 'add-login' }];
+      await db.chat.addPersonMessage(id, 'plain', 'm1', []);
+      await db.backlogs.transaction(async (writers) => {
+        await writers.addMessage({ ...planned(id), messageKey: 'p1', offers });
+      });
+
+      const { messages } = await db.chat.lastMessages(id, 10);
+      expect(messages.map((message) => message.offers)).toEqual([[], offers]);
+    }));
+
   it('gives every waiting message and event to one turn together', () =>
     withPlanner(async (db) => {
       const id = await db.addBacklog();
@@ -222,6 +235,7 @@ function planned(backlogId: number) {
     proposes: 1,
     turn: 'turn-1',
     attachments: [],
+    offers: [],
     createdAt: '2026-11-12T10:00:00Z',
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { backlogChatView, backlogView, chatMessage, milestone } from '../../../test/backlog-fixtures';
-import { chatRows } from './chat-rows';
+import { backlogChatView, backlogView, chatMessage, milestone, task } from '../../../test/backlog-fixtures';
+import { chatRows, liveOffers } from './chat-rows';
 
 describe('chatRows', () => {
   it('orders messages and by-hand actions by time, newest last, and leaves out the planner’s own actions', () => {
@@ -63,10 +63,27 @@ describe('chatRows', () => {
 
     const rows = chatRows(chat, view, 'ada');
 
-    expect(rows.map((row) => [row.type, row.type === 'proposal' ? row.first : null])).toEqual([
-      ['proposal', false],
-      ['proposal', true],
+    expect(rows.map((row) => [row.type, row.type === 'proposal' ? row.offers : null])).toEqual([
+      ['proposal', [{ kind: 'milestone', number: 5, first: false }]],
+      ['proposal', [{ kind: 'milestone', number: 4, first: true }]],
       ['message', null],
+    ]);
+  });
+
+  it('gives a plain planner message its live offers, and a person message none', () => {
+    const view = backlogView({ milestones: [milestone({ number: 4, status: 'proposed' })] });
+    const chat = backlogChatView({
+      messages: [
+        chatMessage({ id: 1, author: 'planner', offers: [{ milestone: 4 }] }),
+        chatMessage({ id: 2, author: 'person', offers: [{ milestone: 4 }] }),
+      ],
+    });
+
+    const rows = chatRows(chat, view, 'ada');
+
+    expect(rows.map((row) => (row.type === 'message' ? row.offers : null))).toEqual([
+      [{ kind: 'milestone', number: 4, first: true }],
+      [],
     ]);
   });
 
@@ -120,5 +137,49 @@ describe('chatRows', () => {
 
     expect(chatRows(chat, backlogView(), 'ada').map((row) => row.type)).toEqual(['message', 'working']);
     expect(chatRows(chat, backlogView(), 'ada').at(-1)).toEqual({ type: 'working', key: 'turn', startedAt });
+  });
+});
+
+describe('liveOffers', () => {
+  const planner = (overrides: Parameters<typeof chatMessage>[0]) => chatMessage({ author: 'planner', ...overrides });
+
+  it('counts the milestone a message proposes as an offer, once, with the offered ones', () => {
+    const view = backlogView({ milestones: [milestone({ number: 4, status: 'proposed' })], tasks: [] });
+
+    expect(liveOffers(planner({ proposes: 4, offers: [{ milestone: 4 }] }), view, 4)).toEqual([
+      { kind: 'milestone', number: 4, first: true },
+    ]);
+  });
+
+  it('drops an offered milestone once it is no longer proposed, and marks only the first proposed', () => {
+    const view = backlogView({
+      milestones: [
+        milestone({ number: 3, status: 'accepted' }),
+        milestone({ number: 4, status: 'proposed' }),
+        milestone({ number: 5, status: 'proposed' }),
+      ],
+    });
+
+    expect(liveOffers(planner({ offers: [{ milestone: 3 }, { milestone: 4 }, { milestone: 5 }] }), view, 4)).toEqual([
+      { kind: 'milestone', number: 4, first: true },
+      { kind: 'milestone', number: 5, first: false },
+    ]);
+  });
+
+  it('keeps an offered task only while it has not started, is not settled and is outside the active milestone', () => {
+    const view = backlogView({
+      tasks: [
+        task({ slug: 'idle', title: 'Idle one', status: 'waiting', milestone: null }),
+        task({ slug: 'going', status: 'running', runKey: 'going-1', milestone: null }),
+        task({ slug: 'dropped', status: 'skipped', milestone: null }),
+        task({ slug: 'done', status: 'merged', milestone: null }),
+        task({ slug: 'inside', status: 'waiting', milestone: 3 }),
+      ],
+    });
+    const offers = ['idle', 'going', 'dropped', 'done', 'inside', 'missing'].map((slug) => ({ task: slug }));
+
+    expect(liveOffers(planner({ offers }), view, undefined)).toEqual([
+      { kind: 'task', slug: 'idle', title: 'Idle one' },
+    ]);
   });
 });
