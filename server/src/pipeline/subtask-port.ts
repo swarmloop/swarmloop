@@ -231,10 +231,6 @@ export class SubtaskPort extends SubtaskOps {
     return mergeSummaryOf(this.documents, run.key);
   }
 
-  override moving(run: RunEntity): Promise<boolean> {
-    return this.rebases.moving(run);
-  }
-
   override catchUp(_parent: RunEntity, run: RunEntity): Promise<void> {
     return this.rebases.catchUp(run);
   }

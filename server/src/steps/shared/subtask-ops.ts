@@ -108,9 +108,9 @@ export abstract class SubtaskOps {
    */
   abstract rebase(run: RunEntity, event?: RebaseEvent): Promise<boolean>;
   /**
-   * The move of a blocked or failed subtask run that its epic sent and that is still its newest command: `moving`
-   * while it is queued or running, `failed` with its error once it failed. Null for any other run, and once a later
-   * command replaced it.
+   * The one read of a subtask run's move: its newest Rebase command, whoever sent it. `moving` while it is queued or
+   * running, in any state of the run; `failed` with its error while the run is blocked or failed and no later command
+   * replaced it. Null otherwise.
    */
   abstract moveOf(run: RunEntity): Promise<TaskMove | null>;
   /** True when a move keeps the run in its wait: it waits on a question or a sibling. */
@@ -148,8 +148,6 @@ export abstract class SubtaskOps {
   abstract needsOf(run: RunEntity): Promise<Need[]>;
   /** The merge request text of a subtask run, or an empty string. */
   abstract mergeSummary(run: RunEntity): Promise<string>;
-  /** True while a rebase of the run was sent and has not run: the run reads as running until it did. */
-  abstract moving(run: RunEntity): Promise<boolean>;
   /** Moves a subtask run onto the feature branch through its Rebase, keeping its state; a conflict stays parked for its implement agent. */
   abstract catchUp(parent: RunEntity, run: RunEntity): Promise<void>;
   /**

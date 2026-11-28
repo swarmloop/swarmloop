@@ -143,10 +143,9 @@ export class CommandService {
     return this.commands.latestByKeyPrefix(runId, prefix);
   }
 
-  /** The newest command of a run, whatever its type; null for a run with no command. */
-  async latestOfRun(runId: number): Promise<CommandEntity | null> {
-    const stored = await this.commands.listForRun(runId);
-    return stored[stored.length - 1] ?? null;
+  /** The commands of a run, whatever their type, in the order they were created, then stored. */
+  listForRun(runId: number): Promise<CommandEntity[]> {
+    return this.commands.listForRun(runId);
   }
 
   /** Whether a blocked run's Resume is checked against a conflict parked for implement, read before the transaction. */
@@ -235,11 +234,6 @@ export class CommandService {
       const key = await this.commands.keyOf(command);
       if (key) this.schedule(command, key);
     }
-  }
-
-  /** True while the run has a command of the type that is accepted or executing: it has not run to its end. */
-  async hasPending(run: RunEntity, type: CommandType): Promise<boolean> {
-    return (await this.commands.pending(run.id)).some((command) => command.type === type);
   }
 
   /** Runs the accepted commands of one run, such as a relaunch stored with a visit. A command this process holds is left alone. */

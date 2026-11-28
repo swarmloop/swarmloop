@@ -361,14 +361,14 @@ describe('split implement', () => {
     await pass(app);
     await setStatus(app, 'a', 'green');
     await recordMerge(app, 'a');
-    jest.spyOn(app.app.get(SubtaskOps), 'moving').mockResolvedValue(true);
+    const move = jest.spyOn(app.app.get(SubtaskOps), 'moveOf').mockResolvedValue({ kind: 'moving' });
 
     await pass(app);
 
     expect(await statuses(app)).toEqual({ a: 'running' });
     expect((await app.app.get(RunRepository).findRun(KEY))?.currentStep).toBe('implement');
 
-    jest.spyOn(app.app.get(SubtaskOps), 'moving').mockResolvedValue(false);
+    move.mockResolvedValue(null);
     await pass(app);
 
     expect(await statuses(app)).toEqual({ a: 'merged' });

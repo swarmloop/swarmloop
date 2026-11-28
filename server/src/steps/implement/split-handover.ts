@@ -24,7 +24,7 @@ export async function settledView(
       continue;
     }
     const child = await subtasks.find(parent, task.id);
-    if (!child || (await subtasks.moving(child))) return null;
+    if (!child || (await subtasks.moveOf(child))?.kind === 'moving') return null;
     const delivered = child.status === 'done' ? await subtasks.deliveredNote(child) : null;
     if (delivered) {
       view.push({ ...task, status: 'skipped', note: delivered });

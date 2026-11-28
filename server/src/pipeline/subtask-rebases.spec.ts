@@ -13,6 +13,7 @@ const EVENT: RebaseEvent = { tip: 'web@abc', note: 'rebased onto the epic' };
 const REQUEST: SubtaskMergeRequest = { repo: 'web', project: 'acme/web', iid: 1 };
 
 interface StoredCommand {
+  type: string;
   idempotencyKey: string | null;
   state: string;
   result?: string | null;
@@ -22,8 +23,8 @@ interface Setup {
   accepted: { payload: Record<string, unknown>; key: string | undefined }[];
   documents: Map<string, string>;
   rebases: SubtaskRebases;
-  /** The types of the commands accepted and not yet run. */
-  pending: Set<string>;
+  /** The commands of the run in the order listForRun gives them: the ones given, then each one accepted. */
+  commands: StoredCommand[];
   /** The arguments of each Rebase the catch-up ran. */
   moves: unknown[][];
 }
@@ -53,20 +54,19 @@ function setup(
     stored,
   } = options;
   const { rebaser = false, outage = false } = options;
-  const pending = new Set<string>();
+  const commands: StoredCommand[] = stored ? [...stored] : newest ? [newest] : [];
   const moves: unknown[][] = [];
   const documents = new Map<string, string>(worktrees ? [[ARTIFACTS.repos.kind, 'web']] : []);
   const accepted: Setup['accepted'] = [];
-  const commands = {
+  const service = {
     accept: (_type: string, _key: string, payload: Record<string, unknown>, options?: { idempotencyKey?: string }) => {
       const key = options?.idempotencyKey;
       accepted.push({ payload, key });
-      pending.add('rebase');
+      commands.push({ type: 'rebase', idempotencyKey: key ?? null, state: 'accepted' });
       const died = key !== undefined && dead.includes(key);
       return Promise.resolve({ replayed: died, command: { state: died ? 'failed' : 'done', id: 7 } });
     },
-    latestOfRun: () => Promise.resolve(stored ? (stored[stored.length - 1] ?? null) : newest),
-    hasPending: (_run: RunEntity, type: string) => Promise.resolve(pending.has(type)),
+    listForRun: () => Promise.resolve(commands),
   } as unknown as CommandService;
   const store = {
     latestBody: (_key: string, kind: string) => Promise.resolve(documents.get(kind) ?? null),
@@ -78,7 +78,7 @@ function setup(
   const rebases = new SubtaskRebases(
     {} as RunRepository,
     store,
-    commands,
+    service,
     rebaser
       ? ({
           rebase: (...args: unknown[]) => {
@@ -92,7 +92,7 @@ function setup(
     () => Promise.resolve(tip),
     { warn: () => undefined } as unknown as Logger,
   );
-  return { accepted, documents, rebases, pending, moves };
+  return { accepted, documents, rebases, commands, moves };
 }
 
 function part(change: Parameters<typeof writeRunState>[1]): RunEntity {
@@ -190,16 +190,6 @@ describe('SubtaskRebases', () => {
     expect(accepted).toEqual([]);
   });
 
-  it('reads a run as moving while its rebase command has not run', async () => {
-    const run = part({ status: 'done', currentStep: 'pipeline' });
-    const { rebases, pending } = setup({ requests: [REQUEST], tip: 'web@def' });
-    expect(await rebases.moving(run)).toBe(false);
-    await rebases.rebase(run);
-    expect(await rebases.moving(run)).toBe(true);
-    pending.clear();
-    expect(await rebases.moving(run)).toBe(false);
-  });
-
   it('catches a child up through its Rebase, leaving a conflict parked for its implement agent', async () => {
     const { rebases, moves } = setup({ rebaser: true });
     await rebases.catchUp(part({ status: 'waiting', currentStep: 'research' }));
@@ -210,46 +200,71 @@ describe('SubtaskRebases', () => {
     );
   });
 
-  describe('the move of a part that its parent sent', () => {
+  describe('the move of a part', () => {
     const MOVE = 'subtask-rebase-f1-a-web@def';
-    const moveOf = (newest: NonNullable<Parameters<typeof setup>[0]>['newest']) =>
-      setup({ newest }).rebases.moveOf(part({ status: 'blocked', currentStep: 'checks' }));
+    const FAILED = JSON.stringify({ error: { message: 'push refused' } });
+    const blocked = part({ status: 'blocked', currentStep: 'checks' });
+    const done = part({ status: 'done', currentStep: 'pipeline' });
+    const rebase = (idempotencyKey: string | null, state: string, result?: string): StoredCommand => ({
+      type: 'rebase',
+      idempotencyKey,
+      state,
+      result,
+    });
+    const resume = (state: string): StoredCommand => ({ type: 'resume', idempotencyKey: 'resume-1', state });
+    const moveOf = (stored: StoredCommand[], run: RunEntity = blocked) => setup({ stored }).rebases.moveOf(run);
 
     it.each(['accepted', 'executing'])('reads moving while the move is %s', async (state) => {
-      expect(await moveOf({ idempotencyKey: MOVE, state })).toEqual({ kind: 'moving' });
+      expect(await moveOf([rebase(MOVE, state)])).toEqual({ kind: 'moving' });
     });
 
     it('reads failed with the error the move stored once it failed', async () => {
-      const result = JSON.stringify({ error: { message: 'push refused' } });
-      expect(await moveOf({ idempotencyKey: MOVE, state: 'failed', result })).toEqual({
-        kind: 'failed',
-        reason: 'push refused',
-      });
+      expect(await moveOf([rebase(MOVE, 'failed', FAILED)])).toEqual({ kind: 'failed', reason: 'push refused' });
+      expect(await moveOf([rebase(MOVE, 'failed')])).toEqual({ kind: 'failed', reason: 'the move failed' });
+    });
+
+    it("reads a person's or a planner's Rebase of the part", async () => {
+      for (const key of ['header-key', null]) {
+        expect(await moveOf([rebase(key, 'accepted')])).toEqual({ kind: 'moving' });
+        expect(await moveOf([rebase(key, 'failed', FAILED)])).toEqual({ kind: 'failed', reason: 'push refused' });
+      }
     });
 
     it('reads the command stored second of two created in the same millisecond', async () => {
-      const blocked = part({ status: 'blocked', currentStep: 'checks' });
-      const result = JSON.stringify({ error: { message: 'push refused' } });
-      const died = { idempotencyKey: MOVE, state: 'failed', result };
-      const queued = { idempotencyKey: `${MOVE}-after-7`, state: 'accepted' };
-      expect(await setup({ stored: [died, queued] }).rebases.moveOf(blocked)).toEqual({ kind: 'moving' });
-      const later = { idempotencyKey: `${MOVE}-after-7`, state: 'failed', result };
-      expect(await setup({ stored: [queued, later] }).rebases.moveOf(blocked)).toEqual({
+      const died = rebase(MOVE, 'failed', FAILED);
+      const queued = rebase(`${MOVE}-after-7`, 'accepted');
+      expect(await moveOf([died, queued])).toEqual({ kind: 'moving' });
+      expect(await moveOf([queued, rebase(`${MOVE}-after-7`, 'failed', FAILED)])).toEqual({
         kind: 'failed',
         reason: 'push refused',
       });
     });
 
-    it('reads nothing for a move that succeeded, for a part with no command and for another command', async () => {
-      expect(await moveOf({ idempotencyKey: MOVE, state: 'succeeded' })).toBeNull();
-      expect(await moveOf(null)).toBeNull();
-      expect(await moveOf({ idempotencyKey: 'resume-1', state: 'accepted' })).toBeNull();
-      expect(await moveOf({ idempotencyKey: null, state: 'failed' })).toBeNull();
+    it('reads moving for a done part whose move is queued, and nothing once its move succeeded', async () => {
+      const { rebases, commands } = setup({ requests: [REQUEST], tip: 'web@def' });
+      expect(await rebases.moveOf(done)).toBeNull();
+      await rebases.rebase(done);
+      expect(await rebases.moveOf(done)).toEqual({ kind: 'moving' });
+      commands.forEach((command) => (command.state = 'succeeded'));
+      expect(await rebases.moveOf(done)).toBeNull();
     });
 
-    it('reads nothing for a part that is not blocked or failed: its own state tells what it is', async () => {
-      const running = setup({ newest: { idempotencyKey: MOVE, state: 'executing' } });
-      expect(await running.rebases.moveOf(part({ status: 'done', currentStep: 'pipeline' }))).toBeNull();
+    it('reads moving while a queued move has a later command', async () => {
+      expect(await moveOf([rebase(MOVE, 'accepted'), resume('accepted')])).toEqual({ kind: 'moving' });
+    });
+
+    it('reads nothing for a move that succeeded, for a part with no command and for no Rebase', async () => {
+      expect(await moveOf([rebase(MOVE, 'succeeded')])).toBeNull();
+      expect(await moveOf([])).toBeNull();
+      expect(await moveOf([resume('accepted')])).toBeNull();
+    });
+
+    it('reads nothing for a failed move that a later command replaced', async () => {
+      expect(await moveOf([rebase(MOVE, 'failed', FAILED), resume('accepted')])).toBeNull();
+    });
+
+    it('reads nothing for a failed move of a part that is not blocked or failed', async () => {
+      expect(await moveOf([rebase(MOVE, 'failed', FAILED)], done)).toBeNull();
     });
   });
 
