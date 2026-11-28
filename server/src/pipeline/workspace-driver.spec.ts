@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { AgentRunInput } from '../agent/agent-runner';
 import type { AgentRunResult } from '../agent/agent-result';
-import type { StepEvent } from '../contract/step-events';
+import type { StepEventDraft } from '../contract/step-events';
 import { runInStepScope } from '../core/step-event-scope';
 import { AgentLauncher } from '../steps/shared/agent-launcher';
 import { RunStop } from '../agent/run-stop';
@@ -79,7 +79,7 @@ describe('RunDriver before a step', () => {
       }),
     };
     const launcher = new AgentLauncher(runner as never, new RunStop());
-    const events: StepEvent[] = [];
+    const events: StepEventDraft[] = [];
     const seen: { worktree: boolean; setup: unknown }[] = [];
     const execute = jest.fn(async () => {
       const run = await freshRun(world);
@@ -91,9 +91,9 @@ describe('RunDriver before a step', () => {
         step: 'implement' as const,
         root: world.swarm,
         clock: app.get(Clock),
-        sink: async (event: StepEvent) => void events.push(event),
+        sink: async (event: StepEventDraft) => void events.push(event),
       };
-      await runInStepScope(scope, 0, () =>
+      await runInStepScope(scope, () =>
         launcher.launch({
           root: world.swarm,
           run,

@@ -269,7 +269,7 @@ export class RunSettler {
           this.logger.warn(`event of ${run.key} was not stored: ${String(error)}`);
         }),
     };
-    await runInStepScope(scope, await this.events.lastSeq(run.id), () => {
+    await runInStepScope(scope, () => {
       recordStepEvent({ kind: 'attempt.interrupted', route: 'process died', summary: 'process died' });
       return Promise.resolve();
     });

@@ -4,7 +4,7 @@ import { join } from 'path';
 import { RunStop } from '../../agent/run-stop';
 import { AppConfig } from '../../config/env';
 import { testEnv } from '../../config/env.spec-helpers';
-import type { StepEvent } from '../../contract/step-events';
+import type { StepEventDraft } from '../../contract/step-events';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../../core/step-event-scope';
 import { sessionFileName } from '../../history/session-group';
@@ -35,21 +35,21 @@ describe('AgentLauncher runtime of the agent', () => {
         finishedAt: '',
       }),
     };
-    const events: StepEvent[] = [];
+    const events: StepEventDraft[] = [];
     const scope = {
       runId: 1,
       attemptId: 'attempt-1',
       step: 'implement' as const,
       root,
       clock: new FakeClock(),
-      sink: (event: StepEvent) => {
+      sink: (event: StepEventDraft) => {
         events.push(event);
         return Promise.resolve();
       },
     };
     const launcher = new AgentLauncher(runner as never, new RunStop());
     const launch = (runtime: 'cursor' | 'claude') =>
-      runInStepScope(scope, 0, () =>
+      runInStepScope(scope, () =>
         launcher.launch({
           root,
           run: { runtime: 'cursor', agentCalls: 0, spentUsd: 0 } as never,

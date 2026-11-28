@@ -182,6 +182,9 @@ export type StepEventBody =
 
 export type StepEvent = StepEventBase & StepEventBody;
 
+/** An event as it is recorded, before the log gives it its seq. */
+export type StepEventDraft = Omit<StepEventBase, 'seq'> & StepEventBody;
+
 export type StepEventKind = StepEvent['kind'];
 
 export interface StepEventPage {

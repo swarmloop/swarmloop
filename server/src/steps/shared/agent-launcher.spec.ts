@@ -7,7 +7,7 @@ import { RunStop } from '../../agent/run-stop';
 import type { Agent } from '../../config/agents';
 import { AppConfig } from '../../config/env';
 import { testEnv } from '../../config/env.spec-helpers';
-import type { StepEvent } from '../../contract/step-events';
+import type { StepEventDraft } from '../../contract/step-events';
 import { SAMPLE_MS } from '../../core/awake-time';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../../core/step-event-scope';
@@ -84,20 +84,20 @@ describe('AgentLauncher relaunch', () => {
     const runner = new AgentProcessRunner(config, clock, sandbox, new RunStop());
     const launcher = new AgentLauncher(runner, new RunStop());
     const run = { id: 1, runtime: 'cursor', agentCalls: 0, spentUsd: 0, activeAttempt: 'attempt-1' } as RunEntity;
-    const events: StepEvent[] = [];
+    const events: StepEventDraft[] = [];
     const scope = {
       runId: 1,
       attemptId: 'attempt-1',
       step: 'implement' as const,
       root,
       clock,
-      sink: (event: StepEvent) => {
+      sink: (event: StepEventDraft) => {
         events.push(event);
         return Promise.resolve();
       },
     };
     const tools = (): string[] => events.flatMap((event) => (event.kind === 'agent.tool' ? [event.target] : []));
-    const running = runInStepScope(scope, 0, () =>
+    const running = runInStepScope(scope, () =>
       launcher.launch({
         root,
         run,
@@ -199,19 +199,19 @@ describe('AgentLauncher loop', () => {
     const runner = new AgentProcessRunner(config, clock, sandbox, new RunStop());
     const launcher = new AgentLauncher(runner, new RunStop(), undefined, config);
     const run = { id: 1, runtime: 'cursor', agentCalls: 0, spentUsd: 0, activeAttempt: 'attempt-1' } as RunEntity;
-    const events: StepEvent[] = [];
+    const events: StepEventDraft[] = [];
     const scope = {
       runId: 1,
       attemptId: 'attempt-1',
       step: 'implement' as const,
       root,
       clock,
-      sink: (event: StepEvent) => {
+      sink: (event: StepEventDraft) => {
         events.push(event);
         return Promise.resolve();
       },
     };
-    const running = runInStepScope(scope, 0, () =>
+    const running = runInStepScope(scope, () =>
       launcher.launch({
         root,
         run,
@@ -227,7 +227,7 @@ describe('AgentLauncher loop', () => {
         mounts: [{ hostPath: root, containerPath: '/work/demo' }],
       }),
     );
-    const hints = (): StepEvent[] => events.filter((event) => event.kind === 'agent.loop_hint');
+    const hints = (): StepEventDraft[] => events.filter((event) => event.kind === 'agent.loop_hint');
     return { children, spawn, running, hints, events };
   }
 
@@ -285,19 +285,19 @@ describe('AgentLauncher host sleep', () => {
     const runner = new AgentProcessRunner(config, clock, sandbox, new RunStop());
     const launcher = new AgentLauncher(runner, new RunStop());
     const run = { id: 1, runtime: 'cursor', agentCalls: 0, spentUsd: 0, activeAttempt: 'attempt-1' } as RunEntity;
-    const events: StepEvent[] = [];
+    const events: StepEventDraft[] = [];
     const scope = {
       runId: 1,
       attemptId: 'attempt-1',
       step: 'implement' as const,
       root,
       clock,
-      sink: (event: StepEvent) => {
+      sink: (event: StepEventDraft) => {
         events.push(event);
         return Promise.resolve();
       },
     };
-    const running = runInStepScope(scope, 0, () =>
+    const running = runInStepScope(scope, () =>
       launcher.launch({
         root,
         run,
@@ -361,20 +361,20 @@ describe('AgentLauncher effort', () => {
         finishedAt: '',
       }),
     };
-    const events: StepEvent[] = [];
+    const events: StepEventDraft[] = [];
     const scope = {
       runId: 1,
       attemptId: 'attempt-1',
       step: 'implement' as const,
       root,
       clock: new FakeClock(),
-      sink: (event: StepEvent) => {
+      sink: (event: StepEventDraft) => {
         events.push(event);
         return Promise.resolve();
       },
     };
     const launcher = new AgentLauncher(runner as never, new RunStop());
-    await runInStepScope(scope, 0, () =>
+    await runInStepScope(scope, () =>
       launcher.launch({
         root,
         run: { agentCalls: 0, spentUsd: 0 } as never,

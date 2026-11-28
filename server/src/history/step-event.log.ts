@@ -2,11 +2,12 @@ import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, MoreThan, Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
-import type { StepEvent, StepEventKind, StepEventPage } from '../contract/step-events';
+import type { StepEvent, StepEventDraft, StepEventKind, StepEventPage } from '../contract/step-events';
 import { Clock } from '../core/clock';
 import { redact } from '../config/redact';
 import { LiveHub } from '../live/live.hub';
 import { RunEntity, StepEventEntity } from './entities';
+import { transaction } from './transaction';
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -48,34 +49,53 @@ export class StepEventLog {
     @Optional() private readonly live?: LiveHub,
   ) {}
 
-  async append(events: StepEvent[]): Promise<void> {
+  /**
+   * Stores events. The log gives each its `seq` in the transaction of the insert: the run's highest `seq` plus one,
+   * in the order the events are given, so every event is kept and `seq` follows the order of recording.
+   */
+  async append(events: StepEventDraft[]): Promise<void> {
+    if (events.length === 0) {
+      return;
+    }
     const recordedAt = this.clock.iso();
-    await this.events.insert(
-      events.map(({ runId, attemptId, step, seq, kind, occurredAt, ...rest }) =>
-        this.events.create({
-          runId,
-          attemptId,
-          step,
-          seq,
-          kind,
-          payload: JSON.stringify(redactStrings(rest)),
-          occurredAt,
-          recordedAt,
-        }),
-      ),
-    );
-    await this.notify(events[events.length - 1]);
+    const last = await transaction(this.events.manager.connection, async (manager) => {
+      const next = new Map<number, number>();
+      let stored = 0;
+      for (const { runId, attemptId, step, kind, occurredAt, ...rest } of events) {
+        if (!next.has(runId)) {
+          next.set(runId, ((await manager.maximum(StepEventEntity, 'seq', { runId })) ?? 0) + 1);
+        }
+        stored = next.get(runId) ?? 1;
+        next.set(runId, stored + 1);
+        const payload = JSON.stringify(redactStrings(rest));
+        await manager.insert(
+          StepEventEntity,
+          manager.create(StepEventEntity, {
+            runId,
+            attemptId,
+            step,
+            seq: stored,
+            kind,
+            payload,
+            occurredAt,
+            recordedAt,
+          }),
+        );
+      }
+      return stored;
+    });
+    await this.notify(events[events.length - 1], last);
   }
 
-  /** Tells the live hub which event came last. The run key is found from the run id; a run without a row is not announced. */
-  private async notify(last: StepEvent | undefined): Promise<void> {
-    if (!last || !this.live) {
+  /** Tells the live hub which event came last, with the `seq` it was stored under. The run key is found from the run id; a run without a row is not announced. */
+  private async notify(last: StepEventDraft, seq: number): Promise<void> {
+    if (!this.live) {
       return;
     }
     try {
       const run = await this.runs.findOne({ where: { id: last.runId } });
       if (run) {
-        this.live.appended({ key: run.key, step: last.step, seq: last.seq });
+        this.live.appended({ key: run.key, step: last.step, seq });
       }
     } catch {
       // The events are stored; a failed lookup only skips the push.

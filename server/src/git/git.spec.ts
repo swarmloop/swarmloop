@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../core/step-event-scope';
-import type { StepEvent } from '../contract/step-events';
+import type { StepEventDraft } from '../contract/step-events';
 import { authorArgs, git, gitDetail, gitRaw, withSafeDirectory } from './git';
 
 describe('git errors', () => {
@@ -30,20 +30,20 @@ describe('git errors', () => {
 });
 
 describe('git command spans', () => {
-  async function recorded(run: () => Promise<unknown>): Promise<StepEvent[]> {
-    const events: StepEvent[] = [];
+  async function recorded(run: () => Promise<unknown>): Promise<StepEventDraft[]> {
+    const events: StepEventDraft[] = [];
     const scope = {
       runId: 1,
       attemptId: 'a',
       step: 'commit' as const,
       root: tmpdir(),
       clock: new FakeClock(),
-      sink: (event: StepEvent) => {
+      sink: (event: StepEventDraft) => {
         events.push(event);
         return Promise.resolve();
       },
     };
-    await runInStepScope(scope, 0, run);
+    await runInStepScope(scope, run);
     return events.filter((event) => event.kind === 'command.finished');
   }
 

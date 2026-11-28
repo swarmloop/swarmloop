@@ -87,10 +87,24 @@ describe('StepEventLog', () => {
     expect(await log.lastEnd(2, 'pipeline')).toBeNull();
   });
 
-  it('refuses a second event with the same seq in a run', async () => {
+  it('keeps a second event of a run with the next seq', async () => {
     await log.append([event(1)]);
-    await expect(log.append([event(1)])).rejects.toThrow();
+    await log.append([event(1)]);
+    expect((await log.page(1, {})).events.map(({ seq }) => seq)).toEqual([1, 2]);
     await log.append([event(1, { runId: 2 })]);
+    expect((await log.page(2, {})).events.map(({ seq }) => seq)).toEqual([1]);
+  });
+
+  it('keeps two appends of one run that go at once, numbered in the order they came', async () => {
+    await Promise.all([
+      log.append([event(1, { attemptId: 'attempt-1' })]),
+      log.append([event(1, { attemptId: 'attempt-2' })]),
+    ]);
+    const { events } = await log.page(1, {});
+    expect(events.map(({ seq, attemptId }) => [seq, attemptId])).toEqual([
+      [1, 'attempt-1'],
+      [2, 'attempt-2'],
+    ]);
   });
 
   describe('live notification', () => {
@@ -111,8 +125,12 @@ describe('StepEventLog', () => {
     it('announces a batch once, with the key, step and seq of its last event', async () => {
       const run = await database.app.get(RunRepository).openWaiting('run-1', '/target');
       const { log: announcer, seen } = announcing();
+      await announcer.append([event(1, { runId: run.id })]);
       await announcer.append([event(1, { runId: run.id }), event(2, { runId: run.id, step: 'implement' })]);
-      expect(seen).toEqual([{ key: 'run-1', step: 'implement', seq: 2 }]);
+      expect(seen).toEqual([
+        { key: 'run-1', step: 'commit', seq: 1 },
+        { key: 'run-1', step: 'implement', seq: 3 },
+      ]);
     });
 
     it('announces nothing for an empty batch or a run without a row', async () => {

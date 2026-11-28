@@ -1,5 +1,5 @@
 import { runInStepScope } from '../../core/step-event-scope';
-import type { StepEvent } from '../../contract/step-events';
+import type { StepEventDraft } from '../../contract/step-events';
 import type { RunEntity } from '../../history/entities';
 import { renderMergeRequest } from '../merge-request/merge-request-record';
 import { REPORT_END, REPORT_START, reportOf, spliceReport } from './report-markers';
@@ -78,18 +78,18 @@ describe('ReportRefresh', () => {
     const before = stored(spliceReport('', 'old report'));
     const { refresh, documents, update } = setup('new report', spliceReport('', 'old report'), before);
     update.mockRejectedValue(new Error('HTTP 503'));
-    const events: StepEvent[] = [];
+    const events: StepEventDraft[] = [];
     const scope = {
       runId: 1,
       attemptId: 'a',
       step: 'pipeline',
       root: '/',
       clock: { now: () => 0, iso: () => '2026-11-16T10:00:00.000Z' },
-      sink: async (event: StepEvent) => {
+      sink: async (event: StepEventDraft) => {
         events.push(event);
       },
     } as const;
-    await runInStepScope(scope as never, 0, () => refresh.refresh(RUN));
+    await runInStepScope(scope as never, () => refresh.refresh(RUN));
     const finished = events.find((event) => event.kind === 'activity.finished');
     expect(finished).toMatchObject({ title: 'Update the merge request report', failed: true });
     expect(documents.merge_request).toBe(before);

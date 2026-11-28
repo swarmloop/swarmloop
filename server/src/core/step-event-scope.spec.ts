@@ -1,16 +1,16 @@
-import type { StepEvent } from '../contract/step-events';
+import type { StepEventDraft } from '../contract/step-events';
 import { enteredBefore } from './entered-marks';
 import { FakeClock } from './fake-clock.spec-helpers';
 import { recordStepEvent, runInStepScope, startCommandSpan } from './step-event-scope';
 
-function scope(runId: number, events: StepEvent[]) {
+function scope(runId: number, events: StepEventDraft[]) {
   return {
     runId,
     attemptId: `attempt-${runId}`,
     step: 'commit' as const,
     root: '/srv/root',
     clock: new FakeClock(),
-    sink: (event: StepEvent) => {
+    sink: (event: StepEventDraft) => {
       events.push(event);
       return Promise.resolve();
     },
@@ -26,26 +26,27 @@ describe('step event scope', () => {
   });
 
   it('marks the step it runs as the last entered callback', async () => {
-    await runInStepScope(scope(8, []), 0, () => Promise.resolve());
+    await runInStepScope(scope(8, []), () => Promise.resolve());
     expect(enteredBefore(Date.now())).toBe('step commit');
   });
 
-  it('numbers the events of a scope after the last one and stamps the scope on them', async () => {
-    const events: StepEvent[] = [];
-    await runInStepScope(scope(7, events), 4, () => {
+  it('stamps the scope on its events and hands them to the sink in recording order, without a seq', async () => {
+    const events: StepEventDraft[] = [];
+    await runInStepScope(scope(7, events), () => {
       recordStepEvent({ kind: 'attempt.finished', route: 'ok', summary: 'one' });
       recordStepEvent({ kind: 'attempt.finished', route: 'ok', summary: 'two' });
       return Promise.resolve();
     });
-    expect(events.map(({ seq, runId, attemptId, step }) => ({ seq, runId, attemptId, step }))).toEqual([
-      { seq: 5, runId: 7, attemptId: 'attempt-7', step: 'commit' },
-      { seq: 6, runId: 7, attemptId: 'attempt-7', step: 'commit' },
+    expect(events).toMatchObject([
+      { summary: 'one', runId: 7, attemptId: 'attempt-7', step: 'commit' },
+      { summary: 'two', runId: 7, attemptId: 'attempt-7', step: 'commit' },
     ]);
+    expect(events.some((event) => 'seq' in event)).toBe(false);
   });
 
   it('records a command with its cwd relative to the root, and what ended it', async () => {
-    const events: StepEvent[] = [];
-    await runInStepScope(scope(1, events), 0, () => {
+    const events: StepEventDraft[] = [];
+    await runInStepScope(scope(1, events), () => {
       const timedOut = startCommandSpan({
         actor: 'server',
         repo: 'demo',
@@ -84,9 +85,9 @@ describe('step event scope', () => {
   });
 
   it('keeps a whole output and names no omitted lines when the command printed no more', async () => {
-    const events: StepEvent[] = [];
+    const events: StepEventDraft[] = [];
     const output = Array.from({ length: 100 }, (_, index) => `line ${index}`).join('\n');
-    await runInStepScope(scope(1, events), 0, () => {
+    await runInStepScope(scope(1, events), () => {
       startCommandSpan({ actor: 'server', repo: 'demo', cwd: '/srv/root', executable: 'npm', args: ['test'] })({
         exitCode: 1,
         output,
@@ -100,9 +101,9 @@ describe('step event scope', () => {
   });
 
   it('names the lines a command printed that its output does not hold', async () => {
-    const events: StepEvent[] = [];
+    const events: StepEventDraft[] = [];
     const output = Array.from({ length: 200 }, (_, index) => `line ${index}`).join('\n');
-    await runInStepScope(scope(1, events), 0, () => {
+    await runInStepScope(scope(1, events), () => {
       startCommandSpan({ actor: 'server', repo: 'demo', cwd: '/srv/root', executable: 'npm', args: ['test'] })({
         exitCode: 1,
         output,
@@ -115,8 +116,8 @@ describe('step event scope', () => {
   });
 
   it('keeps no output of a successful read-only git command', async () => {
-    const events: StepEvent[] = [];
-    await runInStepScope(scope(1, events), 0, () => {
+    const events: StepEventDraft[] = [];
+    await runInStepScope(scope(1, events), () => {
       startCommandSpan({ actor: 'server', repo: 'demo', cwd: '/srv/root', executable: 'git', args: ['status'] })({
         exitCode: 0,
         output: 'M a.ts\nM b.ts',
@@ -129,8 +130,8 @@ describe('step event scope', () => {
   });
 
   it('marks an exit that the call declared as an answer, and no other', async () => {
-    const events: StepEvent[] = [];
-    await runInStepScope(scope(1, events), 0, () => {
+    const events: StepEventDraft[] = [];
+    await runInStepScope(scope(1, events), () => {
       const spec = { actor: 'server' as const, repo: 'demo', cwd: '/srv/root', executable: 'git', args: ['fetch'] };
       startCommandSpan({ ...spec, answers: [1] })({ exitCode: 1, output: 'no\n' });
       startCommandSpan({ ...spec, answers: [1] })({ exitCode: 2 });
@@ -148,26 +149,18 @@ describe('step event scope', () => {
   });
 
   it('keeps the events of two scopes that run at once apart', async () => {
-    const first: StepEvent[] = [];
-    const second: StepEvent[] = [];
+    const first: StepEventDraft[] = [];
+    const second: StepEventDraft[] = [];
     const pause = () => new Promise((resolve) => setImmediate(resolve));
-    const run = (runId: number, events: StepEvent[]) =>
-      runInStepScope(scope(runId, events), 0, async () => {
+    const run = (runId: number, events: StepEventDraft[]) =>
+      runInStepScope(scope(runId, events), async () => {
         for (let index = 0; index < 3; index += 1) {
           recordStepEvent({ kind: 'attempt.finished', route: 'ok', summary: `${runId}` });
           await pause();
         }
       });
     await Promise.all([run(1, first), run(2, second)]);
-    expect(first.map(({ runId, seq }) => [runId, seq])).toEqual([
-      [1, 1],
-      [1, 2],
-      [1, 3],
-    ]);
-    expect(second.map(({ runId, seq }) => [runId, seq])).toEqual([
-      [2, 1],
-      [2, 2],
-      [2, 3],
-    ]);
+    expect(first.map(({ runId }) => runId)).toEqual([1, 1, 1]);
+    expect(second.map(({ runId }) => runId)).toEqual([2, 2, 2]);
   });
 });
