@@ -12,6 +12,12 @@ import { SubtaskRebases } from './subtask-rebases';
 const EVENT: RebaseEvent = { tip: 'web@abc', note: 'rebased onto the epic' };
 const REQUEST: SubtaskMergeRequest = { repo: 'web', project: 'acme/web', iid: 1 };
 
+interface StoredCommand {
+  idempotencyKey: string | null;
+  state: string;
+  result?: string | null;
+}
+
 interface Setup {
   accepted: { payload: Record<string, unknown>; key: string | undefined }[];
   documents: Map<string, string>;
@@ -30,12 +36,22 @@ function setup(
     asking?: boolean;
     tip?: string | null;
     dead?: string[];
-    newest?: { idempotencyKey: string | null; state: string; result?: string | null } | null;
+    newest?: StoredCommand | null;
+    /** The commands of the run in the order listForRun gives them; the last one is the newest. */
+    stored?: StoredCommand[];
     rebaser?: boolean;
     outage?: boolean;
   } = {},
 ): Setup {
-  const { worktrees = true, requests = [], asking = false, tip = 'web@def', dead = [], newest = null } = options;
+  const {
+    worktrees = true,
+    requests = [],
+    asking = false,
+    tip = 'web@def',
+    dead = [],
+    newest = null,
+    stored,
+  } = options;
   const { rebaser = false, outage = false } = options;
   const pending = new Set<string>();
   const moves: unknown[][] = [];
@@ -49,7 +65,7 @@ function setup(
       const died = key !== undefined && dead.includes(key);
       return Promise.resolve({ replayed: died, command: { state: died ? 'failed' : 'done', id: 7 } });
     },
-    latestOfRun: () => Promise.resolve(newest),
+    latestOfRun: () => Promise.resolve(stored ? (stored[stored.length - 1] ?? null) : newest),
     hasPending: (_run: RunEntity, type: string) => Promise.resolve(pending.has(type)),
   } as unknown as CommandService;
   const store = {
@@ -206,6 +222,19 @@ describe('SubtaskRebases', () => {
     it('reads failed with the error the move stored once it failed', async () => {
       const result = JSON.stringify({ error: { message: 'push refused' } });
       expect(await moveOf({ idempotencyKey: MOVE, state: 'failed', result })).toEqual({
+        kind: 'failed',
+        reason: 'push refused',
+      });
+    });
+
+    it('reads the command stored second of two created in the same millisecond', async () => {
+      const blocked = part({ status: 'blocked', currentStep: 'checks' });
+      const result = JSON.stringify({ error: { message: 'push refused' } });
+      const died = { idempotencyKey: MOVE, state: 'failed', result };
+      const queued = { idempotencyKey: `${MOVE}-after-7`, state: 'accepted' };
+      expect(await setup({ stored: [died, queued] }).rebases.moveOf(blocked)).toEqual({ kind: 'moving' });
+      const later = { idempotencyKey: `${MOVE}-after-7`, state: 'failed', result };
+      expect(await setup({ stored: [queued, later] }).rebases.moveOf(blocked)).toEqual({
         kind: 'failed',
         reason: 'push refused',
       });
