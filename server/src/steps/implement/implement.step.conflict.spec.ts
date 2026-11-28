@@ -15,6 +15,7 @@ import { storedState } from '../../history/run-state';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { FlowRepository } from '../../history/flow.repository';
 import { hostConflictMarker } from '../shared/host-conflict-marker';
+import { ownConflictMarker } from './own-conflict-marker';
 import { runJournal } from '../shared/rebase-journal';
 import { SubtaskOps } from '../shared/subtask-ops';
 import {
@@ -218,6 +219,57 @@ describe('implement with a parked conflict of an epic whose tasks are open', () 
   });
 });
 
+describe('implement with a parked conflict of a split parent’s own edits', () => {
+  const OWN_TEXT = 'The own edits conflict with the merged tasks';
+  const ANSWER = {
+    key: 'answer-ask-implement-attempt-1',
+    role: 'planner',
+    kind: 'answer',
+    from: 'implement',
+    text: 'Keep the base version.',
+    at: '2026-01-01T00:00:00.000Z',
+    state: 'pending',
+  } as const;
+
+  it('leaves a planner answer to another question for the visit that asked it, not the conflict agent', async () => {
+    const key = 'PROJ-706-t1';
+    const tree = { path: '' };
+    const agent = jest.fn(async (input: AgentRunInput) => {
+      if (!input.prompt.includes(OWN_TEXT)) return result(implAnswer(['changed the field'], ['did it']));
+      writeFileSync(join(tree.path, 'src', 'field.ts'), 'export const field = 3;\n');
+      return result(rebaseReply);
+    });
+    const world = await splitWorld(key, agent);
+    tree.path = world.tree;
+    try {
+      // A task of an epic: not split itself, so its next visit is its own checklist.
+      const parent = await world.runs.openWaiting('PROJ-706', '/target');
+      const run = (await world.runs.findRun(key))!;
+      await storeRun(world.runs, { ...run, split: false, parentRunId: parent.id, taskId: 't1' });
+      await world.documents.putDocument(run, 'implementation', '- changed the field\n');
+      await world.documents.putDocument(run, REBASE_CONFLICT, ownConflictMarker(OWN_TEXT));
+      const chat = world.app.get(PlanChatStore);
+      await chat.appendEntry(key, ANSWER);
+
+      await world.app.get(PipelineService).step('implement', key);
+      const conflictPrompts = agent.mock.calls.map((call) => call[0].prompt);
+      expect(conflictPrompts).toHaveLength(1);
+      expect(conflictPrompts[0]).toContain(OWN_TEXT);
+      expect(conflictPrompts[0]).not.toContain('Keep the base version.');
+      expect((await chat.answerFor(key, 'implement'))?.key).toBe(ANSWER.key);
+
+      await world.app.get(PipelineService).step('implement', key);
+      const prompts = agent.mock.calls.slice(1).map((call) => call[0].prompt);
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).not.toContain(OWN_TEXT);
+      expect(prompts[0]).toContain('Keep the base version.');
+      expect(await chat.answerFor(key, 'implement')).toBeNull();
+    } finally {
+      await world.app.close();
+    }
+  });
+});
+
 describe('implement resuming a part whose move the squash from git merge base parked', () => {
   it('stands on the new tip with no agent and no commit, and keeps the question the part waited on', async () => {
     const key = 'PROJ-705-t1';
@@ -338,6 +390,31 @@ describe('implement with a conflict only the code host sees', () => {
       expect(await world.documents.latestBody(key, 'rebase_resolution_result')).toBeTruthy();
       expect((await world.runs.findRun(key))?.currentStep).toBe(next);
       expect((await world.documents.latestBody(key, REBASE_CONFLICT))?.trim()).toBe('review');
+    } finally {
+      await world.app.close();
+    }
+  });
+
+  it('leaves a planner answer to another question pending when it settles the conflict', async () => {
+    const key = 'PROJ-713';
+    const world = await hostWorld(key, null);
+    try {
+      const chat = world.app.get(PlanChatStore);
+      await chat.appendEntry(key, {
+        key: 'answer-ask-implement-attempt-1',
+        role: 'planner',
+        kind: 'answer',
+        from: 'implement',
+        text: 'Keep the base version.',
+        at: '2026-01-01T00:00:00.000Z',
+        state: 'pending',
+      });
+      await world.app.get(PipelineService).step('implement', key);
+      expect(world.agent).toHaveBeenCalledTimes(1);
+      const prompt = world.agent.mock.calls[0]?.[0].prompt;
+      expect(prompt).toContain(HOST_TEXT);
+      expect(prompt).not.toContain('Keep the base version.');
+      expect((await chat.answerFor(key, 'implement'))?.key).toBe('answer-ask-implement-attempt-1');
     } finally {
       await world.app.close();
     }

@@ -39,13 +39,15 @@ export async function settleRebase(
   if (marker !== 'pending' && marker !== 'pending-implement') {
     return null;
   }
+  // On every path the conflict agent takes only the answer to the question askConflict asked; any other answer stays pending for the visit that asked it.
+  const conflictAnswer = answersConflict(answer, deps.step) ? answer : null;
   const own = ownConflictOf(storedStderr);
   if (marker === 'pending' && own !== null) {
-    return settleOwnConflict(deps, requirements, ctx, names, forRepo(branch, names[0] ?? ''), own, answer);
+    return settleOwnConflict(deps, requirements, ctx, names, forRepo(branch, names[0] ?? ''), own, conflictAnswer);
   }
   const host = hostConflictOf(storedStderr);
   if (marker === 'pending' && host !== null) {
-    return settleHostConflict(deps, requirements, ctx, names, host, answer);
+    return settleHostConflict(deps, requirements, ctx, names, host, conflictAnswer);
   }
   const bases = new Map<string, string>();
   const input = {
@@ -83,7 +85,7 @@ export async function settleRebase(
   });
   const seen = new Set<string>();
   let launched = false;
-  let carried = answersConflict(answer, deps.step) ? answer : null;
+  let carried = conflictAnswer;
   while (outcome.kind === 'conflict') {
     if (!outcome.stderr.trim() && storedStderr) {
       outcome = { ...outcome, stderr: storedStderr };
