@@ -93,7 +93,7 @@ describe('runs api', () => {
     }
   });
 
-  it('rebases a done run and starts code review with ci', async () => {
+  it('rebases a done run and starts checks with ci', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-done-'));
     const { tree, clone } = featureWorktree(root, 'proj-51');
     writeFileSync(join(tree, 'src', 'field.ts'), 'export const field = 1;\n');
@@ -125,11 +125,11 @@ describe('runs api', () => {
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-51');
       const fresh = await runs.findRun('proj-51');
       expect(fresh?.status).toBe('waiting');
-      expect(fresh?.currentStep).toBe('code-review');
+      expect(fresh?.currentStep).toBe('checks');
       expect((await documents.latestBody('proj-51', ARTIFACTS.rebaseMergeSkip.kind))?.trim()).toBe('skip');
       const rows = await flows.listFlows(fresh?.id ?? 0);
-      expect(JSON.parse(rows.at(-1)?.phases ?? '[]')).toEqual(['planning', 'code-review', 'ci']);
-      expect(rows.at(-1)?.fromStep).toBe('code-review');
+      expect(JSON.parse(rows.at(-1)?.phases ?? '[]')).toEqual(['planning', 'checks', 'ci']);
+      expect(rows.at(-1)?.fromStep).toBe('checks');
       expect(rows.at(-1)?.cause).toBe('rebase');
       git(tree, ['merge-base', '--is-ancestor', release, 'HEAD']);
       expect(git(tree, ['log', '--oneline'])).toContain('field');
@@ -448,7 +448,7 @@ describe('runs api', () => {
       expect(httpStatus(result)).toBe(202);
       const fresh = await runs.findRun('proj-62');
       expect(fresh?.status).toBe('waiting');
-      expect(fresh?.currentStep).toBe('code-review');
+      expect(fresh?.currentStep).toBe('checks');
       expect(git(tree, ['rev-parse', 'HEAD^'])).toBe(base);
       expect(git(tree, ['rev-list', '--count', `${base}..HEAD`])).toBe('1');
       expect(git(tree, ['log', '-1', '--format=%s'])).toBe('feat(proj-62): Ship the field');
