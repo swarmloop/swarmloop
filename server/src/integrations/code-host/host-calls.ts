@@ -3,12 +3,13 @@ import type { Clock } from '../../core/clock';
 import { GitRuleRefused } from '../../core/git-rule-refused';
 import {
   FetchFailed,
+  HostUnavailable,
   isHostOutage,
-  PipelinesRefused,
   SwarmloopError,
   type HttpCallDraft,
 } from '../../core/swarmloop-error';
-import { request } from '../http';
+import { nextTryAt } from '../../contract/outside-waits';
+import { HOST_RETRY_MS, request } from '../http';
 import { configuredHost } from './provider-message';
 import { remoteProject } from './remote-project';
 
@@ -74,18 +75,37 @@ export abstract class HostCalls {
     return this.parse(response.body, calls, failure);
   }
 
+  /** The access the host's token needs to read a project's CI, as the wait for a refusal names it. */
+  protected abstract readonly ciAccess: string;
+
   /**
-   * Reads the list of a branch's pipelines: a 403 is a refusal to read pipelines, not a rejected token. A 403 that a rate
-   * limit gave is no refusal: it is not read as a repository with no CI.
+   * The wait for a host that does not show a project's CI: a person fixes the token's access, and the next try reads
+   * it again.
    */
-  protected async readPipelineList(
+  protected ciRefused(cause: string, project: string, calls: HttpCallDraft[]): HostUnavailable {
+    return new HostUnavailable(
+      this.apiHost(),
+      `${cause}: the token may not read the CI of ${project} (needs ${this.ciAccess})`,
+      nextTryAt(this.clock.now(), HOST_RETRY_MS),
+      calls,
+    );
+  }
+
+  /**
+   * Reads a JSON answer about a project's CI. A 403 that no rate limit gave, or a 404, is the host refusing to show the
+   * CI: the wait of `ciRefused`. A 401 is a rejected token; a 403 from a rate limit is a failed read.
+   */
+  protected async readCiJson(
+    project: string,
     url: string,
     headers: Record<string, string>,
     calls: HttpCallDraft[],
     failure: string,
   ): Promise<unknown> {
     const response = await this.hostRequest(url, headers, calls);
-    if (response.status === 403 && !rateLimited(response.headers)) throw new PipelinesRefused(calls);
+    if ((response.status === 403 && !rateLimited(response.headers)) || response.status === 404) {
+      throw this.ciRefused(`HTTP ${response.status}`, project, calls);
+    }
     this.assertStatus(response, calls, failure);
     return this.parse(response.body, calls, failure);
   }

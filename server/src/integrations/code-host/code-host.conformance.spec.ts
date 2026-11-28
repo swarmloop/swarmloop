@@ -2,7 +2,7 @@ import { testEnv } from '../../config/env.spec-helpers';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { fakeThirdAdapter, fakeThirdScript } from './fake-third/fake-third.spec-helpers';
 import { GitRuleRefused } from '../../core/git-rule-refused';
-import { FetchFailed, PipelinesRefused } from '../../core/swarmloop-error';
+import { FetchFailed, isHostOutage, type HostUnavailable } from '../../core/swarmloop-error';
 import type { CodeHost, MergeMethod, MergeRequestDraft } from './code-host';
 import { GithubCodeHost } from './github/github-code-host';
 import { GitlabCodeHost } from './gitlab/gitlab-code-host';
@@ -223,7 +223,6 @@ describe.each([
     name: 'github',
     make: github,
     label: 'GitHub',
-    ciFiles: ['.github/workflows/*.yml', '.github/workflows/*.yaml'],
     api: 'https://github.example/api/v3/repos/acme/demo',
     rejection: ['! [remote rejected] main -> main (protected branch hook declined)'],
   },
@@ -231,16 +230,14 @@ describe.each([
     name: 'gitlab',
     make: gitlab,
     label: 'GitLab',
-    ciFiles: ['.gitlab-ci.yml'],
     api: 'https://gitlab.example/api/v4/projects/1',
     rejection: ['remote: GitLab: You are not allowed to push code to protected branches'],
   },
-])('code host identity: $name', ({ name, make, label, ciFiles, api, rejection }) => {
-  it('declares its name, label and CI files', () => {
+])('code host identity: $name', ({ name, make, label, api, rejection }) => {
+  it('declares its name and label', () => {
     const { host } = make(false);
     expect(host.name).toBe(name);
     expect(host.label).toBe(label);
-    expect(host.ciFiles).toEqual(ciFiles);
   });
 
   it('labels a call of its API with its name and leaves a redirect to another host unlabeled', () => {
@@ -534,49 +531,50 @@ describe('gitlab host', () => {
 });
 
 describe.each([
-  { name: 'github', host: githubService, token: 'GITHUB_TOKEN' },
-  { name: 'gitlab', host: gitlabService, token: 'GITLAB_TOKEN' },
-])('the pipelines read of $name', ({ host, token }) => {
+  { name: 'github', host: githubService, token: 'GITHUB_TOKEN', access: 'Actions, Checks and Commit statuses' },
+  { name: 'gitlab', host: gitlabService, token: 'GITLAB_TOKEN', access: 'read_api scope' },
+])('the pipelines read of $name', ({ host, token, access }) => {
   /** The host answers every call with this status, from the url it was asked. */
   function answerAll(status: number): void {
     serve((_method, url) => ({ ...(answer(status, {}) as object), url }));
   }
 
-  it('rejects a 403 as a refusal to read pipelines, not as a rejected token', async () => {
-    answerAll(403);
-    const refused = await host()
-      .readBranchPipeline({ project: PROJECT, ref: 'main' })
-      .catch((error: unknown) => error);
-    expect(refused).toBeInstanceOf(PipelinesRefused);
-    expect((refused as PipelinesRefused).message).not.toContain('was rejected');
-  });
+  const reads = {
+    readBranchPipeline: (service: CodeHost) => service.readBranchPipeline({ project: PROJECT, ref: 'main' }),
+    readBranchHasPipeline: (service: CodeHost) => service.readBranchHasPipeline({ project: PROJECT, ref: 'main' }),
+  };
 
-  it.each([
-    ['a spent limit', { 'x-ratelimit-remaining': '0' }],
-    ['a secondary limit with a retry-after', { 'retry-after': '60', 'x-ratelimit-remaining': '12' }],
-  ])('does not read a 403 of %s as a refusal', async (_name, limit: Record<string, string>) => {
-    serve((_method, url) => ({
-      ...(answer(403, {}) as object),
-      url,
-      headers: { get: (name: string) => limit[name] ?? null },
-    }));
-    const failed = await host()
-      .readBranchPipeline({ project: PROJECT, ref: 'main' })
-      .catch((error: unknown) => error);
-    expect(failed).toBeInstanceOf(FetchFailed);
-    expect(failed).not.toBeInstanceOf(PipelinesRefused);
-  });
+  describe.each(Object.entries(reads))('%s', (_read, call) => {
+    it.each([403, 404])('waits for the access to the CI on a %s, never a rejected token', async (status) => {
+      answerAll(status);
+      const refused = await call(host()).catch((error: unknown) => error);
+      expect(isHostOutage(refused)).toBe(true);
+      const outage = refused as HostUnavailable;
+      expect(outage.detail).toContain(PROJECT);
+      expect(outage.detail).toContain(access);
+      expect(outage.detail).toContain(`HTTP ${status}`);
+      expect(outage.message).not.toContain('was rejected');
+      expect(Date.parse(outage.retryAt)).not.toBeNaN();
+    });
 
-  it('reads a 403 on the whole-branch question as a refusal too', async () => {
-    answerAll(403);
-    await expect(host().readBranchHasPipeline({ project: PROJECT, ref: 'main' })).rejects.toBeInstanceOf(
-      PipelinesRefused,
-    );
-  });
+    it.each([
+      ['a spent limit', { 'x-ratelimit-remaining': '0' }],
+      ['a secondary limit with a retry-after', { 'retry-after': '60', 'x-ratelimit-remaining': '12' }],
+    ])('does not read a 403 of %s as a refusal', async (_name, limit: Record<string, string>) => {
+      serve((_method, url) => ({
+        ...(answer(403, {}) as object),
+        url,
+        headers: { get: (name: string) => limit[name] ?? null },
+      }));
+      const failed = await call(host()).catch((error: unknown) => error);
+      expect(failed).toBeInstanceOf(FetchFailed);
+      expect(isHostOutage(failed)).toBe(false);
+    });
 
-  it('still rejects a 401 as a rejected token', async () => {
-    answerAll(401);
-    await expect(host().readBranchPipeline({ project: PROJECT, ref: 'main' })).rejects.toThrow(`${token} was rejected`);
+    it('still rejects a 401 as a rejected token', async () => {
+      answerAll(401);
+      await expect(call(host())).rejects.toThrow(`${token} was rejected`);
+    });
   });
 });
 

@@ -1,7 +1,3 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { hasCi } from '../../git/repo-names';
 import { gitDetail } from '../../git/git';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { request } from '../http';
@@ -10,36 +6,6 @@ import { githubRules } from './github/github-rules';
 import { gitlabRules } from './gitlab/gitlab-rules';
 
 describe('code host rules', () => {
-  describe('hasCi', () => {
-    let dir: string;
-
-    beforeEach(() => {
-      dir = mkdtempSync(join(tmpdir(), 'has-ci-'));
-    });
-
-    afterEach(() => {
-      rmSync(dir, { recursive: true, force: true });
-    });
-
-    it('finds a GitLab pipeline file', () => {
-      writeFileSync(join(dir, '.gitlab-ci.yml'), 'x');
-      expect(hasCi(dir)).toBe(true);
-    });
-
-    it.each(['test.yml', 'test.yaml'])('finds a GitHub workflow %s', (file) => {
-      mkdirSync(join(dir, '.github', 'workflows'), { recursive: true });
-      writeFileSync(join(dir, '.github', 'workflows', file), 'x');
-      expect(hasCi(dir)).toBe(true);
-    });
-
-    it('finds nothing in an empty workflows folder, a folder without CI or a missing folder', () => {
-      mkdirSync(join(dir, '.github', 'workflows'), { recursive: true });
-      writeFileSync(join(dir, '.github', 'workflows', 'notes.txt'), 'x');
-      expect(hasCi(dir)).toBe(false);
-      expect(hasCi(join(dir, 'missing'))).toBe(false);
-    });
-  });
-
   describe('push rejection', () => {
     const github = '! [remote rejected] main -> main (hook declined)';
     const gitlab = 'remote: GitLab: You are not allowed to push';

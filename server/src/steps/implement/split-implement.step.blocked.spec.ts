@@ -93,6 +93,7 @@ describe('split implement, a blocked task', () => {
     const open = { state: 'open', sha: null, draft: false, head: 'head', mergeability: 'clean', blockedBy: null };
     const host = {
       readMergeGate: () => Promise.resolve({ ...open, httpCalls: [] }),
+      ciEnabled: () => Promise.resolve(true),
       readBranchPipeline: () => Promise.resolve({ snapshot: null, httpCalls: [] }),
     };
     jest.spyOn(RunHosts.prototype, 'byName').mockReturnValue(host as unknown as CodeHost);

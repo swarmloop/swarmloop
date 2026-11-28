@@ -23,7 +23,6 @@ const PAGE_SIZE = 100;
 export abstract class AbstractCodeHost extends AbstractMergeRequests implements CodeHost {
   abstract readonly name: SelectedHost['name'];
   abstract readonly label: string;
-  abstract readonly ciFiles: readonly string[];
   abstract pushRejection(lines: string[]): string | undefined;
 
   abstract diagnoseMissingPipeline(ref: PipelineRef): Promise<PipelineDiagnosis>;
@@ -129,6 +128,8 @@ export abstract class AbstractCodeHost extends AbstractMergeRequests implements 
     ref: PipelineRef,
     jobs?: boolean,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
+
+  abstract ciEnabled(project: string): Promise<boolean>;
 
   abstract readBranchHasPipeline(ref: PipelineRef): Promise<{ found: boolean; httpCalls: HttpCallDraft[] }>;
 

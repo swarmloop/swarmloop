@@ -3,7 +3,6 @@ import type { CodeHostRules } from '../host-rules';
 export const gitlabRules = {
   name: 'gitlab' as const,
   label: 'GitLab',
-  ciFiles: ['.gitlab-ci.yml'],
   mergeRequestTemplates: ['.gitlab/merge_request_templates/Default.md'],
   pushRejection(lines: string[]): string | undefined {
     return lines.find((line) => line.includes('remote rejected') || line.startsWith('remote: GitLab'));

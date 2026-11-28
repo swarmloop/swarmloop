@@ -1,8 +1,7 @@
-import { existsSync, readdirSync, statSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import type { SandboxMount } from '../core/sandbox-mount';
 import { SwarmloopError } from '../core/swarmloop-error';
-import { ciFilesOfAnyHost } from '../integrations/code-host/code-host-rules';
 
 const REPO_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -56,23 +55,4 @@ function worktreeMounts(root: string, key: string, names: string[]): SandboxMoun
     const containerPath = hostPath === join(root, 'worktrees', key) ? '/work' : `/work/${name}`;
     return { hostPath, containerPath };
   });
-}
-
-export function hasCi(dir: string): boolean {
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
-    return false;
-  }
-  return ciFilesOfAnyHost().some((path) => hasCiFile(dir, path));
-}
-
-function hasCiFile(dir: string, path: string): boolean {
-  const star = path.lastIndexOf('/*');
-  if (star === -1 || star !== path.lastIndexOf('/')) {
-    return existsSync(join(dir, path));
-  }
-  const folder = join(dir, path.slice(0, star));
-  const ending = path.slice(star + 2);
-  return (
-    existsSync(folder) && statSync(folder).isDirectory() && readdirSync(folder).some((name) => name.endsWith(ending))
-  );
 }

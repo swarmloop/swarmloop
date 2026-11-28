@@ -66,9 +66,9 @@ describe('RepositoriesController', () => {
     await expect(controller.main('ada', 'web')).resolves.toMatchObject({ state: 'none', head: 'web-head' });
   });
 
-  it('answers its reading when the host refuses the pipelines, instead of throwing', async () => {
+  it('answers no CI when the host reports no CI for the repository, instead of throwing', async () => {
     const { fake, controller } = setup();
-    fake.refusePipelines('acme/web');
+    fake.setCiEnabled('acme/web', false);
 
     await expect(controller.main('ada', 'web')).resolves.toMatchObject({ state: 'none', head: 'web-head' });
   });

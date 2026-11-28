@@ -134,6 +134,7 @@ export async function boot(
     readBranchHead?: jest.Mock;
     readDefaultHead?: jest.Mock;
     readBranchHasPipeline?: jest.Mock;
+    ciEnabled?: jest.Mock;
     rerunFailedJobs?: jest.Mock;
     readRunNotes?: jest.Mock;
     setDraft?: jest.Mock;
@@ -173,6 +174,7 @@ export async function boot(
           readDefaultHead: jest.fn((project: string) =>
             Promise.resolve({ branch: 'main', sha: `${project}-main`, httpCalls: [] }),
           ),
+          ciEnabled: jest.fn(() => Promise.resolve(true)),
           readBranchHasPipeline: jest.fn(() => Promise.resolve({ found: true, httpCalls: [] })),
           readJobTrace: trace,
           cancelPipeline: cancel,

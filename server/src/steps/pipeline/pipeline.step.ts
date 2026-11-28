@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { StepKernel } from '../step-kernel';
 import { RunRebase } from '../run-rebase';
 import { RunStop } from '../../agent/run-stop';
-import { ciFileProjects, missingPipeline, missingRuns } from './missing-pipeline';
+import { missingPipeline, missingRuns } from './missing-pipeline';
 import { backToReview, staleGates } from './stale-gates';
 import { type SwarmloopEnv } from '../../config/env';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
@@ -43,7 +43,7 @@ import { flakyOnPass } from './flaky-tests';
 import { finish } from './pipeline-result';
 import { infraRoute } from './pipeline-infra';
 import { watchCi } from './pipeline-watch';
-import { dropNoCi, noCiLines, noCiReason, type CiScope, type NoCiProject } from './pipeline-no-ci';
+import { dropNoCi, noCiLines, noCiReason, type CiScope } from './pipeline-no-ci';
 import { hasDraft, markReady } from './pipeline-draft';
 import { red, report, type RedDeps } from './pipeline-red';
 import { EnvironmentService } from '../../environment/environment.service';
@@ -153,10 +153,8 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   /** The first look at the CI of every ref, before any wait: the projects with no CI are left out of it. */
   private async scopeOf(ctx: StepContext, records: PipelineRef[], host: CodeHost): Promise<CiScope> {
     assertNotStopped(this.runStop, ctx.opened.run.key);
-    const seen = await loadSeen(records, ctx.calls, host, false);
-    const showedNothing = seen.some((item) => item.runs.length === 0 && item.checks.length === 0);
-    const ciFiles = showedNothing ? await ciFileProjects(ctx, root(this.config)) : new Set<string>();
-    return dropNoCi(host, records, seen, ctx.calls, ciFiles);
+    const kept = await dropNoCi(host, records);
+    return { ...kept, seen: await loadSeen(kept.records, ctx.calls, host, false) };
   }
 
   private async withFacts(ctx: StepContext, result: StepResult, seen: Seen[]): Promise<StepResult> {
@@ -238,7 +236,8 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   }
 
   /**
-   * The wait ended with a green or absent verdict. A project whose workflow never ran is a missing pipeline. For the
+   * The wait ended with a green or absent verdict. A project with CI that showed no run is a missing pipeline; one with
+   * no merge conflict or closed request to explain it and a draft request has the draft marked ready first. For the
    * rest: stale gates, an absent draft or the pass. The projects left out at the start are named in the log.
    */
   private async settle(
@@ -251,6 +250,8 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
   ): Promise<StepResult> {
     const { opened } = ctx;
     const { records, dropped } = scope;
+    const verdict = verdictOf(seen);
+    const stale = async () => staleGates(ctx, root(this.config), await this.flows.activePhases(opened.run.id));
     const missing = await missingRuns(ctx, root(this.config), seen);
     if (missing && missing.length > 0) {
       return missingPipeline({
@@ -265,22 +266,18 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
         records,
         seen,
         missing,
+        readyDraft: async () =>
+          verdict === 'absent' && !(await stale()) ? this.readyDraft(ctx, env, scope, host, reruns) : null,
       });
     }
-    const verdict = verdictOf(seen);
     const noCiLog = noCiLines(dropped);
-    if (await staleGates(ctx, root(this.config), await this.flows.activePhases(opened.run.id))) {
+    if (await stale()) {
       return backToReview(ctx, this.flows);
     }
     if (verdict === 'absent') {
-      if (await hasDraft(ctx)) {
-        await ctx.activity(
-          'Mark merge request ready',
-          () => markReady(ctx, this.registry),
-          () => 'CI did not start for the draft',
-        );
-        const watched = await this.watch(ctx, records, env, host);
-        return this.route(ctx, env, scope, watched.seen, watched.verdict, host, reruns);
+      const handedOver = await this.readyDraft(ctx, env, scope, host, reruns);
+      if (handedOver) {
+        return handedOver;
       }
       const body = `${renderNone(seen)}${noCiLog}`;
       return finish('ok', report(opened, 'nothing started', body), 'done', body);
@@ -300,8 +297,28 @@ export class PipelineStep extends BaseStep<typeof INPUTS> {
     return finish('ok', report(opened, 'pipeline done', body), 'done', body);
   }
 
+  /** CI did not start and a merge request is still a draft, which CI may skip: marks it ready and watches again. Null when none is a draft. */
+  private async readyDraft(
+    ctx: StepContext,
+    env: SwarmloopEnv,
+    scope: CiScope,
+    host: CodeHost,
+    reruns: number,
+  ): Promise<StepResult | null> {
+    if (!(await hasDraft(ctx))) {
+      return null;
+    }
+    await ctx.activity(
+      'Mark merge request ready',
+      () => markReady(ctx, this.registry),
+      () => 'CI did not start for the draft',
+    );
+    const watched = await this.watch(ctx, scope.records, env, host);
+    return this.route(ctx, env, scope, watched.seen, watched.verdict, host, reruns);
+  }
+
   /** No project has CI: the checks and the reviewers are the gate, so the run ends skipped with its merge requests ready. */
-  private async endWithoutCi(ctx: StepContext, dropped: NoCiProject[]): Promise<StepResult> {
+  private async endWithoutCi(ctx: StepContext, dropped: string[]): Promise<StepResult> {
     if (await staleGates(ctx, root(this.config), await this.flows.activePhases(ctx.opened.run.id))) {
       return backToReview(ctx, this.flows);
     }

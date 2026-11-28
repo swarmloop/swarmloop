@@ -144,6 +144,7 @@ describe('split implement, subtasks that heal or block', () => {
           blockedBy: null,
           httpCalls: [],
         }),
+      ciEnabled: () => Promise.resolve(true),
       readBranchPipeline: () => Promise.resolve({ snapshot: null, httpCalls: [] }),
       readMergeMethods: () => Promise.resolve({ methods: ['squash'], httpCalls: [] }),
       mergeMergeRequest: () => Promise.resolve({ sha: 'abc', httpCalls: [] }),

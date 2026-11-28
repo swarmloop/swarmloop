@@ -4,7 +4,7 @@ import type { RunEntity } from '../../history/run.entity';
 import { SwarmloopError } from '../../core/swarmloop-error';
 import type { MergeGate, MergeRequestRecord, PipelineSnapshot } from '../../integrations/code-host/code-host';
 import { CodeHostRegistry } from '../../integrations/code-host/code-host.registry';
-import { ciState, readCi } from './ci-reading';
+import { ciState, projectHasCi, readCi } from './ci-reading';
 import { mergeHow } from './merge-method';
 import { RepositoryOrigins } from './repository-origins';
 import { RunNames } from './run-names';
@@ -47,10 +47,10 @@ export class RepositoryHost {
     return { host: scoped.byName(name), project };
   }
 
-  private logState(repo: string, state: string, cause: string | null): void {
+  private logState(repo: string, state: string): void {
     if (this.logged.get(repo) === state) return;
     this.logged.set(repo, state);
-    this.logger.log(cause ? `main of ${repo} reads ${state}: ${cause}` : `main of ${repo} reads ${state}`);
+    this.logger.log(`main of ${repo} reads ${state}`);
   }
 
   /** The name of a repository's default branch. */
@@ -64,10 +64,8 @@ export class RepositoryHost {
     const { host, project } = await this.hostOf(repo, person);
     const { branch, sha } = await host.readDefaultHead(project);
     const ref = { project, ref: branch, sha };
-    const reading = await readCi(host, ref);
-    const { snapshot } = reading;
-    const { state, cause } = await ciState(host, ref, reading);
-    this.logState(repo, state, cause);
+    const { state, snapshot } = await ciState(host, ref);
+    this.logState(repo, state);
     const durations = (snapshot?.checks ?? []).map((check) => check.durationMs);
     return {
       repository: repo,
@@ -97,7 +95,9 @@ export class RepositoryHost {
   async gate(run: HostRun, request: MergeRequestRef, branch: string): Promise<GateReading> {
     const host = await this.hosts.hostFor(run);
     const { httpCalls: _calls, ...gate } = await host.readMergeGate(request.project, request.iid);
-    const { snapshot } = await readCi(host, { project: request.project, ref: branch, sha: gate.head });
+    const { snapshot } = (await projectHasCi(host, request.project))
+      ? await readCi(host, { project: request.project, ref: branch, sha: gate.head })
+      : { snapshot: null };
     return {
       ...gate,
       failing: namesOf(snapshot, ['failed', 'canceled']),

@@ -22,7 +22,6 @@ const FAKE_THIRD_BASE = 'https://forge.example';
 const rules: CodeHostRules = {
   name: NAME,
   label: LABEL,
-  ciFiles: ['.forge-ci.yml'],
   mergeRequestTemplates: ['.forge/merge_request_template.md'],
   pushRejection: remotePushRejection,
   classifyCall: (url) => (new URL(url).pathname.startsWith('/api/v1/') ? NAME : null),
@@ -54,7 +53,7 @@ function unsupported(): never {
 class FakeThirdCodeHost extends AbstractCodeHost {
   readonly name = NAME;
   readonly label = LABEL;
-  readonly ciFiles = rules.ciFiles;
+  protected readonly ciAccess = 'CI read access';
   protected readonly repositories = {
     gitUser: 'forge',
     needs: 'repo',
@@ -136,6 +135,9 @@ class FakeThirdCodeHost extends AbstractCodeHost {
     return unsupported();
   }
   readBranchPipeline(): never {
+    return unsupported();
+  }
+  ciEnabled(): never {
     return unsupported();
   }
   readBranchHasPipeline(): never {

@@ -3,7 +3,7 @@ import type { HttpCallDraft } from '../../core/swarmloop-error';
 import { readCi } from '../shared/ci-reading';
 import type { Seen } from './pipeline-report';
 
-/** Reads the CI of every ref from the host; the host's calls are added to `calls`. A ref the host refuses to read shows nothing. */
+/** Reads the CI of every ref from the host; the host's calls are added to `calls`. */
 export async function loadSeen(
   records: PipelineRef[],
   calls: HttpCallDraft[],

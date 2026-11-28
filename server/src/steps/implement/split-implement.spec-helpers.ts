@@ -155,6 +155,10 @@ export class FakeHost {
     });
   }
 
+  ciEnabled() {
+    return Promise.resolve(true);
+  }
+
   readBranchPipeline(ref: { sha?: string }) {
     const failed = [...this.failing].some((iid) => FakeHost.headOf(iid) === ref.sha);
     const checks = failed

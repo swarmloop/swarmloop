@@ -1,3 +1,4 @@
+import { isHostOutage, type HostUnavailable } from '../../../core/swarmloop-error';
 import { instantBackoff } from '../../instant-backoff.spec-helpers';
 import { TOKEN, mockFetch, service } from './github-code-host.spec-helpers';
 
@@ -556,6 +557,53 @@ describe('github host', () => {
   it('names a rejected token when the current user is refused', async () => {
     mockFetch([{}], 401);
     await expect(service().readCurrentUser()).rejects.toThrow('was rejected');
+  });
+});
+
+describe('github host ciEnabled', () => {
+  const original = global.fetch;
+  const WORKFLOWS = 'https://api.github.com/repos/acme/demo/actions/workflows?per_page=1';
+  const HEAD = [{ default_branch: 'main' }, { commit: { sha: 'abc' } }];
+
+  beforeEach(() => {
+    instantBackoff();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    global.fetch = original;
+  });
+
+  it('is true for a repository with an Actions workflow, and reads nothing else', async () => {
+    const seen = mockFetch([{ total_count: 1, workflows: [{ id: 1 }] }]);
+    await expect(service().ciEnabled('acme/demo')).resolves.toBe(true);
+    expect(seen.map((call) => call.url)).toEqual([WORKFLOWS]);
+  });
+
+  it('is true for a repository with no workflow whose default branch head has a commit status of another CI', async () => {
+    const seen = mockFetch([
+      { total_count: 0, workflows: [] },
+      ...HEAD,
+      { check_runs: [] },
+      { statuses: [{ id: 3, context: 'ci/jenkins', state: 'success' }] },
+    ]);
+    await expect(service().ciEnabled('acme/demo')).resolves.toBe(true);
+    expect(seen[3]?.url).toContain('/commits/abc/check-runs');
+  });
+
+  it('is false for a repository with no workflow, no check and no status', async () => {
+    mockFetch([{ total_count: 0, workflows: [] }, ...HEAD, ...QUIET]);
+    await expect(service().ciEnabled('acme/demo')).resolves.toBe(false);
+  });
+
+  it('waits for the access on a 404 of the workflows, naming the repository and the access', async () => {
+    mockFetch([{ message: 'Not Found' }], 404);
+    const refused = await service()
+      .ciEnabled('acme/demo')
+      .catch((error: unknown) => error);
+    expect(isHostOutage(refused)).toBe(true);
+    expect((refused as HostUnavailable).detail).toContain('acme/demo');
+    expect((refused as HostUnavailable).detail).toContain('Actions');
   });
 });
 

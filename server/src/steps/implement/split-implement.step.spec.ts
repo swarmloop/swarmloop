@@ -190,9 +190,7 @@ describe('split implement', () => {
     await seedParent(app, [task('a')]);
     await pass(app);
     await finish(app, 'a');
-    const skipped = noCiReason([
-      { project: 'group/demo', cause: 'the code host refuses to read pipelines', refused: true },
-    ]);
+    const skipped = noCiReason(['group/demo']);
     await app.app.get(DocumentRepository).putDocument(await child(app, 'a'), 'pipeline_log', skipped);
 
     await pass(app);
