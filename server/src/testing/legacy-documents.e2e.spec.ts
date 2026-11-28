@@ -39,7 +39,15 @@ describe('a run stored before results', () => {
     expect(await documents.latestBody(KEY, 'research_result')).toBeNull();
 
     const view = await flow.app.app.get(RunQueriesService).flow(KEY);
-    expect(view.items).toEqual([{ kind: 'question', id: QUESTION, label: QUESTION, answer: 'the column' }]);
+    expect(view.items).toEqual([
+      {
+        kind: 'question',
+        id: QUESTION,
+        label: QUESTION,
+        answer: 'the column',
+        parts: { decide: QUESTION, sides: [], full: '', askedAt: expect.any(String), asker: 'research' },
+      },
+    ]);
     expect(await flow.app.app.get(SubtaskOps).needsOf(run)).toEqual([{ id: 't0', what: 'the retry policy' }]);
 
     await flow.person('resume');

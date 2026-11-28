@@ -2,7 +2,6 @@ import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import type { FlowItem } from '@contract/api';
-import { FoldedText } from '../../../components/ui/folded-text';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
 import { answerPresentation } from '../../../lib/answer-field';
 import { QuestionCard } from '../flow/question-card';
@@ -24,7 +23,7 @@ export function goToQuestion(entry: string): void {
  * An open question, or an open paste request, as the planner's message marked `Question for you` in the accent color.
  * It has no answer field: the person answers by writing in the message box. One that has its answer reads `Answered`
  * and shows the answer under the question. A question the backlog's planner still holds reads `Asked the planner`; one
- * it passed on keeps `Question for you` with the planner's line above it.
+ * it passed on keeps `Question for you` with the planner's line as a side in the card.
  */
 export function QuestionEntry({ item }: { item: FlowItem }): ReactElement {
   const presentation = answerPresentation(item);
@@ -39,14 +38,6 @@ export function QuestionEntry({ item }: { item: FlowItem }): ReactElement {
         title={answered ? 'Answered' : held ? 'Asked the planner' : 'Question for you'}
       >
         <Box sx={{ textAlign: 'left' }}>
-          {item.passedOn && !answered ? (
-            <FoldedText text={item.passedOn}>
-              <Typography
-                variant="body2"
-                sx={{ overflowWrap: 'anywhere' }}
-              >{`The planner passed this on: ${item.passedOn}`}</Typography>
-            </FoldedText>
-          ) : null}
           {answered ? (
             <>
               {presentation.heading ? (

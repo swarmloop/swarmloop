@@ -81,7 +81,11 @@ export function markHolders(items: FlowItem[], documents: DocumentEntity[], ofBa
   return items.map((item) => {
     if (item.kind !== 'question') return item;
     const line = passed.find((entry) => entry.question === item.id)?.line;
-    if (line !== undefined) return { ...item, passedOn: line };
+    if (line !== undefined) {
+      const parts = item.parts ?? { decide: item.label, sides: [], full: '', askedAt: '' };
+      const sides = [...parts.sides, { who: 'backlog planner', text: line }];
+      return { ...item, passedOn: line, parts: { ...parts, sides } };
+    }
     return ofBacklog && item.answer.trim() === '' ? { ...item, holder: 'planner' as const } : item;
   });
 }
