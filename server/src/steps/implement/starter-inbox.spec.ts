@@ -189,6 +189,9 @@ describe('StarterInbox asks', () => {
     expect(pass.asks).toHaveLength(1);
     expect(pass.asks[0].question).toContain('Subtask a asks:');
     expect(pass.asks[0].question).toContain('Should the api use numbers or text for ids?');
+    expect(pass.asks[0].parts.sides).toEqual([
+      { who: 'epic planner', text: 'Should the api use numbers or text for ids?' },
+    ]);
     expect(pass.contract).toBe('- api (owner a): the api\n');
     expect(pass.tasks).toEqual(tasks());
     expect(revisions).toEqual([]);

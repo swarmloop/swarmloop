@@ -15,7 +15,7 @@ import { readPlan } from '../steps/plan/plan-record';
 import { messageTurn } from './plan-chat-route';
 import { closeEscalation, escalateToPerson, escalationLine, isAsked, releaseAsked } from './escalation';
 import type { QuestionHolds } from '../steps/shared/question-holds';
-import { answered } from '../steps/shared/answers';
+import { answered, renderAnswers } from '../steps/shared/answers';
 import { askPlanner, readPersonAnswer } from './planner-question';
 
 /** One thing the planner is asked: a person's message now, other kinds later. */
@@ -141,8 +141,20 @@ export class PlannerTurns implements OnModuleDestroy {
         await this.runs?.release(waiting, { status: 'waiting', reason: { code: REASON.asksPlanner, message } });
       return;
     }
-    if (this.documents) await escalateToPerson(this.documents, run, escalation);
-    if (this.runs) await releaseAsked(this.runs, this.holds, run.key);
+    if (!this.documents) return;
+    const put = await escalateToPerson(this.documents, run, escalation);
+    // A question the person answered before is not asked again: its stored answer is the answer of this entry.
+    if (put.kind === 'answered') await this.giveStored(run, escalation, put.answer);
+    else if (this.runs) await releaseAsked(this.runs, this.holds, run.key);
+  }
+
+  /** Writes the answer given before under the line of the escalation, which stays pending, so the planner reads it as the person's. */
+  private async giveStored(run: RunEntity, escalation: PlanChatEntry, answer: string): Promise<void> {
+    const body = (await this.documents?.latestBody(run.key, ARTIFACTS.answers.kind)) ?? '';
+    const given = answered(body);
+    given.set(escalationLine(escalation), answer);
+    await this.documents?.putDocument(run, ARTIFACTS.answers.kind, renderAnswers([...given.entries()]));
+    this.offer(run.key, { id: escalation.key, at: escalation.at, text: escalation.text });
   }
 
   /**

@@ -424,7 +424,7 @@ describe('BacklogEvents', () => {
       const chain = new PlannerChain(
         {
           askAbout: () => Promise.resolve(null),
-          handUp: (parent, taskId, text) => planner.handUp(parent, taskId, text),
+          handUp: (parent, taskId, text, lines) => planner.handUp(parent, taskId, text, lines),
         },
         conversation,
         documents,
@@ -446,6 +446,7 @@ describe('BacklogEvents', () => {
       expect(asked.asked).toBe('starter');
       const stored = readStoredQuestions((await documents.latestBody('a-1', 'question_parts')) ?? '');
       expect(stored.map(({ parts }) => parts.decide)).toEqual(['b needs c: which retry policy wins']);
+      expect(stored.map(({ parts }) => parts.sides.map((side) => side.who))).toEqual([['epic planner']]);
       expect(await events(h, id, 'run-needs-person')).toMatchObject([
         { facts: { slug: 'a', runKey: 'a-1', state: 'waiting', reason: 'waiting for a person' } },
       ]);

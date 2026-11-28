@@ -120,7 +120,7 @@ export class StarterInbox {
   private async held(child: RunEntity, task: Subtask, at: string, words?: string): Promise<StoredQuestion> {
     const asked = child.currentStep === 'code-review' ? ARTIFACTS.reviewQuestions : ARTIFACTS.questions;
     const questions = (await this.deps.reader.reread(child.key, asked)) ?? '';
-    return askedQuestion(task.id, questions, at, words);
+    return askedQuestion(task.id, questions, at, words === undefined ? [] : [{ who: 'epic planner', text: words }]);
   }
 
   /**

@@ -206,6 +206,23 @@ describe('subtask questions', () => {
     expect(await documents.latestBody(KEY, 'subtask_questions')).toBe(asked);
   });
 
+  it('does not ask the person a question that was answered before, and sends the stored answer to the subtask', async () => {
+    const { documents, parent } = await questionWorld(() => ({ text: '', exitCode: 1 }));
+    const record = [
+      { asker: 'subtask:a', decide: '- which field?', answer: 'Use a column.', at: '2026-01-01T00:00:00.000Z' },
+    ];
+    await documents.putDocument(parent, 'answered_questions', JSON.stringify(record));
+    await ask('a', '- which field?\n');
+
+    await pass(app);
+
+    expect(((await documents.latestBody(KEY, 'subtask_questions')) ?? '').trim()).toBe('');
+    expect(await documents.latestBody(KEY, 'contract')).toContain(
+      '- subtask a at 2026-01-01T00:00:00.000Z: Use a column.',
+    );
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe('question: which field?\nanswer: Use a column.\n');
+  });
+
   it('asks two questions that wait at once one after the other, in task order', async () => {
     const { prompts, documents } = await questionWorld((prompt) => ({
       text: prompt.includes('Subtask a') ? 'A.' : 'B.',

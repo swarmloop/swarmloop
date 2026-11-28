@@ -105,7 +105,7 @@ export class SubtaskPort extends SubtaskOps {
     this.chain = new PlannerChain(
       {
         askAbout: (opened, task, question, contract) => this.askAbout(opened, task, question, contract),
-        handUp: (parent, taskId, text, words) => this.asks.handUp(parent, taskId, text, words),
+        handUp: (parent, taskId, text, lines) => this.asks.handUp(parent, taskId, text, lines),
       },
       planning,
       documents,

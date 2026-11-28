@@ -51,6 +51,22 @@ describe('the planner answering a run that waits on a question', () => {
         'question: which limit\nanswer: three',
       );
       expect(started).toHaveBeenCalledWith('proj-1');
+      expect(await app.get(DocumentRepository).latestBody('proj-1', 'answered_questions')).toBeNull();
+    });
+  });
+
+  it('records the answer of a question that has parts, and replaces it when the same question is answered again', async () => {
+    await withAnswerRoutes(async ({ app, port }) => {
+      const run = await save(app.get(RunRepository), 'proj-7', 'implement', 'waiting');
+      await askAtImplement(app, run);
+      await port.send({ type: 'answer', run: 'proj-7', answers: [{ body: 'three' }] }, 'ada', 'turn-1-action-0');
+      const first = JSON.parse((await app.get(DocumentRepository).latestBody('proj-7', 'answered_questions')) ?? '[]');
+      expect(first).toEqual([{ asker: '', decide: 'which limit', answer: 'three', at: expect.any(String) }]);
+
+      app.get(RunRepository).notify('proj-7');
+      await port.send({ type: 'answer', run: 'proj-7', answers: [{ body: 'four' }] }, 'ada', 'turn-1-action-1');
+      const second = JSON.parse((await app.get(DocumentRepository).latestBody('proj-7', 'answered_questions')) ?? '[]');
+      expect(second).toEqual([{ asker: '', decide: 'which limit', answer: 'four', at: expect.any(String) }]);
     });
   });
 

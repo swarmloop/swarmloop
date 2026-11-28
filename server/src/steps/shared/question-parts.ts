@@ -33,6 +33,9 @@ type QuestionSource = Pick<QuestionParts, 'asker' | 'entry'>;
 
 const NO_ANSWER = 'Implement did not answer this point';
 
+/** What a planner's line says when it gave no words. */
+export const NO_PLANNER_WORDS = 'The planner gave no answer.';
+
 /** One reviewer's last finding and what implement answered to it. */
 interface Disagreement {
   finding: string;
@@ -78,7 +81,7 @@ export function askedParts(
 ): QuestionParts {
   return {
     decide: question.trim(),
-    sides: lines.length > 0 ? lines : [{ who: 'planner', text: 'The planner gave no answer.' }],
+    sides: lines.length > 0 ? lines : [{ who: 'planner', text: NO_PLANNER_WORDS }],
     full: '',
     askedAt,
     ...source,
@@ -95,17 +98,26 @@ export function answeredBefore(record: AnsweredQuestion[], asker: string, decide
   return record.find((item) => item.asker === asker && collapsed(item.decide) === wanted)?.answer ?? null;
 }
 
-/** The stored parts of the questions that are still open, then the questions asked now. */
-export function keepOpen(stored: StoredQuestion[], open: string[], asks: StoredQuestion[]): StoredQuestion[] {
-  return [...stored.filter((item) => open.includes(item.question)), ...asks];
-}
-
 /** The stored list, or an empty one when the body is not a list of questions. */
 export function readStoredQuestions(body: string): StoredQuestion[] {
   try {
     const parsed: unknown = JSON.parse(body);
     return Array.isArray(parsed)
       ? (parsed as StoredQuestion[]).filter((item) => typeof item?.question === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The record of answered questions, or an empty one when the body is not a list. */
+export function readAnsweredQuestions(body: string): AnsweredQuestion[] {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    return Array.isArray(parsed)
+      ? (parsed as AnsweredQuestion[]).filter(
+          (item) => typeof item?.asker === 'string' && typeof item.answer === 'string',
+        )
       : [];
   } catch {
     return [];
