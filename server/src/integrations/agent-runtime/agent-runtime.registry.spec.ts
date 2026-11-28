@@ -1,4 +1,4 @@
-import { runtimeFor, runtimeForCommand } from './agent-runtime.registry';
+import { paidUseUnseenConnections, runtimeFor, runtimeForCommand } from './agent-runtime.registry';
 
 describe('agent runtime registry', () => {
   it('resolves codex by name and by command', () => {
@@ -21,5 +21,9 @@ describe('agent runtime registry', () => {
   it('declares no context window for codex and cursor models', () => {
     expect(runtimeFor('codex').contextTokens('gpt-5')).toBeNull();
     expect(runtimeFor('cursor').contextTokens('grok-4.7')).toBeNull();
+  });
+
+  it('lists the connections of the runtimes whose paid use it cannot see', () => {
+    expect(paidUseUnseenConnections().map((connection) => connection.id)).toEqual(['cursor', 'codex']);
   });
 });

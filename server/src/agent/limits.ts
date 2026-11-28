@@ -3,7 +3,7 @@ import type { CacheWriteSplit } from './stream-usage';
 import { parseResultBlock } from '../contract/result-block';
 import { takeAnswer } from './stream';
 
-export type KillReason = 'time' | 'idle' | 'usd' | 'tokens' | 'loop';
+export type KillReason = 'time' | 'idle' | 'usd' | 'tokens' | 'loop' | 'paid use';
 
 export interface LimitSnapshot {
   elapsedMs: number;

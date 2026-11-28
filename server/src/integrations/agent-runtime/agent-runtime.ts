@@ -82,12 +82,16 @@ export interface AgentRuntime {
   readonly planModeHasPlanTool: boolean;
   /** True when this CLI can give a print launch read-only helpers on another model. */
   readonly hasHelpers: boolean;
+  /** True when `paidUseLimit` can see paid use past the plan's limit in this CLI's stream; false means swarmloop cannot see it, so the person's paid-use setting reads on there. */
+  readonly readsPaidUse: boolean;
   readonly priceSource: string;
   credential(keys: RuntimeKeys): { name: string; value: string };
   /** The secrets of these keys that this runtime launches with. */
   secrets(keys: RuntimeKeys): string[];
   /** The provider limit the end of a launch reports, or null when it is no limit: an auth, billing, network or context error is none. */
   classifyLimit(input: LimitInput): LimitHit | null;
+  /** The limit one stream line says the launch has passed into paid use past the plan's limit, or null. */
+  paidUseLimit(line: string): LimitHit | null;
   /**
    * The model host the launch could not reach after the CLI's own retries, or null. An answer, an answer without a result block, a
    * usage limit, an auth or billing error give null.

@@ -4,6 +4,7 @@ import { redact } from '../config/redact';
 import { rememberSecret } from '../core/secret-sources';
 import type { ConnectionCard, IntegrationCardsView } from '../contract/connections';
 import type { Connection, ConnectionTestResult } from '../integrations/connection';
+import { paidUseUnseenConnections } from '../integrations/agent-runtime/agent-runtime.registry';
 import { SandboxConnectionProbe } from './connection-probe';
 import { PersonalCredentials } from './personal-credentials.service';
 
@@ -76,7 +77,11 @@ export class ConnectionCatalog {
 
   private async card(connection: Connection, login: string | null): Promise<ConnectionCard> {
     const card = await this.credentials.card(connection, login ?? '', this.config.env);
-    return login !== null && connection.ownStore ? { ...card, ...(await connection.ownStore.status(login)) } : card;
+    const shown =
+      login !== null && connection.ownStore ? { ...card, ...(await connection.ownStore.status(login)) } : card;
+    return paidUseUnseenConnections().some((unseen) => unseen.id === connection.id)
+      ? { ...shown, paidUseUnseen: true }
+      : shown;
   }
 
   /** The test, with the secrets remembered first so that a message that echoes one is masked. */

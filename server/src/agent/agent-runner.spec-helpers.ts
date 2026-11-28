@@ -5,6 +5,8 @@ import { EventEmitter } from 'events';
 import { join } from 'path';
 import { PassThrough } from 'stream';
 import { parseAgentList } from '../config/agents';
+import type { PersonalCredentials } from '../auth/personal-credentials.service';
+import type { UserSettingRepository } from '../history/user-setting.repository';
 import { AppConfig, type SwarmloopEnv } from '../config/env';
 import { SystemClock } from '../core/clock';
 import { testEnv } from '../config/env.spec-helpers';
@@ -29,6 +31,24 @@ export function fakeChild(chunks: string[], code: number): EventEmitter {
     return returned;
   }) as typeof child.on;
   return Object.assign(child, { stdout, stderr, containerName: 'box', kill: () => true });
+}
+
+/** A CLI that goes on running after its output: it closes only when it is killed. */
+export function runningChild(chunks: string[]): EventEmitter {
+  const stdout = new PassThrough();
+  const child = new EventEmitter();
+  for (const chunk of chunks) {
+    stdout.write(chunk);
+  }
+  let closed = false;
+  const kill = (): boolean => {
+    if (!closed) {
+      closed = true;
+      setImmediate(() => child.emit('close', 143));
+    }
+    return true;
+  };
+  return Object.assign(child, { stdout, stderr: new PassThrough(), containerName: 'box', kill });
 }
 
 export function sandbox(spawn: jest.Mock): SandboxService {
@@ -100,10 +120,11 @@ export function writePriceCache(root: string): void {
 
 export async function start(
   label: string,
-  steps: { chunks: string[]; code?: number; advance?: number; memoryCapBytes?: number }[],
+  steps: { chunks: string[]; code?: number; advance?: number; memoryCapBytes?: number; running?: boolean }[],
   patch: Partial<AgentRunInput> = {},
   env: Partial<SwarmloopEnv> = {},
   stop = new RunStop(),
+  people?: { credentials: PersonalCredentials; settings: UserSettingRepository },
 ): Promise<{
   result: Awaited<ReturnType<AgentProcessRunner['run']>>;
   launches: SandboxLaunch[];
@@ -125,11 +146,19 @@ export async function start(
       return Promise.reject(new Error('unexpected spawn'));
     }
     now += next.advance ?? 0;
-    return Promise.resolve(
-      Object.assign(fakeChild(next.chunks, next.code ?? 0), { memoryCapBytes: next.memoryCapBytes }),
-    );
+    const child = next.running ? runningChild(next.chunks) : fakeChild(next.chunks, next.code ?? 0);
+    return Promise.resolve(Object.assign(child, { memoryCapBytes: next.memoryCapBytes }));
   });
-  const runner = new AgentProcessRunner(config(root, env), new SystemClock(), sandbox(spawn), stop);
+  const runner = new AgentProcessRunner(
+    config(root, env),
+    new SystemClock(),
+    sandbox(spawn),
+    stop,
+    undefined,
+    people?.credentials,
+    undefined,
+    people?.settings,
+  );
   try {
     const runtime = env.AGENTS_IMPLEMENT
       ? parseAgentList('AGENTS_IMPLEMENT', env.AGENTS_IMPLEMENT)[0].runtime

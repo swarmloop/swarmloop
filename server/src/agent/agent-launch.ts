@@ -3,6 +3,7 @@ import type { AppConfig } from '../config/env';
 import { credentialFor, missingCredential } from '../config/agents';
 import type { PersonalCredentials } from '../auth/personal-credentials.service';
 import type { RunRepository } from '../history/run.repository';
+import type { UserSettingRepository } from '../history/user-setting.repository';
 import { starterOf } from '../history/run-starter';
 import { StepStopped } from './step-stopped';
 import { resolveRepoRoot } from '../config/repo-root';
@@ -27,6 +28,7 @@ import { SessionWrites } from './session-writes';
 import { AttemptMeter } from './agent-attempt';
 import { NO_USAGE } from './since-recorded';
 import { OutputTail } from './output-tail';
+import { PaidUseWatch } from './paid-use-watch';
 import { LimitGuard } from './limit-guard';
 import { SERVER_PAUSE_NOTE } from '../contract/server-pause';
 import { AttemptLog } from './live-output';
@@ -48,6 +50,7 @@ export class AgentLaunch {
     private readonly live?: LiveHub,
     private readonly credentials?: PersonalCredentials,
     private readonly runs?: RunRepository,
+    private readonly settings?: UserSettingRepository,
   ) {}
 
   /**
@@ -85,6 +88,7 @@ export class AgentLaunch {
   ): Promise<AgentRunResult> {
     const env = this.config.env;
     const credential = await this.credentialOf(input.runKey, runtime.name, input.login);
+    const paidUse = await PaidUseWatch.open(runtime, this.settings, credential.owner);
     const launch = this.launchPrep.prepare(input, runtime, resumed);
     const tmp = await this.launchPrep.runTmp(input);
     const prices = await loadPriceTable(resolveRepoRoot(env.SWARMLOOP_ROOT, __dirname), runtime.name, this.clock.now());
@@ -159,6 +163,7 @@ export class AgentLaunch {
       let finishedByResult = false;
       let buffer = '';
       const tail = new OutputTail();
+      const killedBy = (): KillReason | null => killReason;
       const stop = (reason: KillReason): void => {
         killReason = reason;
         sessionWrites.queue({
@@ -187,7 +192,7 @@ export class AgentLaunch {
           awake,
           billed: () => meter.billed(),
           finished: () => finishedByResult,
-          killReason: () => killReason,
+          killReason: killedBy,
           kill: stop,
         },
       );
@@ -201,6 +206,7 @@ export class AgentLaunch {
         buffer = lines.pop() ?? '';
         for (const line of lines) {
           tail.stdout(line);
+          paidUse.note(line);
           const piece = meter.ingest(line);
           if (!piece) {
             continue;
@@ -221,6 +227,9 @@ export class AgentLaunch {
             finishedByResult = true;
             process.kill(false);
           }
+        }
+        if (killReason === null && !finishedByResult && paidUse.hit()) {
+          stop('paid use');
         }
         if (killReason === null && !finishedByResult && input.loop?.pending()) {
           stop('loop');
@@ -257,7 +266,7 @@ export class AgentLaunch {
       meter.settle();
       const finished = this.clock.now();
       const priced = meter.billed();
-      const finalKillReason = finishedByResult ? null : killReason;
+      const finalKillReason = finishedByResult ? null : killedBy();
       await sessionWrites.write({
         chatId,
         resumed,
@@ -267,7 +276,7 @@ export class AgentLaunch {
         resultName: input.resultName,
       });
       meter.flush(buffer);
-      const end = tail.ending(runtime, buffer, this.clock.now());
+      const end = tail.ending(runtime, buffer, this.clock.now(), paidUse.endedOn(finalKillReason));
       const ending =
         finishedByResult || !killReason
           ? `process exited ${finishedByResult ? 0 : exitCode}`

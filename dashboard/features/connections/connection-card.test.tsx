@@ -14,6 +14,18 @@ describe('ConnectionCard', () => {
     expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument();
   });
 
+  it('says a spend cap belongs at the provider when swarmloop cannot see paid use there, and says nothing otherwise', () => {
+    const { rerender } = render(
+      <ConnectionCard card={connectionCard({ label: 'Codex', paidUseUnseen: true })} onChanged={() => undefined} />,
+    );
+    expect(screen.getByRole('region', { name: 'Codex' })).toHaveTextContent(
+      'swarmloop cannot see paid use on Codex, so set a spend cap at the provider.',
+    );
+
+    rerender(<ConnectionCard card={connectionCard({ label: 'Codex' })} onChanged={() => undefined} />);
+    expect(screen.getByRole('region', { name: 'Codex' })).not.toHaveTextContent('cannot see paid use');
+  });
+
   it('shows the account and only the last four characters of the secret', () => {
     render(
       <ConnectionCard

@@ -18,6 +18,17 @@ describe('UserSettingRepository', () => {
     }
   });
 
+  it('reads back whether a person pays past their limit next to their agents', async () => {
+    const db = await repositoryDatabase();
+    try {
+      const settings = db.app.get(UserSettingRepository);
+      await settings.save('ada', { agents: plan, paysPastLimit: true });
+      expect(await settings.read('ada')).toEqual({ agents: plan, paysPastLimit: true });
+    } finally {
+      await db.close();
+    }
+  });
+
   it('replaces the earlier save and drops a key left out', async () => {
     const db = await repositoryDatabase();
     try {

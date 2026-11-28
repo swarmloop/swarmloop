@@ -6,7 +6,7 @@ import { UserSettingEntity } from './connection-entities';
 import { transaction } from './transaction';
 
 /** The keys of `SettingsBody`; a stored row with another key (an old personal `split`) is ignored. */
-const KNOWN_KEYS = ['agents'];
+const KNOWN_KEYS = ['agents', 'paysPastLimit'];
 
 /** The settings a person chose for their own runs. One row per setting key; a key without a row is the server default. */
 @Injectable()

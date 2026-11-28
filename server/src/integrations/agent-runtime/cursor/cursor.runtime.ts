@@ -1,5 +1,6 @@
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import type { Effort } from '../../../contract/effort';
+import type { LimitHit } from '../runtime-limit';
 import { AbstractAgentRuntime } from '../abstract-agent-runtime';
 import type { AgentPrintInput, EffortLaunch, PromptCache, RuntimeKeys } from '../agent-runtime';
 import { CursorConnection } from './cursor-connection';
@@ -14,6 +15,7 @@ export class CursorRuntime extends AbstractAgentRuntime {
   readonly planModeHasPlanTool = true;
   // Not read for Cursor CLI 2025.11.25 in this change: no helper is declared, and a print launch is as before.
   readonly hasHelpers = false;
+  readonly readsPaidUse = false;
   readonly priceSource = 'https://cursor.com/docs/models-and-pricing.md';
   readonly apiHosts = ['*.cursor.sh', '*.cursor.com'];
   readonly connection = new CursorConnection();
@@ -29,6 +31,11 @@ export class CursorRuntime extends AbstractAgentRuntime {
   protected readonly outages = CURSOR_OUTAGES;
   protected readonly modelHost = 'api2.cursor.sh';
   private modelIds: readonly string[] = [];
+
+  /** Null for every line: this CLI's paid-use signal is not read yet, so swarmloop cannot see paid use here. */
+  paidUseLimit(_line: string): LimitHit | null {
+    return null;
+  }
 
   secrets(keys: RuntimeKeys): string[] {
     return [keys.cursorKey].filter(Boolean);

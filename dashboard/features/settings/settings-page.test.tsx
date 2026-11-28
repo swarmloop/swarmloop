@@ -26,6 +26,7 @@ const view = (settings: SettingsView['settings'] = {}): SettingsView => ({
     { runtime: 'claude', models: ['opus', 'sonnet'], efforts: { opus: ['low', 'high'], sonnet: [] } },
     { runtime: 'codex', models: ['gpt', 'gpt-priced'], efforts: {} },
   ],
+  paidUse: [{ runtime: 'claude', label: 'Claude', readsPaidUse: true }],
   modelsLimited: false,
   server: [
     { name: 'MAX_RUN_USD', group: 'Limits.', secret: false, source: 'default', value: '5' },

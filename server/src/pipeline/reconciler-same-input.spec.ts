@@ -190,6 +190,7 @@ describe('sameInput', () => {
     it.each([
       ['a model host outage', { status: 'interrupted', killReason: ERROR_CODES.HOST_UNAVAILABLE }],
       ['a usage limit', { status: 'interrupted', killReason: ERROR_CODES.RUNTIME_LIMIT }],
+      ['a stop for paid use past the plan', { status: 'interrupted', killReason: 'process killed: paid use' }],
       ['a failure with no answer errors and no kill', { status: 'failed' }],
     ])('reruns after %s', (_name, stat) => {
       expect(sameInput(ended(stat))).toEqual(rerun);

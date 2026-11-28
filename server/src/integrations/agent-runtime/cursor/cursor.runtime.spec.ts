@@ -18,6 +18,11 @@ describe('CursorRuntime', () => {
     expect(runtime.readDirArgs('/work/logs')).toEqual(['--add-dir', '/work/logs']);
   });
 
+  it('cannot see paid use, so it reads none from a line of its stream', () => {
+    expect(runtime.readsPaidUse).toBe(false);
+    expect(runtime.paidUseLimit(JSON.stringify({ type: 'result', is_error: false, result: 'done' }))).toBeNull();
+  });
+
   it('loads AGENTS.md and CLAUDE.md by itself', () => {
     expect(runtime.ownRuleFiles()).toEqual(['AGENTS.md', 'CLAUDE.md']);
   });

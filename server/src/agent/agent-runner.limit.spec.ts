@@ -1,3 +1,5 @@
+import type { PersonalCredentials } from '../auth/personal-credentials.service';
+import type { UserSettingRepository } from '../history/user-setting.repository';
 import { start } from './agent-runner.spec-helpers';
 
 /** What each runtime's CLI ends a launch with when the provider's limit is reached, with the reset it names. */
@@ -130,5 +132,58 @@ describe('AgentProcessRunner provider limit', () => {
     );
     expect(result.signal).toBe('SIGSEGV');
     expect(launches.length).toBeGreaterThan(1);
+  });
+
+  describe('paid use past the plan', () => {
+    /** One launch of Claude as ada: its stream, whether it goes on running after it, and what ada stored. */
+    function launchAs(stream: string[], paysPastLimit: boolean | undefined) {
+      const credentials = {
+        runtimeCredential: jest.fn().mockResolvedValue({ name: 'CLAUDE_CODE_OAUTH_TOKEN', value: 'tok', owner: 'ada' }),
+      } as unknown as PersonalCredentials;
+      const settings = {
+        read: jest.fn().mockResolvedValue(paysPastLimit === undefined ? null : { paysPastLimit }),
+      } as unknown as UserSettingRepository;
+      return start(
+        'paid-use',
+        [{ chunks: [`${stream.join('\n')}\n`], running: true }],
+        { resumeChatId: null, runtime: 'claude', login: 'ada' },
+        { MAX_LAUNCHES: 3 },
+        undefined,
+        { credentials, settings },
+      );
+    }
+    const event = (isUsingOverage: boolean): string =>
+      JSON.stringify({
+        type: 'rate_limit_event',
+        rate_limit_info: { status: 'allowed', resetsAt: 1795886400, rateLimitType: 'five_hour', isUsingOverage },
+      });
+    const init = JSON.stringify({ type: 'system', subtype: 'init', session_id: 'chat-p1' });
+    const done = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'done',
+      session_id: 'chat-p1',
+    });
+
+    it('ends the launch at once on a line that says it runs on paid use, and returns the limit', async () => {
+      const { result, launches } = await launchAs([init, event(true)], undefined);
+      expect(result.killReason).toBe('paid use');
+      expect(result.limit).toEqual({ window: '5-hour', resetsAt: '2026-11-28T17:20:00.000Z' });
+      expect(launches).toHaveLength(1);
+    });
+
+    it('runs to its result when the person allowed paid use', async () => {
+      const { result } = await launchAs([init, event(true), done], true);
+      expect(result.limit).toBeUndefined();
+      expect(result.killReason).toBeNull();
+      expect(result.responseText).toBe('done');
+    });
+
+    it('runs to its result when the line says the plan still covers it', async () => {
+      const { result } = await launchAs([init, event(false), done], undefined);
+      expect(result.limit).toBeUndefined();
+      expect(result.killReason).toBeNull();
+    });
   });
 });

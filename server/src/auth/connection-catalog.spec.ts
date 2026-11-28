@@ -39,6 +39,23 @@ describe('the integration cards, with a fake connection', () => {
     });
   });
 
+  it('marks the card of a runtime whose paid use swarmloop cannot see, and no other', async () => {
+    await started.close();
+    started = await start({}, [
+      fakeConnection({ id: 'claude', fields: ['token'] }),
+      fakeConnection({ id: 'codex', fields: ['token'] }),
+      fakeConnection({ id: 'cursor', fields: ['token'] }),
+      fakeConnection({ id: 'other', fields: ['token'] }),
+    ]);
+    const view = (await (await call(started.url, 'alice')).json()) as IntegrationCardsView;
+    expect(view.cards.map((item) => [item.id, item.paidUseUnseen])).toEqual([
+      ['claude', undefined],
+      ['codex', true],
+      ['cursor', true],
+      ['other', undefined],
+    ]);
+  });
+
   it('stores the fields only after the test passed, and shows the last four characters', async () => {
     const response = await call(`${started.url}/fakeai`, 'alice', 'PUT', { fields: { apiKey: SECRET } });
     expect(await response.json()).toMatchObject({ status: 'connected', account: 'acct-1', last4: '1234' });
