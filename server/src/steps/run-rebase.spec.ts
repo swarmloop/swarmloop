@@ -4,6 +4,27 @@ import { actionsFor, REASON, type RunState } from '../contract/run-state';
 import { storedState, writeRunState } from '../history/run-state';
 import { HostUnavailable, SwarmloopError } from '../core/swarmloop-error';
 import type { RunEntity } from '../history/entities';
+import { rebaseFeatureRepos } from '../git/rebase';
+import { ARTIFACTS } from './contract/artifacts';
+
+jest.mock('../git/rebase', () => ({ rebaseFeatureRepos: jest.fn(), completeRebase: async () => undefined }));
+jest.mock('../git/worktree-lock', () => ({ withWorktrees: (_paths: string[], fn: () => unknown) => fn() }));
+jest.mock('../git/repo-names', () => ({
+  ...jest.requireActual('../git/repo-names'),
+  mountsForStep: () => [],
+}));
+jest.mock('../git/git', () => ({ git: async () => 'same-head' }));
+jest.mock('./shared/rebase-journal', () => ({ runJournal: () => ({}) }));
+jest.mock('./shared/base-tips', () => ({
+  BaseTips: class {
+    known = async () => ({});
+    recordMoved = async () => undefined;
+  },
+}));
+jest.mock('./shared/gate', () => ({
+  ...jest.requireActual('./shared/gate'),
+  worktreesFingerprint: async () => 'moved-tree',
+}));
 
 const PAST_GUARD = 'past the guard';
 const SUBTASK_BLOCKED = 'SUBTASK_BLOCKED';
@@ -133,5 +154,105 @@ describe('run rebase', () => {
     await expect(rebaseOf(run, refused).rebase('f36-1')).rejects.toThrow(
       new ConflictException('draft refused').message,
     );
+  });
+});
+
+/** A rebase whose move ends as `stop`, over fakes that record the documents, the stamps and where the run was started. */
+function movingRun(currentStep: string, status: string, stop: 'clean' | 'conflict') {
+  const run = { key: 'f36-1', split: false, generation: 1, currentStep, mergeOutcome: null } as unknown as RunEntity;
+  writeRunState(run, { status, currentStep });
+  const bodies: Record<string, string> = {
+    [ARTIFACTS.repos.kind]: 'demo',
+    [ARTIFACTS.requirements.kind]: 'req',
+    [ARTIFACTS.implementation.kind]: 'notes',
+  };
+  const seen = { documents: [] as [string, string][], stamps: [] as unknown[], flow: [] as unknown[] };
+  jest
+    .mocked(rebaseFeatureRepos)
+    .mockResolvedValue(
+      stop === 'clean'
+        ? { kind: 'clean', leases: [] }
+        : { kind: 'conflict', repo: 'demo', files: [], stderr: '', base: 'b', commit: 'c' },
+    );
+  const runs = {
+    findRun: async () => run,
+    children: async () => [],
+    held: () => false,
+    bumpGeneration: async () => void (run.generation += 1),
+    change: async (_key: string, change: (fresh: RunEntity) => void) => change(run),
+  };
+  const documents = {
+    latestBody: async (_key: string, kind: string) => bodies[kind] ?? null,
+    putDocument: async (_run: RunEntity, kind: string, body: string) => void seen.documents.push([kind, body]),
+    stampLatest: async (_run: RunEntity, kind: string, stamp: unknown) => void seen.stamps.push([kind, stamp]),
+  };
+  const flows = {
+    activePhases: async () => ['checks'],
+    noteFlow: async (...args: unknown[]) => void seen.flow.push(args),
+  };
+  const rebase = new RunRebase(
+    runs as never,
+    documents as never,
+    flows as never,
+    { env: {} } as never,
+    {} as never,
+    { refreshAfterRebase: async () => undefined },
+    { backToDraft: async () => undefined } as never,
+    { tokensFor: async () => ({}) } as never,
+    { branchOf: async () => 'feature/x', commitMessageOf: async () => 'msg' } as never,
+    { of: async () => ({}) } as never,
+    {} as never,
+  );
+  return { rebase, run, seen };
+}
+
+describe('run rebase outcomes', () => {
+  it('a clean move of a run past review starts at checks with its review gate counted on the new head', async () => {
+    const { rebase, run, seen } = movingRun('pipeline', 'waiting', 'clean');
+
+    expect(await rebase.rebase('f36-1', false, false, false, false, null)).toBe('start');
+
+    expect(seen.stamps).toEqual([[ARTIFACTS.reviewReport.kind, { generation: 2, fingerprint: 'moved-tree' }]]);
+    expect(run.currentStep).toBe('checks');
+    expect(seen.flow).toEqual([['f36-1', ['checks', 'ci'], 'checks', 'rebase']]);
+  });
+
+  it('a clean move of a done run starts at checks', async () => {
+    const { rebase, run, seen } = movingRun('commit', 'done', 'clean');
+    run.mergeOutcome = null;
+
+    expect(await rebase.rebase('f36-1', false, false, false, false, null)).toBe('start');
+
+    expect(seen.documents).toContainEqual([ARTIFACTS.rebaseMergeSkip.kind, 'skip\n']);
+    expect(run.currentStep).toBe('checks');
+  });
+
+  it('resumes a clean move of a run that is still before review', async () => {
+    const { rebase, seen } = movingRun('code-review', 'waiting', 'clean');
+
+    expect(await rebase.rebase('f36-1', false, false, false, false, null)).toBe('resume');
+    expect(seen.stamps).toEqual([]);
+  });
+
+  it('a move with a conflict starts at implement', async () => {
+    const { rebase, run, seen } = movingRun('pipeline', 'waiting', 'conflict');
+
+    expect(await rebase.rebase('f36-1', false, false, false, false, null)).toBe('resolve');
+
+    expect(run.currentStep).toBe('implement');
+    expect(seen.documents).toContainEqual([ARTIFACTS.rebaseConflict.kind, 'pending\n']);
+    expect(seen.stamps).toEqual([]);
+  });
+
+  it.each([
+    ['the host text', 'CONFLICT in a.txt', 'CONFLICT in a.txt'],
+    ['that the host gave no reason', '  \n', 'the code host reported a conflict and gave no reason'],
+  ])('hands the conflict agent the host text, or says the host gave no reason (%s)', async (_name, text, said) => {
+    const { rebase, run, seen } = movingRun('pipeline', 'waiting', 'clean');
+
+    expect(await rebase.rebase('f36-1', false, false, false, false, text)).toBe('resolve');
+
+    expect(seen.documents).toContainEqual([ARTIFACTS.rebaseConflict.kind, `pending\nhost-conflict\n${said}\n`]);
+    expect(run.currentStep).toBe('implement');
   });
 });

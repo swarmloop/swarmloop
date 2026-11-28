@@ -106,7 +106,7 @@ describe('rebase journal', () => {
     }
   });
 
-  it('sends a run that failed at merge-request back through code-review after a Rebase', async () => {
+  it('sends a run that failed at merge-request to checks after a Rebase', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-runs-rebase-merge-request-'));
     const { tree, clone } = featureWorktree(root, 'proj-93');
     commitField(tree);
@@ -120,7 +120,7 @@ describe('rebase journal', () => {
       await documents.putDocument(run, 'implementation', '- changed the field\n');
       await app.get(RunRebaseService).rebase('proj-93');
       const next = await runs.findRun('proj-93');
-      expect(next).toMatchObject({ status: 'waiting', currentStep: 'code-review', generation: 1 });
+      expect(next).toMatchObject({ status: 'waiting', currentStep: 'checks', generation: 1 });
       expect(await documents.latestBody('proj-93', 'rebase_merge_skip')).toBeNull();
       expect(pipeline.startDetached).toHaveBeenCalledWith('proj-93');
     } finally {

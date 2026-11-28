@@ -24,6 +24,8 @@ interface World {
   ref: PipelineRef;
   conflicts: (string | null)[];
   stored: Record<string, unknown>;
+  /** Whether the epic's parts are all settled. */
+  idle: boolean;
 }
 
 /** A worktree whose published sha, branch and files are what the step expects, and a run that waits at pipeline. */
@@ -43,6 +45,7 @@ function world(attemptsPipeline = 0): World {
     ref: { project: 'group/demo', ref: 'feature/task', sha },
     conflicts: [],
     stored: { repos: ['demo'] },
+    idle: true,
   };
 }
 
@@ -55,7 +58,8 @@ function look(w: World, diagnosis: PipelineDiagnosis, limit = 6): Promise<StepRe
     write: () => Promise.resolve(),
   } as unknown as StepContext;
   // The Rebase answers as RunRebase does for a head it leaves in place: the run goes to implement.
-  const rebase: Pick<RunRebase, 'rebase'> = {
+  const rebase: Pick<RunRebase, 'rebase' | 'subtasksIdle'> = {
+    subtasksIdle: () => Promise.resolve(w.idle),
     rebase: (_key, _resume, _byParent, _byMain, _keepsWait, hostConflict) => {
       w.conflicts.push(hostConflict ?? null);
       w.run.currentStep = 'implement';
@@ -113,6 +117,22 @@ describe('missingPipeline', () => {
 
     expect(result.route).toMatchObject({ to: 'wait', code: ERROR_CODES.CI_NOT_STARTED });
     expect(result.route).toMatchObject({ reason: expect.stringContaining('next look at') });
+    expect(w.run.attemptsPipeline).toBe(0);
+  });
+
+  it("waits with the next try and counts no try while the epic's parts run", async () => {
+    const w = world();
+    w.idle = false;
+
+    const result = await look(w, CONFLICT);
+
+    expect(result.route).toMatchObject({
+      to: 'wait',
+      code: ERROR_CODES.CI_NOT_STARTED,
+      reason: "automatic rebase waits for the epic's tasks to settle; next try at 2026-01-01T00:02:00.000Z",
+      retryAt: '2026-01-01T00:02:00.000Z',
+    });
+    expect(result).not.toHaveProperty('afterClose');
     expect(w.run.attemptsPipeline).toBe(0);
   });
 
