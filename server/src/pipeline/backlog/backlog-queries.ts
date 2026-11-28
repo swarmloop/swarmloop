@@ -68,7 +68,13 @@ export class BacklogQueries {
       repositories: backlog.repositories,
       mergeMode: backlog.mergeMode,
       paused: backlog.paused,
-      milestones: milestones.map(({ number, title, goal, status }) => ({ number, title, goal, status })),
+      milestones: milestones.map(({ number, title, goal, status, queuedAfterId }) => ({
+        number,
+        title,
+        goal,
+        status,
+        queuedAfter: numberOf(queuedAfterId ?? null),
+      })),
       requirements: requirements.map((requirement) => ({
         ref: requirement.ref,
         milestone: numberOf(requirement.milestoneId) as number,

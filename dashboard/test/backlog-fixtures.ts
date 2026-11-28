@@ -6,7 +6,7 @@ type Requirement = BacklogView['requirements'][number];
 type Task = BacklogView['tasks'][number];
 
 export function milestone(overrides: Partial<Milestone> = {}): Milestone {
-  return { number: 3, title: 'Checkout', goal: 'A shopper can pay', status: 'active', ...overrides };
+  return { number: 3, title: 'Checkout', goal: 'A shopper can pay', status: 'active', queuedAfter: null, ...overrides };
 }
 
 export function requirement(overrides: Partial<Requirement> = {}): Requirement {
