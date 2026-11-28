@@ -1,7 +1,8 @@
 import { commitIdentity, git, originUrl, type CommitAuthor } from '../git/git';
 import { originRef } from '../git/base-ref';
 import { porcelainPaths } from '../git/commit-paths';
-import { ownChangeBase, unmergedPaths } from '../git/rebase';
+import { fingerprintOf, ownChangeBase, unmergedPaths } from '../git/rebase';
+import { protectRef } from '../git/rebase/journal';
 import { mergeConflicts } from '../git/merge-tree';
 import { commitAllowed } from '../git/rebase/hidden-worktree';
 import { status, type Tree } from '../steps/commit/commit-git';
@@ -9,6 +10,8 @@ import type { RunEntity } from '../history/entities';
 import { GitRuleRefused } from '../core/git-rule-refused';
 import { GitRulesError } from '../core/swarmloop-error';
 import type { RebasedPublisher } from '../steps/shared/rebased-publisher';
+import { runJournal } from '../steps/shared/rebase-journal';
+import type { DocumentRepository } from '../history/document.repository';
 
 /** What committing the own edits of a parent left: the paths it committed, and the words of a conflict when the branch cannot take them. */
 interface TreeSync {
@@ -21,7 +24,10 @@ interface TreeSync {
  * feature branch as it was just fetched from origin, so a later fast-forward has no edits to refuse over.
  */
 export class ParentTreeSync {
-  constructor(private readonly publisher?: RebasedPublisher) {}
+  constructor(
+    private readonly publisher?: RebasedPublisher,
+    private readonly documents?: DocumentRepository,
+  ) {}
 
   /**
    * With `park` a conflict is not undone: the commit is rebased onto the feature branch and git stops at the
@@ -48,17 +54,36 @@ export class ParentTreeSync {
       await git(['-C', tree.path, 'reset', '-q', before]);
       return { paths: [], conflict: await this.conflictText(tree, remote, before, files, false) };
     }
+    // The entry is written before the rebase, as every move is: a conflict parks it at 'conflict' for implement.
+    const journal = this.documents ? runJournal(this.documents, parent) : null;
+    const tip = await git(['-C', tree.path, 'rev-parse', remote]);
+    await journal?.put(tree.repo, {
+      path: tree.path,
+      branch,
+      oldHead: await git(['-C', tree.path, 'rev-parse', 'HEAD']),
+      fingerprint: await fingerprintOf(tree.path),
+      protectRef: protectRef(branch),
+      expectedRemoteTip: tip,
+      baseSha: tip,
+      ownBase,
+      checkpoint: 'applying',
+    });
     try {
       await git(['-C', tree.path, 'rebase', '--onto', remote, ownBase], (await commitIdentity(tree.path, author)).env);
     } catch (error) {
       if (park && files.length > 0 && (await unmergedPaths(tree.path)).length > 0) {
+        await journal?.advance(tree.repo, 'conflict');
         return { paths: [], conflict: await this.conflictText(tree, remote, before, files, true) };
       }
       await git(['-C', tree.path, 'rebase', '--abort']).catch(() => undefined);
       await git(['-C', tree.path, 'reset', '-q', before]);
+      // An aborted rebase is history: the settler never resumes it.
+      await journal?.advance(tree.repo, 'completed');
       throw error;
     }
+    await journal?.advance(tree.repo, 'applied', { fingerprint: await fingerprintOf(tree.path) });
     await this.push(parent, tree, branch);
+    await journal?.advance(tree.repo, 'completed');
     return { paths, conflict: null };
   }
 
