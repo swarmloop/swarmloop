@@ -7,7 +7,6 @@ import { Clock } from '../core/clock';
 import { redact } from '../config/redact';
 import { LiveHub } from '../live/live.hub';
 import { RunEntity, StepEventEntity } from './entities';
-import { transaction } from './transaction';
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -50,41 +49,26 @@ export class StepEventLog {
   ) {}
 
   /**
-   * Stores events. The log gives each its `seq` in the transaction of the insert: the run's highest `seq` plus one,
-   * in the order the events are given, so every event is kept and `seq` follows the order of recording.
+   * Stores events. The log gives each its `seq` in the statement that inserts it: the run's highest `seq` plus one.
+   * The statement is one atomic write, so no transaction stays open across awaits and every event is kept; the
+   * events go one after another, so `seq` follows the order of recording.
    */
   async append(events: StepEventDraft[]): Promise<void> {
     if (events.length === 0) {
       return;
     }
     const recordedAt = this.clock.iso();
-    const last = await transaction(this.events.manager.connection, async (manager) => {
-      const next = new Map<number, number>();
-      let stored = 0;
-      for (const { runId, attemptId, step, kind, occurredAt, ...rest } of events) {
-        if (!next.has(runId)) {
-          next.set(runId, ((await manager.maximum(StepEventEntity, 'seq', { runId })) ?? 0) + 1);
-        }
-        stored = next.get(runId) ?? 1;
-        next.set(runId, stored + 1);
-        const payload = JSON.stringify(redactStrings(rest));
-        await manager.insert(
-          StepEventEntity,
-          manager.create(StepEventEntity, {
-            runId,
-            attemptId,
-            step,
-            seq: stored,
-            kind,
-            payload,
-            occurredAt,
-            recordedAt,
-          }),
-        );
-      }
-      return stored;
-    });
-    await this.notify(events[events.length - 1], last);
+    let seq = 0;
+    for (const { runId, attemptId, step, kind, occurredAt, ...rest } of events) {
+      const payload = JSON.stringify(redactStrings(rest));
+      const stored: Array<{ seq: number }> = await this.events.query(
+        `INSERT INTO step_events (run_id, attempt_id, step, seq, kind, payload, occurred_at, recorded_at)
+         SELECT ?, ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ? FROM step_events WHERE run_id = ? RETURNING seq`,
+        [runId, attemptId, step, kind, payload, occurredAt, recordedAt, runId],
+      );
+      seq = stored[0].seq;
+    }
+    await this.notify(events[events.length - 1], seq);
   }
 
   /** Tells the live hub which event came last, with the `seq` it was stored under. The run key is found from the run id; a run without a row is not announced. */
