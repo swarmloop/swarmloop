@@ -13,7 +13,7 @@ const actionNames = (): string[] => {
 
 describe('choiceList for the backlog turn', () => {
   it('has one line for each of the actions the definition allows, in order', () => {
-    expect(actionNames()).toHaveLength(22);
+    expect(actionNames()).toHaveLength(23);
     expect(choiceLines.map((line) => line.split(' ')[1])).toEqual(actionNames());
   });
 
@@ -24,6 +24,11 @@ describe('choiceList for the backlog turn', () => {
     expect(lines).toContain('- stop needs: run (string); may also give: reason (string)');
     expect(lines).toContain('- pause needs: nothing; may also give: reason (string)');
     expect(lines).toContain('- acceptMilestone needs: milestone (number); may also give: reason (string)');
+  });
+
+  it('gives an offer to run as a milestone or a task, none of them needed', () => {
+    const line = lines.find((item) => item.startsWith('- offerRun needs:'));
+    expect(line).toBe('- offerRun needs: nothing; may also give: milestone (number), task (string), reason (string)');
   });
 
   it('lists the optional fields of a task change', () => {
