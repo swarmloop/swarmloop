@@ -37,6 +37,8 @@ interface BacklogMilestoneView {
   title: string;
   goal: string;
   status: MilestoneStatus;
+  /** The number of the milestone whose acceptance starts this queued one; null when it is not queued. */
+  queuedAfter: number | null;
 }
 
 interface BacklogRequirementView {

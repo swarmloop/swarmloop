@@ -244,7 +244,9 @@ describe('BacklogActions', () => {
       await withMilestones(harness, 1);
       const view = await harness.queries.view('shop');
       expect(view.events.map((event) => event.kind)).toEqual(['action', 'action']);
-      expect(view.milestones).toEqual([{ number: 1, title: 'Part 1', goal: 'Goal', status: 'proposed' }]);
+      expect(view.milestones).toEqual([
+        { number: 1, title: 'Part 1', goal: 'Goal', status: 'proposed', queuedAfter: null },
+      ]);
     }));
 
   it('closes an open requirement with its evidence, and refuses a closed or unknown one and another login', () =>
