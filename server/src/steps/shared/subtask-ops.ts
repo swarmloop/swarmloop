@@ -48,6 +48,9 @@ export interface RebaseEvent {
   note: string;
 }
 
+/** A task run's move onto the epic's new tip that the epic has not read yet: it is queued or running, or it failed. */
+export type TaskMove = { kind: 'moving' } | { kind: 'failed'; reason: string };
+
 /** What committing the own edits of a parent left: the line that names the committed paths, and the words of a conflict. */
 export interface OwnEdits {
   committed: string | null;
@@ -104,6 +107,12 @@ export abstract class SubtaskOps {
    * True when the run goes on after the move: it was sent the rebase or will take it, and does not keep a wait.
    */
   abstract rebase(run: RunEntity, event?: RebaseEvent): Promise<boolean>;
+  /**
+   * The move of a blocked or failed subtask run that its epic sent and that is still its newest command: `moving`
+   * while it is queued or running, `failed` with its error once it failed. Null for any other run, and once a later
+   * command replaced it.
+   */
+  abstract moveOf(run: RunEntity): Promise<TaskMove | null>;
   /** True when a move keeps the run in its wait: it waits on a question or a sibling. */
   abstract keepsWait(run: RunEntity): Promise<boolean>;
   /** The tip of the feature branch when the head of a subtask run, and so its last CI, does not contain it; null when it does. */

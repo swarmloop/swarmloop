@@ -17,7 +17,7 @@ import { earliestRetry } from './subtask-retry';
 const BLOCKED_ACTION = 'Resume, Replay or Skip task clears it';
 
 function blockedNames(blocked: Subtask[]): string {
-  return blocked.map((task) => `subtask ${task.id} is blocked`).join('; ');
+  return blocked.map((task) => `subtask ${task.id} is blocked${task.note ? `: ${task.note}` : ''}`).join('; ');
 }
 
 /** What the routing after a pass reads. */

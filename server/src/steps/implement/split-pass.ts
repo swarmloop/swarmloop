@@ -14,7 +14,7 @@ import type { SubtaskOps } from '../shared/subtask-ops';
 import { refusedRoute } from '../shared/start-refused';
 import { withoutSkipped } from '../shared/subtask-question-line';
 import { skippedByEpic } from '../shared/subtask-skip-reason';
-import { mergedOf, taskStatusOf } from '../shared/subtask-status';
+import { mergedOf, moveNote, taskStatusOf } from '../shared/subtask-status';
 import type { StepContext } from '../base-step';
 import type { StepResult } from '../contract/step-contract';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -184,8 +184,10 @@ export class SplitPass {
     }
     const delivered = child.status === 'done' ? await this.deps.subtasks.deliveredNote(child) : null;
     if (delivered) return { ...task, status: 'skipped', note: delivered };
-    const status = taskStatusOf(task, child);
+    const move = await this.deps.subtasks.moveOf(child);
+    const status = taskStatusOf(task, child, move);
     if (status === 'merged') return { ...task, status, merged: mergedOf(child), note: undefined };
+    if (move) return { ...task, status, note: moveNote(move) };
     const waits = status === 'running' ? runWaitNote(task, { state, stateReason: reason }) : undefined;
     if (waits) return { ...task, status, note: waits };
     const rebased = status !== 'green' && task.note?.startsWith(REBASED_PREFIX) ? task.note : undefined;

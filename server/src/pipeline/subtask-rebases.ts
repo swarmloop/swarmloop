@@ -5,11 +5,14 @@ import type { RunRepository } from '../history/run.repository';
 import { storedState } from '../history/run-state';
 import { ERROR_CODES } from '../contract/error-codes';
 import { isSubtask } from '../contract/subtask';
-import type { RebaseEvent, SubtaskMergeRequest } from '../steps/shared/subtask-ops';
+import type { RebaseEvent, SubtaskMergeRequest, TaskMove } from '../steps/shared/subtask-ops';
 import type { DocumentRepository } from '../history/document.repository';
 import { mergeHandoff } from '../steps/shared/handoff';
 import type { RunRebase } from '../steps/run-rebase';
 import type { CommandService } from './command.service';
+
+/** The idempotency key every move of a part by its parent starts with. */
+const MOVE_KEY = 'subtask-rebase-';
 
 /**
  * The rebase commands of the subtask runs of a parent. One rule decides which open parts move for every path that
@@ -32,6 +35,22 @@ export class SubtaskRebases {
   async keepsWait(run: RunEntity): Promise<boolean> {
     const { state, reason } = storedState(run);
     return state === 'waiting' && (reason?.code === ERROR_CODES.SUBTASK_WAITING || (await this.asking(run)));
+  }
+
+  /**
+   * The move of a blocked or failed run that its parent sent, while it is the run's newest command: moving while it is
+   * queued or running, failed with its error once it failed. Any other run is read by its own state, and a later
+   * command of the run, or a move that succeeded, reads null.
+   */
+  async moveOf(run: RunEntity): Promise<TaskMove | null> {
+    const { state } = storedState(run);
+    if (state !== 'blocked' && state !== 'failed') return null;
+    const newest = await this.commands.latestOfRun(run.id);
+    if (!newest?.idempotencyKey?.startsWith(MOVE_KEY)) return null;
+    if (newest.state === 'accepted' || newest.state === 'executing') return { kind: 'moving' };
+    if (newest.state !== 'failed') return null;
+    const stored = JSON.parse(newest.result ?? 'null') as { error?: { message?: string } } | null;
+    return { kind: 'failed', reason: stored?.error?.message ?? 'the move failed' };
   }
 
   /** True when the run goes on after the move; false when it was not moved or was moved and keeps its wait. */
@@ -62,11 +81,11 @@ export class SubtaskRebases {
     const tip = event?.tip ?? (await this.parentTip(run));
     if (!tip) {
       await this.commands.accept('rebase', run.key, payload, {
-        idempotencyKey: `subtask-rebase-${run.revision}-${run.generation}`,
+        idempotencyKey: `${MOVE_KEY}${run.revision}-${run.generation}`,
       });
       return;
     }
-    let idempotencyKey = `subtask-rebase-${run.key}-${tip}`;
+    let idempotencyKey = `${MOVE_KEY}${run.key}-${tip}`;
     for (;;) {
       const sent = await this.commands.accept('rebase', run.key, payload, { idempotencyKey });
       if (!sent.replayed || sent.command.state !== 'failed') return;

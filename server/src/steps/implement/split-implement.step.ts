@@ -5,7 +5,7 @@ import type { RunEntity } from '../../history/entities';
 import { readyTasks, runWaitNote, settled, withStatuses, type Subtask } from '../../contract/subtask';
 import type { StepName } from '../../contract/steps';
 import { SubtaskOps } from '../shared/subtask-ops';
-import { taskStatusOf } from '../shared/subtask-status';
+import { moveNote, taskStatusOf } from '../shared/subtask-status';
 import { PlanConversation } from '../shared/plan-conversation';
 import { MergeMarks } from '../shared/merge-marks';
 import { MergeLook } from './merge-look';
@@ -111,17 +111,20 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       const child = await this.subtasks.find(parent, task.id);
       if (!child) return false;
       children.push(child);
-      if (this.changed(task, child) || task.status === 'green' || (await this.subtasks.asking(child))) return false;
+      if ((await this.changed(task, child)) || task.status === 'green' || (await this.subtasks.asking(child)))
+        return false;
     }
     if (earliestRetry(children) !== (storedState(parent).reason?.retryAt ?? null)) return false;
     return readyTasks(tasks, await this.pass.slots(parent, tasks)).length === 0;
   }
 
-  /** A task whose run stopped, whose status moved, or whose running run waits with another text than the task carries. */
-  private changed(task: Subtask, child: RunEntity): boolean {
+  /** A task whose run stopped, whose status moved, whose move changed its note, or whose running run waits with another text than the task carries. */
+  private async changed(task: Subtask, child: RunEntity): Promise<boolean> {
     const { state, reason } = storedState(child);
-    const status = taskStatusOf(task, child);
+    const move = await this.subtasks.moveOf(child);
+    const status = taskStatusOf(task, child, move);
     if (state === 'stopped' || status !== task.status) return true;
+    if (move) return moveNote(move) !== task.note;
     if (status !== 'running') return false;
     const carried = task.note?.startsWith(REBASED_PREFIX) ? undefined : task.note;
     return runWaitNote(task, { state, stateReason: reason }) !== carried;
