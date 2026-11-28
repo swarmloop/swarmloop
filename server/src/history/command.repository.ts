@@ -204,9 +204,14 @@ export class CommandRepository {
     return keys.filter((key): key is string => key !== null);
   }
 
-  /** Every command of a run, oldest first, whatever its state. */
+  /** Every command of a run, oldest first, then in the order they were stored, whatever its state. */
   listForRun(runId: number): Promise<CommandEntity[]> {
-    return this.commands.find({ where: { runId }, order: { createdAt: 'ASC' } });
+    return this.commands
+      .createQueryBuilder('command')
+      .where('command.runId = :runId', { runId })
+      .orderBy('command.createdAt', 'ASC')
+      .addOrderBy('command.rowid', 'ASC')
+      .getMany();
   }
 
   /** The ids among `runIds` that have a command other than a stop that is accepted or executing. One query. */
