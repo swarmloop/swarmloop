@@ -86,6 +86,7 @@ import { RedMainWait } from './backlog/red-main-wait';
 import { MainHeld } from './backlog/main-held';
 import { ServerStallWatch } from './server-stalls/server-stall-watch';
 import { BacklogScheduler } from './backlog/backlog-scheduler';
+import { OneActiveMilestone } from './backlog/one-active-milestone';
 import { BacklogStartPort } from './backlog/backlog-start-port';
 import { PlannerBacklogCalls } from './backlog/planner/planner-backlog-calls';
 import { PlannerRules } from './backlog/planner/planner-rules';
@@ -203,6 +204,7 @@ import { MergeRequestDrafts } from '../steps/merge-request/merge-request-draft';
     MainWaitWake,
     RedMainWait,
     MainHeld,
+    OneActiveMilestone,
     BacklogScheduler,
     ServerStallWatch,
     BacklogStartPort,
