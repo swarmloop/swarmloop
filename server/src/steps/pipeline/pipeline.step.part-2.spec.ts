@@ -1,7 +1,5 @@
 import 'reflect-metadata';
 
-import { mkdirSync } from 'fs';
-
 import { mkdtemp, writeFile } from 'fs/promises';
 
 import { tmpdir } from 'os';
@@ -155,7 +153,7 @@ describe('pipeline step', () => {
     }
   });
 
-  it('goes on green when the worktree has no workflow', async () => {
+  it('goes on with nothing started when no worktree of the run belongs to a project the step watches', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-none-'));
     const clock = fakeWait();
     const started = clock.now();
@@ -167,7 +165,7 @@ describe('pipeline step', () => {
       await seed(app, 'PROJ-307');
       const run = await app.get(RunRepository).findRun('PROJ-307');
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
-      gitRepo(join(root, 'worktrees', 'PROJ-307', 'demo'), 'https://gitlab.example/group/demo.git');
+      gitRepo(join(root, 'worktrees', 'PROJ-307', 'demo'), 'https://gitlab.example/group/other.git');
       await stampSettled(app, 'PROJ-307', ['demo']);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-307');
       expect(result.exitCode).toBe(0);
@@ -184,7 +182,7 @@ describe('pipeline step', () => {
     }
   });
 
-  it('waits for CI when a workflow exists and no run starts, whatever the host says of the request', async () => {
+  it('waits for CI when the host reports CI and no run starts, whatever the host says of the request', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-configured-'));
     const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
     const previousTick = process.env.TICK_MS;
@@ -210,9 +208,7 @@ describe('pipeline step', () => {
       host.diagnoseMissingPipeline = diagnose;
       await app.get(DocumentRepository).putDocument(run!, 'pipeline_log', 'result: fail\njob: old-test\n');
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
-      const workflow = join(root, 'worktrees', 'PROJ-311', 'demo', '.github', 'workflows');
-      mkdirSync(workflow, { recursive: true });
-      await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
+      gitRepo(join(root, 'worktrees', 'PROJ-311', 'demo'), 'git@gitlab.example:group/demo.git');
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-311');
       expect(result.message).toContain('CI has not started for');
       const after = await app.get(RunRepository).findRun('PROJ-311');
@@ -238,7 +234,7 @@ describe('pipeline step', () => {
     'routes back to code-review when the %s of the stamped gates is stale',
     async (stale) => {
       const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-stale-'));
-      const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
+      const read = jest.fn(() => Promise.resolve({ snapshot: shot('success', []), httpCalls: [call('GET')] }));
       const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n');
       try {
         const key = 'PROJ-330';
@@ -270,7 +266,7 @@ describe('pipeline step', () => {
 
   it("fails with git's text and stamps nothing when the probe of a stamped worktree fails", async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-probe-'));
-    const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
+    const read = jest.fn(() => Promise.resolve({ snapshot: shot('success', []), httpCalls: [call('GET')] }));
     const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n');
     jest.spyOn(delays, 'delay').mockResolvedValue(undefined);
     try {
@@ -320,9 +316,6 @@ describe('pipeline step', () => {
       const run = await app.get(RunRepository).findRun('PROJ-313');
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
       gitRepo(join(root, 'worktrees', 'PROJ-313', 'demo'), 'git@gitlab.example:group/demo.git');
-      const workflow = join(root, 'worktrees', 'PROJ-313', 'demo', '.github', 'workflows');
-      mkdirSync(workflow, { recursive: true });
-      await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
       await stampSettled(app, 'PROJ-313', ['demo']);
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-313');
       expect(result.exitCode).toBe(0);
@@ -389,11 +382,6 @@ describe('pipeline step', () => {
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\nweb\n');
       gitRepo(join(root, 'worktrees', 'PROJ-312', 'demo'), 'git@gitlab.example:group/demo.git');
       gitRepo(join(root, 'worktrees', 'PROJ-312', 'web'), 'git@gitlab.example:group/web.git');
-      for (const name of ['demo', 'web']) {
-        const workflow = join(root, 'worktrees', 'PROJ-312', name, '.github', 'workflows');
-        mkdirSync(workflow, { recursive: true });
-        await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
-      }
       const result = await app.get(PipelineService).step('pipeline', 'PROJ-312');
       expect(result.message).toContain('CI has not started for');
       const after = await app.get(RunRepository).findRun('PROJ-312');
@@ -461,9 +449,7 @@ describe('pipeline step', () => {
         await seed(app, 'PROJ-316');
         const run = await app.get(RunRepository).findRun('PROJ-316');
         await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
-        const workflow = join(root, 'worktrees', 'PROJ-316', 'demo', '.github', 'workflows');
-        mkdirSync(workflow, { recursive: true });
-        await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
+        gitRepo(join(root, 'worktrees', 'PROJ-316', 'demo'), 'git@gitlab.example:group/demo.git');
         const result = await app.get(PipelineService).step('pipeline', 'PROJ-316');
         expect(result.message).toContain('CI has not started for');
         // The suspended gap includes the first poll interval; the full start window follows it.

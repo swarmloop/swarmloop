@@ -161,8 +161,6 @@ export interface CodeHost {
   readonly name: string;
   /** The display name of the host. */
   readonly label: string;
-  /** The CI config paths the host recognizes. */
-  readonly ciFiles: readonly string[];
   /** The line of a git error that explains a refused push, when there is one. */
   pushRejection(lines: string[]): string | undefined;
   /** The provider label of a call to this host's API, or null for any other url. */
@@ -215,14 +213,23 @@ export interface CodeHost {
   closeMergeRequest(project: string, iid: number): Promise<{ httpCalls: HttpCallDraft[] }>;
   /** Deletes a branch on origin. A branch that is already gone is not an error. */
   deleteBranch(project: string, branch: string): Promise<{ httpCalls: HttpCallDraft[] }>;
-  /** The pipeline of a branch, or of one commit of it. A host that refuses to read pipelines (HTTP 403) rejects with a PipelinesRefused. */
+  /**
+   * Whether the project has CI, by its host's own API. A host that cannot answer (no access, an outage) rejects with its
+   * outage wait that names the project and the access the token lacks, never a guess.
+   */
+  ciEnabled(project: string): Promise<boolean>;
+  /**
+   * The pipeline of a branch, or of one commit of it. A host that refuses to show the project's CI (HTTP 403 that no
+   * rate limit gave, or 404) rejects with the CI-access wait.
+   */
   readBranchPipeline(
     ref: PipelineRef,
     jobs?: boolean,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }>;
   /**
    * Whether the branch has a pipeline, a check or a status on any of its commits. It answers for a branch whose tip has
-   * none yet. A host that refuses to read pipelines (HTTP 403) rejects with a PipelinesRefused.
+   * none yet: it tells a branch whose CI has not started from one where CI never runs. A host that refuses to show the
+   * project's CI rejects with the CI-access wait.
    */
   readBranchHasPipeline(ref: PipelineRef): Promise<{ found: boolean; httpCalls: HttpCallDraft[] }>;
   diagnoseMissingPipeline(ref: PipelineRef): Promise<PipelineDiagnosis>;

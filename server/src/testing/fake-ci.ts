@@ -19,33 +19,45 @@ export class FakeCi {
   private readBranch: string | undefined;
   private readCount = 0;
   private noted = '';
+  private scripted = false;
+
+  /** Whether the host reports CI for the project: true once the spec scripted any CI. */
+  get isEnabled(): boolean {
+    return this.scripted;
+  }
 
   pass(sha: string): void {
+    this.scripted = true;
     this.scripts.set(sha, { kind: 'pass' });
   }
 
   /** The `test` job of the commit fails with `jobLog` as its log. */
   fail(sha: string, jobLog: string): void {
+    this.scripted = true;
     this.scripts.set(sha, { kind: 'fail', log: jobLog });
   }
 
   /** The `test` job of every commit of the branch fails with `jobLog` as its log, whatever the commit, until a sha is scripted. */
   failBranch(branch: string, jobLog: string): void {
+    this.scripted = true;
     this.branchScripts.set(branch, { kind: 'fail', log: jobLog });
   }
 
   /** A commit with no script of its own fails with `jobLog` until `present` says it has what the log asks for, and passes after. */
   failUntil(jobLog: string, present: (sha: string) => boolean): void {
+    this.scripted = true;
     this.until = { log: jobLog, present };
   }
 
   /** A commit with no script of its own gets no run, and so no pipeline, unless `present` says it holds what a run needs; then it passes. */
   runsWhen(present: (sha: string) => boolean): void {
+    this.scripted = true;
     this.runs = present;
   }
 
   /** No run starts for the commit, until the host is nudged when `startsOnNudge` is set; then the commit passes. */
   silent(sha: string, startsOnNudge = false): void {
+    this.scripted = true;
     this.scripts.set(sha, { kind: 'silent', startsOnNudge });
   }
 
@@ -57,11 +69,13 @@ export class FakeCi {
 
   /** The host accepted a run for the commit and never starts a job. */
   queued(sha: string): void {
+    this.scripted = true;
     this.scripts.set(sha, { kind: 'queued' });
   }
 
   /** The run of the commit ends with its `test` job timed out, again after every rerun. */
   timedOut(sha: string): void {
+    this.scripted = true;
     this.scripts.set(sha, { kind: 'timed-out' });
   }
 

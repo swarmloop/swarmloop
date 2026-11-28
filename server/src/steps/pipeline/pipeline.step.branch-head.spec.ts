@@ -1,6 +1,5 @@
 import 'reflect-metadata';
-import { mkdirSync } from 'fs';
-import { mkdtemp, writeFile } from 'fs/promises';
+import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { RunRepository } from '../../history/run.repository';
@@ -8,7 +7,7 @@ import { storedState } from '../../history/run-state';
 import { DocumentRepository } from '../../history/document.repository';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import type { PipelineRef } from '../../integrations/code-host/code-host';
-import { shot, job, call, boot, fakeWait, seed, restore } from './pipeline.step.spec-helpers';
+import { shot, job, call, boot, fakeWait, seed, restore, gitRepo } from './pipeline.step.spec-helpers';
 
 const recorded = (sha: string): string => `project: group/demo\nref: feature/PROJ-300-ship\nsha: ${sha}\n`;
 
@@ -68,9 +67,7 @@ describe('pipeline step on a branch whose head moved', () => {
       await seed(app, 'PROJ-321', recorded('old'));
       const run = await app.get(RunRepository).findRun('PROJ-321');
       await app.get(DocumentRepository).putDocument(run!, 'repos', 'demo\n');
-      const workflow = join(root, 'worktrees', 'PROJ-321', 'demo', '.github', 'workflows');
-      mkdirSync(workflow, { recursive: true });
-      await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
+      gitRepo(join(root, 'worktrees', 'PROJ-321', 'demo'), 'git@gitlab.example:group/demo.git');
       await app.get(PipelineService).step('pipeline', 'PROJ-321');
       const after = await app.get(RunRepository).findRun('PROJ-321');
       expect(after?.status).toBe('waiting');

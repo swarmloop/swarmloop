@@ -1,9 +1,7 @@
-/** What the core knows of a host without an instance: its name, CI files and how it words a refused push. */
+/** What the core knows of a host without an instance: its name and how it words a refused push. */
 export interface CodeHostRules {
   readonly name: string;
   readonly label: string;
-  /** CI config paths. A last segment of `*<ending>` matches any file of that folder with the ending. */
-  readonly ciFiles: readonly string[];
   /** Paths of the repository's merge request template, in the order the host reads them. */
   readonly mergeRequestTemplates: readonly string[];
   /** The line of a git error that explains a refused push. */

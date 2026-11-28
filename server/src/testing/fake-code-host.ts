@@ -337,6 +337,11 @@ export class FakeCodeHost {
     return Promise.resolve({ snapshot: this.ci.snapshot(ref.sha, ref.ref), httpCalls: [] });
   }
 
+  ciEnabled(): Promise<boolean> {
+    this.guard();
+    return Promise.resolve(this.ci.isEnabled);
+  }
+
   readBranchHasPipeline(ref: { ref?: string }): Answer<'readBranchHasPipeline'> {
     this.guard();
     return Promise.resolve({ found: this.ci.snapshot(undefined, ref.ref) !== null, httpCalls: [] });

@@ -1,5 +1,5 @@
 import { instantBackoff } from '../../instant-backoff.spec-helpers';
-import { FetchFailed, MergeConflict } from '../../../core/swarmloop-error';
+import { FetchFailed, isHostOutage, MergeConflict, type HostUnavailable } from '../../../core/swarmloop-error';
 import { TOKEN, mockFetch, opened, service } from './gitlab-code-host.spec-helpers';
 
 describe('gitlab host', () => {
@@ -526,5 +526,86 @@ describe('gitlab host', () => {
       mockFetch([{ message: '404 Branch Not Found' }], 404);
       await expect(service().deleteBranch('group/demo', 'feature/PROJ-1-ship')).resolves.toBeDefined();
     });
+  });
+});
+
+describe('gitlab host ciEnabled', () => {
+  const original = global.fetch;
+  const PROJECT = 'https://gitlab.example/api/v4/projects/group%2Fdemo';
+  const project = (fields: object = {}): object => ({
+    builds_access_level: 'enabled',
+    default_branch: 'main',
+    ci_config_path: '',
+    ...fields,
+  });
+
+  beforeEach(() => {
+    instantBackoff();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    global.fetch = original;
+  });
+
+  it('is true when CI is on and the default branch has the configuration file', async () => {
+    const seen = mockFetch([project(), { file_name: '.gitlab-ci.yml' }]);
+    await expect(service().ciEnabled('group/demo')).resolves.toBe(true);
+    expect(seen.map((call) => call.url)).toEqual([PROJECT, `${PROJECT}/repository/files/.gitlab-ci.yml?ref=main`]);
+  });
+
+  it('reads the configuration file the project names', async () => {
+    const seen = mockFetch([project({ ci_config_path: 'ci/build.yml' }), {}]);
+    await service().ciEnabled('group/demo');
+    expect(seen[1]?.url).toBe(`${PROJECT}/repository/files/ci%2Fbuild.yml?ref=main`);
+  });
+
+  it('is false when the project turned its builds off, and reads no file', async () => {
+    const seen = mockFetch([project({ builds_access_level: 'disabled' })]);
+    await expect(service().ciEnabled('group/demo')).resolves.toBe(false);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('is false for a project with its builds off even when it has no default branch yet', async () => {
+    mockFetch([{ builds_access_level: 'disabled', default_branch: null }]);
+    await expect(service().ciEnabled('group/demo')).resolves.toBe(false);
+  });
+
+  it('is false when the default branch has no configuration file', async () => {
+    mockFetch([project(), { message: '404 File Not Found' }], [200, 404]);
+    await expect(service().ciEnabled('group/demo')).resolves.toBe(false);
+  });
+
+  it.each(['.gitlab-ci.yml@other/group', 'https://ci.example/config.yml'])(
+    'is true for a configuration held outside the repository (%s)',
+    async (path) => {
+      const seen = mockFetch([project({ ci_config_path: path })]);
+      await expect(service().ciEnabled('group/demo')).resolves.toBe(true);
+      expect(seen).toHaveLength(1);
+    },
+  );
+
+  it('waits for the access on a 403 of the project, naming the project and the access', async () => {
+    mockFetch([{ message: '403 Forbidden' }], 403);
+    const refused = await service()
+      .ciEnabled('group/demo')
+      .catch((error: unknown) => error);
+    expect(isHostOutage(refused)).toBe(true);
+    expect((refused as HostUnavailable).detail).toContain('group/demo');
+    expect((refused as HostUnavailable).detail).toContain('read_api');
+  });
+
+  it('waits for the access on a 403 of the configuration file', async () => {
+    mockFetch([project(), {}], [200, 403]);
+    await expect(service().ciEnabled('group/demo')).rejects.toMatchObject({ code: 'HOST_UNAVAILABLE' });
+  });
+
+  it('waits for the access when the project answer has no builds_access_level', async () => {
+    mockFetch([{ default_branch: 'main' }]);
+    const refused = await service()
+      .ciEnabled('group/demo')
+      .catch((error: unknown) => error);
+    expect(isHostOutage(refused)).toBe(true);
+    expect((refused as HostUnavailable).detail).toContain('builds_access_level');
   });
 });

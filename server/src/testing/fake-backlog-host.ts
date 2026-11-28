@@ -1,4 +1,4 @@
-import { FetchFailed, HostUnavailable, MergeConflict, PipelinesRefused, SwarmloopError } from '../core/swarmloop-error';
+import { FetchFailed, HostUnavailable, MergeConflict, SwarmloopError } from '../core/swarmloop-error';
 import type {
   CodeHost,
   MergeGate,
@@ -17,6 +17,9 @@ import type { HttpCallDraft } from '../core/swarmloop-error';
 
 const DOMAIN = 'backlog.example';
 
+/** The next try a refused CI read names unless a spec says otherwise. */
+const CI_RETRY_AT = '2030-01-01T00:00:00.000Z';
+
 /** The methods a repository allows unless a spec says otherwise. */
 const DEFAULT_METHODS: readonly MergeMethod[] = ['squash', 'rebase', 'merge'];
 
@@ -26,8 +29,10 @@ interface FakeProject {
   /** The pipeline per commit: a commit with none has no entry. */
   pipelines: Map<string, PipelineSnapshot>;
   merges: number;
-  /** Whether the host refuses to read the project's pipelines. */
-  refusesPipelines: boolean;
+  /** What the host answers to `ciEnabled`. */
+  ciEnabled: boolean;
+  /** The next try of the wait a refused CI read ends in, or null when the host shows the project's CI. */
+  ciRefusedUntil: string | null;
   methods: readonly MergeMethod[];
   /** How each merge of the project was made. */
   merged: MergeHow[];
@@ -58,7 +63,6 @@ export function pipelineOf(status: string, checks: PipelineCheck[] = [], url = '
 export class FakeBacklogHost implements CodeHost {
   readonly name = 'backlog-fake';
   readonly label = 'Backlog fake';
-  readonly ciFiles: readonly string[] = [];
   /** Every call that reached the host, in order. */
   readonly calls: FakeBacklogCall[] = [];
   private readonly projects = new Map<string, FakeProject>();
@@ -77,7 +81,8 @@ export class FakeBacklogHost implements CodeHost {
       head,
       pipelines: new Map(),
       merges: 0,
-      refusesPipelines: false,
+      ciEnabled: true,
+      ciRefusedUntil: null,
       methods: DEFAULT_METHODS,
       merged: [],
     });
@@ -104,9 +109,14 @@ export class FakeBacklogHost implements CodeHost {
     else found.pipelines.delete(found.head);
   }
 
-  /** Every read of the project's pipelines throws `PipelinesRefused`, as a host with CI turned off does. */
-  refusePipelines(project: string, refuse = true): void {
-    this.project(project).refusesPipelines = refuse;
+  /** Whether the host reports CI for the project; a project has it unless a spec says otherwise. */
+  setCiEnabled(project: string, enabled: boolean): void {
+    this.project(project).ciEnabled = enabled;
+  }
+
+  /** The host does not show the project's CI: `ciEnabled` rejects with the wait for the token's access, next try at `retryAt`. */
+  refuseCi(project: string, retryAt: string | null = CI_RETRY_AT): void {
+    this.project(project).ciRefusedUntil = retryAt;
   }
 
   headOf(project: string): string {
@@ -160,12 +170,24 @@ export class FakeBacklogHost implements CodeHost {
     return { sha: ref.sha ?? '', httpCalls: [] };
   }
 
+  async ciEnabled(project: string): Promise<boolean> {
+    await this.record('ciEnabled', project);
+    const found = this.project(project);
+    if (found.ciRefusedUntil !== null) {
+      throw new HostUnavailable(
+        this.name,
+        `HTTP 403: the token may not read the CI of ${project} (needs CI read access)`,
+        found.ciRefusedUntil,
+      );
+    }
+    return found.ciEnabled;
+  }
+
   async readBranchPipeline(
     ref: PipelineRef,
   ): Promise<{ snapshot: PipelineSnapshot | null; httpCalls: HttpCallDraft[] }> {
     await this.record('readBranchPipeline', ref);
     const project = this.project(ref.project);
-    if (project.refusesPipelines) throw new PipelinesRefused();
     const request = [...this.requests.entries()].find(
       ([key, found]) => key.startsWith(`${ref.project}#`) && found.gate.head === ref.sha,
     )?.[1];
@@ -179,7 +201,6 @@ export class FakeBacklogHost implements CodeHost {
   async readBranchHasPipeline(ref: PipelineRef): Promise<{ found: boolean; httpCalls: HttpCallDraft[] }> {
     await this.record('readBranchHasPipeline', ref);
     const project = this.project(ref.project);
-    if (project.refusesPipelines) throw new PipelinesRefused();
     const found = [...project.pipelines.values()].some((one) => one.runs.length > 0 || one.checks.length > 0);
     return { found, httpCalls: [] };
   }

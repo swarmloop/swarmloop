@@ -3,7 +3,6 @@ import { remotePushRejection, type CodeHostRules } from '../host-rules';
 export const githubRules = {
   name: 'github' as const,
   label: 'GitHub',
-  ciFiles: ['.github/workflows/*.yml', '.github/workflows/*.yaml'],
   mergeRequestTemplates: [
     '.github/pull_request_template.md',
     '.github/PULL_REQUEST_TEMPLATE.md',

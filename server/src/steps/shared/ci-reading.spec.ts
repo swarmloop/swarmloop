@@ -1,9 +1,8 @@
-import { PipelinesRefused } from '../../core/swarmloop-error';
+import { HostUnavailable } from '../../core/swarmloop-error';
 import type { CodeHost, PipelineCheck, PipelineRef, PipelineSnapshot } from '../../integrations/code-host/code-host';
-import { ciState, noCi, readCi } from './ci-reading';
+import { ciState, projectHasCi, readCi } from './ci-reading';
 
 const ref: PipelineRef = { project: 'group/app', ref: 'feature/x', sha: 'head1' };
-const REFUSED = 'the code host refuses to read pipelines (HTTP 403)';
 
 function snapshot(status: PipelineCheck['status'], withCheck: boolean): PipelineSnapshot {
   const checks = withCheck
@@ -12,33 +11,39 @@ function snapshot(status: PipelineCheck['status'], withCheck: boolean): Pipeline
   return { id: 1, status, url: '', jobs: [], runs: [], checks, awaiting: [] };
 }
 
-/** A host that answers by ref: `pipelines` gives the snapshot of a ref's commit, `ever` whether its branch ever had one. */
-function stubHost(
-  answers: { pipelines?: Record<string, PipelineSnapshot | null | 'refused'>; ever?: boolean | 'refused' } = {},
-): CodeHost {
+/** A host with scripted answers. A pipeline read on a host with CI off fails, as the rule must never ask it. */
+function stubHost(answers: { ci?: boolean; pipeline?: PipelineSnapshot | null; ever?: boolean } = {}): CodeHost {
   return {
-    readDefaultHead: () => Promise.resolve({ branch: 'main', sha: 'main1', httpCalls: [] }),
-    readBranchPipeline: (read: PipelineRef) => {
-      const answer = answers.pipelines?.[read.sha ?? ''] ?? null;
-      return answer === 'refused'
-        ? Promise.reject(new PipelinesRefused())
-        : Promise.resolve({ snapshot: answer, httpCalls: [] });
-    },
-    readBranchHasPipeline: () =>
-      answers.ever === 'refused'
-        ? Promise.reject(new PipelinesRefused())
-        : Promise.resolve({ found: answers.ever ?? false, httpCalls: [] }),
+    ciEnabled: () => Promise.resolve(answers.ci ?? true),
+    readBranchPipeline: () =>
+      answers.ci === false
+        ? Promise.reject(new Error('a pipeline of a project without CI was read'))
+        : Promise.resolve({ snapshot: answers.pipeline ?? null, httpCalls: [] }),
+    readBranchHasPipeline: () => Promise.resolve({ found: answers.ever ?? false, httpCalls: [] }),
   } as unknown as CodeHost;
 }
 
-describe('readCi', () => {
-  it('turns a refusal of the host into a reading', async () => {
-    const host = stubHost({ pipelines: { head1: 'refused' } });
-
-    await expect(readCi(host, ref)).resolves.toMatchObject({ snapshot: null, refused: true });
+describe('projectHasCi', () => {
+  it.each([true, false])('is the answer of the host: %s', async (answer) => {
+    await expect(projectHasCi(stubHost({ ci: answer }), 'group/app')).resolves.toBe(answer);
   });
 
-  it('lets another failure through', async () => {
+  it('passes the wait of a host that cannot answer on', async () => {
+    const outage = new HostUnavailable('gitlab.example', 'HTTP 403', '2030-01-01T00:00:00.000Z');
+    const host = { ciEnabled: () => Promise.reject(outage) } as unknown as CodeHost;
+
+    await expect(projectHasCi(host, 'group/app')).rejects.toBe(outage);
+  });
+});
+
+describe('readCi', () => {
+  it('gives the snapshot of the ref and the calls of the read', async () => {
+    const host = stubHost({ pipeline: snapshot('success', true) });
+
+    await expect(readCi(host, ref)).resolves.toMatchObject({ snapshot: { status: 'success' }, httpCalls: [] });
+  });
+
+  it('lets a failure of the read through', async () => {
     const host = { readBranchPipeline: () => Promise.reject(new Error('boom')) } as unknown as CodeHost;
 
     await expect(readCi(host, ref)).rejects.toThrow('boom');
@@ -46,60 +51,33 @@ describe('readCi', () => {
 });
 
 describe('ciState', () => {
-  it('reads none with the cause of a refusal', async () => {
-    const host = stubHost({ pipelines: { head1: 'refused' } });
-
-    await expect(ciState(host, ref, await readCi(host, ref))).resolves.toMatchObject({ state: 'none', cause: REFUSED });
+  it('reads none for a project whose host reports no CI, without reading a pipeline', async () => {
+    await expect(ciState(stubHost({ ci: false }), ref)).resolves.toMatchObject({ state: 'none', snapshot: null });
   });
 
-  it('reads the state of a head that has a check', async () => {
-    const host = stubHost({ pipelines: { head1: snapshot('success', true) } });
+  it.each([
+    ['success', 'green'],
+    ['failed', 'red'],
+    ['canceled', 'red'],
+    ['running', 'pending'],
+  ] as const)('reads %s of a head that has a check as %s', async (status, state) => {
+    const host = stubHost({ pipeline: snapshot(status, true) });
 
-    await expect(ciState(host, ref, await readCi(host, ref))).resolves.toMatchObject({ state: 'green', cause: null });
+    await expect(ciState(host, ref)).resolves.toMatchObject({ state, snapshot: { status } });
   });
 
   it('reads pending for a head with no pipeline on a branch that had one', async () => {
-    const host = stubHost({ ever: true });
-
-    await expect(ciState(host, ref, await readCi(host, ref))).resolves.toMatchObject({ state: 'pending' });
+    await expect(ciState(stubHost({ ever: true }), ref)).resolves.toMatchObject({ state: 'pending' });
   });
 
-  it('reads none for a branch that never had a pipeline', async () => {
-    const host = stubHost();
-
-    await expect(ciState(host, ref, await readCi(host, ref))).resolves.toMatchObject({ state: 'none', cause: null });
+  it('reads none for a head with no pipeline on a branch that never had one (CI only for merge requests)', async () => {
+    await expect(ciState(stubHost(), ref)).resolves.toMatchObject({ state: 'none' });
   });
 
-  it('reads none with the cause of a refusal to read the whole branch', async () => {
-    const host = stubHost({ ever: 'refused' });
+  it('passes the wait of a host that cannot answer on', async () => {
+    const outage = new HostUnavailable('gitlab.example', 'HTTP 403', '2030-01-01T00:00:00.000Z');
+    const host = { ciEnabled: () => Promise.reject(outage) } as unknown as CodeHost;
 
-    await expect(ciState(host, ref, await readCi(host, ref))).resolves.toMatchObject({ state: 'none', cause: REFUSED });
-  });
-});
-
-describe('noCi', () => {
-  it('is null when the head has a check, though main has none', async () => {
-    const host = stubHost({ pipelines: { head1: snapshot('running', true) } });
-
-    await expect(noCi(host, ref)).resolves.toMatchObject({ cause: null });
-  });
-
-  it('is null when main has CI, though the head shows none yet', async () => {
-    const host = stubHost({ pipelines: { main1: snapshot('success', true) } });
-
-    await expect(noCi(host, ref)).resolves.toMatchObject({ cause: null });
-  });
-
-  it('gives the cause of a refusal when the host refuses every read', async () => {
-    const host = stubHost({ pipelines: { head1: 'refused', main1: 'refused' } });
-
-    await expect(noCi(host, ref)).resolves.toMatchObject({ cause: REFUSED, refused: true });
-  });
-
-  it('gives a cause when neither main nor the head ever had a pipeline', async () => {
-    const { cause, refused } = await noCi(stubHost(), ref);
-
-    expect(cause).toContain('no pipeline was ever run');
-    expect(refused).toBe(false);
+    await expect(ciState(host, ref)).rejects.toBe(outage);
   });
 });

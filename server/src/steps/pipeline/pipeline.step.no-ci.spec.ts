@@ -1,12 +1,11 @@
 import 'reflect-metadata';
 
-import { mkdirSync } from 'fs';
-import { mkdtemp, writeFile } from 'fs/promises';
+import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
 import { RunStop } from '../../agent/run-stop';
-import { PipelinesRefused } from '../../core/swarmloop-error';
+import { HostUnavailable } from '../../core/swarmloop-error';
 import { DocumentRepository } from '../../history/document.repository';
 import { RunRepository } from '../../history/run.repository';
 import type { PipelineRef } from '../../integrations/code-host/code-host';
@@ -26,11 +25,12 @@ import {
 } from './pipeline.step.spec-helpers';
 
 const KEY = 'PROJ-330';
-const REFUSED = 'the code host refuses to read pipelines (HTTP 403)';
-const refuse = () => Promise.reject(new PipelinesRefused([call('GET')]));
 /** A host whose branches never had a pipeline: nothing on any commit, nothing on the whole branch. */
 const nothing = () => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] });
 const never = jest.fn(() => Promise.resolve({ found: false, httpCalls: [] }));
+/** A host that reports no CI for any project. */
+const off = () => jest.fn(() => Promise.resolve(false));
+const RETRY_AT = '2026-11-12T15:00:00.000Z';
 
 type App = Awaited<ReturnType<typeof boot>>;
 
@@ -45,13 +45,6 @@ async function settledRun(app: App, root: string, draft: boolean, body = one): P
   await app
     .get(DocumentRepository)
     .putDocument(run!, 'merge_request', renderMergeRequest([{ ...record, summary: 'x' }]));
-}
-
-/** A workflow file in the run's worktree, so its tree has CI. */
-async function withCiFile(root: string): Promise<void> {
-  const workflow = join(root, 'worktrees', KEY, 'demo', '.github', 'workflows');
-  mkdirSync(workflow, { recursive: true });
-  await writeFile(join(workflow, 'test.yml'), 'name: Test\non: push\n');
 }
 
 function setDraft() {
@@ -100,9 +93,6 @@ describe('pipeline step and projects with no CI', () => {
       { readBranchHasPipeline: never },
     );
     try {
-      const workflow = join(root, 'worktrees', KEY, 'demo', '.github', 'workflows');
-      mkdirSync(workflow, { recursive: true });
-      await writeFile(join(workflow, 'test.yml'), 'name: Test\non: pull_request\n');
       await settledRun(app, root, false);
       const result = await app.get(PipelineService).step('pipeline', KEY);
       expect(result.exitCode).toBe(0);
@@ -112,18 +102,20 @@ describe('pipeline step and projects with no CI', () => {
     }
   });
 
-  it('ends skipped with the cause and marks the merge request ready when the host refuses every pipeline read', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-refused-'));
+  it('ends skipped, reads no pipeline and marks the merge request ready when the host reports no CI', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-off-'));
     const host = setDraft();
-    const app = await boot(root, jest.fn(refuse), jest.fn(), undefined, undefined, undefined, {
-      readBranchHasPipeline: jest.fn(refuse),
+    const read = jest.fn(nothing);
+    const app = await boot(root, read, jest.fn(), undefined, undefined, undefined, {
+      ciEnabled: off(),
       setDraft: host.mock,
     });
     try {
       await settledRun(app, root, true);
       const result = await app.get(PipelineService).step('pipeline', KEY);
       expect(result.exitCode).toBe(0);
-      expect(result.message).toContain(`CI skipped: no CI on group/demo (${REFUSED})`);
+      expect(result.message).toContain('CI skipped: no CI on group/demo');
+      expect(read).not.toHaveBeenCalled();
       expect(host.drafts.get('group/demo!1')).toBe(false);
       expect(await app.get(DocumentRepository).latestBody(KEY, 'merge_request')).toContain('draft: false');
       expect((await app.get(RunRepository).findRun(KEY))?.status).toBe('done');
@@ -132,54 +124,23 @@ describe('pipeline step and projects with no CI', () => {
     }
   });
 
-  it('ends skipped, without the CI wait, for a refused project whose tree has a CI file', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-refused-file-'));
+  it('ends skipped without the CI wait when the host reports no CI, though no pipeline ever showed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-off-fast-'));
     const clock = fakeWait();
     const started = clock.now();
     const app = await boot(
       root,
-      jest.fn(refuse),
+      jest.fn(nothing),
       jest.fn(),
       'TICK_MS=1\nPIPELINE_START_TIMEOUT_MS=50\nPIPELINE_TIMEOUT_MS=1500\n',
       undefined,
       clock,
-      { readBranchHasPipeline: jest.fn(refuse) },
+      { ciEnabled: off() },
     );
     try {
-      await withCiFile(root);
       await settledRun(app, root, false);
       const result = await app.get(PipelineService).step('pipeline', KEY);
-      expect(result.exitCode).toBe(0);
-      expect(result.message).toContain(`CI skipped: no CI on group/demo (${REFUSED})`);
-      expect(clock.now()).toBe(started);
-      expect((await app.get(RunRepository).findRun(KEY))?.status).toBe('done');
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('marks the draft ready and ends skipped on the first pass for a refused project whose tree has a CI file', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-refused-draft-'));
-    const clock = fakeWait();
-    const started = clock.now();
-    const host = setDraft();
-    const app = await boot(
-      root,
-      jest.fn(refuse),
-      jest.fn(),
-      'TICK_MS=1\nPIPELINE_START_TIMEOUT_MS=50\nPIPELINE_TIMEOUT_MS=1500\n',
-      undefined,
-      clock,
-      { readBranchHasPipeline: jest.fn(refuse), setDraft: host.mock },
-    );
-    try {
-      await withCiFile(root);
-      await settledRun(app, root, true);
-      const result = await app.get(PipelineService).step('pipeline', KEY);
-      expect(result.exitCode).toBe(0);
-      expect(result.message).toContain(`CI skipped: no CI on group/demo (${REFUSED})`);
-      expect(host.drafts.get('group/demo!1')).toBe(false);
-      expect(await app.get(DocumentRepository).latestBody(KEY, 'merge_request')).toContain('draft: false');
+      expect(result.message).toContain('CI skipped: no CI on group/demo');
       expect(clock.now()).toBe(started);
     } finally {
       await app.close();
@@ -189,8 +150,8 @@ describe('pipeline step and projects with no CI', () => {
   it('does not mark a draft ready for a run with no CI that was asked to stop', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-no-ci-stop-'));
     const host = setDraft();
-    const app = await boot(root, jest.fn(refuse), jest.fn(), undefined, undefined, undefined, {
-      readBranchHasPipeline: jest.fn(refuse),
+    const app = await boot(root, jest.fn(nothing), jest.fn(), undefined, undefined, undefined, {
+      ciEnabled: off(),
       setDraft: host.mock,
     });
     try {
@@ -206,9 +167,7 @@ describe('pipeline step and projects with no CI', () => {
 
   it('goes back to code-review, not skipped, when the stamped gates of a run with no CI are stale', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-no-ci-stale-'));
-    const app = await boot(root, jest.fn(nothing), jest.fn(), undefined, undefined, undefined, {
-      readBranchHasPipeline: never,
-    });
+    const app = await boot(root, jest.fn(nothing), jest.fn(), undefined, undefined, undefined, { ciEnabled: off() });
     try {
       await settledRun(app, root, false);
       await app.get(RunRepository).bumpGeneration(KEY);
@@ -221,23 +180,6 @@ describe('pipeline step and projects with no CI', () => {
     }
   });
 
-  it('ends skipped when no pipeline exists on main, on the head or on the branch', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-nothing-'));
-    const app = await boot(root, jest.fn(nothing), jest.fn(), undefined, undefined, undefined, {
-      readBranchHasPipeline: never,
-    });
-    try {
-      await settledRun(app, root, false);
-      const result = await app.get(PipelineService).step('pipeline', KEY);
-      expect(result.exitCode).toBe(0);
-      expect(result.message).toContain('CI skipped: no CI on group/demo');
-      expect(result.message).toContain('no pipeline was ever run');
-      expect((await app.get(RunRepository).findRun(KEY))?.status).toBe('done');
-    } finally {
-      await app.close();
-    }
-  });
-
   it('passes a run whose other project has CI and names the project with none in the log', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-mixed-'));
     const read = jest.fn((ref: PipelineRef) =>
@@ -245,7 +187,8 @@ describe('pipeline step and projects with no CI', () => {
         ? Promise.resolve({ snapshot: shot('success', []), httpCalls: [call('GET')] })
         : nothing(),
     );
-    const app = await boot(root, read, jest.fn(), undefined, undefined, undefined, { readBranchHasPipeline: never });
+    const ciEnabled = jest.fn((project: string) => Promise.resolve(project === 'group/demo'));
+    const app = await boot(root, read, jest.fn(), undefined, undefined, undefined, { ciEnabled });
     try {
       await seed(app, KEY, two);
       const result = await app.get(PipelineService).step('pipeline', KEY);
@@ -254,17 +197,18 @@ describe('pipeline step and projects with no CI', () => {
       expect(log).toContain('result: pass');
       expect(log).toContain('project: group/demo');
       expect(log).not.toContain('project: group/web');
-      expect(log).toContain('no CI: group/web (no pipeline was ever run');
+      expect(log).toContain('no CI: group/web');
+      expect(read.mock.calls.map(([ref]) => ref.project)).not.toContain('group/web');
     } finally {
       await app.close();
     }
   });
 
-  it('ends a run recorded with three refused projects skipped, with its merge request ready', async () => {
+  it('ends a run recorded with three projects the host reports no CI for skipped, with its merge request ready', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-bootstrap-'));
     const host = setDraft();
-    const app = await boot(root, jest.fn(refuse), jest.fn(), undefined, undefined, undefined, {
-      readBranchHasPipeline: jest.fn(refuse),
+    const app = await boot(root, jest.fn(nothing), jest.fn(), undefined, undefined, undefined, {
+      ciEnabled: off(),
       setDraft: host.mock,
     });
     const three = `${two}\nproject: group/fork\nref: feature/PROJ-300-ship\n`;
@@ -272,9 +216,29 @@ describe('pipeline step and projects with no CI', () => {
       await settledRun(app, root, true, three);
       const result = await app.get(PipelineService).step('pipeline', KEY);
       expect(result.exitCode).toBe(0);
-      expect(result.message).toContain(`no CI on group/demo (${REFUSED})`);
+      expect(result.message).toContain('no CI on group/demo');
       expect(result.message).toContain('no CI on group/fork');
       expect(host.drafts.get('group/demo!1')).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('waits with the outage, naming the project and the access, when the host cannot say whether it has CI', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-ci-access-'));
+    const read = jest.fn(nothing);
+    const detail = 'HTTP 403: the token may not read the CI of group/demo (needs read_api scope)';
+    const ciEnabled = jest.fn(() => Promise.reject(new HostUnavailable('gitlab.example', detail, RETRY_AT)));
+    const app = await boot(root, read, jest.fn(), undefined, undefined, undefined, { ciEnabled });
+    try {
+      await settledRun(app, root, false);
+      await app.get(PipelineService).step('pipeline', KEY);
+      const run = await app.get(RunRepository).findRun(KEY);
+      expect(run?.status).toBe('waiting');
+      expect(JSON.parse(run?.stateReason ?? '{}')).toMatchObject({ code: 'HOST_UNAVAILABLE', retryAt: RETRY_AT });
+      expect(run?.stateReason).toContain('group/demo');
+      expect(run?.stateReason).toContain('read_api scope');
+      expect(read).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }

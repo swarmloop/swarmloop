@@ -114,10 +114,9 @@ describe('pipeline step and draft merge requests', () => {
     }
   });
 
-  it('leaves a merge request that is already ready alone when nothing started', async () => {
+  it('leaves a merge request that is already ready alone when CI does not start, and waits for CI to start', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-pipe-draft-ready-'));
     const clock = fakeWait();
-    const started = clock.now();
     const host = fakeHost();
     const read = jest.fn(() => Promise.resolve({ snapshot: null, httpCalls: [call('GET')] }));
     const app = await boot(root, read, jest.fn(), 'TICK_MS=1\nPIPELINE_TIMEOUT_MS=30\n', undefined, clock, {
@@ -133,9 +132,8 @@ describe('pipeline step and draft merge requests', () => {
       const result = await app.get(PipelineService).step('pipeline', KEY);
       expect(result.exitCode).toBe(0);
       expect(host.setDraft).not.toHaveBeenCalled();
-      expect(clock.now()).toBe(started);
-      expect(await app.get(DocumentRepository).latestBody(KEY, 'pipeline_log')).toContain('result: none');
-      expect((await app.get(RunRepository).findRun(KEY))?.status).toBe('done');
+      expect(result.message).toContain('CI has not started for');
+      expect((await app.get(RunRepository).findRun(KEY))?.status).toBe('waiting');
     } finally {
       await app.close();
     }

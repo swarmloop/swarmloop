@@ -2,7 +2,7 @@
 export interface RepositoryMainView {
   repository: string;
   branch: string;
-  /** 'none' is no CI: the branch has no pipeline or check at all, or the host refuses to read its pipelines. */
+  /** 'none' is no CI to wait for: the code host reports no CI for the project, or its CI never ran on this branch. */
   state: 'green' | 'pending' | 'red' | 'none';
   head: string | null;
   failingJobs: string[];

@@ -81,32 +81,46 @@ describe('RepositoryHost', () => {
     expect((await host.main('web', 'ada')).state).toBe('pending');
   });
 
-  it('reads a main whose host refuses the pipelines as none, without throwing', async () => {
+  it('reads a main of a project the host reports no CI for as none, without reading its pipelines', async () => {
     const { fake, host } = setup();
-    fake.refusePipelines('acme/web');
+    fake.setCiEnabled('acme/web', false);
 
     await expect(host.main('web', 'ada')).resolves.toMatchObject({ state: 'none', head: 'web-head' });
+    expect(fake.calls.map((call) => call.name)).not.toContain('readBranchPipeline');
   });
 
-  it('gives a gate no failing and no pending checks when the host refuses the pipelines', async () => {
+  it('gives a gate no failing and no pending checks when the host reports no CI', async () => {
     const { fake, host } = setup();
     fake.setGate('acme/web', 7, { mergeability: 'clean' });
-    fake.refusePipelines('acme/web');
+    fake.setChecks('acme/web', 7, [check('lint', 'failed'), check('test', 'running')]);
+    fake.setCiEnabled('acme/web', false);
 
     await expect(host.gate(run, request, 'feature')).resolves.toMatchObject({ failing: [], pending: [] });
+  });
+
+  it('rejects with the wait for the access when the host does not show the CI of the repository', async () => {
+    const { fake, host } = setup();
+    fake.refuseCi('acme/web', '2030-01-01T00:00:00.000Z');
+
+    const refused = await host.main('web', 'ada').catch((error: unknown) => error);
+
+    expect(refused).toBeInstanceOf(HostUnavailable);
+    expect((refused as HostUnavailable).detail).toContain('acme/web');
+    expect((refused as HostUnavailable).detail).toContain('CI read access');
+    expect((refused as HostUnavailable).retryAt).toBe('2030-01-01T00:00:00.000Z');
   });
 
   it('logs the reading of a main once, until its state changes', async () => {
     const { fake, host } = setup();
     const lines: string[] = [];
     jest.spyOn(Logger.prototype, 'log').mockImplementation((message: unknown) => void lines.push(String(message)));
-    fake.refusePipelines('acme/web');
+    fake.setCiEnabled('acme/web', false);
 
     await host.main('web', 'ada');
     await host.main('web', 'ada');
-    expect(lines).toEqual(['main of web reads none: the code host refuses to read pipelines (HTTP 403)']);
+    expect(lines).toEqual(['main of web reads none']);
 
-    fake.refusePipelines('acme/web', false);
+    fake.setCiEnabled('acme/web', true);
     fake.setPipeline('acme/web', pipelineOf('success', [check('test', 'success')]));
     await host.main('web', 'ada');
     expect(lines).toHaveLength(2);

@@ -11,7 +11,7 @@ import type { StepContext } from '../base-step';
 import { ERROR_CODES } from '../../contract/error-codes';
 import type { RunRebase } from '../run-rebase';
 import type { StepResult } from '../contract/step-contract';
-import { ciFileProjects, missingPipeline, missingRuns } from './missing-pipeline';
+import { missingPipeline, missingRuns } from './missing-pipeline';
 import type { Seen } from './pipeline-report';
 
 const KEY = 'PROJ-500';
@@ -49,7 +49,12 @@ function world(attemptsPipeline = 0): World {
   };
 }
 
-function look(w: World, diagnosis: PipelineDiagnosis, limit = 6): Promise<StepResult> {
+function look(
+  w: World,
+  diagnosis: PipelineDiagnosis,
+  limit = 6,
+  readyDraft: () => Promise<StepResult | null> = () => Promise.resolve(null),
+): Promise<StepResult> {
   const ctx = {
     opened: { run: w.run, startedAt: '2026-01-01T00:00:00.000Z' },
     calls: [],
@@ -76,6 +81,7 @@ function look(w: World, diagnosis: PipelineDiagnosis, limit = 6): Promise<StepRe
     root: w.root,
     limit,
     host: { diagnoseMissingPipeline: () => Promise.resolve(diagnosis) } as unknown as CodeHost,
+    readyDraft,
     records: [w.ref],
     seen: [
       {
@@ -118,6 +124,22 @@ describe('missingPipeline', () => {
     expect(result.route).toMatchObject({ to: 'wait', code: ERROR_CODES.CI_NOT_STARTED });
     expect(result.route).toMatchObject({ reason: expect.stringContaining('next look at') });
     expect(w.run.attemptsPipeline).toBe(0);
+  });
+
+  it('hands a diagnosis with no cause to the draft hand-off, and waits for CI only when it gives none', async () => {
+    const handed = { route: { to: 'wait', reason: 'draft ready' } } as unknown as StepResult;
+
+    const result = await look(world(), { reason: null, httpCalls: [] }, 6, () => Promise.resolve(handed));
+
+    expect(result).toBe(handed);
+  });
+
+  it('does not hand a merge conflict to the draft hand-off', async () => {
+    const readyDraft = jest.fn(() => Promise.resolve(null));
+
+    await look(world(), CONFLICT, 6, readyDraft);
+
+    expect(readyDraft).not.toHaveBeenCalled();
   });
 
   it("waits with the next try and counts no try while the epic's parts run", async () => {
@@ -163,13 +185,6 @@ describe('missingPipeline', () => {
 });
 
 describe('missingRuns', () => {
-  function withWorkflow(): World {
-    const w = world();
-    mkdirSync(join(w.root, 'worktrees', KEY, 'demo', '.github', 'workflows'), { recursive: true });
-    writeFileSync(join(w.root, 'worktrees', KEY, 'demo', '.github', 'workflows', 'ci.yml'), 'name: ci\n');
-    return w;
-  }
-
   function lookAt(w: World, seen: Seen[]): Promise<string[] | null> {
     const ctx = {
       opened: { run: w.run },
@@ -191,38 +206,36 @@ describe('missingRuns', () => {
   });
 
   it('does not list a repository whose project is not watched', async () => {
-    await expect(lookAt(withWorkflow(), [noRun('group/other')])).resolves.toEqual([]);
+    await expect(lookAt(world(), [noRun('group/other')])).resolves.toEqual([]);
   });
 
-  it('lists a watched repository with a workflow file and no run', async () => {
-    await expect(lookAt(withWorkflow(), [noRun('group/demo')])).resolves.toEqual(['demo']);
-  });
-});
-
-describe('ciFileProjects', () => {
-  function read(w: World): Promise<Set<string>> {
-    const ctx = {
-      opened: { run: w.run },
-      reread: (artifact: { kind: string }) => Promise.resolve(w.stored[artifact.kind] ?? null),
-    } as unknown as StepContext;
-    return ciFileProjects(ctx, w.root);
-  }
-
-  it('names the origin project of a repository whose tree has a workflow file', async () => {
-    const w = world();
-    const workflows = join(w.root, 'worktrees', KEY, 'demo', '.github', 'workflows');
-    mkdirSync(workflows, { recursive: true });
-    writeFileSync(join(workflows, 'ci.yml'), 'name: ci\n');
-    await expect(read(w)).resolves.toEqual(new Set(['group/demo']));
+  it('lists a watched repository that showed no run and no check', async () => {
+    await expect(lookAt(world(), [noRun('group/demo')])).resolves.toEqual(['demo']);
   });
 
-  it('leaves out a repository whose tree has no CI file', async () => {
-    await expect(read(world())).resolves.toEqual(new Set());
+  it('does not list a watched repository that showed a run', async () => {
+    const run = { id: 1, status: 'success' as const, url: '', jobs: [] };
+    await expect(lookAt(world(), [{ ...noRun('group/demo'), runs: [run] }])).resolves.toEqual([]);
   });
 
-  it('is empty when the repo list is missing', async () => {
+  it('does not list a watched repository that showed a check', async () => {
+    const check = {
+      id: 1,
+      name: 'lint',
+      app: 'ci',
+      status: 'success' as const,
+      durationMs: 1,
+      url: '',
+      summary: '',
+      annotations: [],
+      workflow: false,
+    };
+    await expect(lookAt(world(), [{ ...noRun('group/demo'), checks: [check] }])).resolves.toEqual([]);
+  });
+
+  it('is null when the repo list is missing', async () => {
     const w = world();
     delete w.stored.repos;
-    await expect(read(w)).resolves.toEqual(new Set());
+    await expect(lookAt(w, [noRun('group/demo')])).resolves.toBeNull();
   });
 });

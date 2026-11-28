@@ -2,10 +2,6 @@ import { codeHostAdapters } from './code-host-adapters';
 
 const HOST_RULES = codeHostAdapters().map((adapter) => adapter.rules);
 
-export function ciFilesOfAnyHost(): string[] {
-  return HOST_RULES.flatMap((rules) => rules.ciFiles);
-}
-
 /** The earliest line that any host explains a refused push with. */
 export function pushRejectionOfAnyHost(lines: string[]): string | undefined {
   const index = Math.min(

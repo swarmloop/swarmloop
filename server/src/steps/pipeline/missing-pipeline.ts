@@ -5,7 +5,7 @@ import type { CodeHost, PipelineRef } from '../../integrations/code-host/code-ho
 import type { RunRebase } from '../run-rebase';
 import type { StepContext } from '../base-step';
 import { git } from '../../git/git';
-import { checkedRepoNames, hasCi, worktreePath } from '../../git/repo-names';
+import { checkedRepoNames, worktreePath } from '../../git/repo-names';
 import { withWorktree } from '../../git/worktree-lock';
 import { originProject, type Seen } from './pipeline-report';
 import { ARTIFACTS } from '../contract/artifacts';
@@ -26,6 +26,8 @@ export async function missingPipeline(input: {
   records: PipelineRef[];
   seen: Seen[];
   missing: string[];
+  /** Called when no conflict or closed request explains the missing runs: a result that goes on, or null to wait for CI. */
+  readyDraft: () => Promise<StepResult | null>;
 }): Promise<StepResult> {
   const { ctx, runs, events, rebase, host, records, seen } = input;
   const run = ctx.opened.run;
@@ -60,7 +62,8 @@ export async function missingPipeline(input: {
   };
   if (closed) return end('blocked');
   if (conflicts.length === 0) {
-    return unexplained.length === 0 ? end('failed') : waitForCi({ ctx, events, host, refs: unexplained, notes });
+    if (unexplained.length === 0) return end('failed');
+    return (await input.readyDraft()) ?? waitForCi({ ctx, events, host, refs: unexplained, notes });
   }
   if (run.attemptsPipeline >= input.limit) {
     return end('blocked', `automatic rebase limit reached after ${run.attemptsPipeline} automatic rebases`);
@@ -114,41 +117,28 @@ async function changedWorktree(
 }
 
 /**
- * Repo names that have a workflow file and no run. A repository whose project is known and is not watched (the run did
- * not change it) is left out. Null when the repo list is missing.
+ * Repo names whose origin project is watched (it is in `seen`, the scope the code host's CI answer decided) and showed
+ * no run and no check. A repository with no origin project, or whose project is not watched (the run did not change
+ * it), is left out. Null when the repo list is missing.
  */
 export async function missingRuns(ctx: StepContext, root: string, seen: Seen[]): Promise<string[] | null> {
-  const withCi = await reposWithCi(ctx, root);
-  if (!withCi) {
+  const repos = await checkedRepos(ctx, root);
+  if (!repos) {
     return null;
   }
-  const missing: string[] = [];
-  for (const { name, project } of withCi) {
-    const run = project ? seen.find((item) => item.project === project) : undefined;
-    if (project && !run) {
-      continue;
-    }
-    if (!run || run.runs.length === 0) {
-      missing.push(name);
-    }
-  }
-  return missing;
+  return repos
+    .filter(({ project }) => {
+      const run = seen.find((item) => item.project === project);
+      return run && run.runs.length === 0 && run.checks.length === 0;
+    })
+    .map(({ name }) => name);
 }
 
-/**
- * The origin projects of the run's checked repositories whose tree has a CI file, read the way `missingRuns` reads
- * them. Empty when the repo list is missing or unreadable.
- */
-export async function ciFileProjects(ctx: StepContext, root: string): Promise<Set<string>> {
-  const projects = (await reposWithCi(ctx, root))?.flatMap(({ project }) => (project ? [project] : [])) ?? [];
-  return new Set(projects);
-}
-
-/**
- * The run's checked repositories whose tree has a CI file, with the origin project of each (null when it has none).
- * Null when the repo list is missing or unreadable.
- */
-async function reposWithCi(ctx: StepContext, root: string): Promise<{ name: string; project: string | null }[] | null> {
+/** The run's checked repositories, with the origin project of each (null when it has none). Null when the repo list is missing or unreadable. */
+async function checkedRepos(
+  ctx: StepContext,
+  root: string,
+): Promise<{ name: string; project: string | null }[] | null> {
   const lines = await ctx.reread(ARTIFACTS.repos);
   if (!lines || lines.length === 0) {
     return null;
@@ -159,12 +149,10 @@ async function reposWithCi(ctx: StepContext, root: string): Promise<{ name: stri
   } catch {
     return null;
   }
-  const found: { name: string; project: string | null }[] = [];
-  for (const name of names) {
-    const dir = worktreePath(root, ctx.opened.run.key, name);
-    if (hasCi(dir)) {
-      found.push({ name, project: await withWorktree(dir, () => originProject(dir)) });
-    }
-  }
-  return found;
+  return Promise.all(
+    names.map(async (name) => {
+      const dir = worktreePath(root, ctx.opened.run.key, name);
+      return { name, project: await withWorktree(dir, () => originProject(dir)) };
+    }),
+  );
 }
