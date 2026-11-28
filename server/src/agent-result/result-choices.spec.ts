@@ -28,7 +28,7 @@ describe('choiceList for the backlog turn', () => {
 
   it('lists the optional fields of a task change', () => {
     const line = lines.find((item) =>
-      item.startsWith('- changeTask needs: task (string); may also give: title (string)'),
+      item.startsWith('- changeTask needs: task (string), revision (number); may also give: title (string)'),
     );
     expect(line).toContain('proof (array of string)');
     expect(line).toContain('milestone (number)');

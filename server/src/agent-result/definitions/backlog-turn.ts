@@ -23,8 +23,8 @@ export type BacklogTurnAction = Reasoned &
     | { action: 'addRequirements'; milestone: number; texts: string[] }
     | { action: 'recordDecision'; text: string }
     | { action: 'addTasks'; tasks: AddTaskBody[] }
-    | ({ action: 'changeTask'; task: string } & ChangeTaskBody)
-    | { action: 'deleteTask'; task: string }
+    | ({ action: 'changeTask'; task: string; revision: number } & Omit<ChangeTaskBody, 'expectedRevision'>)
+    | { action: 'deleteTask'; task: string; revision: number }
     | { action: 'skipBacklogTask'; task: string }
     | { action: 'addItem'; id: string; title: string; description: string }
     | { action: 'moveItem'; task: string; milestone: number }
@@ -62,8 +62,8 @@ const REQUIRED: Record<BacklogTurnAction['action'], string[]> = {
   addRequirements: ['milestone', 'texts'],
   recordDecision: ['text'],
   addTasks: ['tasks'],
-  changeTask: ['task'],
-  deleteTask: ['task'],
+  changeTask: ['task', 'revision'],
+  deleteTask: ['task', 'revision'],
   skipBacklogTask: ['task'],
   addItem: ['id', 'title', 'description'],
   moveItem: ['task', 'milestone'],
@@ -138,6 +138,12 @@ const action = requiredBy(
     task: text(
       'changeTask, deleteTask, skipBacklogTask, moveItem, dropItem: the task id; skipTask: the id of the run task',
     ),
+    revision: Joi.number()
+      .integer()
+      .min(0)
+      .description(
+        'changeTask, deleteTask: the revision of the task as your brief shows it; a task that changed since is refused with the task as it is now',
+      ),
     id: text('addItem: the item id; closeRequirement: the requirement, like M1.R2'),
     text: text('recordDecision: the decision'),
     evidence: text('closeRequirement: what shows the requirement is met'),

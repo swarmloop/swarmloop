@@ -30,6 +30,7 @@ import { BacklogActions } from './backlog-actions';
 import { holdServices } from '../../steps/shared/question-holds.spec-helpers';
 import { BacklogEvents } from './backlog-events';
 import { BacklogQueries } from './backlog-queries';
+import { BacklogRequirementActions } from './backlog-requirement-actions';
 import { BacklogScopeActions } from './backlog-scope-actions';
 import { BacklogTaskActions } from './backlog-task-actions';
 import { TaskRunSkip } from './task-run-skip';
@@ -109,6 +110,7 @@ function actionParts(
     commands,
   );
   const taskActions = new BacklogTaskActions(backlogs, queries, taskRun, db.clock, support);
+  const requirementActions = new BacklogRequirementActions(queries, support);
   return {
     hub,
     queries,
@@ -121,6 +123,7 @@ function actionParts(
       support,
       new BacklogScopeActions(backlogs, queries, db.clock, config, support, remote),
       taskActions,
+      requirementActions,
     ),
   };
 }

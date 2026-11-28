@@ -121,6 +121,34 @@ describe('BacklogRepository', () => {
       expect(await backlogs.findTaskByRunKey('missing')).toBeNull();
     }));
 
+  it('reads a new task at revision 0 and keeps the stored revision when a task read before a claim is saved', () =>
+    withBacklogs(async (backlogs) => {
+      const backlog = await seedBacklog(backlogs);
+      const saved = await backlogs.saveTask(task(backlog.id as number, 'a'));
+      expect(saved.revision).toBe(0);
+      const [before] = await backlogs.tasks(backlog.id as number);
+      expect(before.revision).toBe(0);
+
+      expect(await backlogs.claimTask(before.id as number, 0)).toBe(true);
+      await backlogs.saveTask({ ...before, note: 'waits' });
+
+      const [after] = await backlogs.tasks(backlog.id as number);
+      expect(after).toMatchObject({ note: 'waits', revision: 1 });
+    }));
+
+  it('claims a task only at the revision it holds, and moves it by one', () =>
+    withBacklogs(async (backlogs) => {
+      const backlog = await seedBacklog(backlogs);
+      await backlogs.saveTask(task(backlog.id as number, 'a'));
+      const [{ id }] = await backlogs.tasks(backlog.id as number);
+
+      expect(await backlogs.claimTask(id as number, 0)).toBe(true);
+      expect(await backlogs.claimTask(id as number, 0)).toBe(false);
+      expect((await backlogs.tasks(backlog.id as number))[0].revision).toBe(1);
+      expect(await backlogs.claimTask(id as number, 1)).toBe(true);
+      expect((await backlogs.tasks(backlog.id as number))[0].revision).toBe(2);
+    }));
+
   it('gives the backlog and milestone of each run key and leaves unknown keys out', () =>
     withBacklogs(async (backlogs) => {
       const backlog = await seedBacklog(backlogs);

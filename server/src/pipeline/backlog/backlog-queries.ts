@@ -94,6 +94,7 @@ export class BacklogQueries {
           (backlog.mergeMode === 'ok' || task.manual),
         repositories: task.repositories,
         merged: task.merged,
+        revision: task.revision ?? 0,
       })),
       decisions: decisions.map(({ text, who, createdAt }) => ({ text, who, at: createdAt })),
       events: events.map(({ kind, facts, createdAt }) => ({ kind, facts: shownFacts(facts), at: createdAt })),

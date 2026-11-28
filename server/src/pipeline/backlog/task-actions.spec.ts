@@ -147,6 +147,40 @@ describe('task actions', () => {
       expect((await tasksOf(harness))[0].status).toBe('skipped');
     }));
 
+  it('moves the revision of a task by each change and refuses a change or a delete that read an older one', () =>
+    withActions(async (harness) => {
+      await harness.actions.addTasks('ada', 'shop', [task('one')]);
+      const view = await harness.actions.changeTask('ada', 'shop', 'one', { title: 'First', expectedRevision: 0 });
+      expect(view.tasks[0].revision).toBe(1);
+
+      const stale = harness.actions.changeTask('ada', 'shop', 'one', { files: ['x.ts'], expectedRevision: 0 });
+      await expect(stale).rejects.toThrow(ConflictException);
+      await expect(stale).rejects.toThrow(
+        'one changed since it was read: it is now revision 1; title: First; description: Do one; repositories: web',
+      );
+      await expect(harness.actions.deleteTask('ada', 'shop', 'one', undefined, 0)).rejects.toThrow(
+        'one changed since it was read',
+      );
+      expect((await tasksOf(harness))[0]).toMatchObject({ title: 'First', files: [], revision: 1 });
+
+      const second = await harness.actions.changeTask('ada', 'shop', 'one', { title: 'Second' });
+      expect(second.tasks[0].revision).toBe(2);
+      await expect(
+        harness.actions.changeTask('ada', 'shop', 'one', { title: 'Bad', expectedRevision: -1 }),
+      ).rejects.toThrow(BadRequestException);
+
+      await harness.actions.deleteTask('ada', 'shop', 'one', undefined, 2);
+      expect(await tasksOf(harness)).toEqual([]);
+    }));
+
+  it('moves the revision of a task when it is moved to a milestone', () =>
+    withActions(async (harness) => {
+      await harness.actions.proposeMilestone('ada', 'shop', { title: 'One', goal: '' });
+      await harness.actions.addTasks('ada', 'shop', [task('idea')]);
+      const view = await harness.actions.moveItem('ada', 'shop', 'idea', { milestone: 1 });
+      expect(view.tasks[0].revision).toBe(1);
+    }));
+
   it('stops the run of a running task before it marks the task skipped', () =>
     withActions(async (harness) => {
       const key = await started(harness, 'live');

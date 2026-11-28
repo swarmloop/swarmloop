@@ -12,6 +12,7 @@ import {
 import { backlogChatView, backlogView, milestone, task } from '../../../test/backlog-fixtures';
 import { BacklogSections } from './backlog-sections';
 import { MilestonePanel } from './milestone-panel';
+import { TaskEditorDialog } from './task-editor';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
 vi.mock('../../../lib/backlog-endpoints', () => ({
@@ -36,7 +37,7 @@ const view = backlogView({
     milestone({ number: 2, title: 'Old', status: 'accepted' }),
   ],
   tasks: [
-    task({ slug: 'pay', title: 'Pay by card', description: 'Old text', milestone: 3 }),
+    task({ slug: 'pay', title: 'Pay by card', description: 'Old text', milestone: 3, revision: 4 }),
     task({ slug: 'started', title: 'Started one', runKey: 'run-7', milestone: 3, status: 'running' }),
     task({ slug: 'later', title: 'Later one', milestone: 4 }),
     task({ slug: 'item', title: 'Loose item', milestone: null }),
@@ -121,7 +122,21 @@ describe('task editing', () => {
     expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', {
       title: 'Pay later',
       description: '**bold** text',
+      expectedRevision: 4,
     });
+  });
+
+  it('sends the revision and the fields the dialog opened with when the view reloads under it', async () => {
+    const opened = task({ slug: 'pay', title: 'Pay by card', description: 'Old text', revision: 4 });
+    const props = { view, milestone: null, onView: vi.fn(), onClose: vi.fn() };
+    const { rerender } = render(<TaskEditorDialog {...props} task={opened} />);
+    rerender(<TaskEditorDialog {...props} task={{ ...opened, description: 'Planner text', revision: 5 }} />);
+    const title = screen.getByLabelText('Title');
+    await user.clear(title);
+    await user.paste('Pay later');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', { title: 'Pay later', expectedRevision: 4 });
   });
 
   it('edits the repositories and the dependencies', async () => {
@@ -138,7 +153,19 @@ describe('task editing', () => {
     expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', {
       repositories: ['shop', 'api'],
       depends: ['later'],
+      expectedRevision: 4,
     });
+  });
+
+  it('shows the refusal of a stale save in the editor and keeps it open', async () => {
+    vi.mocked(changeBacklogTask).mockRejectedValueOnce(new Error('pay changed since it was read'));
+    await openEdit('Pay by card');
+    await user.click(screen.getByLabelText('Title'));
+    await user.paste(' now');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('pay changed since it was read');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
   });
 
   it('edits the milestone and does not offer an accepted one', async () => {
@@ -148,7 +175,7 @@ describe('task editing', () => {
     await user.click(screen.getByRole('option', { name: 'Backlog items' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', { milestone: null });
+    expect(changeBacklogTask).toHaveBeenCalledWith('swarmloop', 'pay', { milestone: null, expectedRevision: 4 });
   });
 
   it('moves by Move to and does not offer an accepted milestone', async () => {

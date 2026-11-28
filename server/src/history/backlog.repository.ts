@@ -193,6 +193,10 @@ export class BacklogRepository implements BacklogWriters {
     return this.writers.deleteTask(id);
   }
 
+  claimTask(id: number, expectedRevision: number): Promise<boolean> {
+    return this.writers.claimTask(id, expectedRevision);
+  }
+
   recordEvent(backlogId: number, key: string, kind: BacklogEventKind, facts: Facts): Promise<boolean> {
     return this.writers.recordEvent(backlogId, key, kind, facts);
   }

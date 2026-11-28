@@ -13,6 +13,7 @@ import type { CommandService } from '../../command.service';
 import { BacklogActionSupport } from '../backlog-action-support';
 import { BacklogActions } from '../backlog-actions';
 import { BacklogQueries } from '../backlog-queries';
+import { BacklogRequirementActions } from '../backlog-requirement-actions';
 import { BacklogScopeActions } from '../backlog-scope-actions';
 import { BacklogTaskActions } from '../backlog-task-actions';
 import { TaskRunSkip } from '../task-run-skip';
@@ -61,7 +62,8 @@ export function plannerTurnActions({ app, backlogs, chat, runs, clock, config, c
     },
   } as unknown as RemoteRepositories;
   const scope = new BacklogScopeActions(backlogs, queries, clock, config, support, remote);
-  const actions = new BacklogActions(backlogs, queries, clock, support, scope, taskActions);
+  const requirementActions = new BacklogRequirementActions(queries, support);
+  const actions = new BacklogActions(backlogs, queries, clock, support, scope, taskActions, requirementActions);
   const rules = new PlannerRules(backlogs, runs);
   const calls = new PlannerBacklogCalls(actions, support, backlogs);
   const { holds, passOn } = holdServices(app, clock);

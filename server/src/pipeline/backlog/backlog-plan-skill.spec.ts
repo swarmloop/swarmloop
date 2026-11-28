@@ -50,7 +50,15 @@ const BRIEF_SECTIONS = [
   'Check',
 ];
 
+const REVISION_SENTENCE =
+  "Every `changeTask` and `deleteTask` names the task's revision as your brief shows it. Change a task once per answer, with all the fields you change. A task that changed since your brief is refused, and the refusal shows the task as it is now: decide again on that.";
+
 describe('the backlog-plan skill', () => {
+  it('says how a change names the revision its brief showed, in its own part and not in the core', () => {
+    expect(skill).toContain(REVISION_SENTENCE);
+    expect(core).not.toContain('revision');
+  });
+
   it.each(GENERAL_RULES)('holds the general rule: %s', (rule) => {
     expect(skill).toContain(`- ${rule}`);
   });

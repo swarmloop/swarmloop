@@ -53,6 +53,8 @@ export function TaskEditorDialog({
   onView: (view: BacklogView) => void;
   onClose: () => void;
 }): ReactElement {
+  // The task as the dialog opened with: the form, the diff and the revision all stay on it while the view reloads.
+  const [opened] = useState(task);
   const [title, setTitle] = useState(task?.title ?? '');
   const [description, setDescription] = useState(task?.description ?? '');
   const [preview, setPreview] = useState(false);
@@ -68,8 +70,11 @@ export function TaskEditorDialog({
     try {
       const next = { title: title.trim(), description, repositories, depends, milestone: target };
       onView(
-        task
-          ? await changeBacklogTask(view.name, task.slug, changes(task, next))
+        opened
+          ? await changeBacklogTask(view.name, opened.slug, {
+              ...changes(opened, next),
+              expectedRevision: opened.revision,
+            })
           : await addBacklogTasks(view.name, [
               {
                 id: taskSlug(

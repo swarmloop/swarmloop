@@ -13,6 +13,7 @@ function task(slug: string, overrides: Partial<TaskState> = {}): TaskState {
     title: slug,
     description: `Brief of ${slug}`,
     status: 'waiting',
+    revision: 0,
     wait: '',
     runKey: null,
     repositories: [],

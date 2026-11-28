@@ -433,3 +433,61 @@ describe('a message that comes while the planner works is answered in that turn'
     ]);
   });
 });
+
+describe('a task a person changes while the planner works is not overwritten by the planner', () => {
+  let flow: Awaited<ReturnType<typeof createFlowHarness>>;
+  /** The prompts of the planner launches, in order. */
+  let prompts: string[];
+
+  beforeEach(async () => {
+    prompts = [];
+    const blocks = new BlockAgentRunner();
+    const base = blocks.run.bind(blocks);
+    blocks.run = async (input) => {
+      if (input.step !== 'backlog-plan') return base(input);
+      prompts.push(input.prompt ?? '');
+      if (prompts.length === 1) {
+        await flow.backlog().actions.changeTask(OWNER, BACKLOG, 'a', { title: 'By the person', expectedRevision: 0 });
+      }
+      // The first answer names the revision the brief showed; the one after the refusal names the fresh one.
+      const revision = prompts.length === 1 ? 0 : 1;
+      const change = { action: 'changeTask', task: 'a', revision, description: 'By the planner.' };
+      return new BlockAgentRunner({
+        'backlog-plan': [{ block: { say: `Answer ${prompts.length}.`, actions: [change] } }],
+      }).run(input);
+    };
+    flow = await createFlowHarness(KEY, {
+      env: { CHECKOUTS_ROOT: '.', ...FAKE_MODEL_KEY },
+      realImplement: false,
+      realReview: false,
+      blocks,
+    });
+    const url = `file://${join(flow.app.root, 'demo.git')}`;
+    git(join(flow.app.root, 'demo'), ['remote', 'set-url', 'origin', url]);
+    remoteProject(url);
+    flow.host.defaultBranchPasses();
+  });
+
+  afterEach(async () => {
+    await flow.close();
+  });
+
+  it("refuses the planner's change of the task with the task as it is now, and applies the one made on it", async () => {
+    const { actions } = flow.backlog();
+    await actions.createBacklog(OWNER, { name: BACKLOG, repositories: ['demo'], mergeMode: 'green' });
+    await actions.addTasks(OWNER, BACKLOG, [
+      { id: 'a', title: 'Task a', description: 'Do a.', repositories: ['demo'] },
+    ]);
+
+    await flow.app.app.get(BacklogChatService).post(OWNER, BACKLOG, 'Tidy task a.', 'first');
+    await flow.app.app.get(BacklogPlanner).whenIdle();
+
+    const refused = prompts.findIndex((prompt) => prompt.includes('a changed since it was read'));
+    expect(refused).toBeGreaterThan(0);
+    expect(prompts[refused]).toContain('title: By the person');
+    const [stored] = await flow.app.app
+      .get(BacklogRepository)
+      .tasks(((await flow.app.app.get(BacklogRepository).findBacklog(BACKLOG)) as { id: number }).id);
+    expect(stored).toMatchObject({ title: 'By the person', description: 'By the planner.', revision: 2 });
+  });
+});

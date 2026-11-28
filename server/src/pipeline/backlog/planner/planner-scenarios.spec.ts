@@ -135,10 +135,11 @@ describe('planner scenarios: scripted turn results', () => {
           {
             action: 'changeTask',
             task: 'moved',
+            revision: 0,
             description: 'Today: it is in new/path.ts.',
             reason: 'The file moved',
           },
-          { action: 'deleteTask', task: 'extra', reason: 'The merged task added the helper' },
+          { action: 'deleteTask', task: 'extra', revision: 0, reason: 'The merged task added the helper' },
         ),
       );
       const records = await harness.tasks(backlogId);
@@ -249,6 +250,7 @@ describe('planner scenarios: scripted turn results', () => {
         turnResult('skill-a and skill-b both change the skill text, so skill-a owns it.', {
           action: 'changeTask',
           task: 'skill-b',
+          revision: 0,
           description: 'Today: skill-a rewrites the skill text; build on it.\nDo B.',
           depends: ['skill-a'],
         }),
@@ -272,7 +274,7 @@ describe('planner scenarios: scripted turn results', () => {
       const turn = turnResult(
         'The queued task renames the step that a subtask of the epic names; I told the epic.',
         { action: 'planChat', run: 'epic-1', message: 'The step was renamed: subtask two must follow the new name.' },
-        { action: 'changeTask', task: 'epic', description: 'Rewritten by the backlog planner' },
+        { action: 'changeTask', task: 'epic', revision: 0, description: 'Rewritten by the backlog planner' },
       );
       await harness.turns.apply('alpha', 'turn-1', turn);
       expect(harness.sent).toEqual([
@@ -300,6 +302,7 @@ describe('planner scenarios: scripted turn results', () => {
         turnResult('first leaves a gap that the rule of later closes, so first takes the rule.', {
           action: 'changeTask',
           task: 'first',
+          revision: 0,
           description: 'Do the first.\nRule: close the gap.',
         }),
       );
@@ -323,7 +326,7 @@ describe('planner scenarios: scripted turn results', () => {
         'turn-1',
         turnResult(
           '',
-          { action: 'changeTask', task: 'going', description: 'New.' },
+          { action: 'changeTask', task: 'going', revision: 0, description: 'New.' },
           { action: 'planChat', run: 'going-1', message: 'The brief changed: do New.' },
         ),
       );

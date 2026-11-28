@@ -52,7 +52,7 @@ describe('BacklogTurnRunner', () => {
       await h.seedTask(id, 'b', { status: 'waiting' });
       await h.backlogs.recordEvent(id, 'merged-b', 'task-merged', { slug: 'b' });
       await h.chat.takeInto(id, 'turn-a');
-      h.agent.script = [turnResult('Done.', { action: 'deleteTask', task: 'a' })];
+      h.agent.script = [turnResult('Done.', { action: 'deleteTask', task: 'a', revision: 0 })];
       await h.runner.run('one', 'turn-a');
 
       const rows = await h.logOf('turn-a');
@@ -133,6 +133,44 @@ describe('BacklogTurnRunner', () => {
         ['refused', expect.stringContaining('is not a repository of this backlog')],
       ]);
       expect((await h.chat.findTurn('turn-a'))?.status).toBe('done');
+    }));
+
+  it('refuses a change that read an older revision with the task as it is now, and applies the corrected answer', () =>
+    withTurn(async (h, id) => {
+      await h.seedTask(id, 'a', { status: 'waiting' });
+      await h.actions.changeTask('ada', 'one', 'a', { title: 'By a person' });
+      h.agent.script = [
+        turnResult('First try.', { action: 'changeTask', task: 'a', revision: 0, description: 'Planner text' }),
+        turnResult('Second try.', { action: 'changeTask', task: 'a', revision: 1, description: 'Planner text' }),
+      ];
+      await h.runner.run('one', 'turn-a');
+
+      expect(h.agent.launches).toHaveLength(2);
+      expect(h.agent.launches[1].prompt).toContain(
+        'a changed since it was read: it is now revision 1; title: By a person',
+      );
+      expect(await h.backlogs.tasks(id)).toMatchObject([
+        { slug: 'a', title: 'By a person', description: 'Planner text', revision: 2 },
+      ]);
+    }));
+
+  it('refuses the answer of the follow-up that changes a task with the revision a person moved while the turn worked', () =>
+    withTurn(async (h, id) => {
+      await h.seedTask(id, 'a', { status: 'waiting' });
+      const stale = { action: 'changeTask' as const, task: 'a', revision: 0, description: 'Planner text' };
+      h.agent.script = [turnResult('First.'), turnResult('Second.', stale), turnResult('Third.', stale)];
+      h.agent.started = async () => {
+        if (h.agent.launches.length !== 1) return;
+        await h.actions.changeTask('ada', 'one', 'a', { title: 'By a person' });
+        await h.chat.addPersonMessage(id, 'one more thing', 'm2', []);
+        await h.chat.takeInto(id, 'turn-a');
+      };
+      await h.runner.run('one', 'turn-a');
+
+      expect(h.agent.launches[2].prompt).toContain('a changed since it was read: it is now revision 1');
+      expect(await h.backlogs.tasks(id)).toMatchObject([{ title: 'By a person', description: 'Do a', revision: 1 }]);
+      const { messages } = await h.chat.lastMessages(id, 10);
+      expect(messages.map((message) => message.kind)).toContain('refused');
     }));
 
   it('closes the worktrees and throws when the agent fails', () =>

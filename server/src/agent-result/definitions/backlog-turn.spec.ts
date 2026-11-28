@@ -18,7 +18,7 @@ describe('backlog turn result', () => {
           { action: 'proposeMilestone', title: 'T', goal: 'G' },
           { action: 'addRequirements', milestone: 1, texts: ['it works'] },
           { action: 'addTasks', tasks: [{ id: 'a', title: 'A', description: 'D', covers: ['M1.R1'] }], reason: 'x' },
-          { action: 'changeTask', task: 'a', description: 'new' },
+          { action: 'changeTask', task: 'a', revision: 0, description: 'new' },
           { action: 'closeRequirement', id: 'M1.R1', evidence: 'merged' },
           { action: 'answerRun', run: 'r', answers: [{ body: 'yes' }] },
           { action: 'planChat', run: 'r', message: 'm' },
@@ -33,6 +33,32 @@ describe('backlog turn result', () => {
       }),
     );
     expect(read.ok).toBe(true);
+  });
+
+  it('reads a task change and a task delete that name a revision, and refuses a revision that is no count', () => {
+    expect(
+      errorsOf({
+        say: '',
+        actions: [
+          { action: 'changeTask', task: 'a', revision: 2, title: 'T' },
+          { action: 'deleteTask', task: 'a', revision: 2 },
+        ],
+      }),
+    ).toEqual([]);
+    for (const revision of ['two', -1, 1.5]) {
+      expect(errorsOf({ say: '', actions: [{ action: 'changeTask', task: 'a', revision }] })).toEqual([
+        expect.stringContaining('actions.0.revision'),
+      ]);
+    }
+  });
+
+  it('names the revision a task change or a task delete lacks', () => {
+    expect(errorsOf({ say: '', actions: [{ action: 'changeTask', task: 'a', title: 'T' }] })).toEqual([
+      'actions.0: changeTask needs revision',
+    ]);
+    expect(errorsOf({ say: '', actions: [{ action: 'deleteTask', task: 'a' }] })).toEqual([
+      'actions.0: deleteTask needs revision',
+    ]);
   });
 
   it('reads an empty message and no actions', () => {

@@ -70,7 +70,7 @@ describe('TurnTies', () => {
       await h.seedTask(id, 'a', { status: 'waiting' });
       await h.seedTask(id, 'b', { status: 'waiting' });
       await takeEvent(h, id, { slug: 'b' });
-      expect(await tiesOf([{ action: 'deleteTask', task: 'a' }])).toEqual([
+      expect(await tiesOf([{ action: 'deleteTask', task: 'a', revision: 0 }])).toEqual([
         { task: 'b', general: false },
         { task: 'a', general: false },
       ]);
@@ -100,7 +100,7 @@ describe('TurnTies', () => {
       await h.seedTask(id, 'b', { status: 'waiting' });
       await takeEvent(h, id, { slug: 'b' });
       expect(await tiesBeforeResult()).toEqual([{ task: 'b', general: false }]);
-      expect(await tiesOf([{ action: 'deleteTask', task: 'a' }])).toEqual([
+      expect(await tiesOf([{ action: 'deleteTask', task: 'a', revision: 0 }])).toEqual([
         { task: 'b', general: false },
         { task: 'a', general: false },
       ]);
