@@ -2,7 +2,7 @@ import { CODE_REVIEWERS } from '../../contract/steps';
 import { readResult } from '../read-result';
 import { resultPrompt } from '../result-prompt';
 import { block } from '../result.spec-helpers';
-import { reviewAnswerDefinition, reviewDefinition } from './review';
+import { reviewAnswerDefinition, reviewDefinition, reviewStoredDefinition } from './review';
 import { reviewReport } from './review-report';
 
 const REVIEW = {
@@ -10,6 +10,11 @@ const REVIEW = {
   review: 'The parser drops a segment.\n- a: b',
   summary: ['the parser drops a segment'],
 };
+const SECTIONS = {
+  code: { quality: 'checked', security: 'checked' },
+  behavior: { regressions: 'checked', performance: 'checked' },
+};
+const reviewOf = (name: string) => ({ ...REVIEW, ...(name in SECTIONS ? { sections: SECTIONS[name as 'code'] } : {}) });
 const REPORT = {
   line: 'The parser keeps an empty segment.',
   done: ['Parser fixed.'],
@@ -30,9 +35,9 @@ describe('review result', () => {
   });
 
   it.each(CODE_REVIEWERS)('lets review_%s ask one question, and refuses one that is not a text', (name) => {
-    const asked = { ...REVIEW, question: 'Keep the cursor or the page number?' };
+    const asked = { ...reviewOf(name), question: 'Keep the cursor or the page number?' };
     expect(readResult(reviewDefinition(name), block(asked))).toEqual({ ok: true, value: asked });
-    expect(readResult(reviewDefinition(name), block({ ...REVIEW, question: 3 })).ok).toBe(false);
+    expect(readResult(reviewDefinition(name), block({ ...reviewOf(name), question: 3 })).ok).toBe(false);
     expect(resultPrompt(reviewDefinition(name))).toContain('- question (string, optional)');
   });
 
@@ -59,6 +64,29 @@ describe('review result', () => {
       block({ ...REVIEW, requirements: [{ ...marks[0], status: 'half' }] }),
     );
     expect(bad.ok === false && bad.errors[0]).toContain('status');
+  });
+
+  it('asks the code and behavior reviewers for one entry per named section', () => {
+    expect(readResult(reviewDefinition('code'), block(reviewOf('code')))).toMatchObject({ ok: true });
+    expect(resultPrompt(reviewDefinition('code'))).toContain('- sections (object, required)');
+    const withoutSecurity = readResult(
+      reviewDefinition('code'),
+      block({ ...REVIEW, sections: { quality: 'checked' } }),
+    );
+    expect(withoutSecurity.ok === false && withoutSecurity.errors[0]).toContain('sections.security');
+    const withoutSections = readResult(reviewDefinition('behavior'), block(REVIEW));
+    expect(withoutSections.ok === false && withoutSections.errors[0]).toContain('sections');
+    const withoutPerformance = readResult(
+      reviewDefinition('behavior'),
+      block({ ...REVIEW, sections: { regressions: 'the caller breaks' } }),
+    );
+    expect(withoutPerformance.ok === false && withoutPerformance.errors[0]).toContain('sections.performance');
+    expect(readResult(reviewDefinition('requirements'), block(REVIEW)).ok).toBe(true);
+  });
+
+  it('still reads the stored result of a retired reviewer, which has no sections', () => {
+    expect(readResult(reviewStoredDefinition('quality'), block(REVIEW)).ok).toBe(true);
+    expect(reviewStoredDefinition('security').kind).toBe('review_security_result');
   });
 
   it('names a decision that is neither ok nor return', () => {

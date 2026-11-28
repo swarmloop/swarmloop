@@ -16,7 +16,7 @@ import { answerFor, boot, reportReply, result, seed, writeEnv } from './code-rev
 
 const SUMMARY_REVIEW = 'Looked at the parser.\n\nsummary:\n- the parser keeps the segment';
 
-const KINDS = ['review_quality', 'review_quality_result', 'review_report', 'review_report_result', 'handoff'];
+const KINDS = ['review_code', 'review_code_result', 'review_report', 'review_report_result', 'handoff'];
 
 /** Runs one code-review round. A step's script is answered in order, then every later launch gets the default answer. */
 async function round(key: string, scripts: Record<string, string[]> = {}, chat = false) {
@@ -26,8 +26,8 @@ async function round(key: string, scripts: Record<string, string[]> = {}, chat =
   if (chat) {
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
-      join(root, 'data', `${key}-code-review-quality-session.json`),
-      `${JSON.stringify({ runtime: 'cursor', chatId: 'quality-chat', resumed: true, completed: true, killReason: null, usd: 3, resultName: 'review_quality' })}\n`,
+      join(root, 'data', `${key}-code-review-code-session.json`),
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'code-chat', resumed: true, completed: true, killReason: null, usd: 3, resultName: 'review_code' })}\n`,
     );
   }
   const queues = new Map(Object.entries(scripts).map(([step, answers]) => [step, [...answers]]));
@@ -53,16 +53,20 @@ async function round(key: string, scripts: Record<string, string[]> = {}, chat =
   }
 }
 
-const block = (decision: string, review = 'notes') => resultAnswer(review, { decision, review, summary: [] });
+const CODE_SECTIONS = { quality: 'checked', security: 'checked' };
+const BEHAVIOR_SECTIONS = { regressions: 'checked', performance: 'checked' };
+
+const block = (decision: string, review = 'notes') =>
+  resultAnswer(review, { decision, review, summary: [], sections: CODE_SECTIONS });
 
 describe('code-review step result blocks', () => {
   it('takes the decision of the block, not the one the prose says', async () => {
     const { done, body } = await round('PROJ-401', {
-      quality: [`decision: return\n\n${block('ok', 'Checked the parser.')}`],
+      code: [`decision: return\n\n${block('ok', 'Checked the parser.')}`],
     });
     expect(done.exitCode).toBe(0);
-    expect(body('review_quality')).toBe('Checked the parser.\ndecision: ok\n');
-    expect(JSON.parse(body('review_quality_result') ?? '{}')).toMatchObject({ decision: 'ok' });
+    expect(body('review_code')).toBe('Checked the parser.\ndecision: ok\n');
+    expect(JSON.parse(body('review_code_result') ?? '{}')).toMatchObject({ decision: 'ok' });
   });
 
   it('stores the review as the review text followed by the decision line, and the result next to it', async () => {
@@ -70,21 +74,28 @@ describe('code-review step result blocks', () => {
       decision: 'ok',
       review: SUMMARY_REVIEW,
       summary: ['the parser keeps the segment'],
+      sections: CODE_SECTIONS,
     });
-    const { body } = await round('PROJ-402', { quality: [review] });
-    expect(body('review_quality')).toBe(`${SUMMARY_REVIEW}\ndecision: ok\n`);
-    expect(JSON.parse(body('review_quality_result') ?? '{}')).toEqual({
+    const { body } = await round('PROJ-402', { code: [review] });
+    expect(body('review_code')).toBe(`${SUMMARY_REVIEW}\ndecision: ok\n`);
+    expect(JSON.parse(body('review_code_result') ?? '{}')).toEqual({
       decision: 'ok',
       review: SUMMARY_REVIEW,
       summary: ['the parser keeps the segment'],
+      sections: CODE_SECTIONS,
     });
   });
 
   it('stores the report as sections and its result, and gives the handoff the summary of each review', async () => {
     const { body } = await round('PROJ-403', {
       report: [reportReply('Every check is ok.')],
-      security: [
-        resultAnswer('p', { decision: 'ok', review: 'Checked queries.', summary: ['queries are parameterized'] }),
+      behavior: [
+        resultAnswer('p', {
+          decision: 'ok',
+          review: 'Checked queries.',
+          summary: ['queries are parameterized'],
+          sections: BEHAVIOR_SECTIONS,
+        }),
       ],
     });
     expect(body('review_report')).toContain('## ⏳ Waiting for CI · risk: low\n> Every check is ok.');
@@ -96,33 +107,33 @@ describe('code-review step result blocks', () => {
   });
 
   it('sends every error back once and takes the fixed block', async () => {
-    const { done, calls } = await round('PROJ-404', { quality: ['no block here', block('ok')] });
+    const { done, calls } = await round('PROJ-404', { code: ['no block here', block('ok')] });
     expect(done.exitCode).toBe(0);
-    const quality = calls.filter((call) => call.step === 'code-review-quality');
-    expect(quality).toHaveLength(2);
-    expect(quality[1].prompt).toContain('The result block of your last answer was not accepted');
-    expect(quality[1].prompt).toContain('no result block');
-    expect(quality[1].prompt).toContain('Answer with the result block only');
+    const code = calls.filter((call) => call.step === 'code-review-code');
+    expect(code).toHaveLength(2);
+    expect(code[1].prompt).toContain('The result block of your last answer was not accepted');
+    expect(code[1].prompt).toContain('no result block');
+    expect(code[1].prompt).toContain('Answer with the result block only');
   });
 
   it('fails the step after a third invalid answer and names the errors', async () => {
     const wrong = block('approve');
-    const { done, calls, body } = await round('PROJ-405', { quality: [wrong, 'no block', wrong, wrong] });
+    const { done, calls, body } = await round('PROJ-405', { code: [wrong, 'no block', wrong, wrong] });
     expect(done.exitCode).toBe(1);
     expect(done.message).toContain("the agent's result was not accepted");
     expect(done.message).toContain('decision');
-    expect(calls.filter((call) => call.step === 'code-review-quality')).toHaveLength(3);
-    expect(body('review_quality')).toBeNull();
+    expect(calls.filter((call) => call.step === 'code-review-code')).toHaveLength(3);
+    expect(body('review_code')).toBeNull();
   });
 
   it('asks a fresh chat for the whole result and a continued chat with one line', async () => {
     const fresh = await round('PROJ-406');
-    const first = fresh.calls.find((call) => call.step === 'code-review-quality');
+    const first = fresh.calls.find((call) => call.step === 'code-review-code');
     expect(first?.prompt).toContain('- decision (one of "ok", "return", required)');
     expect(first?.prompt).toContain('- summary (array of string, required)');
     const continued = await round('PROJ-407', {}, true);
-    const next = continued.calls.find((call) => call.step === 'code-review-quality');
-    expect(next?.resumeChatId).toBe('quality-chat');
+    const next = continued.calls.find((call) => call.step === 'code-review-code');
+    expect(next?.resumeChatId).toBe('code-chat');
     expect(next?.prompt).toContain(RESULT_AS_BEFORE);
     expect(next?.prompt).not.toContain('- decision (one of');
     const report = continued.calls.find((call) => call.step === 'code-review-report');
@@ -139,9 +150,10 @@ describe('a reviewer killed after its block', () => {
       review: 'Still so.',
       summary: [],
       reason: 'The finding still holds.',
+      sections: CODE_SECTIONS,
     });
     const log = `${JSON.stringify({ type: 'result', result: answer })}\nprocess exited 0\n`;
-    writeFileSync(join(root, 'data', 'PROJ-412-code-review-quality-aaa-output.txt'), log);
+    writeFileSync(join(root, 'data', 'PROJ-412-code-review-code-aaa-output.txt'), log);
     const documents = { latestBody: async () => null } as unknown as DocumentRepository;
     const selection = await selectReviewers(documents, root, {
       key: 'PROJ-412',
@@ -150,7 +162,7 @@ describe('a reviewer killed after its block', () => {
       attemptId: 'aaa',
       counts: async () => false,
     });
-    const kept = selection.kept.find((item) => item.kind === 'review_quality');
+    const kept = selection.kept.find((item) => item.kind === 'review_code');
     expect(kept?.decision).toBe('return');
     expect(kept?.body).toBe('Still so.\ndecision: return\nreason: The finding still holds.\n');
   });
@@ -158,7 +170,10 @@ describe('a reviewer killed after its block', () => {
   it('counts the block of the interrupted attempt and stores its result', async () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-code-review-killed-'));
     mkdirSync(join(root, 'data'), { recursive: true });
-    writeFileSync(join(root, 'data', 'PROJ-410-code-review-quality-aaa-output.txt'), reviewLog('return', 'Found it.'));
+    writeFileSync(
+      join(root, 'data', 'PROJ-410-code-review-code-aaa-output.txt'),
+      reviewLog('return', 'Found it.', 'code'),
+    );
     const documents = { latestBody: async () => null } as unknown as DocumentRepository;
     const selection = await selectReviewers(documents, root, {
       key: 'PROJ-410',
@@ -167,21 +182,26 @@ describe('a reviewer killed after its block', () => {
       attemptId: 'aaa',
       counts: async () => false,
     });
-    const kept = selection.kept.find((item) => item.kind === 'review_quality');
+    const kept = selection.kept.find((item) => item.kind === 'review_code');
     expect(kept?.decision).toBe('return');
-    expect(selection.pending.map((reviewer) => reviewer.name)).not.toContain('quality');
-    expect(selection.recovered.map((document) => document.kind)).toEqual(['review_quality', 'review_quality_result']);
-    expect(selection.recovered).toEqual(reviewDocuments(opinionOf('review_quality', kept!.result)));
+    expect(selection.pending.map((reviewer) => reviewer.name)).not.toContain('code');
+    expect(selection.recovered.map((document) => document.kind)).toEqual(['review_code', 'review_code_result']);
+    expect(selection.recovered).toEqual(reviewDocuments(opinionOf('review_code', kept!.result)));
   });
 });
 
 describe('a stored return on an unchanged diff', () => {
-  const returned = { decision: 'return' as const, review: 'Authentication is missing.', summary: [] };
+  const returned = {
+    decision: 'return' as const,
+    review: 'Authentication is missing.',
+    summary: [],
+    sections: CODE_SECTIONS,
+  };
 
   it('is not kept, so its reviewer decides again', async () => {
     const stored = JSON.stringify(returned);
     const documents = {
-      latestBody: async (_key: string, kind: string) => (kind === 'review_quality_result' ? stored : null),
+      latestBody: async (_key: string, kind: string) => (kind === 'review_code_result' ? stored : null),
     } as unknown as DocumentRepository;
     const selection = await selectReviewers(documents, '/none', {
       key: 'PROJ-411',
@@ -190,12 +210,12 @@ describe('a stored return on an unchanged diff', () => {
       attemptId: null,
       counts: async () => true,
     });
-    expect(selection.kept.map((item) => item.kind)).not.toContain('review_quality');
-    expect(selection.pending.map((reviewer) => reviewer.name)).toContain('quality');
+    expect(selection.kept.map((item) => item.kind)).not.toContain('review_code');
+    expect(selection.pending.map((reviewer) => reviewer.name)).toContain('code');
   });
 
   it('is counted, stored and reported with the decision the reviewer gave', () => {
-    const kept = opinionOf('review_quality', returned);
+    const kept = opinionOf('review_code', returned);
     const tally = tallyRound([kept], [], []);
     expect(tally.opinions.map((item) => item.decision)).toEqual(['return']);
     expect(tally.opinions[0].body).toBe('Authentication is missing.\ndecision: return\n');

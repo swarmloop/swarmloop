@@ -1,4 +1,13 @@
-import { PHASES, PHASE_STEPS, pipelineStepOf, REVIEW_STEPS, STEPS } from './steps';
+import {
+  isReviewStep,
+  PHASES,
+  PHASE_STEPS,
+  pipelineStepOf,
+  requireReviewer,
+  REVIEW_STEPS,
+  reviewerSetOf,
+  STEPS,
+} from './steps';
 
 describe('pipelineStepOf', () => {
   it('maps every reviewer step to the code-review phase step', () => {
@@ -14,13 +23,34 @@ describe('pipelineStepOf', () => {
 
 describe('REVIEW_STEPS', () => {
   it('lists one step per reviewer', () => {
-    expect(REVIEW_STEPS).toEqual([
-      'code-review-requirements',
-      'code-review-quality',
-      'code-review-regressions',
-      'code-review-security',
-      'code-review-performance',
-    ]);
+    expect(REVIEW_STEPS).toEqual(['code-review-requirements', 'code-review-code', 'code-review-behavior']);
+  });
+});
+
+describe('a run reviewed by the retired reviewers', () => {
+  it('still knows their steps as review steps of the code-review phase', () => {
+    expect(isReviewStep('code-review-code')).toBe(true);
+    expect(isReviewStep('code-review-security')).toBe(true);
+    expect(isReviewStep('code-review-other')).toBe(false);
+    expect(pipelineStepOf('code-review-security')).toBe('code-review');
+    expect(requireReviewer('code-review-security')).toBe('security');
+  });
+});
+
+describe('reviewerSetOf', () => {
+  const retired = ['requirements', 'quality', 'regressions', 'security', 'performance'];
+
+  it('gives the three reviewers when nothing is stored yet', () => {
+    expect(reviewerSetOf([])).toEqual(['requirements', 'code', 'behavior']);
+    expect(reviewerSetOf(['requirements'])).toEqual(['requirements', 'code', 'behavior']);
+  });
+
+  it('gives the retired five for a run whose last reviewer other than requirements is retired', () => {
+    expect(reviewerSetOf(['requirements', 'security'])).toEqual(retired);
+  });
+
+  it('gives the three reviewers once a current one reviewed after a retired one', () => {
+    expect(reviewerSetOf(['quality', 'code'])).toEqual(['requirements', 'code', 'behavior']);
   });
 });
 

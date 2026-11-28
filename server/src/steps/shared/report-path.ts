@@ -1,7 +1,7 @@
 import type { StepStatEntity } from '../../history/step-stat.entity';
 import { ARTIFACTS } from '../contract/artifacts';
 import type { Issue } from '../contract/step-contract';
-import { CODE_REVIEWERS } from '../../contract/steps';
+import { STORED_REVIEWERS } from '../../contract/steps';
 import { firstLine } from '../contract/artifact';
 import { readStored } from './report-stored';
 
@@ -56,7 +56,7 @@ function reasonOf(stat: StepStatEntity, documents: StoredDocument[]): string | n
   if (failed) {
     return `\`${failed}\``;
   }
-  const reviewer = CODE_REVIEWERS.find((name) => name === issue.source);
+  const reviewer = STORED_REVIEWERS.find((name) => name === issue.source);
   return reviewer ? `${reviewer}: ${firstLine(issue.body)}` : issue.title;
 }
 

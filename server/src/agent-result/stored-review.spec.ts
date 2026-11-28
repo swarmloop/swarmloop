@@ -1,4 +1,4 @@
-import { storedReview } from './stored-review';
+import { storedReview, storedReviewers } from './stored-review';
 
 const result = (decision: string) => JSON.stringify({ decision, review: 'from result', summary: [] });
 
@@ -33,5 +33,57 @@ describe('storedReview', () => {
       review: 'old\n\nsummary:\n- a thing',
       summary: ['a thing'],
     });
+  });
+});
+
+describe('storedReviewers', () => {
+  it('gives the three reviewers for a run with no review yet or with only the requirements review', () => {
+    expect(storedReviewers([])).toEqual(['requirements', 'code', 'behavior']);
+    expect(storedReviewers([{ id: 1, kind: 'review_requirements_result' }])).toEqual([
+      'requirements',
+      'code',
+      'behavior',
+    ]);
+  });
+
+  it('gives the retired five for a run reviewed by the old reviewers', () => {
+    const documents = [
+      { id: 1, kind: 'review_requirements' },
+      { id: 2, kind: 'review_quality_result' },
+      { id: 3, kind: 'review_security' },
+    ];
+    expect(storedReviewers(documents)).toEqual(['requirements', 'quality', 'regressions', 'security', 'performance']);
+  });
+
+  it('gives the three reviewers for a run whose newest review is by a current reviewer', () => {
+    const documents = [
+      { id: 2, kind: 'review_code_result' },
+      { id: 1, kind: 'review_quality_result' },
+    ];
+    expect(storedReviewers(documents)).toEqual(['requirements', 'code', 'behavior']);
+  });
+
+  it('decides by id, not by the order the documents are listed in', () => {
+    const documents = [
+      { id: 9, kind: 'review_security_result' },
+      { id: 4, kind: 'review_code_result' },
+    ];
+    expect(storedReviewers(documents)).toEqual(['requirements', 'quality', 'regressions', 'security', 'performance']);
+  });
+
+  it('counts the reviewers of an open round as newer than every stored review', () => {
+    const documents = [{ id: 1, kind: 'review_security_result' }];
+    expect(storedReviewers(documents, ['requirements', 'code', 'behavior'])).toEqual([
+      'requirements',
+      'code',
+      'behavior',
+    ]);
+    expect(storedReviewers(documents, ['requirements'])).toEqual([
+      'requirements',
+      'quality',
+      'regressions',
+      'security',
+      'performance',
+    ]);
   });
 });

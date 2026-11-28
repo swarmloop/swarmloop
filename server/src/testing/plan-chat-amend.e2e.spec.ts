@@ -95,10 +95,8 @@ describe('a person writes to the planner after implement started, on a run that 
     expect(implement[1].prompt).toContain('- keep the old rows - files: c.ts - proof: c.spec.ts');
     expect(implement[1].prompt).not.toMatch(/Added:[^]*add the field - files/);
     expect(blocks.steps).toContain('code-review-report');
-    const reviews = blocks.prompts.filter((launch) =>
-      /^code-review-(requirements|quality|regressions|security|performance)$/.test(launch.step),
-    );
-    expect(reviews.length).toBeGreaterThanOrEqual(5);
+    const reviews = blocks.prompts.filter((launch) => /^code-review-(requirements|code|behavior)$/.test(launch.step));
+    expect(reviews.length).toBeGreaterThanOrEqual(3);
     for (const review of reviews) {
       expect(review.prompt).toContain('Plan changes');
       expect(review.prompt).toContain('Plan v2: Also keep the old rows');

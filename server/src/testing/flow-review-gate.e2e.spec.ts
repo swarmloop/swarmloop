@@ -50,7 +50,7 @@ describe('the review stamps the files it read, and merge-request sends a stale r
 
     expect(failed.exitCode).toBe(1);
     expect(failed.message).toContain('dubious ownership');
-    expect(await documents().latestStamp(KEY, 'review_quality')).toBeNull();
+    expect(await documents().latestStamp(KEY, 'review_code')).toBeNull();
 
     await flow.person('resume');
 

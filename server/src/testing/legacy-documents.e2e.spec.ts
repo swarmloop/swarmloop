@@ -144,18 +144,18 @@ describe('a run stored before review results', () => {
     const run = await approvedRun(flow, REVIEW_KEY, 'code-review');
     await documents.putDocument(run, 'implementation', '- changed the field parser\n');
     await documents.putDocument(run, 'handoff', '## implement\n- the parser had to match the field\n');
-    await documents.putDocument(run, 'review_quality', 'Old review.\n\nsummary:\n- the parser holds\n\ndecision: ok\n');
+    await documents.putDocument(run, 'review_code', 'Old review.\n\nsummary:\n- the parser holds\n\ndecision: ok\n');
     expect(await documents.latestBody(REVIEW_KEY, 'implementation_result')).toBeNull();
-    expect(await documents.latestBody(REVIEW_KEY, 'review_quality_result')).toBeNull();
+    expect(await documents.latestBody(REVIEW_KEY, 'review_code_result')).toBeNull();
 
     await flow.person('resume');
 
     expect((await flow.app.app.get(RunRepository).findRun(REVIEW_KEY))?.currentStep).toBe('done');
-    const prompt = blocks.prompts.find((item) => item.step === 'code-review-quality')?.prompt ?? '';
+    const prompt = blocks.prompts.find((item) => item.step === 'code-review-code')?.prompt ?? '';
     expect(prompt).toContain('changed the field parser');
     expect(prompt).toContain('add the field');
     expect(prompt).toContain('the parser had to match the field');
-    expect(JSON.parse((await documents.latestBody(REVIEW_KEY, 'review_quality_result')) ?? '{}')).toMatchObject({
+    expect(JSON.parse((await documents.latestBody(REVIEW_KEY, 'review_code_result')) ?? '{}')).toMatchObject({
       decision: 'ok',
     });
     expect(await documents.latestBody(REVIEW_KEY, 'review_report_result')).toContain('"line"');

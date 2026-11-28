@@ -1,4 +1,4 @@
-import { CODE_REVIEWERS } from '../../contract/steps';
+import { STORED_REVIEWERS } from '../../contract/steps';
 import { ARTIFACTS, reviewResultOf } from '../contract/artifacts';
 import { answered, openQuestions } from './answers';
 import { rejectedFindings } from './rejected-findings';
@@ -34,7 +34,7 @@ export function reportExchanges(documents: StoredDocument[]): Map<string, Report
         });
       }
     }
-    const reviewer = CODE_REVIEWERS.find((name) => reviewResultOf(name).kind === document.kind);
+    const reviewer = STORED_REVIEWERS.find((name) => reviewResultOf(name).kind === document.kind);
     const exchange = reviewer ? open.get(reviewer) : undefined;
     if (reviewer && exchange) {
       const review = readStored(() => reviewResultOf(reviewer).parse(document.body));

@@ -1,6 +1,7 @@
 import { CODE_REVIEWERS } from '../../contract/steps';
 import { readResult } from '../read-result';
 import { block } from '../result.spec-helpers';
+import { reviewReportCodec } from '../review-report-codec';
 import { isLegacyReport, legacyReviewReport, reviewReport } from './review-report';
 
 const REPORT = {
@@ -32,6 +33,25 @@ describe('review report definition', () => {
       block({ ...REPORT, worthALook: [...REPORT.worthALook, REPORT.worthALook[0]] }),
     );
     expect(read.ok === false && read.errors[0]).toContain('worthALook');
+  });
+
+  it('refuses a report that leaves one of the three reviewers out of its notes', () => {
+    const { behavior: _left, ...notes } = REPORT.notes;
+    const read = readResult(reviewReport, block({ ...REPORT, notes }));
+    expect(read.ok === false && read.errors[0]).toContain('notes.behavior');
+  });
+
+  it('reads the report of a run reviewed by the retired five through its stored shape', () => {
+    const retired = ['requirements', 'quality', 'regressions', 'security', 'performance'];
+    const stored = { ...REPORT, notes: Object.fromEntries(retired.map((name) => [name, 'ok'])) };
+    expect(readResult(reviewReport, block(stored)).ok).toBe(false);
+    expect(reviewReportCodec.parse(JSON.stringify(stored))).toEqual(stored);
+    expect(reviewReportCodec.parse(JSON.stringify(REPORT))).toEqual(REPORT);
+  });
+
+  it('refuses a stored report with a note of a name that was never a reviewer', () => {
+    const stored = { ...REPORT, notes: { ...REPORT.notes, style: 'ok' } };
+    expect(() => reviewReportCodec.parse(JSON.stringify(stored))).toThrow('notes');
   });
 
   it('refuses a risk that is not low, medium or high', () => {

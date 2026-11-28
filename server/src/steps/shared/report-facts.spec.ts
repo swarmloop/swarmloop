@@ -12,8 +12,18 @@ const doc = (kind: string, body: unknown, stepStatId = 0): DocumentEntity =>
 const visit = (id: number, step: string, status: string): StepStatEntity => ({ id, step, status }) as StepStatEntity;
 const command = (attemptId: string, status: string, skipped = 0): CheckCommandEntity =>
   ({ attemptId, status, skipped }) as CheckCommandEntity;
+const SECTIONS: Record<string, Record<string, string>> = {
+  code: { quality: 'checked', security: 'checked' },
+  behavior: { regressions: 'checked', performance: 'checked' },
+};
 const review = (name: string, decision: 'ok' | 'return', extra: object = {}): DocumentEntity =>
-  doc(`review_${name}_result`, { decision, review: `${name} review`, summary: ['s'], ...extra });
+  doc(`review_${name}_result`, {
+    decision,
+    review: `${name} review`,
+    summary: ['s'],
+    ...(SECTIONS[name] ? { sections: SECTIONS[name] } : {}),
+    ...extra,
+  });
 const marks = (...statuses: string[]): DocumentEntity[] => [
   doc(
     'requirement_list',
@@ -78,11 +88,29 @@ describe('readReportFacts', () => {
   it('counts the decisions of the last round', async () => {
     const documents = [
       ...CODE_REVIEWERS.map((name) => review(name, 'return')),
-      ...CODE_REVIEWERS.map((name) => review(name, name === 'security' ? 'return' : 'ok')),
+      ...CODE_REVIEWERS.map((name) => review(name, name === 'code' ? 'return' : 'ok')),
     ];
     const facts = await readReportFacts(depsOf({ documents }), RUN);
-    expect(facts.review).toEqual({ ok: 4, total: 5 });
+    expect(facts.review).toEqual({ ok: 2, total: 3 });
     expect(facts.verdict).toBe('sent-back');
+  });
+
+  it('lists the five reviewers of a run reviewed before the three, and the three of a run reviewed after', async () => {
+    const old = ['requirements', 'quality', 'regressions', 'security', 'performance'].map((name) => review(name, 'ok'));
+    const before = await readReportFacts(depsOf({ documents: old }), RUN);
+    expect(before.reviewers.map((reviewer) => reviewer.name)).toEqual([
+      'requirements',
+      'quality',
+      'regressions',
+      'security',
+      'performance',
+    ]);
+    expect(before.review).toEqual({ ok: 5, total: 5 });
+    const after = await readReportFacts(
+      depsOf({ documents: [...old, ...CODE_REVIEWERS.map((name) => review(name, 'ok'))] }),
+      RUN,
+    );
+    expect(after.reviewers.map((reviewer) => reviewer.name)).toEqual(['requirements', 'code', 'behavior']);
   });
 
   it('prefers the reviews of the round being written over the stored ones', async () => {
@@ -92,7 +120,7 @@ describe('readReportFacts', () => {
       result: { decision: 'ok' as const, review: 'r', summary: ['s'] },
     }));
     const facts = await readReportFacts(depsOf({ documents }), RUN, round);
-    expect(facts.review).toEqual({ ok: 5, total: 5 });
+    expect(facts.review).toEqual({ ok: 3, total: 3 });
     expect(facts.verdict).toBe('waiting');
   });
 

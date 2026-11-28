@@ -35,7 +35,7 @@ const FINDING = 'The parser drops a row.';
 const account = block({
   implementation: ['No file changed: the reader keeps every row'],
   summary: ['The reader keeps every row, so the finding does not apply.'],
-  rejected: [{ reviewer: 'quality', finding: FINDING, reason: 'The reader keeps every row.' }],
+  rejected: [{ reviewer: 'code', finding: FINDING, reason: 'The reader keeps every row.' }],
 });
 
 const merged = (id: string): Subtask => ({
@@ -89,7 +89,7 @@ describe('a return to a split parent whose tasks are merged', () => {
   const epicFiles = () => readdirSync(join(flow.app.root, 'worktrees', KEY, 'demo'));
 
   it('launches the implement agent on the epic worktree, and the new head is reviewed', async () => {
-    await start({ 'code-review-quality': [returns(FINDING), passes] });
+    await start({ 'code-review-code': [returns(FINDING), passes] });
 
     await flow.app.pipeline.runThrough(KEY, { auto: true });
     expect(launches('implement')).toHaveLength(1);
@@ -107,14 +107,14 @@ describe('a return to a split parent whose tasks are merged', () => {
       'checks',
       'code-review',
     ]);
-    const order = blocks.steps.filter((step) => step === 'implement' || step === 'code-review-quality');
-    expect(order).toEqual(['code-review-quality', 'implement', 'code-review-quality']);
+    const order = blocks.steps.filter((step) => step === 'implement' || step === 'code-review-code');
+    expect(order).toEqual(['code-review-code', 'implement', 'code-review-code']);
     await assertInvariants(flow.app);
   });
 
   it('asks the planner of the epic when the same finding comes back on the next head, and goes on when it rules the finding out', async () => {
     await start({
-      'code-review-quality': [returns(FINDING), asks(FINDING, 'Should rows be kept in order?')],
+      'code-review-code': [returns(FINDING), asks(FINDING, 'Should rows be kept in order?')],
       plan: [answers('ruled-out', 'The brief keeps rows as they are.')],
     });
 
@@ -122,7 +122,7 @@ describe('a return to a split parent whose tasks are merged', () => {
 
     const entries = (await flow.app.app.get(PlanChatStore).read(KEY)).entries;
     expect(entries.filter((entry) => entry.kind === 'question')).toMatchObject([
-      { about: 'finding', from: 'code-review-quality' },
+      { about: 'finding', from: 'code-review-code' },
     ]);
     expect(launches('plan').at(-1)?.prompt).toContain(FINDING);
     expect(entries.filter((entry) => entry.kind === 'answer')).toMatchObject([
@@ -130,7 +130,7 @@ describe('a return to a split parent whose tasks are merged', () => {
     ]);
     expect(launches('plan')).toHaveLength(1);
     expect(launches('implement')).toHaveLength(1);
-    expect(launches('code-review-quality')).toHaveLength(2);
+    expect(launches('code-review-code')).toHaveLength(2);
     expect((await flow.app.app.get(RunRepository).findRun(KEY))?.currentStep).not.toBe('implement');
     await assertInvariants(flow.app);
   });
@@ -138,7 +138,7 @@ describe('a return to a split parent whose tasks are merged', () => {
   it('reviews once more after implement’s answer with no file change, and the refusal of the same tree and account goes up the chain to the person', async () => {
     await start(
       {
-        'code-review-quality': [returns(FINDING), asks(FINDING, 'Should rows be kept in order?')],
+        'code-review-code': [returns(FINDING), asks(FINDING, 'Should rows be kept in order?')],
         implement: [account, account],
         'implement-improve': [account, account],
         plan: [answers('holds', 'The finding holds.'), block({ reply: 'The return stands.' })],
@@ -149,7 +149,7 @@ describe('a return to a split parent whose tasks are merged', () => {
     await flow.app.pipeline.runThrough(KEY, { auto: true });
 
     expect(launches('implement')).toHaveLength(2);
-    expect(launches('code-review-quality')).toHaveLength(2);
+    expect(launches('code-review-code')).toHaveLength(2);
     const entries = (await flow.app.app.get(PlanChatStore).read(KEY)).entries;
     expect(entries.filter((entry) => entry.kind === 'question').map((entry) => entry.text)).toEqual([
       expect.stringContaining('Should rows be kept in order?'),
@@ -165,7 +165,7 @@ describe('a return to a split parent whose tasks are merged', () => {
   it('reaches the backlog planner when the epic planner escalates the finding of a backlog run, and the person is not asked', async () => {
     await start(
       {
-        'code-review-quality': [returns(FINDING), asks(FINDING, 'Should rows be kept in order?')],
+        'code-review-code': [returns(FINDING), asks(FINDING, 'Should rows be kept in order?')],
         plan: [block({ reply: 'A product decision.', finding: 'holds', escalate: 'Which order do rows keep?' })],
       },
       true,
@@ -180,7 +180,7 @@ describe('a return to a split parent whose tasks are merged', () => {
     const items = (await flow.app.app.get(RunQueriesService).flow(KEY)).items;
     expect(items).toMatchObject([{ kind: 'question', holder: 'planner' }]);
     expect(launches('implement')).toHaveLength(1);
-    expect(launches('code-review-quality')).toHaveLength(2);
+    expect(launches('code-review-code')).toHaveLength(2);
     await assertInvariants(flow.app);
   });
 

@@ -1,7 +1,7 @@
 import { storedProjects } from '../../config/checkout-path';
 import { handoffText } from '../shared/handoff';
 import 'reflect-metadata';
-import { resultAnswer } from '../../testing/result-answer';
+import { checkedSections, resultAnswer } from '../../testing/result-answer';
 
 import { getRepositoryToken } from '@nestjs/typeorm';
 
@@ -539,11 +539,16 @@ describe('requirements step', () => {
             line: 'Holds.',
             done: ['x'],
             worthALook: [],
-            notes: { requirements: 'ok', quality: 'ok', regressions: 'ok', security: 'ok', performance: 'ok' },
+            notes: { requirements: 'ok', code: 'ok', behavior: 'ok' },
             risk: 'low',
             riskReason: 'small',
           })
-        : resultAnswer('Fine.', { decision: 'ok', review: 'Fine.', summary: [] });
+        : resultAnswer('Fine.', {
+            decision: 'ok',
+            review: 'Fine.',
+            summary: [],
+            ...checkedSections(step.replace('code-review-', '')),
+          });
     const agent = jest.fn().mockImplementation(async (input: { step: string }) => ({
       responseText: answer(input.step),
       chatId: null,

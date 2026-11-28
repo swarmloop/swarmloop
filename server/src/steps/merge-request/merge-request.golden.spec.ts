@@ -35,7 +35,7 @@ import { storeRun } from '../../testing/store-run.spec-helpers';
 const KEY = 'PROJ-200';
 const MR_URL = 'https://gitlab.example/group/demo/-/merge_requests/12';
 
-const NOTES = { requirements: 'a', quality: 'b', regressions: 'c', security: 'd', performance: 'e' };
+const NOTES = { requirements: 'a', code: 'b', behavior: 'c' };
 const PARTS = { line: 'Ships the field.', done: ['x'], worthALook: [], notes: NOTES, risk: 'low', riskReason: 'small' };
 
 function call(method: string): HttpCallDraft {

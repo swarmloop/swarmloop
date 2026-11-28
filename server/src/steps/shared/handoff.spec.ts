@@ -7,6 +7,7 @@ import {
   handoffSection,
   handoffText,
   issueOf,
+  latestReturnedNotes,
   mergeHandoff,
   recordHandoff,
   returnNotes,
@@ -57,12 +58,48 @@ describe('composedReturn', () => {
     expect(composedReturn(documents)).toBe('## quality\nnotes\ndecision: ok\n');
   });
 
+  it('hands on a finding of the retired quality reviewer, but not once the three reviewers reviewed after it', () => {
+    const retired = [
+      { id: 1, kind: 'review_quality', body: 'notes\ndecision: return\n' },
+      { id: 2, kind: 'review_quality_result', body: JSON.stringify({ decision: 'return', review: 'n', summary: [] }) },
+    ];
+    expect(composedReturn(retired)).toBe('## quality\nnotes\ndecision: return\n');
+    const sections = { quality: 'checked', security: 'checked' };
+    const code = [
+      { id: 4, kind: 'review_code', body: 'fine\ndecision: ok\n' },
+      {
+        id: 5,
+        kind: 'review_code_result',
+        body: JSON.stringify({ decision: 'ok', review: 'f', summary: [], sections }),
+      },
+    ];
+    expect(composedReturn([...code, ...retired])).toBeNull();
+  });
+
   it('holds no reviewer name literal', () => {
     const source = readFileSync(join(__dirname, 'handoff.ts'), 'utf8');
     const body = source.slice(source.indexOf('export function composedReturn'));
     for (const reviewer of CODE_REVIEWERS) {
       expect(body).not.toContain(`'${reviewer}'`);
     }
+  });
+});
+
+describe('latestReturnedNotes', () => {
+  const quality = { id: 1, kind: 'review_quality', body: 'notes\ndecision: return\n' };
+  const code = { id: 2, kind: 'review_code', body: 'fine\ndecision: ok\n' };
+  const repository = (stored: { id: number; kind: string; body: string }[]): DocumentRepository =>
+    ({
+      latestDocuments: async (_runs: number[], kinds: string[]) =>
+        stored.filter((document) => kinds.includes(document.kind)),
+    }) as unknown as DocumentRepository;
+
+  it('reads the finding of a retired reviewer from the newest document of its kind', async () => {
+    expect(await latestReturnedNotes(repository([quality]), 1)).toBe('## quality\nnotes\ndecision: return\n');
+  });
+
+  it('does not hand on the stale return of a retired reviewer after the three reviewers reviewed', async () => {
+    expect(await latestReturnedNotes(repository([code, quality]), 1)).toBeNull();
   });
 });
 

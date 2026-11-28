@@ -26,7 +26,9 @@ import { AGENT_RUNNER } from '../../agent/agent-runner';
 
 import type { ReviewReportResult } from '../../agent-result/definitions/review-report';
 import { CODE_REVIEWERS } from '../../contract/steps';
-import { resultAnswer } from '../../testing/result-answer';
+import { checkedSections, resultAnswer } from '../../testing/result-answer';
+
+export { checkedSections };
 
 import { PipelineModule } from '../../pipeline/pipeline.module';
 
@@ -39,9 +41,15 @@ export const REFUSED_WRITE = JSON.stringify({
   message: 'Cannot write to /work/billing-api/a.php while in plan mode.',
 });
 
-/** A reviewer's final text: prose, then its result block. */
+/** A reviewer's final text: prose, then its result block. A step or name of a reviewer with sections adds them. */
 export function reply(step: string, decision: 'ok' | 'return', reason?: string): string {
-  return resultAnswer(step, { decision, review: step, summary: [step], ...(reason ? { reason } : {}) });
+  return resultAnswer(step, {
+    decision,
+    review: step,
+    summary: [step],
+    ...checkedSections(step),
+    ...(reason ? { reason } : {}),
+  });
 }
 
 /** The report's final text: prose, then its result block. */
@@ -127,14 +135,14 @@ export async function bootLive(root: string, spawn: jest.Mock): ReturnType<typeo
 }
 
 export function reviewSpawn(succeedOn: number): jest.Mock {
-  let security = 0;
+  let behavior = 0;
   return jest.fn(async (launch: { step: string }) => {
-    if (launch.step === 'code-review-security') {
-      security += 1;
-      if (succeedOn > 0 && security >= succeedOn) {
-        return fakeChild([doneStream(reply('security-finished', 'ok'))], 0);
+    if (launch.step === 'code-review-behavior') {
+      behavior += 1;
+      if (succeedOn > 0 && behavior >= succeedOn) {
+        return fakeChild([doneStream(reply('code-review-behavior', 'ok'))], 0);
       }
-      return fakeChild([chatStream('security-chat', `security-attempt-${security}`)], 0);
+      return fakeChild([chatStream('behavior-chat', `behavior-attempt-${behavior}`)], 0);
     }
     if (launch.step === 'code-review-report') {
       return fakeChild([doneStream(reportReply())], 0);

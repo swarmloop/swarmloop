@@ -58,8 +58,8 @@ async function round(key: string, requirementsAnswers: string[], options: Option
   if (resumed) {
     mkdirSync(join(root, 'data'), { recursive: true });
     writeFileSync(
-      join(root, 'data', `${key}-code-review-quality-session.json`),
-      `${JSON.stringify({ runtime: 'cursor', chatId: 'quality-chat', resumed: true, completed: true, killReason: null, usd: 3, resultName: 'review_quality' })}\n`,
+      join(root, 'data', `${key}-code-review-code-session.json`),
+      `${JSON.stringify({ runtime: 'cursor', chatId: 'code-chat', resumed: true, completed: true, killReason: null, usd: 3, resultName: 'review_code' })}\n`,
     );
   }
   const queue = [...requirementsAnswers];
@@ -117,7 +117,7 @@ describe('code review with the requirements list', () => {
   it('gives every reviewer the list and the plan with covers in its first prompt, once', async () => {
     const { calls } = await round('PROJ-501', [marked()]);
     const reviewers = calls.filter((call) => call.step !== 'code-review-report');
-    expect(reviewers).toHaveLength(5);
+    expect(reviewers).toHaveLength(3);
     for (const call of reviewers) {
       expect(occurrences(call.prompt, 'Requirements list:\nR1: Parse the field')).toBe(1);
       expect(call.prompt).toContain('R3: Reject an empty field');
@@ -139,11 +139,11 @@ describe('code review with the requirements list', () => {
 
   it('gives a resumed reviewer neither the list nor covers', async () => {
     const { calls } = await round('PROJ-502', [marked()], { resumed: true });
-    const quality = calls.find((call) => call.step === 'code-review-quality')!;
-    expect(quality.prompt).toContain('Continue this quality review');
-    expect(quality.prompt).not.toContain('\nRequirements list:\n');
-    expect(quality.prompt).not.toContain('covers:');
-    expect(quality.prompt).toContain('name one broken behavior');
+    const code = calls.find((call) => call.step === 'code-review-code')!;
+    expect(code.prompt).toContain('Continue this code review');
+    expect(code.prompt).not.toContain('\nRequirements list:\n');
+    expect(code.prompt).not.toContain('covers:');
+    expect(code.prompt).toContain('name one broken behavior');
   });
 
   it('returns for one missing requirement and names it in the return and the issue', async () => {

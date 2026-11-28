@@ -543,7 +543,7 @@ describe('crash matrix', () => {
     const delegate = blocks.run.bind(blocks);
     jest.spyOn(blocks, 'run').mockImplementation(async (input: { step: string; outputFile?: string }) => {
       const answered = await delegate(input);
-      if (input.step !== 'code-review-quality' || !input.outputFile) return answered;
+      if (input.step !== 'code-review-code' || !input.outputFile) return answered;
       // The process sent its block and was killed before it exited.
       mkdirSync(join(app.root, 'data'), { recursive: true });
       writeFileSync(
@@ -556,7 +556,7 @@ describe('crash matrix', () => {
     const killed = await app.pipeline.step('code-review', KEY);
     expect(killed.exitCode).toBe(1);
     expect(killed.message).toContain('process killed');
-    expect(await documents.latestBody(KEY, 'review_quality')).toBeNull();
+    expect(await documents.latestBody(KEY, 'review_code')).toBeNull();
 
     jest.restoreAllMocks();
     blocks.steps.length = 0;
@@ -564,7 +564,7 @@ describe('crash matrix', () => {
 
     expect(done.exitCode).toBe(0);
     expect(blocks.steps).toEqual(['code-review-report']);
-    expect(JSON.parse((await documents.latestBody(KEY, 'review_quality_result')) ?? '{}').decision).toBe('ok');
+    expect(JSON.parse((await documents.latestBody(KEY, 'review_code_result')) ?? '{}').decision).toBe('ok');
     expect((await runs.findRun(KEY))?.currentStep).toBe('commit');
   });
 });

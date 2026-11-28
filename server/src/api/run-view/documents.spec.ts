@@ -10,12 +10,20 @@ import {
   withoutServerRecords,
   type TaskRuns,
 } from './documents';
+import { STEP_KINDS } from './run-view.types';
 
 describe('belongsToVisit', () => {
   const kinds = ['return', 'issues'];
 
   it('shows a document of the visit', () => {
     expect(belongsToVisit({ stepStatId: 2, kind: 'return' } as DocumentEntity, 2, kinds, true)).toBe(true);
+  });
+
+  it('shows the reviews of the three reviewers and of the retired ones of an old run in a code-review visit', () => {
+    const review = STEP_KINDS['code-review'] ?? [];
+    for (const name of ['requirements', 'code', 'behavior', 'quality', 'regressions', 'security', 'performance']) {
+      expect(belongsToVisit({ stepStatId: 2, kind: `review_${name}` } as DocumentEntity, 2, review, true)).toBe(true);
+    }
   });
 
   it('leaves the issues document out, even when its kind is asked for', () => {

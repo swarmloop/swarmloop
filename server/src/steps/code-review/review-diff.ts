@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { basename, join } from 'path';
+import { REVIEW_STEPS } from '../../contract/steps';
 import { sessionHome } from '../../history/session-group';
 import type { SandboxMount } from '../../core/sandbox-mount';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
@@ -39,14 +40,7 @@ export async function reviewDiffSection(
   };
 }
 
-const REVIEW_HOMES = [
-  'code-review-requirements',
-  'code-review-quality',
-  'code-review-regressions',
-  'code-review-security',
-  'code-review-performance',
-  'code-review-report',
-];
+const REVIEW_HOMES = [...REVIEW_STEPS, 'code-review-report'];
 
 export function writeReviewDiff(root: string, key: string, patch: string): string {
   let written = '';

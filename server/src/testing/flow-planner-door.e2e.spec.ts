@@ -34,7 +34,7 @@ describe('the planner turns of a run pass the door', () => {
     blocks = new BlockAgentRunner({
       plan: [firstPlan, block({ reply: 'Cursor, as in the brief.' })],
       implement: [stops, done],
-      'code-review-quality': [asking],
+      'code-review-code': [asking],
     });
     flow = await createFlowHarness(KEY, { blocks, realImplement: 'all' });
     const documents = flow.app.app.get(DocumentRepository);
@@ -65,7 +65,7 @@ describe('the planner turns of a run pass the door', () => {
   it('refuses the planner turn that answers the same reviewer question a second time: no launch, the run waits, the question goes one level up', async () => {
     blocks = new BlockAgentRunner({
       plan: [firstPlan, block({ reply: 'Cursor, as in the brief.', finding: 'holds' })],
-      'code-review-quality': [asking, asking],
+      'code-review-code': [asking, asking],
     });
     flow = await createFlowHarness(KEY, { blocks, realImplement: 'all', realReview: true });
     flow.fastWaits();

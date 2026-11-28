@@ -1,11 +1,5 @@
 {
-  "agentSteps": [
-    "code-review-performance",
-    "code-review-quality",
-    "code-review-regressions",
-    "code-review-requirements",
-    "code-review-security"
-  ],
+  "agentSteps": ["code-review-behavior", "code-review-code", "code-review-requirements"],
   "documentsOutsideVisits": [
     {
       "body": "{\"prompt\":\"Ship the field\\n\"}\n",
@@ -146,30 +140,6 @@
       "step": "code-review"
     },
     {
-      "kind": "session.changed",
-      "step": "code-review"
-    },
-    {
-      "kind": "context.manifest",
-      "step": "code-review"
-    },
-    {
-      "kind": "agent.launched",
-      "step": "code-review"
-    },
-    {
-      "kind": "session.changed",
-      "step": "code-review"
-    },
-    {
-      "kind": "context.manifest",
-      "step": "code-review"
-    },
-    {
-      "kind": "agent.launched",
-      "step": "code-review"
-    },
-    {
       "kind": "artifact.produced",
       "step": "code-review"
     },
@@ -197,7 +167,7 @@
       "research_result",
       "impact"
     ],
-    "code-review-performance": [
+    "code-review-behavior": [
       "implementation_result",
       "implementation",
       "requirements",
@@ -213,23 +183,7 @@
       "research_result",
       "impact"
     ],
-    "code-review-quality": [
-      "implementation_result",
-      "implementation",
-      "requirements",
-      "repos",
-      "rebase_conflict",
-      "*",
-      "handoff",
-      "requirement_list",
-      "requirement_coverage",
-      "plan_improve_result",
-      "plan_result",
-      "implementation_improve_result",
-      "research_result",
-      "impact"
-    ],
-    "code-review-regressions": [
+    "code-review-code": [
       "implementation_result",
       "implementation",
       "requirements",
@@ -246,22 +200,6 @@
       "impact"
     ],
     "code-review-requirements": [
-      "implementation_result",
-      "implementation",
-      "requirements",
-      "repos",
-      "rebase_conflict",
-      "*",
-      "handoff",
-      "requirement_list",
-      "requirement_coverage",
-      "plan_improve_result",
-      "plan_result",
-      "implementation_improve_result",
-      "research_result",
-      "impact"
-    ],
-    "code-review-security": [
       "implementation_result",
       "implementation",
       "requirements",

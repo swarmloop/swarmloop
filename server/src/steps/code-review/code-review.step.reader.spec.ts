@@ -9,9 +9,7 @@ import { FAKE_MODEL_KEY } from '../../testing/env.spec-helpers';
 import { gitWorktree } from '../../testing/git-worktree.spec-helpers';
 import { boot, reply, reportReply, result, seed, writeEnv } from './code-review.step.spec-helpers';
 
-const REVIEWERS = ['requirements', 'quality', 'regressions', 'security', 'performance'].map(
-  (name) => `code-review-${name}`,
-);
+const REVIEWERS = ['requirements', 'code', 'behavior'].map((name) => `code-review-${name}`);
 
 /** The steps of one review round on Claude that were launched with a reader, with `overrides` on the shipped defaults. */
 async function readingSteps(key: string, overrides: Record<string, string>): Promise<string[]> {
@@ -23,7 +21,7 @@ async function readingSteps(key: string, overrides: Record<string, string>): Pro
   });
   gitWorktree(join(root, 'worktrees', key, 'billing-api'));
   const agent = jest.fn(async (input: AgentRunInput) =>
-    result(input.step.endsWith('report') ? reportReply('The change holds.') : reply('notes', 'ok'), input.step),
+    result(input.step.endsWith('report') ? reportReply('The change holds.') : reply(input.step, 'ok'), input.step),
   );
   const app = await boot(root, agent);
   try {
@@ -43,7 +41,7 @@ describe('code-review step and the reader', () => {
     expect(await readingSteps('PROJ-911', {})).toEqual([]);
   });
 
-  it('gives the five reviewers the reader when code-review is named, and the report not', async () => {
+  it('gives the three reviewers the reader when code-review is named, and the report not', async () => {
     expect((await readingSteps('PROJ-912', { READ_ROLES: 'plan,code-review' })).sort()).toEqual([...REVIEWERS].sort());
   });
 

@@ -361,7 +361,7 @@ describe('the real code-review step in a whole flow', () => {
 
   it('takes a review return back to implement and on to done', async () => {
     const blocks = new BlockAgentRunner({
-      'code-review-quality': [
+      'code-review-code': [
         {
           block: {
             decision: 'return',
@@ -384,7 +384,7 @@ describe('the real code-review step in a whole flow', () => {
             line: 'The field parser changed.',
             done: ['The field parser changed.'],
             worthALook: [{ place: 'parser.ts', reason: 'keep the empty segment' }],
-            notes: Object.fromEntries(CODE_REVIEWERS.map((name) => [name, 'Quality returned the change.'])),
+            notes: Object.fromEntries(CODE_REVIEWERS.map((name) => [name, 'Code returned the change.'])),
             risk: 'low',
             riskReason: 'a small change',
           },
@@ -412,18 +412,16 @@ describe('the real code-review step in a whole flow', () => {
     const steps = blocks.steps;
     const firstImplement = steps.indexOf('implement');
     expect(steps.slice(0, firstImplement).sort()).toEqual([
-      'code-review-performance',
-      'code-review-quality',
-      'code-review-regressions',
+      'code-review-behavior',
+      'code-review-code',
       'code-review-report',
       'code-review-requirements',
-      'code-review-security',
     ]);
     expect(steps.slice(firstImplement, firstImplement + 2)).toEqual(['implement', 'implement-improve']);
-    expect(steps.filter((step) => step === 'code-review-quality').length).toBeGreaterThanOrEqual(2);
+    expect(steps.filter((step) => step === 'code-review-code').length).toBeGreaterThanOrEqual(2);
     const implementPrompt = blocks.prompts.find((launch) => launch.step === 'implement')?.prompt ?? '';
     expect(implementPrompt).toContain('The parser drops an empty segment.');
-    expect(JSON.parse((await documents.latestBody(REVIEW_KEY, 'review_quality_result')) ?? '{}').decision).toBe('ok');
+    expect(JSON.parse((await documents.latestBody(REVIEW_KEY, 'review_code_result')) ?? '{}').decision).toBe('ok');
     await assertInvariants(flow.app);
   });
 });

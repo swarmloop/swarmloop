@@ -60,7 +60,7 @@ One approach for every test, whoever writes it:
 4. **A slow or load-sensitive test is a broken test: fix its design.** Move it to a cheaper level, split it into smaller tests, or make it wait on fake time. Never raise a timeout, add a retry, skip it, loosen an assertion or widen a tolerance. When a test is split, every assertion moves to the smaller test that proves it and still fails when its code is reverted, and the summary maps each old assertion to its new test. A test is deleted only when its assertions moved this way or the behavior it proves is removed on purpose.
 5. **A red you did not cause is not yours.** A test outside your plan that fails only on a busy machine, or that also fails on the base: name it in your summary and do not change it. Its planner gives that class of failure one task.
 6. Change a test only when the test itself is wrong or your task changes the behavior it proves, and say why in the summary.
-7. Each test run prints the ten slowest spec files. A change that adds a spec file that shows up in that list names it in implement's account with its time and cause; the performance reviewer reads it.
+7. Each test run prints the ten slowest spec files. A change that adds a spec file that shows up in that list names it in implement's account with its time and cause; the behavior reviewer reads it.
 8. Test helpers live in `*.spec-helpers.ts`, `server/src/testing/` or `dashboard/test/`. Product code never imports a test library.
 9. The golden traces in `server/src/testing/golden/` change only when the task names that behavior change.
 10. Database changes are additive migrations in `server/src/history/migrations/`.

@@ -146,7 +146,7 @@ describe('a code-review round settled by the answers of the planner', () => {
   });
 
   it('sends the return of a reviewer that did not ask with the round', async () => {
-    const { key, question, launched, documents } = await asked({ quality: 'return' });
+    const { key, question, launched, documents } = await asked({ code: 'return' });
     await answer(key, question, { finding: 'ruled-out' });
 
     await again(key);
@@ -154,7 +154,7 @@ describe('a code-review round settled by the answers of the planner', () => {
     expect(launched).toEqual([]);
     expect((await runs().findRun(key))?.currentStep).toBe('implement');
     const notes = await documents.latestBody(key, 'return');
-    expect(notes).toContain('## quality');
+    expect(notes).toContain('## code');
     expect(notes).not.toContain('## requirements');
   });
 

@@ -167,15 +167,15 @@ describe('review diff', () => {
 
   it('reviews the commits, the uncommitted edits and the new files together', async () => {
     const repo = featureRepo('swarmloop-review-diff-whole-');
-    writeFileSync(join(repo, 'security.ts'), 'export const SECURITY = 1;\n');
-    commit(repo, 'security');
+    writeFileSync(join(repo, 'behavior.ts'), 'export const SECURITY = 1;\n');
+    commit(repo, 'behavior');
     writeFileSync(join(repo, 'README'), 'changed\n');
     writeFileSync(join(repo, 'Extra.php'), '<?php // extra\n');
 
     const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
 
     expect(section.body).toContain('origin/main');
-    expect(section.body).toContain('security.ts');
+    expect(section.body).toContain('behavior.ts');
     expect(section.body).toContain('README');
     expect(section.body).toContain('Extra.php');
     expect(section.body).not.toContain('SECURITY = 1');
@@ -187,14 +187,14 @@ describe('review diff', () => {
 
   it('names the changed files: committed, uncommitted and untracked against the base', async () => {
     const repo = featureRepo('swarmloop-review-diff-files-');
-    writeFileSync(join(repo, 'security.ts'), 'export const SECURITY = 1;\n');
-    commit(repo, 'security');
+    writeFileSync(join(repo, 'behavior.ts'), 'export const SECURITY = 1;\n');
+    commit(repo, 'behavior');
     writeFileSync(join(repo, 'README'), 'changed\n');
     writeFileSync(join(repo, 'Extra.php'), '<?php // extra\n');
 
     const section = await reviewDiffSection([{ hostPath: repo, containerPath: '/work/app', readonly: true }]);
 
-    expect([...section.files].sort()).toEqual(['Extra.php', 'README', 'security.ts']);
+    expect([...section.files].sort()).toEqual(['Extra.php', 'README', 'behavior.ts']);
   });
 
   it('prefixes each file with its repository when there are several, and names none for a non-checkout', async () => {
@@ -251,14 +251,14 @@ describe('review diff', () => {
 
   it('changes the review patch when only a commit of the branch changes', async () => {
     const repo = featureRepo('swarmloop-review-diff-amend-');
-    writeFileSync(join(repo, 'security.ts'), 'export const SECURITY = 1;\n');
-    commit(repo, 'security');
+    writeFileSync(join(repo, 'behavior.ts'), 'export const SECURITY = 1;\n');
+    commit(repo, 'behavior');
     writeFileSync(join(repo, 'README'), 'changed\n');
     const mounts = [{ hostPath: repo, containerPath: '/work/app', readonly: true }];
     const first = await reviewDiffSection(mounts);
 
-    writeFileSync(join(repo, 'security.ts'), 'export const SECURITY = 2;\n');
-    git(repo, ['add', 'security.ts']);
+    writeFileSync(join(repo, 'behavior.ts'), 'export const SECURITY = 2;\n');
+    git(repo, ['add', 'behavior.ts']);
     git(repo, ['-c', 'user.email=dev@example.com', '-c', 'user.name=Dev', 'commit', '--amend', '--no-edit']);
     const second = await reviewDiffSection(mounts);
 

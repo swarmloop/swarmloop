@@ -1,7 +1,10 @@
 import { REVIEWS } from '../contract/artifacts';
 
+/** The label of every reviewer a run can have stored, the retired ones included. */
 export const LABELS: Record<string, string> = {
   [REVIEWS.of('requirements')]: 'Requirements',
+  [REVIEWS.of('code')]: 'Code',
+  [REVIEWS.of('behavior')]: 'Behavior',
   [REVIEWS.of('quality')]: 'Quality',
   [REVIEWS.of('regressions')]: 'Regressions',
   [REVIEWS.of('security')]: 'Security',

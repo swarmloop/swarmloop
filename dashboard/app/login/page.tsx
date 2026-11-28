@@ -248,7 +248,7 @@ export default function LoginPage(): ReactElement {
               Log in to swarmloop
             </Typography>
             <Typography variant="body2" color="text.secondary" align="center">
-              Coding agents that pass five reviewers and your CI before they reach you.
+              Coding agents that pass three reviewers and your CI before they reach you.
             </Typography>
             <LoginProblemAlert />
             {choice}

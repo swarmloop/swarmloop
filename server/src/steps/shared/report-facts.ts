@@ -1,7 +1,7 @@
-import { CODE_REVIEWERS } from '../../contract/steps';
+import { CODE_REVIEWERS, type StoredReviewer } from '../../contract/steps';
 import type { Clock } from '../../core/clock';
 import type { ReviewResult } from '../../agent-result/definitions/review';
-import { storedReview } from '../../agent-result/stored-review';
+import { storedReview, storedReviewers } from '../../agent-result/stored-review';
 import type { CheckCommandRepository } from '../../history/check-command.repository';
 import type { DocumentRepository } from '../../history/document.repository';
 import type { FlowRepository } from '../../history/flow.repository';
@@ -23,7 +23,7 @@ export type Verdict = 'ready' | 'waiting' | 'sent-back' | 'ci-failed' | 'merged'
 
 /** What one reviewer decided, and the finding implement did not fix when the run has one. */
 export interface ReviewerFact {
-  name: (typeof CODE_REVIEWERS)[number];
+  name: StoredReviewer;
   decision: 'ok' | 'return' | null;
   exchange: ReportExchange | null;
 }
@@ -153,7 +153,9 @@ export async function readReportFacts(
   const exchanges = reportExchanges(documents);
   const decided = (name: string): ReviewResult | null =>
     round.find((item) => item.name === name)?.result ?? readStored(() => storedReview(name, documents));
-  const reviewers = CODE_REVIEWERS.map((name): ReviewerFact => {
+  // The reviewers of the run's own round when it has one; else the ones its stored reviews were written by.
+  const reviewerNames = round.length > 0 ? CODE_REVIEWERS : storedReviewers(documents);
+  const reviewers = reviewerNames.map((name): ReviewerFact => {
     const decision = decided(name)?.decision ?? null;
     return { name, decision, exchange: decision === 'return' ? (exchanges.get(name) ?? null) : null };
   });

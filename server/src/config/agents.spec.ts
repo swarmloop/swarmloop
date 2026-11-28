@@ -73,10 +73,26 @@ describe('the role of a step', () => {
     ]);
     expect(roles('implement')).toEqual(['implement', 'implement-improve', 'rebase']);
     expect(roles('review')).toContain('code-review');
-    expect(roles('review')).toHaveLength(7);
+    expect(roles('review')).toHaveLength(5);
     for (const step of NO_AGENT) {
       expect(agentFor(testEnv(), null, step)).toBeNull();
     }
+  });
+});
+
+describe('the role of a retired reviewer step', () => {
+  it('stays review, so an old run keeps the role line of its step and its model', () => {
+    const env = testEnv({ AGENTS_REVIEW: 'claude:claude-opus-5-5' });
+    for (const step of [
+      'code-review-quality',
+      'code-review-regressions',
+      'code-review-security',
+      'code-review-performance',
+    ]) {
+      expect(roleOf(null, step)).toEqual({ role: 'review', tier: 'main' });
+      expect(agentFor(env, null, step)).toEqual({ runtime: 'claude', model: 'claude-opus-5-5', effort: 'high' });
+    }
+    expect(roleOf(null, 'code-review-other')).toBeNull();
   });
 });
 
@@ -116,7 +132,7 @@ describe('agentFor', () => {
       AGENTS_REVIEW: 'claude:claude-opus-5-5',
     });
     expect(agentFor(env, null, 'implement')).toEqual({ runtime: 'codex', model: 'gpt-6.1-sol', effort: 'high' });
-    expect(agentFor(env, null, 'code-review-security')).toEqual({
+    expect(agentFor(env, null, 'code-review-code')).toEqual({
       runtime: 'claude',
       model: 'claude-opus-5-5',
       effort: 'high',

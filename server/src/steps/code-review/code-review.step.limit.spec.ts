@@ -82,7 +82,7 @@ describe('code-review step and a provider limit', () => {
     await envWith(root, 'claude:m-claude,codex:m-codex');
     gitWorktree(join(root, 'worktrees', 'PROJ-301', 'billing-api'));
     const limitedOn = (input: AgentRunInput) =>
-      input.runtime === 'claude' && /quality|regressions/.test(input.step) && !input.step.endsWith('report');
+      input.runtime === 'claude' && /code-review-(code|behavior)$/.test(input.step) && !input.step.endsWith('report');
     const answer = answers(limitedOn);
     // Both limited reviewers are on claude before either limit is known, whatever the timing of their launches.
     let startedLimited = 0;
@@ -103,27 +103,23 @@ describe('code-review step and a provider limit', () => {
       const of = (name: string) => calls.filter((call) => call.step === `code-review-${name}`);
 
       expect(done.exitCode).toBe(0);
-      expect(done.message).toContain('review_quality ok');
-      expect(done.message).toContain('review_regressions ok');
-      expect(of('quality').map((call) => `${call.runtime}:${call.model}`)).toEqual([
-        'claude:m-claude',
-        'codex:m-codex',
-      ]);
-      expect(of('regressions').map((call) => call.runtime)).toEqual(['claude', 'codex']);
+      expect(done.message).toContain('review_code ok');
+      expect(done.message).toContain('review_behavior ok');
+      expect(of('code').map((call) => `${call.runtime}:${call.model}`)).toEqual(['claude:m-claude', 'codex:m-codex']);
+      expect(of('behavior').map((call) => call.runtime)).toEqual(['claude', 'codex']);
       // The reviewers that answered ran once. The one that moved starts a new chat with the full brief.
-      expect(of('security')).toHaveLength(1);
       expect(of('requirements')).toHaveLength(1);
-      expect(of('quality')[1]?.resumeChatId ?? null).toBeNull();
-      expect(of('quality')[1]?.prompt).toContain('/work/brief/diff.md');
+      expect(of('code')[1]?.resumeChatId ?? null).toBeNull();
+      expect(of('code')[1]?.prompt).toContain('/work/brief/diff.md');
       const run = (await app.get(RunRepository).findRun('PROJ-301'))!;
-      const quality = (await app.get(VisitRepository).listStats(run.id)).filter(
-        (stat) => stat.step === 'code-review-quality',
+      const code = (await app.get(VisitRepository).listStats(run.id)).filter(
+        (stat) => stat.step === 'code-review-code',
       );
-      expect(quality.map((stat) => [stat.status, stat.runtime, stat.model, stat.attempt])).toEqual([
+      expect(code.map((stat) => [stat.status, stat.runtime, stat.model, stat.attempt])).toEqual([
         ['interrupted', 'claude', 'm-claude', 1],
         ['done', 'codex', 'm-codex', 1],
       ]);
-      expect(quality[0]?.killReason).toBe('RUNTIME_LIMIT');
+      expect(code[0]?.killReason).toBe('RUNTIME_LIMIT');
       expect([...(await app.get(RuntimeCooldownRepository).cooling(START, ENV_CLAUDE))]).toEqual(['claude']);
     } finally {
       await app.close();
@@ -163,22 +159,22 @@ describe('code-review step and a provider limit', () => {
     const root = await mkdtemp(join(tmpdir(), 'swarmloop-review-limit-effort-'));
     await envWith(root, 'claude:m-claude:high,codex:m-codex:low');
     gitWorktree(join(root, 'worktrees', 'PROJ-304', 'billing-api'));
-    const agent = answers((input) => input.runtime === 'claude' && input.step === 'code-review-quality');
+    const agent = answers((input) => input.runtime === 'claude' && input.step === 'code-review-code');
     const app = await boot(root, agent, new FakeClock(START));
     try {
       await seed(app, 'PROJ-304');
       await app.get(PipelineService).step('code-review', 'PROJ-304');
       const calls = agent.mock.calls.map((call) => call[0]);
       const run = (await app.get(RunRepository).findRun('PROJ-304'))!;
-      const quality = (await app.get(VisitRepository).listStats(run.id)).filter(
-        (stat) => stat.step === 'code-review-quality',
+      const code = (await app.get(VisitRepository).listStats(run.id)).filter(
+        (stat) => stat.step === 'code-review-code',
       );
 
-      expect(calls.filter((call) => call.step === 'code-review-quality').map((call) => call.effort)).toEqual([
+      expect(calls.filter((call) => call.step === 'code-review-code').map((call) => call.effort)).toEqual([
         'high',
         'low',
       ]);
-      expect(quality.map((stat) => [stat.runtime, stat.effort])).toEqual([
+      expect(code.map((stat) => [stat.runtime, stat.effort])).toEqual([
         ['claude', 'high'],
         ['codex', 'low'],
       ]);
@@ -192,7 +188,7 @@ describe('code-review step and a provider limit', () => {
     await envWith(root, 'claude:m-claude');
     gitWorktree(join(root, 'worktrees', 'PROJ-302', 'billing-api'));
     const clock = new FakeClock(START);
-    const agent = answers((input) => /quality|regressions/.test(input.step) && !input.step.endsWith('report'));
+    const agent = answers((input) => /code-review-(code|behavior)$/.test(input.step) && !input.step.endsWith('report'));
     const app = await boot(root, agent, clock);
     try {
       await seed(app, 'PROJ-302');
@@ -225,7 +221,7 @@ describe('code-review step and a provider limit', () => {
     await envWith(root, 'claude:m-claude');
     gitWorktree(join(root, 'worktrees', 'PROJ-307', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
-      input.step === 'code-review-quality'
+      input.step === 'code-review-code'
         ? { ...result('API Error', input.step), ...down() }
         : result(input.step.endsWith('report') ? reportReply('ok') : reply(input.step, 'ok'), input.step),
     );
@@ -236,15 +232,15 @@ describe('code-review step and a provider limit', () => {
       const run = (await app.get(RunRepository).findRun('PROJ-307'))!;
       const reason = storedState(run).reason;
       const stats = await app.get(VisitRepository).listStats(run.id);
-      const quality = stats.find((stat) => stat.step === 'code-review-quality');
+      const code = stats.find((stat) => stat.step === 'code-review-code');
 
       expect(run.status).toBe('waiting');
       expect(reason?.code).toBe('HOST_UNAVAILABLE');
       expect(reason?.retryAt).toBe(RETRY_AT);
-      expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-quality')).toHaveLength(1);
+      expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-code')).toHaveLength(1);
       expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-report')).toHaveLength(0);
-      expect(quality).toMatchObject({ status: 'interrupted', killReason: 'HOST_UNAVAILABLE', tokensIn: 10, usd: 0.01 });
-      expect(stats.find((stat) => stat.step === 'code-review-security')?.status).toBe('done');
+      expect(code).toMatchObject({ status: 'interrupted', killReason: 'HOST_UNAVAILABLE', tokensIn: 10, usd: 0.01 });
+      expect(stats.find((stat) => stat.step === 'code-review-behavior')?.status).toBe('done');
     } finally {
       await app.close();
     }
@@ -306,7 +302,7 @@ describe('code-review step and a provider limit', () => {
     gitWorktree(join(root, 'worktrees', 'PROJ-303', 'billing-api'));
     const clock = new FakeClock(START);
     let limit = true;
-    const agent = answers((input) => limit && input.step === 'code-review-quality');
+    const agent = answers((input) => limit && input.step === 'code-review-code');
     const app = await boot(root, agent, clock);
     try {
       await seed(app, 'PROJ-303');
@@ -318,8 +314,8 @@ describe('code-review step and a provider limit', () => {
       const again = agent.mock.calls.map((call) => call[0].step);
 
       expect(done.exitCode).toBe(0);
-      expect(again.filter((step) => step === 'code-review-quality')).toHaveLength(1);
-      expect(again.filter((step) => step === 'code-review-security')).toHaveLength(0);
+      expect(again.filter((step) => step === 'code-review-code')).toHaveLength(1);
+      expect(again.filter((step) => step === 'code-review-behavior')).toHaveLength(0);
     } finally {
       await app.close();
     }
@@ -352,7 +348,7 @@ describe('code-review step and a provider limit', () => {
     await envWith(root, 'claude:m-claude,codex:m-codex');
     gitWorktree(join(root, 'worktrees', 'PROJ-305', 'billing-api'));
     const agent = jest.fn(async (input: AgentRunInput) =>
-      input.step === 'code-review-quality'
+      input.step === 'code-review-code'
         ? { ...result('Invalid API key · Please run /login', input.step), exitCode: 1 }
         : result(input.step.endsWith('report') ? reportReply('ok') : reply(input.step, 'ok'), input.step),
     );
@@ -364,7 +360,7 @@ describe('code-review step and a provider limit', () => {
 
       expect(done.exitCode).toBe(1);
       expect(storedState(run).reason?.code).not.toBe('RUNTIME_LIMIT');
-      expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-quality')).toHaveLength(1);
+      expect(agent.mock.calls.filter((call) => call[0].step === 'code-review-code')).toHaveLength(1);
       expect((await app.get(RuntimeCooldownRepository).cooling(START, ENV_CLAUDE)).size).toBe(0);
     } finally {
       await app.close();

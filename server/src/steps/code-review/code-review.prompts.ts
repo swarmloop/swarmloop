@@ -12,7 +12,7 @@ export function reportFollowUp(
   requirements?: { heading: string; body: string } | null,
 ): string {
   const lines = [
-    'Write the merge request summary from the implementation and the five decisions copied below.',
+    'Write the merge request summary from the implementation and the three decisions copied below.',
     'Those decisions are the only reviews. Ignore an earlier draft in this chat.',
     'Do not search again. Do not add a finding none of them wrote. Do not end with a decision line.',
     'Write only the parts of the result: the line, what was done, where to look, one note for each reviewer, and the risk. Do not give a verdict, numbers, CI or returns.',
@@ -100,7 +100,7 @@ export function reviewContinue(name: string, received: string | null = reviewDef
 export const REPORT_CONTINUE = [
   'Continue this review report.',
   'You were interrupted before it was finished. Finish this report. Do not start over.',
-  'Do not add a finding none of the five wrote. Do not change their decisions. Do not end with a decision line.',
+  'Do not add a finding none of the three wrote. Do not change their decisions. Do not end with a decision line.',
   'Write only the parts of the result: the line, what was done, where to look, one note for each reviewer, and the risk. Do not give a verdict, numbers, CI or returns.',
   resultPromptFor(reviewReport, reviewReport.name),
 ].join('\n');

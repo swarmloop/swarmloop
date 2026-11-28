@@ -1,6 +1,6 @@
 # Code review
 
-The working directory is named at the top of this prompt. Read only that path. Nest starts five reviewers together. Each reviewer reads only its own skill under this directory and writes only its own review. A later step writes the report a person reads. That step is not one of these five.
+The working directory is named at the top of this prompt. Read only that path. Nest starts three reviewers together. Each reviewer reads only its own skill under this directory and writes only its own review. A later step writes the report a person reads. That step is not one of these three.
 
 Do not edit the checkout. Do not run git. Do not run tests, a service, a database, or the application. Do not call Jira or GitLab. The Diff section names the complete diff. Read that file, then read the changed files and the code they call. Do not infer the change from file modification times.
 

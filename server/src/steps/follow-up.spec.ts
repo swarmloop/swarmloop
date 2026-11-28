@@ -104,7 +104,7 @@ describe('step prompt invariants', () => {
   });
 });
 
-const REVIEWERS = ['requirements', 'quality', 'regressions', 'security', 'performance'];
+const REVIEWERS = ['requirements', 'code', 'behavior'];
 const REVIEW_SCAFFOLD = [
   'Read only that path.',
   'The Diff section names the complete diff.',

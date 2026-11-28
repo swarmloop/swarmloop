@@ -3,7 +3,7 @@ import { join } from 'path';
 import { STEPS } from '../../contract/steps';
 import { GOLDEN_DIR } from '../../testing/step-trace.spec-helpers';
 import { ARTIFACTS, INSTRUCTIONS, REVIEWS, REVIEW_RESULTS, SERVICE_KINDS } from './artifacts';
-import { CODE_REVIEWERS } from '../../contract/steps';
+import { RETIRED_REVIEWERS, STORED_REVIEWERS } from '../../contract/steps';
 
 interface Golden {
   reads?: Record<string, string[]>;
@@ -140,12 +140,21 @@ describe('artifact catalog', () => {
     expect(() => entry.parse('{"summary":[]}')).toThrow('research_result is not valid');
   });
 
-  it.each(CODE_REVIEWERS)('registers the %s review result with a codec that checks it', (reviewer) => {
+  it.each(STORED_REVIEWERS)('registers the %s review result with a codec that checks it', (reviewer) => {
     const entry = REVIEW_RESULTS[reviewer];
     expect(entry.kind).toBe(`review_${reviewer}_result`);
     expect(Object.values(ARTIFACTS)).toContain(entry);
-    expect(entry.writers).toEqual(['code-review']);
-    const value = { decision: 'return' as const, review: 'The parser drops a segment.', summary: ['one'] };
+    expect(entry.writers).toEqual(RETIRED_REVIEWERS.some((name) => name === reviewer) ? [] : ['code-review']);
+    const sections = {
+      code: { quality: 'checked', security: 'checked' },
+      behavior: { regressions: 'x', performance: 'y' },
+    };
+    const value = {
+      decision: 'return' as const,
+      review: 'The parser drops a segment.',
+      summary: ['one'],
+      ...(reviewer in sections ? { sections: sections[reviewer as 'code'] } : {}),
+    };
     expect(entry.parse(entry.format(value))).toEqual(value);
     expect(() => entry.parse('{"decision":"approve","review":"x","summary":[]}')).toThrow(
       `review_${reviewer}_result is not valid`,

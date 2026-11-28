@@ -305,7 +305,7 @@ describe('a task that needs a sibling waits for it', () => {
     await storeRun(runs(), run);
   }
 
-  const REVIEW_QUESTION = 'quality still returns: x Implement answered: nothing. Which holds? (asked t)';
+  const REVIEW_QUESTION = 'code still returns: x Implement answered: nothing. Which holds? (asked t)';
 
   it('sends the planner answer to the question of a subtask waiting in code review', async () => {
     await seedEpic([task('a'), task('b')]);

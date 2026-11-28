@@ -67,7 +67,7 @@ export class CodeReviewStep extends BaseStep<typeof INPUTS> {
   readonly outputs = [
     ARTIFACTS.reviewReport,
     ARTIFACTS.reviewReportResult,
-    ...Object.values(REVIEW_RESULTS),
+    ...CODE_REVIEWERS.map((name) => REVIEW_RESULTS[name]),
     ARTIFACTS.return,
     ARTIFACTS.issues,
     ARTIFACTS.repos,
