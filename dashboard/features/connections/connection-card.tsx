@@ -8,6 +8,7 @@ import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import type { ConnectionCard as Card, ConnectionFlow } from '@contract/connections';
+import { paidUseUnseenNote } from '@contract/paid-use';
 import { ConfirmDialog } from '../shell';
 import { CardHeading } from './card-heading';
 import { FlowDialog } from './flows/flow-dialog';
@@ -59,6 +60,11 @@ export function ConnectionCard({ card, onChanged }: { card: Card; onChanged: () 
         {statusLine(card)}
         {card.account !== null && card.last4 ? ` · ends in ${card.last4}` : ''}
       </Typography>
+      {card.paidUseUnseen ? (
+        <Typography variant="body2" color="text.secondary">
+          {paidUseUnseenNote(card.label)}
+        </Typography>
+      ) : null}
       {result ? <Alert severity={result.severity}>{result.text}</Alert> : null}
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 'auto' }}>
         {card.flows.map((item) =>

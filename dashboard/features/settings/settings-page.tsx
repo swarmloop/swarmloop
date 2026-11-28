@@ -16,6 +16,7 @@ import { Placeholders } from '../overview';
 import { getSettings, saveSettings } from '../../lib/endpoints';
 import { usePhone } from '../../lib/use-phone';
 import { AgentsSection } from './agents-section';
+import { PaidUseSetting } from './paid-use-setting';
 import { ApiTokensSection } from './api-tokens-section';
 import { ServerSection } from './server-section';
 
@@ -95,6 +96,7 @@ export function SettingsPage(): ReactElement {
           {section === 'Agents' && view ? (
             <>
               <AgentsSection view={view} draft={draft} onChange={edit} />
+              <PaidUseSetting view={view} draft={draft} onChange={edit} />
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 3 }}>
                 <Button variant="contained" onClick={() => void save()}>
                   Save

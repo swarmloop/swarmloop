@@ -20,6 +20,8 @@ export interface StoredAgents {
 /** What a person sets for their own runs. A key that is absent is "Use server default". */
 export interface SettingsBody {
   agents?: StoredAgents;
+  /** True when the person lets their agents use paid usage past their plan's limit. Off when absent. */
+  paysPastLimit?: boolean;
 }
 
 export type SettingSource = 'default' | '.env' | 'environment';
@@ -53,6 +55,8 @@ export interface SettingsView {
   };
   /** The runtimes with a credential, each with env's models, then its priced models, and the levels per model. */
   runtimes: { runtime: string; models: string[]; efforts: Record<string, string[]> }[];
+  /** Every runtime with a connection, and whether swarmloop can see its paid use past the plan's limit. */
+  paidUse: { runtime: string; label: string; readsPaidUse: boolean }[];
   /** True when a runtime's price table could not be read: its list holds env's models only. */
   modelsLimited: boolean;
   server: ServerSetting[];

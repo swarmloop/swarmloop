@@ -12,7 +12,9 @@ import type {
   RuntimeKeys,
 } from '../agent-runtime';
 import { ClaudeConnection } from './claude-connection';
+import type { LimitHit } from '../runtime-limit';
 import { CLAUDE_LIMITS } from './claude-limit';
+import { claudePaidUse } from './claude-paid-use';
 import { CLAUDE_OUTAGES } from './claude-outage';
 import { DENY_BACKGROUND_HOOK, DENY_BACKGROUND_SCRIPT } from './claude-hook';
 
@@ -111,6 +113,7 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
   readonly syncsChatMode = false;
   readonly planModeHasPlanTool = false;
   readonly hasHelpers = true;
+  readonly readsPaidUse = true;
   readonly priceSource = 'https://platform.claude.com/docs/en/about-claude/pricing.md';
   readonly apiHosts = ['api.anthropic.com'];
   readonly connection = new ClaudeConnection();
@@ -121,6 +124,10 @@ export class ClaudeRuntime extends AbstractAgentRuntime {
 
   secrets(keys: RuntimeKeys): string[] {
     return [keys.oauthToken, keys.anthropicKey].filter(Boolean);
+  }
+
+  paidUseLimit(line: string): LimitHit | null {
+    return claudePaidUse(line);
   }
 
   credential(keys: RuntimeKeys): { name: string; value: string } {

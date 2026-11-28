@@ -19,6 +19,7 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
   abstract readonly syncsChatMode: boolean;
   abstract readonly planModeHasPlanTool: boolean;
   abstract readonly hasHelpers: boolean;
+  abstract readonly readsPaidUse: boolean;
   abstract readonly priceSource: string;
 
   get component(): `agent-${RuntimeName}` {
@@ -37,6 +38,8 @@ export abstract class AbstractAgentRuntime implements AgentRuntime {
   classifyLimit(input: LimitInput): LimitHit | null {
     return classifyLimit(this.limits, input);
   }
+
+  abstract paidUseLimit(line: string): LimitHit | null;
 
   classifyOutage(input: LimitInput): ModelHostOutage | null {
     return classifyOutage(this.outages, this.modelHost, input);

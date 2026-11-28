@@ -93,6 +93,45 @@ describe('settings', () => {
     }
   });
 
+  it('saves whether a person pays past their limit, shows it, and leaves it off for a person who never saved it', async () => {
+    const { app, repo, controller } = await world();
+    try {
+      const saved = await controller.save('alice', { ...MINE, paysPastLimit: true });
+      expect(saved.settings).toEqual({ ...MINE, paysPastLimit: true });
+      expect(await repo.read('alice')).toEqual({ ...MINE, paysPastLimit: true });
+      expect((await controller.read('bob')).settings.paysPastLimit).toBeUndefined();
+      expect((await controller.save('alice', MINE)).settings.paysPastLimit).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses a paysPastLimit that is not true or false and stores nothing', async () => {
+    const { app, repo, controller } = await world();
+    try {
+      await controller.save('alice', MINE);
+      await expect(controller.save('alice', { paysPastLimit: 'yes' })).rejects.toThrow(
+        'paysPastLimit must be true or false',
+      );
+      expect(await repo.read('alice')).toEqual(MINE);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('shows which runtimes can show their paid use', async () => {
+    const { app, controller } = await world();
+    try {
+      expect((await controller.read('alice')).paidUse).toEqual([
+        { runtime: 'cursor', label: expect.any(String), readsPaidUse: false },
+        { runtime: 'claude', label: expect.any(String), readsPaidUse: true },
+        { runtime: 'codex', label: expect.any(String), readsPaidUse: false },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('refuses a runtime that is not connected, with the reason, and stores nothing', async () => {
     const { app, repo, controller } = await world();
     try {

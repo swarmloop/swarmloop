@@ -14,6 +14,11 @@ describe('CodexRuntime', () => {
     expect(runtime.printArgs({ ...input, helper: { model: 'h', prompt: 'r' } })).toEqual(runtime.printArgs(input));
   });
 
+  it('cannot see paid use, so it reads none from a line of its stream', () => {
+    expect(runtime.readsPaidUse).toBe(false);
+    expect(runtime.paidUseLimit(JSON.stringify({ type: 'result', is_error: false, result: 'done' }))).toBeNull();
+  });
+
   it('loads AGENTS.md by itself', () => {
     expect(runtime.ownRuleFiles()).toEqual(['AGENTS.md']);
   });

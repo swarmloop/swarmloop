@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"chat-rec-1"}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1795886400,"rateLimitType":"five_hour","overageStatus":"rejected","isUsingOverage":false,"unifiedWindows":{}}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"Done.","session_id":"chat-rec-1"}

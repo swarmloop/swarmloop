@@ -37,6 +37,8 @@ export interface ConnectionCard {
   /** True when the server's own env holds a credential for this integration. */
   serverDefault: boolean;
   flows: ConnectionFlow[];
+  /** True when swarmloop cannot see this runtime's paid use past the plan's limit, so a spend cap belongs at the provider. */
+  paidUseUnseen?: boolean;
 }
 
 export interface IntegrationCardsView {

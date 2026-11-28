@@ -96,9 +96,20 @@ export class SettingsService {
       settings,
       defaults: { agents: this.defaultAgents(), levels: this.defaultLevels() },
       runtimes,
+      paidUse: this.paidUse(),
       modelsLimited: limited,
       server: this.serverSettings(),
     };
+  }
+
+  /** Every runtime with a connection, with whether swarmloop can see its paid use past the plan's limit. */
+  private paidUse(): SettingsView['paidUse'] {
+    return RUNTIME_NAMES.flatMap((name) => {
+      const runtime = runtimeFor(name);
+      return runtime.connection
+        ? [{ runtime: name, label: runtime.connection.label, readsPaidUse: runtime.readsPaidUse }]
+        : [];
+    });
   }
 
   /** The server's settings in the order of defaults.env, each with its group and description from that file. */
@@ -191,10 +202,16 @@ export class SettingsService {
 
   private async validate(body: unknown, login: string): Promise<SettingsBody> {
     const given = this.record(body, 'settings');
-    this.onlyKeys(given, ['agents'], 'settings');
+    this.onlyKeys(given, ['agents', 'paysPastLimit'], 'settings');
     const settings: SettingsBody = {};
     if (given.agents !== undefined) {
       settings.agents = await this.validateAgents(given.agents, login);
+    }
+    if (given.paysPastLimit !== undefined) {
+      if (typeof given.paysPastLimit !== 'boolean') {
+        refuse('paysPastLimit must be true or false');
+      }
+      settings.paysPastLimit = given.paysPastLimit;
     }
     return settings;
   }

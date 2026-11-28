@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppConfig } from '../config/env';
 import { PersonalCredentials } from '../auth/personal-credentials.service';
 import { RunRepository } from '../history/run.repository';
+import { UserSettingRepository } from '../history/user-setting.repository';
 import { LiveHub } from '../live/live.hub';
 import { SwarmloopError } from '../core/swarmloop-error';
 import { Clock } from '../core/clock';
@@ -64,6 +65,7 @@ export class AgentProcessRunner {
     @Optional() private readonly live?: LiveHub,
     @Optional() private readonly credentials?: PersonalCredentials,
     @Optional() private readonly runs?: RunRepository,
+    @Optional() private readonly settings?: UserSettingRepository,
   ) {
     this.launchPrep = new AgentLaunchPrep(config, live);
     this.launch = new AgentLaunch(
@@ -77,6 +79,7 @@ export class AgentProcessRunner {
       live,
       credentials,
       runs,
+      settings,
     );
   }
 

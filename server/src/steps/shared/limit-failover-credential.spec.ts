@@ -1,4 +1,5 @@
 import { RuntimeLimit } from '../../core/swarmloop-error';
+import { runtimeFor } from '../../integrations/agent-runtime/agent-runtime.registry';
 import type { RunEntity } from '../../history/entities';
 import { credentialDatabase } from '../../testing/credential-database.spec-helpers';
 import { cooldownKeys, LimitFailover } from './limit-failover';
@@ -36,6 +37,30 @@ describe('limit failover per credential', () => {
       expect((await cooldowns.cooling(db.clock.now(), [{ runtime: 'claude', credential: 'bob' }])).size).toBe(0);
       expect(await failover.start(request(bob))).toMatchObject({ runtime: 'claude' });
       expect(await failover.start(request(ann))).toMatchObject({ runtime: 'codex' });
+    } finally {
+      await db.close();
+    }
+  });
+
+  it("holds the person's credential until the reset that a paid-use line names", async () => {
+    const { db, failover, request, run, cooldowns } = await setup();
+    try {
+      const now = db.clock.now();
+      const line = JSON.stringify({
+        type: 'rate_limit_event',
+        rate_limit_info: {
+          isUsingOverage: true,
+          rateLimitType: 'five_hour',
+          resetsAt: Math.floor(now / 1000) + 30 * 60,
+        },
+      });
+      const hit = runtimeFor('claude').paidUseLimit(line);
+      expect(hit).not.toBeNull();
+      const ann = await run('A-1', 'ann');
+      await failover.limited(request(ann), { limit: hit, startedAt: '', finishedAt: '' } as never);
+      const keys = [{ runtime: 'claude', credential: 'ann' }];
+      expect(await cooldowns.cooling(now, keys)).toEqual(new Set(['claude']));
+      expect((await cooldowns.cooling(now + 31 * MINUTE, keys)).size).toBe(0);
     } finally {
       await db.close();
     }

@@ -41,3 +41,8 @@ export function runtimeForCommand(command: string): AgentRuntime {
 export function runtimeConnections(): Connection[] {
   return allRuntimes().flatMap((runtime) => (runtime.connection ? [runtime.connection] : []));
 }
+
+/** The connections of the runtimes whose stream shows no paid use past the plan's limit: a spend cap there belongs at the provider. */
+export function paidUseUnseenConnections(): Connection[] {
+  return allRuntimes().flatMap((runtime) => (!runtime.readsPaidUse && runtime.connection ? [runtime.connection] : []));
+}

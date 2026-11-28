@@ -28,9 +28,17 @@ export class OutputTail {
     return runtime.classifyOutage(this.end(partial, now));
   }
 
-  /** What the launch ended on besides an answer: its usage limit, else the outage of its model host. A limit goes to failover, so it hides an outage. */
-  ending(runtime: AgentRuntime, partial: string, now: number): { limit?: LimitHit; outage?: ModelHostOutage } {
-    const limit = this.limit(runtime, partial, now);
+  /**
+   * What the launch ended on besides an answer: its usage limit, else the outage of its model host. A limit goes to failover, so it hides an outage.
+   * `paidUse` is the limit a stream line said, which the launch was ended on: it is the limit, with no reading of the end.
+   */
+  ending(
+    runtime: AgentRuntime,
+    partial: string,
+    now: number,
+    paidUse: LimitHit | null = null,
+  ): { limit?: LimitHit; outage?: ModelHostOutage } {
+    const limit = paidUse ?? this.limit(runtime, partial, now);
     if (limit) {
       return { limit };
     }
