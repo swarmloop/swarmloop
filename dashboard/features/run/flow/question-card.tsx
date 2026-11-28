@@ -23,8 +23,8 @@ export function QuestionCard({ item }: { item: Pick<FlowItem, 'label' | 'parts'>
       <FoldedText text={[parts.decide, ...parts.sides.map((side) => side.text)].join('\n')}>
         <Box>
           <Typography sx={{ fontWeight: 600 }}>{parts.decide}</Typography>
-          {parts.sides.map((side) => (
-            <Box key={side.who} sx={{ mt: 1 }}>
+          {parts.sides.map((side, index) => (
+            <Box key={`${index}`} sx={{ mt: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 {side.who}
               </Typography>

@@ -69,7 +69,19 @@ describe('QuestionHolds', () => {
         [...(await documents.listDocuments(run.id))],
       );
       expect(items).toEqual([
-        { kind: 'question', id: QUESTION, label: QUESTION, answer: '', passedOn: 'Only you can choose.' },
+        {
+          kind: 'question',
+          id: QUESTION,
+          label: QUESTION,
+          answer: '',
+          passedOn: 'Only you can choose.',
+          parts: {
+            decide: QUESTION,
+            sides: [{ who: 'backlog planner', text: 'Only you can choose.' }],
+            full: '',
+            askedAt: '',
+          },
+        },
       ]);
     } finally {
       await db.close();
@@ -105,7 +117,19 @@ describe('markHolders', () => {
   it('marks a passed-on question with the planner line instead of a holder', () => {
     const passed = ARTIFACTS.passedOn.format([{ question: QUESTION, line: 'You choose.', at: 'now' }]);
     const documents = [{ kind: ARTIFACTS.passedOn.kind, body: passed }] as DocumentEntity[];
-    expect(markHolders([open], documents, true)).toEqual([{ ...open, passedOn: 'You choose.' }]);
+    const [item] = markHolders([open], documents, true);
+    expect(item.passedOn).toBe('You choose.');
+    expect(item.holder).toBeUndefined();
+    expect(item.parts?.sides).toEqual([{ who: 'backlog planner', text: 'You choose.' }]);
+    expect(holdFacts([item])).toEqual({ needsAnswers: true, asksPlanner: false });
+  });
+
+  it('appends the planner line after the sides a question already has', () => {
+    const passed = ARTIFACTS.passedOn.format([{ question: QUESTION, line: 'You choose.', at: 'now' }]);
+    const documents = [{ kind: ARTIFACTS.passedOn.kind, body: passed }] as DocumentEntity[];
+    const parts = { decide: 'd', sides: [{ who: 'run planner', text: 'no' }], full: '', askedAt: 't' };
+    const [item] = markHolders([{ ...open, parts }], documents, true);
+    expect(item.parts?.sides.map((side) => side.who)).toEqual(['run planner', 'backlog planner']);
   });
 
   it('says what the marked items ask: the person for any item the planner does not hold', () => {

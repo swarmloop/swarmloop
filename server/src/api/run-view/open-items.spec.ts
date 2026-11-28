@@ -17,6 +17,14 @@ describe('open questions of the run view', () => {
     expect(ids([doc('questions', renderQuestions(questions)), result(questions)])).toEqual(questions);
   });
 
+  it('gives a research or plan question without stored parts item-only parts of its step and document', () => {
+    const asked = { kind: 'questions', body: '- one?\n', createdAt: 't1' } as DocumentEntity;
+    const parts = (step: string) => openItems({ currentStep: step } as RunEntity, [asked], [])[0].parts;
+
+    expect(parts('research')).toEqual({ decide: 'one?', sides: [], full: '', askedAt: 't1', asker: 'research' });
+    expect(parts('plan')?.asker).toBe('plan');
+  });
+
   it('lists the questions plan wrote, not the older result of research', () => {
     expect(ids([result(['from research']), doc('questions', '- from plan\n')])).toEqual(['from plan']);
   });
@@ -91,13 +99,23 @@ describe('open questions of the run view', () => {
     const asked = doc('review_questions', '- review ask (asked t)\n- old ask (asked s)\n');
 
     const items = openItems(waiting, [asked, doc('question_parts', JSON.stringify(kept))], []);
-    expect(items.map((item) => item.parts)).toEqual([parts, undefined]);
+    expect(items[0].parts).toEqual(parts);
+    expect(items[1].parts).toEqual({
+      decide: 'old ask (asked s)',
+      sides: [],
+      full: '',
+      askedAt: '',
+      asker: 'code-review',
+    });
 
     const split = { currentStep: 'implement', split: true } as RunEntity;
     const subtask = doc('subtask_questions', '- Subtask a asks: which? (asked t)\n');
     const own = [{ question: 'Subtask a asks: which? (asked t)', parts }];
     expect(openItems(split, [subtask, doc('question_parts', JSON.stringify(own))], [])[0].parts).toEqual(parts);
-    expect(openItems(split, [subtask, doc('question_parts', 'not json')], [])[0].parts).toBeUndefined();
+    expect(openItems(split, [subtask, doc('question_parts', 'not json')], [])[0].parts).toMatchObject({
+      sides: [],
+      asker: 'implement',
+    });
   });
 
   it('carries who asked and the plan chat entry of a stored question', () => {
