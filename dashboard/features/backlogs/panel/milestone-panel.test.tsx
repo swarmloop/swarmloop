@@ -1,12 +1,12 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mergeBacklogTask } from '../../../lib/backlog-endpoints';
+import { acceptMilestone, mergeBacklogTask } from '../../../lib/backlog-endpoints';
 import { backlogChatView, backlogView, requirement, task } from '../../../test/backlog-fixtures';
 import { MilestonePanel } from './milestone-panel';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
-vi.mock('../../../lib/backlog-endpoints', () => ({ mergeBacklogTask: vi.fn() }));
+vi.mock('../../../lib/backlog-endpoints', () => ({ mergeBacklogTask: vi.fn(), acceptMilestone: vi.fn() }));
 
 const view = backlogView({
   requirements: [
@@ -25,7 +25,19 @@ function panel(login: string | null, onView = vi.fn()): void {
   render(<MilestonePanel view={view} chat={backlogChatView()} login={login} onView={onView} onChat={vi.fn()} />);
 }
 
-beforeEach(() => vi.mocked(mergeBacklogTask).mockReset());
+beforeEach(() => {
+  vi.mocked(mergeBacklogTask).mockReset();
+  vi.mocked(acceptMilestone).mockReset();
+});
+
+const doneView = backlogView({
+  requirements: [],
+  tasks: [task({ slug: 'a', status: 'merged' }), task({ slug: 'b', status: 'skipped' })],
+});
+
+function doneMilestone(login: string | null, onView = vi.fn()): void {
+  render(<MilestonePanel view={doneView} chat={backlogChatView()} login={login} onView={onView} onChat={vi.fn()} />);
+}
 
 describe('MilestonePanel', () => {
   it('shows the milestone heading and the marks with what closed each requirement', () => {
@@ -71,6 +83,42 @@ describe('MilestonePanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Merge' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Not green yet');
+  });
+
+  it('shows Accept milestone to the owner, disabled while the work is not done', () => {
+    panel('ada');
+
+    expect(screen.getByRole('button', { name: 'Accept milestone' })).toBeDisabled();
+  });
+
+  it('enables Accept milestone when the work is done and accepts after the confirm', async () => {
+    const answer = backlogView({ paused: true });
+    vi.mocked(acceptMilestone).mockResolvedValue(answer);
+    const onView = vi.fn();
+    doneMilestone('ada', onView);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Accept milestone' }));
+    expect(acceptMilestone).not.toHaveBeenCalled();
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept milestone' }));
+
+    expect(acceptMilestone).toHaveBeenCalledWith('swarmloop', 3);
+    expect(onView).toHaveBeenCalledWith(answer);
+  });
+
+  it('shows a refusal of the accept in the dialog', async () => {
+    vi.mocked(acceptMilestone).mockRejectedValue(new Error('Work is not done'));
+    doneMilestone('ada');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Accept milestone' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Accept milestone' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Work is not done');
+  });
+
+  it('shows no Accept milestone to anyone else', () => {
+    doneMilestone('grace');
+
+    expect(screen.queryByRole('button', { name: 'Accept milestone' })).not.toBeInTheDocument();
   });
 
   it('says so when no milestone is active', () => {

@@ -34,7 +34,9 @@ vi.mock('../shell', async () => {
   const bridge = await import('../shell/use-live-bridge');
   const { useOnReconnect } = await import('../shell/use-on-reconnect');
   const { useCommandOutcome } = await import('../shell/use-command-outcome');
+  const { ConfirmDialog } = await import('../shell/confirm-dialog');
   return {
+    ConfirmDialog,
     useOnReconnect,
     useCommandOutcome,
     useCommandEnds: bridge.useCommandEnds,

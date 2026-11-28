@@ -50,10 +50,10 @@ function CardView({ card, now }: { card: NowCard; now: number }): ReactElement {
         <>
           <LinearProgress
             variant="determinate"
-            value={card.tasks.total === 0 ? 0 : (card.tasks.merged / card.tasks.total) * 100}
+            value={card.tasks.total === 0 ? 0 : (card.tasks.settled / card.tasks.total) * 100}
             sx={{ my: 0.5 }}
           />
-          <Typography variant="body2">{`${card.tasks.merged}/${card.tasks.total} tasks`}</Typography>
+          <Typography variant="body2">{`${card.tasks.settled}/${card.tasks.total} tasks`}</Typography>
         </>
       ) : null}
       {card.step ? (
@@ -65,7 +65,7 @@ function CardView({ card, now }: { card: NowCard; now: number }): ReactElement {
       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', color: view ? toneColor(view.tone) : 'info.main' }}>
         {view ? <RunStateIcon view={view} size={16} /> : null}
         <Typography variant="body2" noWrap>
-          {view ? view.word : 'Working'}
+          {view ? view.word : card.workDone ? 'Waiting for acceptance' : 'Working'}
         </Typography>
         {eta ? (
           <Typography variant="body2" color="text.secondary" title={eta.tip} noWrap sx={{ ml: 'auto' }}>
