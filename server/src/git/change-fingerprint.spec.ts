@@ -16,7 +16,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { FakeClock } from '../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../core/step-event-scope';
-import type { StepEvent } from '../contract/step-events';
+import type { StepEventDraft } from '../contract/step-events';
 import { git, makeFifo } from '../testing/git-fixture';
 import type * as FsPromises from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
@@ -179,14 +179,13 @@ describe('changeFingerprint', () => {
 
   it('records no command span', async () => {
     writeFileSync(join(repo, 'kept.txt'), 'two\n');
-    const events: StepEvent[] = [];
-    const sink = (event: StepEvent) => {
+    const events: StepEventDraft[] = [];
+    const sink = (event: StepEventDraft) => {
       events.push(event);
       return Promise.resolve();
     };
     await runInStepScope(
       { runId: 1, attemptId: 'attempt-1', step: 'code-review', root: repo, clock: new FakeClock(), sink },
-      0,
       () => changeFingerprint(repo),
     );
     expect(events).toEqual([]);

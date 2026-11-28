@@ -169,7 +169,6 @@ abstract class StepCore implements Step {
         clock: this.clock,
         sink: stepEventSink(log),
       },
-      await log.lastSeq(opened.run.id),
       () => {
         recordStepEvent({
           kind: 'attempt.started',

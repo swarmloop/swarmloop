@@ -4,7 +4,7 @@ import { AgentProcessRunner } from '../../agent/agent-runner';
 import { RunStop } from '../../agent/run-stop';
 import { AppConfig } from '../../config/env';
 import { testEnv } from '../../config/env.spec-helpers';
-import type { StepEvent } from '../../contract/step-events';
+import type { StepEventDraft } from '../../contract/step-events';
 import { FakeClock } from '../../core/fake-clock.spec-helpers';
 import { runInStepScope } from '../../core/step-event-scope';
 import type { LaunchResult } from './result-exchange';
@@ -136,9 +136,9 @@ async function visitsOfOneChat(lines: Reported[]): Promise<{ usd: number[]; toke
         step: 'implement' as const,
         root: db.root,
         clock,
-        sink: (_event: StepEvent) => Promise.resolve(),
+        sink: (_event: StepEventDraft) => Promise.resolve(),
       };
-      const running = runInStepScope(scope, 0, () =>
+      const running = runInStepScope(scope, () =>
         launcher.launch({
           root: db.root,
           run,

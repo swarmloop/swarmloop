@@ -2,7 +2,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, MoreThan, Repository } from 'typeorm';
 import { AppConfig } from '../config/env';
-import type { StepEvent, StepEventKind, StepEventPage } from '../contract/step-events';
+import type { StepEvent, StepEventDraft, StepEventKind, StepEventPage } from '../contract/step-events';
 import { Clock } from '../core/clock';
 import { redact } from '../config/redact';
 import { LiveHub } from '../live/live.hub';
@@ -48,34 +48,38 @@ export class StepEventLog {
     @Optional() private readonly live?: LiveHub,
   ) {}
 
-  async append(events: StepEvent[]): Promise<void> {
+  /**
+   * Stores events. The log gives each its `seq` in the statement that inserts it: the run's highest `seq` plus one.
+   * The statement is one atomic write, so no transaction stays open across awaits and every event is kept; the
+   * events go one after another, so `seq` follows the order of recording.
+   */
+  async append(events: StepEventDraft[]): Promise<void> {
+    if (events.length === 0) {
+      return;
+    }
     const recordedAt = this.clock.iso();
-    await this.events.insert(
-      events.map(({ runId, attemptId, step, seq, kind, occurredAt, ...rest }) =>
-        this.events.create({
-          runId,
-          attemptId,
-          step,
-          seq,
-          kind,
-          payload: JSON.stringify(redactStrings(rest)),
-          occurredAt,
-          recordedAt,
-        }),
-      ),
-    );
-    await this.notify(events[events.length - 1]);
+    let seq = 0;
+    for (const { runId, attemptId, step, kind, occurredAt, ...rest } of events) {
+      const payload = JSON.stringify(redactStrings(rest));
+      const stored: Array<{ seq: number }> = await this.events.query(
+        `INSERT INTO step_events (run_id, attempt_id, step, seq, kind, payload, occurred_at, recorded_at)
+         SELECT ?, ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ? FROM step_events WHERE run_id = ? RETURNING seq`,
+        [runId, attemptId, step, kind, payload, occurredAt, recordedAt, runId],
+      );
+      seq = stored[0].seq;
+    }
+    await this.notify(events[events.length - 1], seq);
   }
 
-  /** Tells the live hub which event came last. The run key is found from the run id; a run without a row is not announced. */
-  private async notify(last: StepEvent | undefined): Promise<void> {
-    if (!last || !this.live) {
+  /** Tells the live hub which event came last, with the `seq` it was stored under. The run key is found from the run id; a run without a row is not announced. */
+  private async notify(last: StepEventDraft, seq: number): Promise<void> {
+    if (!this.live) {
       return;
     }
     try {
       const run = await this.runs.findOne({ where: { id: last.runId } });
       if (run) {
-        this.live.appended({ key: run.key, step: last.step, seq: last.seq });
+        this.live.appended({ key: run.key, step: last.step, seq });
       }
     } catch {
       // The events are stored; a failed lookup only skips the push.

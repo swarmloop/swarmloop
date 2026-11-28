@@ -1,14 +1,13 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { randomUUID } from 'crypto';
 import { relative } from 'path';
-import type { StepEvent, StepEventBody } from '../contract/step-events';
+import type { StepEvent, StepEventBody, StepEventDraft } from '../contract/step-events';
 import { isReadOnlyGit } from '../contract/git-reads';
 import { markEntered } from './entered-marks';
 import type { Clock } from './clock';
 
-/** Where the events of one attempt go. Writes run one after the other, in `seq` order. */
+/** Where the events of one attempt go. Writes run one after the other, in the order they were recorded. */
 interface Sequence {
-  next: number;
   tail: Promise<void>;
 }
 
@@ -20,7 +19,7 @@ interface StepEventScope {
   root: string;
   clock: Clock;
   /** Stores an event. It must not throw. */
-  sink: (event: StepEvent) => Promise<void>;
+  sink: (event: StepEventDraft) => Promise<void>;
   sequence: Sequence;
   /** The activity the code runs in. Its events name it as their parent. */
   activitySpanId: string | null;
@@ -28,14 +27,13 @@ interface StepEventScope {
 
 const storage = new AsyncLocalStorage<StepEventScope>();
 
-/** Runs `run` inside a scope and waits for its events to be written. `lastSeq` is the last `seq` of the run. */
+/** Runs `run` inside a scope and waits for its events to be written. The log gives them their `seq`. */
 export async function runInStepScope<T>(
   scope: Omit<StepEventScope, 'sequence' | 'activitySpanId'>,
-  lastSeq: number,
   run: () => Promise<T>,
 ): Promise<T> {
   markEntered(`step ${scope.step}`);
-  const sequence: Sequence = { next: lastSeq + 1, tail: Promise.resolve() };
+  const sequence: Sequence = { tail: Promise.resolve() };
   try {
     return await storage.run({ ...scope, sequence, activitySpanId: null }, run);
   } finally {
@@ -60,11 +58,10 @@ export function recordStepEvent(body: StepEventBody): void {
     runId: scope.runId,
     attemptId: scope.attemptId,
     step: scope.step,
-    seq: scope.sequence.next++,
     occurredAt: scope.clock.iso(),
     parentSpanId: scope.activitySpanId,
     ...body,
-  } as StepEvent;
+  } as StepEventDraft;
   scope.sequence.tail = scope.sequence.tail.then(() => scope.sink(event));
 }
 
