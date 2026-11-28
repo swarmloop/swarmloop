@@ -17,8 +17,8 @@ type WaitStore = (wait: StateReason | null) => Promise<void>;
 @Injectable()
 export class StartWaits implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StartWaits.name);
-  /** The keys that have a stored wait, with the store each one is written to. */
-  private readonly stored = new Map<string, WaitStore | undefined>();
+  /** One entry per start key: the owner's store (none for a run) and whether a wait was written for it. */
+  private readonly entries = new Map<string, { store?: WaitStore; written: boolean }>();
   private tail: Promise<void> = Promise.resolve();
   private stops: (() => void)[] = [];
 
@@ -29,20 +29,32 @@ export class StartWaits implements OnModuleInit, OnModuleDestroy {
 
   /**
    * The pause starts or ends, or a place comes back: what each start that waits waits for changes with it. Every run
-   * with an agent start in the gate is written again, besides the ones that already have a stored wait.
+   * with an agent start in the gate is written again, besides the ones that already have a written wait. A key that
+   * is registered and has not waited is left alone, so no rewrite drops its store before its start ends.
    */
   onModuleInit(): void {
     const rewrite = (): void => {
-      for (const key of new Set([...this.stored.keys(), ...this.gate.waitingKeys()])) {
-        void this.changed(key, this.stored.get(key));
+      const written = [...this.entries].filter(([, entry]) => entry.written).map(([key]) => key);
+      for (const key of new Set([...written, ...this.gate.waitingKeys()])) {
+        void this.changed(key);
       }
     };
     this.stops = [this.gate.onChange(rewrite), this.gate.onPlaces(rewrite)];
   }
 
+  /**
+   * Keeps the owner's store of the start of `key` (none for a run) before its first write is queued. A registered
+   * store is never replaced; the entry goes when the start ends.
+   */
+  register(key: string, store?: WaitStore): void {
+    if (!this.entries.has(key)) {
+      this.entries.set(key, { store, written: false });
+    }
+  }
+
   /** Queues a write of what the agent starts of `key` wait for now. Resolves when it is written. */
-  changed(key: string, store?: WaitStore): Promise<void> {
-    this.tail = this.tail.then(() => this.write(key, store));
+  changed(key: string): Promise<void> {
+    this.tail = this.tail.then(() => this.write(key));
     return this.tail;
   }
 
@@ -61,17 +73,22 @@ export class StartWaits implements OnModuleInit, OnModuleDestroy {
     await this.settled();
   }
 
-  private async write(key: string, store?: WaitStore): Promise<void> {
+  private async write(key: string): Promise<void> {
     const wait = this.gate.startWait(key);
-    if (!wait && !this.stored.has(key)) {
+    const entry = this.entries.get(key);
+    if (!wait && !entry?.written) {
+      // The start ends here: nothing was written for it, or its wait is cleared below.
+      this.entries.delete(key);
       return;
     }
+    const target = entry ?? { written: false };
     try {
-      await (store ? store(wait) : this.onRun(key, wait));
+      await (target.store ? target.store(wait) : this.onRun(key, wait));
       if (wait) {
-        this.stored.set(key, store);
+        target.written = true;
+        this.entries.set(key, target);
       } else {
-        this.stored.delete(key);
+        this.entries.delete(key);
       }
     } catch (error) {
       this.logger.warn(

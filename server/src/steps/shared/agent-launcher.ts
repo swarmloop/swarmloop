@@ -247,12 +247,13 @@ export class AgentLauncher {
     const { sessionFile, chatId, call, loop, ending, feed, work } = own;
     const names = this.files?.names(request.key) ?? [];
     const startWaits = this.startWaits;
+    startWaits?.register(request.key, request.run.recordStartWait);
     return {
       loop,
       onOutput: bindToStepScope((chunk) => feed.push(chunk).forEach(work)),
       // A launch killed mid-tool leaves a block open that would hold back every later launch's events.
       onLaunchEnd: bindToStepScope(() => feed.finish().forEach(work)),
-      onStartWait: startWaits ? () => startWaits.changed(request.key, request.run.recordStartWait) : undefined,
+      onStartWait: startWaits ? () => startWaits.changed(request.key) : undefined,
       prompt: withRules(withLogReads(withAttachments(request.prompt, names))),
       freshPrompt:
         request.freshPrompt === undefined

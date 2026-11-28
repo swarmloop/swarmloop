@@ -197,8 +197,14 @@ export async function plannerTurnsHarness(
   );
   const runStop = new RunStop();
   const startWait = { now: null as StateReason | null };
+  const stores = new Map<string, (wait: StateReason | null) => Promise<void>>();
   const startWaits = {
-    changed: (_key: string, store?: (wait: StateReason | null) => Promise<void>) => store?.(startWait.now),
+    register: (key: string, store?: (wait: StateReason | null) => Promise<void>) => {
+      if (store) {
+        stores.set(key, store);
+      }
+    },
+    changed: (key: string) => stores.get(key)?.(startWait.now),
   };
   const calls = db.app.get(AgentCallRepository);
   const recorder = new AgentCallRecorder(
