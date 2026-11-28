@@ -11,10 +11,10 @@ export interface StarterDecision {
   text: string;
 }
 
-/** A part the task must not do and that no task owns. */
+/** A part of the work that no step of the task and no other task will do. */
 export interface OutOfScope {
   what: string;
-  /** Whether the task itself needs that part done before it can go on. */
+  /** Whether the task needs that part done before it can go on. */
   needed: boolean;
 }
 
@@ -33,10 +33,14 @@ export function starterKeys(): Record<string, Joi.Schema> {
     outOfScope: Joi.array()
       .items(
         Joi.object({
-          what: Joi.string().required().description('The part you must not do and no task owns'),
-          needed: Joi.boolean().required().description('true when your task cannot go on without it'),
+          what: Joi.string()
+            .required()
+            .description('The part of the work that no step of this task and no other task will do'),
+          needed: Joi.boolean().required().description('true when this task cannot go on without that part'),
         }),
       )
-      .description('Parts of the work that belong to no task; leave out when none'),
+      .description(
+        "Parts of the work that no step of this task and no other task will do: the work of this task's own later steps (plan, implement, review) is never out of scope, and a step that cannot write never lists the writing; leave out when none",
+      ),
   };
 }

@@ -60,6 +60,13 @@ describe('the plan skill, Decide what you hold', () => {
     expect(section).not.toContain('escalate');
   });
 
+  it('holds how the steps of a run work, and answers a question a step mode settles without passing it up', () => {
+    for (const text of [section, core]) {
+      expect(text).toContain('how the steps of a run work');
+      expect(text).toContain('never passed up');
+    }
+  });
+
   it.each(CASES)('escalates only in the case: %s', (kind) => {
     expect(passUp).not.toBe('');
     expect(passUp).toContain(kind);

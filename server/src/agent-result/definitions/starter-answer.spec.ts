@@ -1,6 +1,11 @@
 import Joi from 'joi';
 import { readResult } from '../read-result';
+import { resultPrompt } from '../result-prompt';
 import { block } from '../result.spec-helpers';
+import { implementationFor } from './implementation';
+import { implementationImproveFor } from './implementation-improve';
+import { planFor } from './plan';
+import { researchFor } from './research';
 import { starterAnswer, starterAnswerWithoutEscalate } from './starter-answer';
 import { starterKeys, type OutOfScope, type StarterDecision } from './starter-fields';
 import { subtaskAnswer } from './subtask-answer';
@@ -77,5 +82,18 @@ describe('starter fields', () => {
     expect(schema.validate(given).error).toBeUndefined();
     expect(schema.validate({ decisions: [{ item: 'api' }] }).error).toBeDefined();
     expect(schema.validate({ outOfScope: [{ what: 'x' }] }).error).toBeDefined();
+  });
+
+  it.each([
+    ['research', researchFor(true)],
+    ['plan', planFor({ split: false, subtask: true })],
+    ['implementation', implementationFor({ subtask: true, review: false })],
+    ['implementation-improve', implementationImproveFor({ subtask: true, review: false })],
+  ])('describe outOfScope as work that no step of the task will do, for %s', (_step, definition) => {
+    const prompt = resultPrompt(definition);
+    expect(prompt).toContain('Parts of the work that no step of this task and no other task will do');
+    expect(prompt).toContain("the work of this task's own later steps (plan, implement, review) is never out of scope");
+    expect(prompt).toContain('a step that cannot write never lists the writing');
+    expect(prompt).toContain('true when this task cannot go on without that part');
   });
 });

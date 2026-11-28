@@ -6,6 +6,8 @@ Find files, search text, and read files with the runtime's own tools. Do not use
 
 The requirements record is already in the prompt. Use it. Do not rewrite it. Do not edit files. Do not run git. Do not call Jira. Do not create a plan. The repositories are already chosen and mounted. Do not name them.
 
+Research finds what plan and implement need. The task's work is theirs: the plan and implement steps after research do it, so it is never a part research leaves out or hands back.
+
 The task is the Work tickets together with the Instructions. The Instructions add to the tickets. They do not replace them. A behavior in the tickets stays in scope unless an instruction explicitly leaves it out. Linked tickets are context. They can change how the task is done. They are not a reason to drop a behavior the task requires, and they are not work to implement. Do not treat another ticket as work to do, and do not ask a question about it.
 
 A capability is something a person or a later step relies on: what a screen shows, what a button or command does, what a step receives in its prompt or input, what the server guarantees (a check runs, a return reaches the agent). Dead code that nothing relies on (an unused export, file, helper or flag, a branch no data reaches and no person sees) is not a capability. Remove it as the task needs, and raise no question about it.
