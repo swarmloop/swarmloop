@@ -2,9 +2,9 @@ import { CODE_REVIEWERS, RETIRED_REVIEWERS, STEPS, type StepName, type StoredRev
 import { REBASE_CONFLICT, REBASE_JOURNAL } from '../../git/rebase';
 import type { Issue } from './step-contract';
 import { SPLIT_ARTIFACTS } from './artifacts-split';
+import { QUESTION_ARTIFACTS } from './artifacts-questions';
 import type { CoveredRequirement, Requirement } from '../../contract/requirement-list';
 import type { KeepLine } from '../shared/keep-lines';
-import type { PassedOn, StoredQuestion } from '../shared/question-parts';
 import { research, type ResearchResult } from '../../agent-result/definitions/research';
 import { plan, type PlanResult } from '../../agent-result/definitions/plan';
 import { planImprove, type PlanImproveResult } from '../../agent-result/definitions/plan-improve';
@@ -137,34 +137,6 @@ export const ARTIFACTS = {
     codec: resultArtifactCodec<RebaseResolutionResult>(rebaseResolution),
     summarize: (result) => firstLine(result.summary[0] ?? ''),
   }),
-  answers: artifact('answers', {
-    writers: [],
-    readers: ['research', 'plan', 'implement'],
-    external: true,
-    summarize: firstLine,
-  }),
-  questions: artifact('questions', { writers: ['research', 'plan'], readers: ['plan'], summarize: firstLine }),
-  // What the code review asks the person when a reviewer returns the same diff again; `answers` closes it.
-  reviewQuestions: artifact('review_questions', {
-    writers: ['code-review'],
-    readers: ['implement'],
-    summarize: firstLine,
-  }),
-  // The open questions of review_questions and subtask_questions in parts; the text of a question is the key to its parts.
-  questionParts: artifact('question_parts', {
-    writers: ['code-review', 'implement'],
-    readers: ['implement'],
-    codec: jsonArrayCodec<StoredQuestion>(),
-    summarize: (questions) => listSummary(questions.length, 'questions', questions[0]?.parts.decide),
-  }),
-  // The questions of a backlog's run that the backlog's planner passed on to the person, each with its line; written by the pass-on service.
-  passedOn: artifact('passed_on', {
-    writers: [],
-    readers: [],
-    external: true,
-    codec: jsonArrayCodec<PassedOn>(),
-    summarize: (passed) => listSummary(passed.length, 'passed on questions', passed[0]?.line),
-  }),
   needs: artifact('needs', { writers: ['research', 'plan', 'implement'], readers: [], summarize: firstLine }),
   impact: artifact('impact', {
     writers: ['research'],
@@ -189,6 +161,7 @@ export const ARTIFACTS = {
     codec: resultArtifactCodec<PlanImproveResult>(planImprove),
     summarize: (result) => listSummary(result.plan.length || result.tasks.length, 'plan items', result.plan[0]),
   }),
+  ...QUESTION_ARTIFACTS,
   ...SPLIT_ARTIFACTS,
   requirementList: artifact('requirement_list', {
     writers: ['research', 'plan', 'plan-improve'],

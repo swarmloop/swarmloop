@@ -200,4 +200,19 @@ describe('the planner of an epic escalates the question of a part', () => {
     ]);
     expect(chat.filter((entry) => entry.kind === 'escalation')).toEqual([]);
   });
+
+  it('does not show the person a question of a part again that the person answered once, and gives the part the answer', async () => {
+    await boot([{ block: { escalate: WORDS } }]);
+    const child = await epicWithAskingPart();
+    const epic = (await get(RunRepository).findRun(KEY))!;
+    const at = new Date(flow.app.clock.now()).toISOString();
+    const record = [{ asker: 'subtask:a', decide: `- ${QUESTION}`, answer: 'Ids are numbers.', at }];
+    await documents().putDocument(epic, 'answered_questions', JSON.stringify(record));
+
+    await epicPass();
+
+    expect(await items()).toEqual([]);
+    expect(await documents().latestBody(child, 'answers')).toContain('answer: Ids are numbers.');
+    expect(await documents().latestBody(KEY, 'contract')).toContain('Ids are numbers.');
+  });
 });

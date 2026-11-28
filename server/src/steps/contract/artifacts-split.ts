@@ -4,6 +4,21 @@ import { starterAnswer, type StarterAnswerResult } from '../../agent-result/defi
 import { resultArtifactCodec } from '../../agent-result/result-codec';
 import { artifact, firstLine, jsonArrayCodec, listSummary, type Artifact } from './artifact';
 
+/** The start of a part that the door refused because the part was held; `key` names the event it is for. */
+export interface PartStart {
+  type: 'resume' | 'answer';
+  key: string;
+  by: 'machine' | 'planner' | 'person';
+  level: number | null;
+  answers?: { kind: string; id: string; body: string }[];
+}
+
+/** An empty body is no start. */
+const partStartCodec = {
+  parse: (body: string): PartStart | null => (body.trim() === '' ? null : (JSON.parse(body) as PartStart)),
+  format: (start: PartStart | null): string => (start ? `${JSON.stringify(start)}\n` : ''),
+};
+
 /** The kinds of a split run and its subtasks; `ARTIFACTS` spreads them. */
 export const SPLIT_ARTIFACTS = {
   subtaskQuestions: artifact('subtask_questions', {
@@ -64,6 +79,14 @@ export const SPLIT_ARTIFACTS = {
     writers: ['plan', 'plan-improve', 'implement'],
     readers: ['plan-improve', 'implement', 'implement-improve'],
     summarize: firstLine,
+  }),
+  /** The start of a part the door refused because the part was held; empty when none waits. Written by the server. */
+  partStart: artifact('part_start', {
+    writers: [],
+    readers: [],
+    external: true,
+    codec: partStartCodec,
+    summarize: (start) => firstLine(partStartCodec.format(start)),
   }),
   /** The files a merged task changed, one path per line, read from the merge of the task into its target branch (the feature branch or main), written by every merge. */
   mergedFiles: artifact('merged_files', { writers: [], readers: [], external: true, summarize: firstLine }),

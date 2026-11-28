@@ -173,4 +173,24 @@ describe('final review gaps', () => {
     expect((await tasksOf(app)).map((item) => item.id)).toEqual(['a', 'b']);
     expect((await documents.latestBody(KEY, 'subtask_questions')) ?? '').toContain('its gap task was refused');
   });
+
+  it('does not ask again a repeated gap the person answered before: the answer goes down as a decision', async () => {
+    const gap = {
+      ...task('gap-1'),
+      status: 'merged' as const,
+      description: 'Closes it.\nGap for: R2',
+      covers: ['R2'],
+    };
+    const { parent, documents } = await merged([task('a'), task('b'), gap]);
+    await documents.putDocument(parent, 'starter_taken', JSON.stringify(['gap-1/R2']));
+    const decide = 'R2 is still missing after gap task gap-1 merged: note for R2';
+    const record = [{ asker: 'subtask:gap-1', decide, answer: 'Leave R2 out.', at: EARLIER }];
+    await documents.putDocument(parent, 'answered_questions', JSON.stringify(record));
+    await reviewed(documents, parent, review({ R1: 'met', R2: 'missing' }, 'return'));
+
+    await pass(app);
+
+    expect((await documents.latestBody(KEY, 'subtask_questions')) ?? '').not.toContain('R2 is still missing');
+    expect((await documents.latestBody(KEY, 'contract')) ?? '').toContain('Leave R2 out.');
+  });
 });

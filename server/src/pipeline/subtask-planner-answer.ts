@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { Clock } from '../core/clock';
 import type { PlanChatEntry } from '../contract/plan-chat';
 import type { PlanChatStore } from '../history/plan-chat.store';
@@ -8,7 +8,6 @@ import { ARTIFACTS } from '../steps/contract/artifacts';
 import type { RunEntity } from '../history/entities';
 import type { Subtask } from '../contract/subtask';
 import type { DocumentRepository } from '../history/document.repository';
-import type { VisitRepository } from '../history/visit.repository';
 import { openQuestions, unanswered } from '../steps/shared/answers';
 import { renderQuestions } from '../steps/research/research-record';
 import { SUBTASK_ASKING_STEPS } from '../steps/implement/implement-question';
@@ -24,13 +23,15 @@ import {
 } from '../steps/implement/starter-actions';
 import { handBackErrors } from '../steps/shared/hand-back';
 import { renderNeeds } from '../steps/shared/needs';
-import { keepOpen, readStoredQuestions } from '../steps/shared/question-parts';
+import { askPerson, partsOfOpen } from '../steps/shared/person-questions';
+import { readAnsweredQuestions, readStoredQuestions, type PlannerLine } from '../steps/shared/question-parts';
 import { askedQuestion } from '../steps/implement/split-questions';
-import { isEscalated, type Escalated } from '../steps/shared/subtask-ops';
+import { isEscalated, type Delivery, type Escalated } from '../steps/shared/subtask-ops';
 import type { OpenedStep } from '../steps/step-run';
 import type { CommandService } from './command.service';
 import { reviewAnswerKey } from '../steps/shared/review-answer-key';
 import type { StartGate } from './start-gate';
+import { PartDelivery } from './part-delivery';
 
 const ASKING_STEPS: string[] = ['research', 'plan', 'code-review', ...SUBTASK_ASKING_STEPS];
 
@@ -40,17 +41,16 @@ const ASKING_STEPS: string[] = ['research', 'plan', 'code-review', ...SUBTASK_AS
  * in the subtask's own chat for its starter.
  */
 export class SubtaskPlannerAnswer {
-  private readonly logger = new Logger(SubtaskPlannerAnswer.name);
-  /** The planner's answer per subtask run whose delivery was refused, so a retry sends it again and does not ask again. */
-  private readonly undelivered = new Map<string, StarterAnswerResult>();
+  /** The one way a start reaches a part: a start the door refuses as held is stored on the part. */
+  readonly deliveries: PartDelivery;
 
   constructor(
     private readonly documents: DocumentRepository,
     private readonly commands: CommandService,
     private readonly gate: StartGate,
     private readonly conversation: PlanConversation,
-    private readonly visits: VisitRepository,
   ) {
+    this.deliveries = new PartDelivery(documents);
     this.chat = conversation.chat;
     this.clock = conversation.clock;
   }
@@ -74,11 +74,6 @@ export class SubtaskPlannerAnswer {
   private async handedUp(run: RunEntity): Promise<boolean> {
     const waitingOnThem = run.status === 'waiting' && SUBTASK_ASKING_STEPS.includes(run.currentStep);
     return !waitingOnThem && asksForStarter(await this.chat.read(run.key)).length > 0;
-  }
-
-  /** True when the planner answered this run and its delivery was refused, so the next pass sends it again. */
-  replyPending(child: RunEntity): boolean {
-    return this.undelivered.has(child.key);
   }
 
   /**
@@ -107,16 +102,17 @@ export class SubtaskPlannerAnswer {
       await this.waitOn(child, given);
       return given;
     }
-    return (await this.reply(child, given)) ? given : null;
+    await this.reply(child, given);
+    return given;
   }
 
   /**
    * Puts a question of a task among the questions the parent holds for the person who started the run, as the parent's
    * own pass does for a question its planner could not answer. The person's answer reaches the task through that pass.
-   * With the planner's `words` of what must be decided, they follow the question.
+   * The lines of the planners that tried follow the question. Gives the answer the person gave before when there is one,
+   * and puts nothing.
    */
-  async handUp(parent: RunEntity, taskId: string, text: string, words?: string): Promise<void> {
-    const ask = askedQuestion(taskId, text, this.clock.iso(), words);
+  async handUp(parent: RunEntity, taskId: string, text: string, lines: PlannerLine[]): Promise<string | null> {
     const open = openQuestions(
       (await this.documents.latestBody(parent.key, ARTIFACTS.subtaskQuestions.kind)) ?? '',
       [],
@@ -124,18 +120,22 @@ export class SubtaskPlannerAnswer {
     const stored = readStoredQuestions(
       (await this.documents.latestBody(parent.key, ARTIFACTS.questionParts.kind)) ?? '',
     );
-    await this.documents.putDocument(parent, ARTIFACTS.subtaskQuestions.kind, renderQuestions([...open, ask.question]));
+    const held = {
+      lines: open,
+      parts: partsOfOpen(stored, open),
+      answered: readAnsweredQuestions(
+        (await this.documents.latestBody(parent.key, ARTIFACTS.answeredQuestions.kind)) ?? '',
+      ),
+    };
+    const result = askPerson(held, askedQuestion(taskId, text, this.clock.iso(), lines));
+    if (result.kind === 'answered') return result.answer;
+    await this.documents.putDocument(parent, ARTIFACTS.subtaskQuestions.kind, renderQuestions(result.lines));
     await this.documents.putDocument(
       parent,
       ARTIFACTS.questionParts.kind,
-      ARTIFACTS.questionParts.format(keepOpen(stored, open, [ask])),
+      ARTIFACTS.questionParts.format(result.parts),
     );
-  }
-
-  /** Sends the answer again that the child refused, so the planner is not asked twice. Null while it is refused. */
-  async resend(child: RunEntity): Promise<StarterAnswerResult | null> {
-    const given = this.undelivered.get(child.key);
-    return given && (await this.reply(child, given)) ? given : null;
+    return null;
   }
 
   /**
@@ -158,18 +158,11 @@ export class SubtaskPlannerAnswer {
     });
   }
 
-  /** Delivers the decision of the answer to the child. A refusal is kept, so the next pass sends the same answer again. */
-  private async reply(child: RunEntity, given: StarterAnswerResult): Promise<boolean> {
-    try {
-      await this.recordFinding(child, given);
-      await this.give(child, given.decision.trim(), `subtask-answer-${child.key}-${child.revision}`);
-    } catch (error) {
-      this.undelivered.set(child.key, given);
-      this.logger.warn(`${child.key} was not answered: ${error instanceof Error ? error.message : String(error)}`);
-      return false;
-    }
-    this.undelivered.delete(child.key);
-    return true;
+  /** Delivers the decision of the answer to the child. A start the door refuses as held is stored on the child. */
+  private async reply(child: RunEntity, given: StarterAnswerResult): Promise<Delivery> {
+    await this.recordFinding(child, given);
+    const decision = given.decision.trim();
+    return this.give(child, decision, await this.eventKey('subtask-answer', child, decision));
   }
 
   /**
@@ -181,15 +174,17 @@ export class SubtaskPlannerAnswer {
     await this.documents.putDocument(child, ARTIFACTS.needs.kind, renderNeeds(given.waitFor ?? []));
   }
 
-  /** Sends the child the answer of the person to its open questions. The key names this ask of the child. */
-  async deliver(child: RunEntity, text: string): Promise<void> {
-    const key = `subtask-person-answer-${child.key}-${(await this.visits.listStats(child.id)).length}`;
-    try {
-      await this.give(child, text, key);
-    } catch (error) {
-      this.logger.warn(`${child.key} was not answered: ${error instanceof Error ? error.message : String(error)}`);
-      throw error;
-    }
+  /** Sends the child the answer of the person to its open questions. */
+  async deliver(child: RunEntity, text: string): Promise<Delivery> {
+    return this.give(child, text, await this.eventKey('subtask-person-answer', child, text));
+  }
+
+  /** The key of an answer names the event: the questions the child asked and the text that answers them. */
+  private async eventKey(prefix: string, child: RunEntity, text: string): Promise<string> {
+    const digest = createHash('sha256')
+      .update(JSON.stringify([await this.askedBody(child), text]))
+      .digest('hex');
+    return `${prefix}-${child.key}-${digest}`;
   }
 
   /** What a subtask's own planner escalated that waits in its chat for the starter, or the answer that waits to be read; null for neither. */
@@ -199,21 +194,26 @@ export class SubtaskPlannerAnswer {
   }
 
   /** Delivers the answer to a subtask run the way its step reads it. */
-  private async give(child: RunEntity, text: string, idempotencyKey: string): Promise<void> {
-    if (await this.handedUp(child)) await this.close(child, text);
-    else if (SUBTASK_ASKING_STEPS.includes(child.currentStep)) await this.resume(child, text);
-    else await this.send(child, text, idempotencyKey);
+  private async give(child: RunEntity, text: string, idempotencyKey: string): Promise<Delivery> {
+    if (await this.handedUp(child)) {
+      await this.close(child, text);
+      return 'sent';
+    }
+    if (SUBTASK_ASKING_STEPS.includes(child.currentStep)) return this.resume(child, text);
+    return this.send(child, text, idempotencyKey);
   }
 
   /**
    * Records the answer in the subtask's own chat, where its step reads it, closes what the step asked and starts the step
-   * again, as the start of the planner of `level` that answered. A start that was refused, or that the gate holds back
-   * for a run a person stopped, leaves the answer recorded.
+   * again, as the start of the planner of `level` that answered. A start that the door refuses as held is stored on the
+   * child, and one that the gate holds back for a run a person stopped is not sent: the answer stays recorded either way.
    */
-  private async resume(child: RunEntity, text: string, level = 0): Promise<void> {
+  private async resume(child: RunEntity, text: string, level = 0): Promise<Delivery> {
     await this.close(child, text);
     const answer = await this.chat.answerFor(child.key, child.currentStep);
-    await this.gate.resume(child, { by: 'planner', level, event: `subtask-${answer?.key ?? child.key}` });
+    const key = `subtask-${answer?.key ?? child.key}`;
+    const record = { type: 'resume', key, by: 'planner', level } as const;
+    return this.deliveries.start(child, record, () => this.gate.resume(child, { by: 'planner', level, event: key }));
   }
 
   /** Records the answer in the subtask's own chat and closes what the step asked, without starting the step. */
@@ -240,11 +240,14 @@ export class SubtaskPlannerAnswer {
     }
   }
 
-  private async send(child: RunEntity, text: string, idempotencyKey: string): Promise<void> {
+  private async send(child: RunEntity, text: string, key: string): Promise<Delivery> {
     const answers = openQuestions(await this.askedBody(child), await storedAsks(this.documents, child.key)).map(
       (id) => ({ kind: 'question', id, body: text }),
     );
-    await this.commands.submit('answer', child.key, { answers }, { idempotencyKey });
+    const record = { type: 'answer', key, by: 'planner', level: null, answers } as const;
+    return this.deliveries.start(child, record, () =>
+      this.commands.submit('answer', child.key, { answers }, { idempotencyKey: key }),
+    );
   }
 
   /** The questions a child waits on: those of its research or plan, the one of its code review, or what its implement escalated. */

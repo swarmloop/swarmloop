@@ -145,22 +145,36 @@ describe('ConversationFeed', () => {
     expect(screen.getByText('Which database?')).toBeInTheDocument();
   });
 
-  it('shows the line of the planner above a question it passed on, still titled Question for you', () => {
+  it('shows the line of the planner as a side of the card of a question it passed on, still titled Question for you', () => {
     feed(
       flowView({
         status: 'waiting',
         items: [
-          { kind: 'question', id: 'q1', label: 'Which database?', answer: '', passedOn: 'Only you can choose it.' },
+          {
+            kind: 'question',
+            id: 'q1',
+            label: 'Which database?',
+            answer: '',
+            passedOn: 'Only you can choose it.',
+            parts: {
+              decide: 'Which database?',
+              sides: [{ who: 'backlog planner', text: 'Only you can choose it.' }],
+              full: '',
+              askedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
         ],
       }),
     );
 
-    const line = screen.getByText('The planner passed this on: Only you can choose it.');
+    const line = screen.getByText('Only you can choose it.');
     const title = screen.getByText('Question for you');
     expect(screen.queryByText('Asked the planner')).toBeNull();
+    expect(screen.queryByText(/The planner passed this on/)).toBeNull();
+    expect(screen.getByText('backlog planner')).toBeInTheDocument();
     expect(title.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(
-      line.compareDocumentPosition(screen.getByText('Which database?')) & Node.DOCUMENT_POSITION_FOLLOWING,
+      screen.getByText('Which database?').compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

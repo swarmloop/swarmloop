@@ -6,6 +6,7 @@ import { join } from 'path';
 import { AGENT_RUNNER, type AgentRunInput, type AgentRunResult } from '../../agent/agent-runner';
 import { agentFor } from '../../config/agents';
 import { AppConfig } from '../../config/env';
+import { conflict } from '../../history/command.repository';
 import { VisitRepository } from '../../history/visit.repository';
 import { agentStateDir } from '../../sandbox/sandbox-launch';
 import { RunQueriesService } from '../../api/run-queries.service';
@@ -205,6 +206,23 @@ describe('subtask questions', () => {
     expect(await documents.latestBody(KEY, 'subtask_questions')).toBe(asked);
   });
 
+  it('does not ask the person a question that was answered before, and sends the stored answer to the subtask', async () => {
+    const { documents, parent } = await questionWorld(() => ({ text: '', exitCode: 1 }));
+    const record = [
+      { asker: 'subtask:a', decide: '- which field?', answer: 'Use a column.', at: '2026-01-01T00:00:00.000Z' },
+    ];
+    await documents.putDocument(parent, 'answered_questions', JSON.stringify(record));
+    await ask('a', '- which field?\n');
+
+    await pass(app);
+
+    expect(((await documents.latestBody(KEY, 'subtask_questions')) ?? '').trim()).toBe('');
+    expect(await documents.latestBody(KEY, 'contract')).toContain(
+      '- subtask a at 2026-01-01T00:00:00.000Z: Use a column.',
+    );
+    expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe('question: which field?\nanswer: Use a column.\n');
+  });
+
   it('asks two questions that wait at once one after the other, in task order', async () => {
     const { prompts, documents } = await questionWorld((prompt) => ({
       text: prompt.includes('Subtask a') ? 'A.' : 'B.',
@@ -224,18 +242,24 @@ describe('subtask questions', () => {
     );
   });
 
-  it('sends the planner reply again, and does not ask the planner again, when the delivery was refused', async () => {
+  it('keeps the planner reply on the part, sends it again, and does not ask the planner again, when the part was held', async () => {
     const { documents, parent } = await questionWorld(() => ({ text: 'Use a column.' }));
     await ask('a', '- which field?\n');
     const commands = app.app.get(CommandService);
     const submit = commands.submit.bind(commands);
-    jest.spyOn(commands, 'submit').mockRejectedValueOnce(new Error('refused')).mockImplementation(submit);
+    const busy = conflict(
+      'RUN_BUSY',
+      `${KEY}-a is already running`,
+      (await app.app.get(RunRepository).findRun(`${KEY}-a`))!,
+    );
+    jest.spyOn(commands, 'submit').mockRejectedValueOnce(busy).mockImplementation(submit);
 
     await pass(app);
     expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBeNull();
-    expect(await documents.latestBody(KEY, 'contract')).toBe('- names are camelCase\n');
+    expect(await documents.latestBody(`${KEY}-a`, 'part_start')).toContain('"type":"answer"');
 
     await pass(app);
+    expect(await documents.latestBody(`${KEY}-a`, 'part_start')).toBe('');
     expect((await app.app.get(RunRepository).findRun(KEY))?.agentCalls).toBe(1);
     expect(await documents.latestBody(`${KEY}-a`, 'answers')).toBe('question: which field?\nanswer: Use a column.\n');
     expect(await documents.latestBody(KEY, 'contract')).toContain(

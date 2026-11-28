@@ -8,6 +8,7 @@ import { handoffText } from '../steps/shared/handoff';
 import { holdServices, seedBacklogTask } from '../steps/shared/question-holds.spec-helpers';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import type { Escalated } from '../steps/shared/subtask-ops';
+import type { PlannerLine } from '../steps/shared/question-parts';
 import { PlannerChain } from './planner-chain';
 
 const AT = '2026-01-01T00:00:00.000Z';
@@ -23,7 +24,7 @@ async function setup() {
   const chat = new PlanChatStore(runs, documents);
   const turns: Turn[] = [];
   const epicAnswers: (string | Escalated | null)[] = [];
-  const words: (string | undefined)[] = [];
+  const sides: PlannerLine[][] = [];
   const conversation = {
     chat,
     clock: { iso: () => AT, now: () => Date.parse(AT) },
@@ -36,9 +37,10 @@ async function setup() {
     {
       askAbout: () => Promise.resolve(epicAnswers.shift() ?? null),
       // What the real hand-up leaves: the task's question among the questions of its parent's implement step.
-      handUp: async (parent, _task, text, said) => {
-        words.push(said);
+      handUp: async (parent, _task, text, lines) => {
+        sides.push(lines);
         await documents.putDocument(parent, 'subtask_questions', `- ${text}\n`);
+        return null;
       },
     },
     conversation,
@@ -49,7 +51,7 @@ async function setup() {
   const epic = await runs.openWaiting('EPIC-1', '/target');
   const task = await runs.openSubtask('EPIC-1-a', epic.id, 'a');
   const alone = await runs.openWaiting('ALONE-1', '/target');
-  return { db, runs, documents, chat, turns, epicAnswers, words, chain, epic, task, alone };
+  return { db, runs, documents, chat, turns, epicAnswers, sides, chain, epic, task, alone };
 }
 
 describe('PlannerChain', () => {
@@ -76,7 +78,7 @@ describe('PlannerChain', () => {
       const again = await h.chain.askUp(h.task, question, 1);
 
       expect(first).toEqual({ asked: 'epic-planner', level: 1, answer: 'First decision.' });
-      expect(again).toEqual({ asked: 'starter', level: 2, answer: null });
+      expect(again).toEqual({ asked: 'starter', level: 2, answer: null, lines: [] });
     } finally {
       await h.db.close();
     }
@@ -104,7 +106,12 @@ describe('PlannerChain', () => {
 
       const asked = await h.chain.askUp(h.alone, question, 0);
 
-      expect(asked).toEqual({ asked: 'starter', level: 1, answer: null });
+      expect(asked).toEqual({
+        asked: 'starter',
+        level: 1,
+        answer: null,
+        lines: [{ who: 'run planner', text: 'The planner gave no answer.' }],
+      });
     } finally {
       await h.db.close();
     }
@@ -117,10 +124,65 @@ describe('PlannerChain', () => {
 
       const asked = await h.chain.askUp(h.task, question, 1);
 
-      expect(asked).toEqual({ asked: 'starter', level: 2, answer: null });
-      expect(h.words).toEqual(['The person picks the retry policy.']);
+      const words = [{ who: 'epic planner', text: 'The person picks the retry policy.' }];
+      expect(asked).toEqual({ asked: 'starter', level: 2, answer: null, lines: words });
+      expect(h.sides).toEqual([words]);
       expect(h.epicAnswers).toEqual(['Never asked.']);
       expect(handoffText(await h.documents.latestBody('EPIC-1-a', 'handoff'))).toBe('');
+    } finally {
+      await h.db.close();
+    }
+  });
+
+  it('hands every level that tried to the starter as a line, lowest first', async () => {
+    const h = await setup();
+    try {
+      h.turns.push(null);
+      h.epicAnswers.push({ escalate: 'The person picks the retry policy.' });
+
+      await h.chain.askUp(h.task, question, 0);
+
+      expect(h.sides).toEqual([
+        [
+          { who: 'run planner', text: 'The planner gave no answer.' },
+          { who: 'epic planner', text: 'The person picks the retry policy.' },
+        ],
+      ]);
+    } finally {
+      await h.db.close();
+    }
+  });
+
+  it('returns the answer the person gave before and adds no line, also when the starter was reached before', async () => {
+    const h = await setup();
+    try {
+      h.epicAnswers.push(null, null);
+      await h.chain.askUp(h.task, question, 1);
+      const record = [{ asker: 'subtask:a', decide: question.text, answer: 'Retry twice.', at: AT }];
+      await h.documents.putDocument(h.epic, 'answered_questions', JSON.stringify(record));
+
+      const again = await h.chain.askUp(h.task, question, 1);
+
+      expect(again).toEqual({ asked: 'starter', level: 2, answer: 'Retry twice.' });
+      expect(h.sides).toHaveLength(1);
+    } finally {
+      await h.db.close();
+    }
+  });
+
+  it('returns the answer the person gave before to a run of no parent, and puts no question', async () => {
+    const h = await setup();
+    try {
+      h.turns.push(null);
+      const record = [{ asker: 'implement', decide: question.text, answer: 'Retry twice.', at: AT }];
+      await h.documents.putDocument(h.alone, 'answered_questions', JSON.stringify(record));
+
+      const asked = await h.chain.askUp(h.alone, question, 0);
+
+      expect(asked).toEqual({ asked: 'starter', level: 1, answer: 'Retry twice.' });
+      // The answer is in the handoff, so the start it allows has another input than the start the door refused.
+      expect(handoffText(await h.documents.latestBody('ALONE-1', 'handoff'))).toBe('## implement\nRetry twice.\n');
+      expect(await h.documents.latestBody('ALONE-1', 'questions')).toBeNull();
     } finally {
       await h.db.close();
     }
@@ -147,8 +209,8 @@ describe('PlannerChain', () => {
       const asked = await h.chain.askUp(h.alone, question, 0);
       const again = await h.chain.askUp(h.alone, question, 0);
 
-      expect(asked).toEqual({ asked: 'starter', level: 1, answer: null });
-      expect(again).toEqual(asked);
+      expect(asked).toMatchObject({ asked: 'starter', level: 1, answer: null });
+      expect(again).toEqual({ asked: 'starter', level: 1, answer: null });
       const questions = (await h.documents.latestBody('ALONE-1', 'questions')) ?? '';
       expect(questions.match(/which retry policy wins/g)).toHaveLength(1);
       const run = (await h.runs.findRun('ALONE-1'))!;

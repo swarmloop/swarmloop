@@ -39,7 +39,7 @@ async function askAtImplement(app: Parts['app'], run: RunEntity): Promise<void> 
 }
 
 describe('the planner answering a run that waits on a question', () => {
-  it('is taken for a research question, whose id the planner does not know', async () => {
+  it('is taken for a research question, whose id the planner does not know, and recorded as answered', async () => {
     await withAnswerRoutes(async ({ app, port, started }) => {
       const run = await save(app.get(RunRepository), 'proj-1', 'research', 'waiting');
       await app.get(DocumentRepository).putDocument(run, 'questions', '- which limit\n');
@@ -51,6 +51,40 @@ describe('the planner answering a run that waits on a question', () => {
         'question: which limit\nanswer: three',
       );
       expect(started).toHaveBeenCalledWith('proj-1');
+      // A research question has no stored parts: the item the run view shows carries them, and the step asks.
+      const record = JSON.parse((await app.get(DocumentRepository).latestBody('proj-1', 'answered_questions')) ?? '[]');
+      expect(record).toEqual([{ asker: 'research', decide: 'which limit', answer: 'three', at: expect.any(String) }]);
+    });
+  });
+
+  it('records the answer of a question that has parts, and replaces it when the same question is answered again', async () => {
+    await withAnswerRoutes(async ({ app, port }) => {
+      const run = await save(app.get(RunRepository), 'proj-7', 'implement', 'waiting');
+      await askAtImplement(app, run);
+      await port.send({ type: 'answer', run: 'proj-7', answers: [{ body: 'three' }] }, 'ada', 'turn-1-action-0');
+      const first = JSON.parse((await app.get(DocumentRepository).latestBody('proj-7', 'answered_questions')) ?? '[]');
+      expect(first).toEqual([{ asker: '', decide: 'which limit', answer: 'three', at: expect.any(String) }]);
+
+      app.get(RunRepository).notify('proj-7');
+      await port.send({ type: 'answer', run: 'proj-7', answers: [{ body: 'four' }] }, 'ada', 'turn-1-action-1');
+      const second = JSON.parse((await app.get(DocumentRepository).latestBody('proj-7', 'answered_questions')) ?? '[]');
+      expect(second).toEqual([{ asker: '', decide: 'which limit', answer: 'four', at: expect.any(String) }]);
+    });
+  });
+
+  it('answers only the questions without an answer when one message comes, and keeps the answers given before', async () => {
+    await withAnswerRoutes(async ({ app, port }) => {
+      const documents = app.get(DocumentRepository);
+      const run = await save(app.get(RunRepository), 'proj-8', 'code-review', 'waiting');
+      await documents.putDocument(run, 'review_questions', '- keep the cache?\n- drop the log?\n');
+      await documents.putDocument(run, 'answers', 'question: keep the cache?\nanswer: keep it\n');
+      app.get(RunRepository).notify('proj-8');
+
+      await port.send({ type: 'answer', run: 'proj-8', answers: [{ body: 'drop it' }] }, 'ada', 'turn-1-action-0');
+
+      expect(await documents.latestBody('proj-8', 'answers')).toBe(
+        'question: keep the cache?\nanswer: keep it\n\nquestion: drop the log?\nanswer: drop it\n',
+      );
     });
   });
 

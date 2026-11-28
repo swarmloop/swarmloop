@@ -21,6 +21,7 @@ import {
   type TaskMove,
   type ChainAsked,
   type ChainQuestion,
+  type Delivery,
   type Escalated,
   type SubtaskMergeRequest,
 } from '../steps/shared/subtask-ops';
@@ -100,11 +101,11 @@ export class SubtaskPort extends SubtaskOps {
     this.worktrees = new SubtaskWorktrees(config, clock, new BaseTips(runs, documents), publisher, documents);
     const planning =
       conversation ?? new PlanConversation(door, visits, documents, config, clock, new PlanChatStore(runs, documents));
-    this.asks = new SubtaskAsks(documents, commands, gate, planning, visits, runs);
+    this.asks = new SubtaskAsks(documents, commands, gate, planning, runs);
     this.chain = new PlannerChain(
       {
         askAbout: (opened, task, question, contract) => this.askAbout(opened, task, question, contract),
-        handUp: (parent, taskId, text, words) => this.asks.handUp(parent, taskId, text, words),
+        handUp: (parent, taskId, text, lines) => this.asks.handUp(parent, taskId, text, lines),
       },
       planning,
       documents,
@@ -171,19 +172,19 @@ export class SubtaskPort extends SubtaskOps {
     return this.asks.answer(opened, child, task, contract, plan, start);
   }
 
-  override resend(child: RunEntity): Promise<StarterAnswerResult | null> {
-    return this.asks.resend(child);
-  }
-
   override recordRevisions(parent: RunEntity, changes: PlanChange[], at: string): Promise<void> {
     return this.asks.recordRevisions(parent, changes, at);
   }
 
-  override replyPending(child: RunEntity): boolean {
-    return this.asks.replyPending(child);
+  override held(child: RunEntity): Promise<boolean> {
+    return this.asks.held(child);
   }
 
-  override deliverAnswer(child: RunEntity, text: string): Promise<void> {
+  override sendHeld(child: RunEntity): Promise<Delivery> {
+    return this.asks.sendHeld(child);
+  }
+
+  override deliverAnswer(child: RunEntity, text: string): Promise<Delivery> {
     return this.asks.deliverAnswer(child, text);
   }
 
@@ -247,7 +248,7 @@ export class SubtaskPort extends SubtaskOps {
     return repoNames((await this.documents.latestBody(run.key, ARTIFACTS.repos.kind)) ?? '');
   }
 
-  override rerun(run: RunEntity, lines: string[], start?: SubtaskStart): Promise<void> {
+  override rerun(run: RunEntity, lines: string[], start?: SubtaskStart): Promise<Delivery> {
     return this.asks.rerun(run, lines, start);
   }
 

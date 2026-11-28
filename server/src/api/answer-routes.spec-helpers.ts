@@ -64,6 +64,7 @@ export async function withAnswerRoutes(test: (parts: AnswerRoutes) => Promise<vo
       app.get(PipelineService),
       app.get(RunQueriesService),
       app.get(RunCommandsService),
+      app.get(Clock),
       undefined,
       redMain,
     );

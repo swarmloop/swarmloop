@@ -7,7 +7,8 @@ import type { FlowRepository } from '../../history/flow.repository';
 import type { VisitRepository } from '../../history/visit.repository';
 import { readyTasks, settled, runWaitNote, waitNote, withStatuses, type Subtask } from '../../contract/subtask';
 import { openQuestions } from '../shared/answers';
-import { keepOpen } from '../shared/question-parts';
+import { askPerson, partsOfOpen, type PersonHeld } from '../shared/person-questions';
+import type { StoredQuestion } from '../shared/question-parts';
 import { renderQuestions } from '../research/research-record';
 import type { OwnEdits, SubtaskOps } from '../shared/subtask-ops';
 import { refusedRoute } from '../shared/start-refused';
@@ -100,15 +101,25 @@ export class SplitPass {
     await this.closeSkipped(run, newlySkipped(stored, tasks));
     const carried = withoutSkipped(openQuestions(delivered.body, []), tasks);
     const asks = [...gapped.asks, ...needed.asks].filter((ask) => withoutSkipped([ask.question], tasks).length > 0);
-    const open = [...carried, ...asks.map((ask) => ask.question)];
-    const questions = renderQuestions(open);
     const storedParts = (await ctx.reread(ARTIFACTS.questionParts)) ?? [];
-    const parts = keepOpen(storedParts, carried, asks);
+    const placed = await this.person(
+      run,
+      asks,
+      {
+        lines: carried,
+        parts: partsOfOpen(storedParts, carried),
+        answered: (await ctx.reread(ARTIFACTS.answeredQuestions)) ?? [],
+      },
+      { contract: looked.contract, at: startedAt },
+    );
+    const open = placed.lines;
+    const questions = renderQuestions(open);
+    const parts = placed.parts;
     const taken =
       gapped.taken === null ? [] : [{ artifact: ARTIFACTS.starterTaken, value: JSON.stringify(gapped.taken) }];
     const outputs: StepResult['outputs'] = [
       ...(JSON.stringify(tasks) === before ? [] : [{ artifact: ARTIFACTS.subtasks, value: tasks }]),
-      ...(looked.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: looked.contract }]),
+      ...(placed.contract === read ? [] : [{ artifact: ARTIFACTS.contract, value: placed.contract }]),
       ...(looked.looks === null ? [] : [{ artifact: ARTIFACTS.mergeLook, value: looked.looks }]),
       ...(questions === asked ? [] : [{ artifact: ARTIFACTS.subtaskQuestions, value: questions }]),
       ...(JSON.stringify(parts) === JSON.stringify(storedParts)
@@ -129,6 +140,30 @@ export class SplitPass {
       ? { route: refusedRoute(looked.refused), summary: `${startedAt} ${looked.refused.message}`, outputs }
       : await this.routing.route(ctx, tasks, open, outputs, { refusal, unfetched });
     return this.noted(result, unmoved, own.committed);
+  }
+
+  /**
+   * Puts each ask to the person through the one writer. An ask the person answered before is not put: its answer goes
+   * down to its task in this pass, as a decision in the contract.
+   */
+  private async person(
+    parent: RunEntity,
+    asks: StoredQuestion[],
+    start: PersonHeld,
+    pass: { contract: string; at: string },
+  ): Promise<PersonHeld & { contract: string }> {
+    let held = start;
+    let contract = pass.contract;
+    for (const ask of asks) {
+      const result = askPerson(held, ask);
+      if (result.kind === 'asked') {
+        held = { ...held, lines: result.lines, parts: result.parts };
+        continue;
+      }
+      const taskId = (ask.parts.asker ?? '').replace(/^subtask:/, '');
+      contract = await this.questions.handDown(parent, taskId, result.answer, pass.at, contract);
+    }
+    return { ...held, contract };
   }
 
   /**

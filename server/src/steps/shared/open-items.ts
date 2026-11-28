@@ -16,20 +16,25 @@ function questionItems(
   documents: DocumentEntity[],
   kind: string,
   results: Parameters<typeof openQuestions>[1],
+  /** The step whose document the questions were read from; it asks a question that has no stored parts. */
+  asker: string,
   /** Only the questions the server stored parts for: the others are old questions of an earlier step. */
   withParts = false,
 ): FlowItem[] {
   const stored = answered(latest(documents, 'answers') ?? '');
   const parts = readStoredQuestions(latest(documents, 'question_parts') ?? '');
+  const askedAt = [...documents].reverse().find((document) => document.kind === kind)?.createdAt ?? '';
   return openQuestions(latest(documents, kind) ?? '', results).flatMap((question) => {
     const found = parts.find((item) => item.question === question);
     if (withParts && !found) return [];
+    // Parts of a question without stored ones exist in the item only, never stored.
+    const shown = found?.parts ?? { decide: question, sides: [], full: '', askedAt, asker };
     return {
       kind: 'question',
       id: question,
       label: question,
       answer: stored.get(question) ?? '',
-      ...(found ? { parts: found.parts } : {}),
+      parts: shown,
     };
   });
 }
@@ -59,18 +64,20 @@ export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls
   const itemsOut: FlowItem[] = [];
   if (run.currentStep === 'research' || run.currentStep === 'plan') {
     itemsOut.push(
-      ...questionItems(documents, 'questions', [
-        storedResult<ResearchResult>(research, documents),
-        storedResult<PlanResult>(plan, documents),
-      ]),
+      ...questionItems(
+        documents,
+        'questions',
+        [storedResult<ResearchResult>(research, documents), storedResult<PlanResult>(plan, documents)],
+        run.currentStep,
+      ),
     );
   } else {
     // A question the planner escalated to the person who started the run waits in the questions at the step the run is at.
-    itemsOut.push(...questionItems(documents, 'questions', [], true));
+    itemsOut.push(...questionItems(documents, 'questions', [], run.currentStep, true));
   }
   if (run.split && run.currentStep === 'implement') {
     // A question of a skipped task is asked of no one.
-    const items = questionItems(documents, 'subtask_questions', []);
+    const items = questionItems(documents, 'subtask_questions', [], run.currentStep);
     const asked = new Set(
       withoutSkipped(
         items.map((item) => item.id),
@@ -80,7 +87,7 @@ export function openItems(run: RunEntity, documents: DocumentEntity[], pasteUrls
     itemsOut.push(...items.filter((item) => asked.has(item.id)));
   }
   if (run.currentStep === 'code-review') {
-    itemsOut.push(...questionItems(documents, 'review_questions', []));
+    itemsOut.push(...questionItems(documents, 'review_questions', [], run.currentStep));
   }
   if (run.currentStep === 'requirements') {
     itemsOut.push(...pasteItems(documents, pasteUrls));

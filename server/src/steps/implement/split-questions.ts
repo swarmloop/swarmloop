@@ -3,7 +3,7 @@ import type { Subtask } from '../../contract/subtask';
 import { renderQuestions } from '../research/research-record';
 import { answered, openQuestions } from '../shared/answers';
 import { withDecision } from '../shared/handoff';
-import { askedParts, type StoredQuestion } from '../shared/question-parts';
+import { askedParts, NO_PLANNER_WORDS, type PlannerLine, type StoredQuestion } from '../shared/question-parts';
 import type { SubtaskOps } from '../shared/subtask-ops';
 import { questionTask, withoutSkipped } from '../shared/subtask-question-line';
 
@@ -19,11 +19,20 @@ export function questionFor(taskId: string, question: string, askedAt: string, w
   return `Subtask ${taskId} asks: ${text} ${said} (asked ${askedAt})`;
 }
 
-/** The question of a subtask with its parts, stored next to the text. */
-export function askedQuestion(taskId: string, question: string, askedAt: string, words?: string): StoredQuestion {
+/**
+ * The question of a subtask with its parts, stored next to the text. The line of the epic's planner, when it said
+ * something, follows the question in the text; every planner's line is a side of the parts.
+ */
+export function askedQuestion(
+  taskId: string,
+  question: string,
+  askedAt: string,
+  lines: PlannerLine[] = [],
+): StoredQuestion {
+  const words = lines.find((line) => line.who === 'epic planner' && line.text !== NO_PLANNER_WORDS)?.text;
   return {
     question: questionFor(taskId, question, askedAt, words),
-    parts: askedParts(question, askedAt, { asker: `subtask:${taskId}` }),
+    parts: askedParts(question, askedAt, { asker: `subtask:${taskId}` }, lines),
   };
 }
 
@@ -40,8 +49,9 @@ export class SplitQuestions {
   }
 
   /**
-   * Sends every answered question to its subtask: a task that waits in research gets the Answer command, a task that
-   * waits with needs gets a line in its handoff. Each answer is a decision in the contract with the time `at`, and its
+   * Sends first every start of a part that the door refused as held (a task that `tasks` reads skipped is left alone: it
+   * is started by no one), then every answered question to its subtask: a task that waits in research gets the Answer command, a task that
+   * waits with needs gets a line in its handoff. A part that is held still keeps the answer, stored on it. Each answer is a decision in the contract with the time `at`, and its
    * question is closed. A question of a task that `tasks` reads skipped is dropped: it is handed to no one.
    */
   async deliver(
@@ -52,6 +62,10 @@ export class SplitQuestions {
     at: string,
     tasks: Subtask[],
   ): Promise<{ contract: string; body: string }> {
+    for (const task of tasks.filter((item) => item.status !== 'skipped')) {
+      const held = await this.subtasks.find(parent, task.id);
+      if (held && (await this.subtasks.held(held))) await this.subtasks.sendHeld(held);
+    }
     const stored = answered(answersBody);
     const open: string[] = [];
     let current = contract;
@@ -62,11 +76,20 @@ export class SplitQuestions {
         open.push(line);
         continue;
       }
-      const child = await this.subtasks.find(parent, id);
-      if (child && (await this.subtasks.asking(child))) await this.subtasks.deliverAnswer(child, answer);
-      else if (child && (await this.subtasks.needsOf(child)).length > 0) await this.subtasks.rerun(child, [answer]);
-      current = withDecision(current, id, answer, at);
+      current = await this.handDown(parent, id, answer, at, current);
     }
     return { contract: current, body: renderQuestions(open) };
+  }
+
+  /**
+   * Sends an answer to the task it is for: a task that waits in research gets the Answer command, a task that waits with
+   * needs gets a line in its handoff, and a part that is held keeps it, stored on it. Gives the contract with the answer
+   * as a decision with the time `at`.
+   */
+  async handDown(parent: RunEntity, taskId: string, answer: string, at: string, contract: string): Promise<string> {
+    const child = await this.subtasks.find(parent, taskId);
+    if (child && (await this.subtasks.asking(child))) await this.subtasks.deliverAnswer(child, answer);
+    else if (child && (await this.subtasks.needsOf(child)).length > 0) await this.subtasks.rerun(child, [answer]);
+    return withDecision(contract, taskId, answer, at);
   }
 }

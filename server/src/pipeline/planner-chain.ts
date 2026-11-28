@@ -11,6 +11,12 @@ import { mergeHandoff } from '../steps/shared/handoff';
 import type { PlanConversation } from '../steps/shared/plan-conversation';
 import type { QuestionHolds } from '../steps/shared/question-holds';
 import { isEscalated, type ChainAsked, type ChainQuestion, type Escalated } from '../steps/shared/subtask-ops';
+import {
+  answeredBefore,
+  NO_PLANNER_WORDS,
+  readAnsweredQuestions,
+  type PlannerLine,
+} from '../steps/shared/question-parts';
 import { normalizedText } from '../steps/shared/visit-input';
 import type { OpenedStep } from '../steps/step-run';
 import { escalateToPerson, releaseAsked } from './escalation';
@@ -25,10 +31,10 @@ const ENTRY_PREFIX = 'up-';
 interface ChainAncestors {
   askAbout(opened: OpenedStep, task: Subtask, question: string, contract: string): Promise<string | Escalated | null>;
   /**
-   * Puts a question of a task of `parent` among the questions of `parent` for whoever started the run, followed by the
-   * planner's `words` of what must be decided when it escalated.
+   * Puts a question of a task of `parent` among the questions of `parent` for whoever started the run, with the line of
+   * each planner that tried. The answer the person gave to it before, when there is one, and nothing is put.
    */
-  handUp(parent: RunEntity, taskId: string, text: string, words?: string): Promise<void>;
+  handUp(parent: RunEntity, taskId: string, text: string, lines: PlannerLine[]): Promise<string | null>;
 }
 
 /** The key of the entry a question has in the plan chat: the same question is the same entry. */
@@ -66,24 +72,43 @@ export class PlannerChain {
     const levels = await this.levels(run);
     const done = levels[key] ?? [];
     let level = Math.min(starter, Math.max(startLevel, done.length > 0 ? Math.max(...done) + 1 : 0));
-    let words: string | undefined;
+    const lines: PlannerLine[] = [];
     for (; level < starter; level++) {
       const reply = level === 0 ? await this.own(run, question) : await this.epic(run, above, level, question);
-      if (reply.kind === 'escalated') {
-        words = reply.words;
-        level = starter;
-        break;
-      }
       if (reply.kind === 'answered') {
         await this.remember(run, levels, key, level);
         return { asked: level === 0 ? 'run-planner' : 'epic-planner', level, answer: reply.text };
       }
+      lines.push({
+        who: level === 0 ? 'run planner' : 'epic planner',
+        text: (reply.kind === 'escalated' && reply.words) || NO_PLANNER_WORDS,
+      });
+      if (reply.kind === 'escalated') {
+        level = starter;
+        break;
+      }
+    }
+    const stored = await this.storedAnswer(run, above[0] ?? null, question);
+    if (stored !== null) {
+      return { asked: 'starter', level: starter, answer: await this.recorded(run, question, stored) };
     }
     if (!done.includes(starter)) {
-      await this.toStarter(run, above[0] ?? null, question, words);
+      const given = await this.toStarter(run, above[0] ?? null, question, lines);
       await this.remember(run, levels, key, starter);
+      const answer = given === null ? null : await this.recorded(run, question, given);
+      return { asked: 'starter', level: starter, answer, lines };
     }
     return { asked: 'starter', level: starter, answer: null };
+  }
+
+  /**
+   * An answer the person gave before goes into the run's handoff, as an epic planner's decision does, so the start the
+   * answer allows has another input than the start the door refused.
+   */
+  private async recorded(run: RunEntity, question: ChainQuestion, answer: string): Promise<string> {
+    const handoff = await this.documents.latestBody(run.key, ARTIFACTS.handoff.kind);
+    await this.documents.putDocument(run, ARTIFACTS.handoff.kind, mergeHandoff(handoff, question.from, answer));
+    return answer;
   }
 
   /** The question the chain left open in the run's plan chat for its planner, or null. */
@@ -151,19 +176,36 @@ export class PlannerChain {
     return { kind: 'answered', text: decision };
   }
 
+  /** The answer the person gave before to this question of the run, asked by `question.from` or by the task of the epic above. */
+  private async storedAnswer(
+    run: RunEntity,
+    parent: RunEntity | null,
+    question: ChainQuestion,
+  ): Promise<string | null> {
+    const asker = parent ? `subtask:${run.taskId ?? run.key}` : question.from;
+    const record = readAnsweredQuestions(
+      (await this.documents.latestBody((parent ?? run).key, ARTIFACTS.answeredQuestions.kind)) ?? '',
+    );
+    return answeredBefore(record, asker, question.text);
+  }
+
   /**
    * The person who started the run is asked, through the backlog's planner when the run is a backlog's. A subtask's question goes among the questions of its parent, which the
    * person's answer reaches the task from. A run of no parent puts it among its own, as the planner's escalation does.
+   * Gives the answer the person gave before when there is one; nothing is put then.
    */
   private async toStarter(
     run: RunEntity,
     parent: RunEntity | null,
     question: ChainQuestion,
-    words?: string,
-  ): Promise<void> {
+    lines: PlannerLine[],
+  ): Promise<string | null> {
     const waiting = parent ?? run;
     if (parent) {
-      if (parent.status === 'waiting') await this.ancestors.handUp(parent, run.taskId ?? run.key, question.text, words);
+      if (parent.status === 'waiting') {
+        const given = await this.ancestors.handUp(parent, run.taskId ?? run.key, question.text, lines);
+        if (given !== null) return given;
+      }
     } else {
       const escalation: PlanChatEntry = {
         key: `escalate-${entryKey(question)}`,
@@ -175,9 +217,14 @@ export class PlannerChain {
         state: 'pending',
       };
       await this.chat.appendEntry(run.key, escalation);
-      await escalateToPerson(this.documents, run, escalation);
+      const put = await escalateToPerson(this.documents, run, escalation);
+      if (put.kind === 'answered') {
+        await this.chat.markTaken(run.key, [escalation.key]);
+        return put.answer;
+      }
     }
     await releaseAsked(this.runs, this.holds, waiting.key);
+    return null;
   }
 
   private async levels(run: RunEntity): Promise<Record<string, number[]>> {

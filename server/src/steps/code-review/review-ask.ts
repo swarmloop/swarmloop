@@ -5,8 +5,9 @@ import type { StepContext } from '../base-step';
 import { ARTIFACTS } from '../contract/artifacts';
 import { withInstructions } from '../plan/plan-record';
 import { renderQuestions } from '../research/research-record';
-import { answered, openQuestions } from '../shared/answers';
-import { reviewParts, type StoredQuestion } from '../shared/question-parts';
+import { answered, openQuestions, renderAnswers } from '../shared/answers';
+import { askPerson, type PersonHeld } from '../shared/person-questions';
+import { reviewParts, type AnsweredQuestion, type StoredQuestion } from '../shared/question-parts';
 import { askedReviewer } from '../shared/reviewer-labels';
 import { issueOf, returnNotes, textDocument } from '../shared/handoff';
 import type { Exchange } from './review-exchange';
@@ -51,26 +52,49 @@ export function reviewAsks(
   });
 }
 
-/** Waits for the person: the reviews as the reviewers gave them, and the questions as the document the answers close. */
-export function askPerson(
+/** What the visit that asks keeps: the reviews it recorded, the report's call and its usage. */
+interface AskCarried {
+  documents: DocumentDraft[];
+  call: ReportCall | null;
+  usage: Usage;
+}
+
+/**
+ * Puts the reviewers' questions to the person through the one writer: the reviews as the reviewers gave them, and the
+ * questions as the document the answers close. A question the person answered before is not put again: its answer
+ * settles the review as a person's answer does, at once when every question was answered before, and otherwise with
+ * the answers it wrote for the questions that wait.
+ */
+export async function askReviewer(
   ctx: StepContext,
   asks: StoredQuestion[],
-  documents: DocumentDraft[],
-  call: ReportCall | null,
-  usage: Usage,
+  answered: AnsweredQuestion[],
+  carried: AskCarried,
+  documents: DocumentRepository,
 ): Promise<PipelineResult> {
+  let held: PersonHeld = { lines: [], parts: [], answered };
+  const known: [string, string][] = [];
+  for (const ask of asks) {
+    const result = askPerson(held, ask);
+    if (result.kind === 'asked') held = { ...held, lines: result.lines, parts: result.parts };
+    else known.push([ask.question, result.answer]);
+  }
   const body = renderQuestions(asks.map((ask) => ask.question));
+  if (held.lines.length === 0) {
+    return settleAnswers(ctx, { body, id: 0 }, renderAnswers(known), documents, undefined, carried);
+  }
   return closeReview(
     ctx,
     { to: 'wait', reason: 'questions are open' },
     `${ctx.opened.startedAt} code-review waiting\n${body}`,
     [
-      ...documents,
+      ...carried.documents,
       textDocument(ARTIFACTS.reviewQuestions.kind, body),
       textDocument(ARTIFACTS.questionParts.kind, ARTIFACTS.questionParts.format(asks)),
+      ...(known.length > 0 ? [textDocument(ARTIFACTS.answers.kind, renderAnswers(known))] : []),
     ],
-    call,
-    usage,
+    carried.call,
+    carried.usage,
   );
 }
 
@@ -160,6 +184,7 @@ async function settleAnswers(
   answersBody: string,
   documents: DocumentRepository,
   planner?: SubtaskPlanner,
+  carried?: AskCarried,
 ): Promise<PipelineResult> {
   const questionsBody = asked.body;
   const stored = answered(answersBody);
@@ -193,12 +218,14 @@ async function settleAnswers(
     { to: 'return', step: 'implement', issues },
     `${ctx.opened.startedAt} code-review waiting\n${questions.length} questions answered`,
     [
+      ...(carried?.documents ?? []),
       textDocument(ARTIFACTS.requirements.kind, requirements),
       textDocument(ARTIFACTS.reviewQuestions.kind, ''),
       returnNotes(issues),
       textDocument(ARTIFACTS.issues.kind, ARTIFACTS.issues.format(issues)),
     ],
-    null,
+    carried?.call ?? null,
+    carried?.usage,
   );
   if (typed && planner) await planner.chat.markTaken(ctx.opened.run.key, [typed.key]);
   return closed;

@@ -310,7 +310,8 @@ When `main` moves while the epic waits, the epic takes it (rule 6). A conflict g
 - An epic reads a part whose move its round sent by that move until it has run (`SubtaskRebases.moveOf`, the one read of a part's move, passed to `taskStatusOf` in `steps/shared/subtask-status.ts`; see 3.11), so it waits for the move and does not block on the state the part had before it.
 - An epic whose pass waits on a question that its parts or its gaps raised takes a new green main (or a new main with no CI) too, with no part running (rule 6; `takesMain` in `steps/shared/epic-between-passes.ts`, which also takes an epic that waits at implement for a green main (`WAITS_FOR_MAIN`), read by the main move and by an epic's Rebase; a structure rule in `scripts/structure-rules.json` fails any other file that names `takesMain`). Every open part moves with its epic; a part that waits on a question or a sibling is moved and keeps its wait.
 - A question of a skipped task is not handed down, not carried and not shown as open: the pass drops it (`withoutSkipped` in `steps/shared/subtask-question-line.ts`, read by `SplitQuestions.deliver`, the pass's carried questions and `openItems`), and an answer given to it adds no decision to the contract. Each pass first sends every task the list already reads skipped through the one skip (`closeSkipped` in `steps/implement/split-pass.ts`), so an epic that failed at implement on such a task goes on by a Resume.
-- Child runs follow the flow and take the one base-move path of 3.11; other mechanisms that treat children apart are in 3.12.
+- A part that the door refuses a start as held (`RUN_BUSY`) keeps that start in its `part_start` document (`pipeline/part-delivery.ts`): the epic reads the part as running and waits on it (rule 10), and its next pass sends the start again with the same key (`SplitQuestions.deliver`), so a held part never fails the epic.
+- Child runs follow the flow and take the one base-move path of 3.11. They have no question code of their own: a part's question goes up and its answer comes down by the one path of 3.13.
 
 ## 3.11 Base moves and conflicts
 
@@ -353,7 +354,7 @@ No conflict waits for a person: every one goes to implement.
 - **The three planners read one core text**: questions go up one chain (decide what you hold, pass up what you do not), the look after a merge, and what a new task or a plan change carries. Each level keeps only its own: the run planner how it plans and escalates, the epic planner its parts, contract and answer fields, the backlog planner its turns, actions, milestones and helpers. Every skill of a role that has a reader takes the shared text `Reading with a reader` (`skills/reader/asking.md`) by its mark.
 
 **Today.**
-- Holds through `steps/plan/`, `steps/shared/plan-conversation.ts` (visits and turns ordered one at a time), `pipeline/subtask-planner-answer.ts`, `pipeline/backlog/planner/`, `pipeline/run-reopen.ts` and `pipeline/plan-chat-route.ts`.
+- Holds through `steps/plan/`, `steps/shared/plan-conversation.ts` (visits and turns ordered one at a time), `pipeline/backlog/planner/`, `pipeline/run-reopen.ts` and `pipeline/plan-chat-route.ts`. A planner's answer to a child run (`pipeline/subtask-planner-answer.ts`) is the answer step of the one question path of 3.13, not question code of the child's own.
 - The core text is `skills/plan/planner-core.md`. `skillText` (`steps/shared/skill-prompt.ts`, `steps/shared/planner-core.ts`) expands its marker in both skills; the run's and the epic's plan chats read its parts through `skillSection` (`steps/plan/plan.prompts.ts`); the epic's merge look reads its merge part (`steps/implement/merge-look.prompts.ts`); the backlog turn reads the whole skill. The backlog planner's actions and their fields come from its definition through the `[backlog actions]` mark (`backlogActionsText` in `steps/shared/backlog-actions-text.ts`, expanded by `skillText`), so the skill and the check cannot differ.
 - The offer of a start: `offerRun` in `agent-result/definitions/backlog-turn.ts` is judged by `PlannerRules` (`planner-rules.ts`: a proposed milestone, or a task that has not started, is not settled and is outside the active milestone), kept by `PlannerTurnActions` (`planner-actions.ts`) as `offers` on the turn's say message (`backlog_messages.offers`) and never recorded as an action; the planner's run actions of an owner stay refused. The dashboard draws the one live rule `liveOffers` (`dashboard/features/backlogs/chat/chat-rows.ts`: the milestone the message proposes and its offers, while still possible) through the shared `StartButtons`, which the milestone card also uses, and only for the owner.
 - A planner's change or delete of a task names the revision its brief showed (`revision` of `changeTask` and `deleteTask` in `agent-result/definitions/backlog-turn.ts`, shown on each task line of the brief by `turn-lines.ts`); a stale one is refused by the one writer (3.17) with the task as it is now, and the refusal comes back in the follow-up in the same chat like every other refusal (`nameRefusalsOnce`), so the turn decides again on the fresh record.
@@ -371,15 +372,14 @@ No conflict waits for a person: every one goes to implement.
 3. An answer is matched to its question, goes back down to the step that asked, and the step takes it in its next visit.
 4. A question the person has answered is never asked again.
 
-**Today.** Since f129 a message and an answer take one route (`pipeline/plan-chat-route.ts`). About 25 files take part, and these question paths still have their own code:
-- starter answers and asks (`steps/shared/starter-*`);
-- research questions;
-- split questions (a skipped part's question on its epic is closed by the skip path, see 3.14);
-- escalation (`pipeline/escalation.ts`);
-- passing a backlog run's questions on (`question-pass-on.ts`);
-- question parts and holds;
-- the answers route.
+**Today.** One path for every run and step; a step or a child run has no question code of its own.
+- Up: a step's question or a part's `needs:` goes through `StarterExchange` (`steps/shared/starter-exchange.ts`) and `PlannerChain.askUp` (`pipeline/planner-chain.ts`): the run's planner, then each epic planner above it. Each level that tried leaves its line (`who` and `text`), carried to the person's question as its sides (`askedParts` in `steps/shared/question-parts.ts`).
+- To the person: `askPerson` (`steps/shared/person-questions.ts`, a pure function) writes every question that goes up the chain for a person. It adds a line once, keeps the stored parts it is given (`escalateToPerson` keeps the parts of other documents, and the epic's callers only those of their open lines), and returns the stored answer when the same asker and decision were answered before, so nothing is put twice. Its callers do the document writes: `escalateToPerson` (`pipeline/escalation.ts`, the run's `questions`), `SubtaskPlannerAnswer.handUp` (the epic's `subtask_questions`) and the split pass (`steps/implement/split-pass.ts`, the asks of gaps and needs). A backlog run's question is first held by the backlog planner and passed on (`pipeline/question-pass-on.ts`, `steps/shared/question-holds.ts`, c03).
+- Code review puts its reviewers' questions through the same `askPerson` (`askReviewer` in `steps/code-review/review-ask.ts`, with `review_questions` and the parts of the reviewer and implement sides). A question the person answered before is settled as the person decided and is not put again. Research and plan write their questions as their step output with no stored parts: the run view gives such a question its parts in the item only, and the step's result check (`askedAgain` in `steps/shared/question-parts.ts`) tells the agent the answer of a question answered before, so it asks no more.
+- The answer: the answers route of f129 (`pipeline/plan-chat-route.ts`, `api/run-answers.service.ts`) saves the `answers` document and appends `{ asker, decide, answer, at }` to `answered_questions` for each answered question the run view shows with its parts, stored or item-only.
+- Down: a run's answer is read by its planner through the plan chat's pending answer (`PlannerTurns.settle`, and a stored answer of an escalation is written there as the person's). A part's answer goes through `SplitQuestions` (`steps/implement/split-questions.ts`: `deliver` for a person's answer, `handDown` for one given before) and `PartDelivery` (`pipeline/part-delivery.ts`), which takes it at the part's next visit and keeps it while the part is held.
 - f129's message route has no structure rule: `messageTurn` is a pure decision its readers import, and a second decision would carry another name that no pattern catches.
+- A skipped part's question on its epic is closed by the skip path, see 3.14.
 
 The backlog planner's answer to a run's question, given while an unsettled fix task for a red main names the run's repository and that main is not green, holds the run for that main (`pipeline/backlog/red-main-wait.ts`).
 
@@ -388,7 +388,6 @@ An open question and the state it gives are written together, in the write of th
 A part's starter answer escalates by the chain of f124 (`starter-answer.ts`, `StarterExchange`).
 Every other planner answer, a step's question and a reply to a message on any path (the plan step's `answerMessages`, f129's own turn), has its `escalate` read by one function (`steps/shared/reply-escalation.ts`). It goes up only through `pipeline/escalation.ts`: `PlannerTurns.raise` puts the entry the plan step wrote to the person or, on a backlog run, to the backlog planner first. A subtask's message escalation is a `StarterExchange` hand-up for its epic's planner. A person's message has no step to read the planner's answer, so that answer is a taken line of the chat.
 
-They join in one path after M1 (one-question-path).
 
 ## 3.14 Commands and a person's actions
 

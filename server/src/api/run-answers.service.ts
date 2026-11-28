@@ -5,9 +5,12 @@ import { DocumentRepository } from '../history/document.repository';
 import { CheckoutRepository } from '../history/checkout.repository';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { PlannerTurns } from '../pipeline/planner-turns';
-import { AnswersBody, FlowView } from '../contract/api';
+import { AnswersBody, FlowItem, FlowView } from '../contract/api';
 import { requireRun, RunQueriesService } from './run-queries.service';
+import { Clock } from '../core/clock';
 import { renderAnswers } from '../steps/shared/answers';
+import { readAnsweredQuestions, type AnsweredQuestion } from '../steps/shared/question-parts';
+import { ARTIFACTS } from '../steps/contract/artifacts';
 import { RedMainWait } from '../pipeline/backlog/red-main-wait';
 import { RunCommandsService } from './run-commands.service';
 
@@ -20,6 +23,7 @@ export class RunAnswersService {
     private readonly pipeline: PipelineService,
     private readonly queries: RunQueriesService,
     private readonly commands: RunCommandsService,
+    private readonly clock: Clock,
     @Optional() private readonly turns?: PlannerTurns,
     @Optional() private readonly redMain?: RedMainWait,
   ) {}
@@ -41,6 +45,7 @@ export class RunAnswersService {
     await this.saveQuestions(
       run,
       questions.map((answer) => [answer.id ?? '', answer.body?.trim() ?? '']),
+      view.items,
     );
     for (const answer of incoming.filter((item) => item.kind === 'paste' && item.id && item.body?.trim())) {
       await this.checkouts.savePaste(key, answer.id ?? '', answer.body?.trim() ?? '');
@@ -63,23 +68,52 @@ export class RunAnswersService {
     if (paste) {
       await this.checkouts.savePaste(key, paste.id, text);
     } else {
-      await this.saveQuestions(
-        run,
-        items.filter((item) => item.kind === 'question').map((item) => [item.id, text]),
-      );
+      await this.saveQuestions(run, this.messagePairs(items, text), items);
     }
     return this.start(key, waitsForMain);
   }
 
-  /** The `answers` document: one `question`/`answer` pair per answered question. */
-  private async saveQuestions(run: RunEntity, pairs: string[][]): Promise<void> {
-    if (pairs.length > 0) {
-      await this.documents.putDocument(
-        run,
-        'answers',
-        renderAnswers(pairs.map(([question, answer]) => [question, answer])),
-      );
-    }
+  /**
+   * The pairs one message makes: it answers the open questions that have no answer yet, and every question that already
+   * has one keeps it. When all have an answer, the message answers them all again.
+   */
+  private messagePairs(items: FlowItem[], text: string): string[][] {
+    const questions = items.filter((item) => item.kind === 'question');
+    const open = questions.filter((item) => !item.answer.trim());
+    const target = open.length > 0 ? open : questions;
+    return questions.map((item) => [item.id, target.includes(item) ? text : item.answer]);
+  }
+
+  /** The `answers` document: one `question`/`answer` pair per answered question, and the record of the answered ones. */
+  private async saveQuestions(run: RunEntity, pairs: string[][], items: FlowItem[]): Promise<void> {
+    if (pairs.length === 0) return;
+    await this.documents.putDocument(
+      run,
+      'answers',
+      renderAnswers(pairs.map(([question, answer]) => [question, answer])),
+    );
+    await this.recordAnswered(run, pairs, items);
+  }
+
+  /**
+   * Adds one entry of asker, decision, answer and time per answered question the view shows with its parts, stored or
+   * item-only, so the question is never asked again. An entry of the same asker and decision is replaced.
+   */
+  private async recordAnswered(run: RunEntity, pairs: string[][], items: FlowItem[]): Promise<void> {
+    const given: AnsweredQuestion[] = pairs.flatMap(([question, answer]) => {
+      const parts = items.find((item) => item.kind === 'question' && item.id === question)?.parts;
+      return parts ? [{ asker: parts.asker ?? '', decide: parts.decide, answer, at: this.clock.iso() }] : [];
+    });
+    if (given.length === 0) return;
+    const before = readAnsweredQuestions(
+      (await this.documents.latestBody(run.key, ARTIFACTS.answeredQuestions.kind)) ?? '',
+    );
+    const kept = before.filter((item) => !given.some((one) => one.asker === item.asker && one.decide === item.decide));
+    await this.documents.putDocument(
+      run,
+      ARTIFACTS.answeredQuestions.kind,
+      ARTIFACTS.answeredQuestions.format([...kept, ...given]),
+    );
   }
 
   /** Offers the answers, then starts the run, or holds it for a green main of `waitsForMain` when the backlog planner gave that. */

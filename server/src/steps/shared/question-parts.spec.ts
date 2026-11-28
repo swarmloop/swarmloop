@@ -1,6 +1,15 @@
 import type { ReviewResult } from '../../agent-result/definitions/review';
 import { askedQuestion, questionFor } from '../implement/split-questions';
-import { askedParts, keepOpen, readStoredQuestions, reviewParts, type StoredQuestion } from './question-parts';
+import {
+  answeredBefore,
+  askedParts,
+  readAnsweredQuestions,
+  readStoredQuestions,
+  reviewParts,
+  type AnsweredQuestion,
+  type PlannerLine,
+  askedAgain,
+} from './question-parts';
 
 const ASKED_AT = '2026-11-15T07:11:43.444Z';
 
@@ -70,10 +79,21 @@ describe('question parts', () => {
     expect(askedQuestion('a', 'Which one?', ASKED_AT).question).toBe(questionFor('a', 'Which one?', ASKED_AT));
   });
 
-  it('keeps the parts of the questions still open and adds the new ones', () => {
-    const entry = (question: string): StoredQuestion => ({ question, parts: askedParts(question, ASKED_AT) });
+  it('gives a question that went up the chain one side per planner, in order', () => {
+    const lines: PlannerLine[] = [
+      { who: 'run planner', text: 'Not sure.' },
+      { who: 'epic planner', text: 'The planner gave no answer.' },
+    ];
 
-    expect(keepOpen([entry('a'), entry('b')], ['b'], [entry('c')]).map((item) => item.question)).toEqual(['b', 'c']);
+    expect(askedParts('Which one?', ASKED_AT, {}, lines).sides).toEqual(lines);
+  });
+
+  it('finds the answer already given to the same asker, whatever the whitespace and the time asked', () => {
+    const record: AnsweredQuestion[] = [{ asker: 'a', decide: ' Which\n one? ', answer: 'This one', at: ASKED_AT }];
+
+    expect(answeredBefore(record, 'a', 'Which   one?')).toBe('This one');
+    expect(answeredBefore(record, 'b', 'Which one?')).toBeNull();
+    expect(answeredBefore(record, 'a', 'Which other?')).toBeNull();
   });
 
   it('reads a stored list, and an empty one from a body that is not a list', () => {
@@ -82,5 +102,21 @@ describe('question parts', () => {
     expect(readStoredQuestions(JSON.stringify(stored))).toEqual(stored);
     expect(readStoredQuestions('not json')).toEqual([]);
     expect(readStoredQuestions('{"a":1}')).toEqual([]);
+  });
+
+  it('reads the record of answers, and none from an empty body', () => {
+    const record: AnsweredQuestion[] = [{ asker: 'subtask:a', decide: 'Which?', answer: 'This', at: ASKED_AT }];
+
+    expect(readAnsweredQuestions(JSON.stringify(record))).toEqual(record);
+    expect(readAnsweredQuestions('')).toEqual([]);
+  });
+
+  it('names the answer of a question the asker was answered before, and nothing for the others', () => {
+    const record: AnsweredQuestion[] = [{ asker: 'plan', decide: 'Which  one?', answer: 'This', at: ASKED_AT }];
+
+    expect(askedAgain(['Which one?', 'Which other?'], record, 'plan')).toEqual([
+      'questions: the person already answered "Which one?" with "This"; decide with that answer',
+    ]);
+    expect(askedAgain(['Which one?'], record, 'research')).toEqual([]);
   });
 });

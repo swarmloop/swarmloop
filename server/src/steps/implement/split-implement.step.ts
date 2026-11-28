@@ -113,6 +113,8 @@ export class SplitImplementStep extends BaseStep<typeof INPUTS> {
       children.push(child);
       if ((await this.changed(task, child)) || task.status === 'green' || (await this.subtasks.asking(child)))
         return false;
+      // A start the door refused as held waits for a pass to send it again.
+      if (await this.subtasks.held(child)) return false;
     }
     if (earliestRetry(children) !== (storedState(parent).reason?.retryAt ?? null)) return false;
     return readyTasks(tasks, await this.pass.slots(parent, tasks)).length === 0;

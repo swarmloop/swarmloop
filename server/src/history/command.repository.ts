@@ -247,6 +247,13 @@ export function conflict(
   });
 }
 
+/** True for the 409 of `conflict('RUN_BUSY', ...)`: the door refused a command because the run is held. */
+export function refusedAsBusy(error: unknown): boolean {
+  if (!(error instanceof ConflictException)) return false;
+  const response = error.getResponse();
+  return typeof response === 'object' && (response as { code?: unknown }).code === 'RUN_BUSY';
+}
+
 function waitingRun(runs: RunRepository, key: string, create: AcceptInput['create']): RunEntity {
   return runs.newWaitingRun(key, create?.targetPath ?? null, create?.startedBy ?? null, create?.agents ?? null);
 }
