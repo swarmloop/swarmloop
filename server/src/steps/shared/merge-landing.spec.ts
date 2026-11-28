@@ -24,6 +24,7 @@ function setup(gates: Record<string, Gate>, mergeError?: Error) {
   const log: string[] = [];
   const host = {
     gate: async (_run: unknown, request: { project: string }) => gates[request.project],
+    requestHead: async (_run: unknown, request: { repo: string }) => `host-head-of-${request.repo}`,
     merge: async (_run: unknown, repo: string, _title: string, _request: unknown, head: string) => {
       log.push(`merge ${repo} ${head}`);
       if (mergeError) throw mergeError;
@@ -31,8 +32,9 @@ function setup(gates: Record<string, Gate>, mergeError?: Error) {
     },
   } as unknown as RepositoryHost;
   const files = {
-    record: async (_run: RunEntity, merged: Record<string, string>, target: (repo: string) => Promise<string>) => {
-      log.push(`record ${JSON.stringify(merged)} on ${await target('web')}`);
+    record: async (_run: RunEntity, repos: string[], headOf: (repo: string) => Promise<string>) => {
+      const heads = await Promise.all(repos.map(async (repo) => `${repo}@${await headOf(repo)}`));
+      log.push(`record ${heads.join(',')}`);
     },
   } as unknown as MergedFilesRecord;
   const queue: LandingQueue = {
@@ -41,7 +43,6 @@ function setup(gates: Record<string, Gate>, mergeError?: Error) {
     rebase: async (request) => ({ sent: true, note: `rebased ${request.repo}` }),
     refused: async (request, _head, message) => void log.push(`refused ${request.repo}: ${message}`),
     landed: async (repo, sha) => void log.push(`landed ${repo} ${sha}`),
-    targetBranch: async (repo) => `main-of-${repo}`,
   };
   const item = (repos: string[], overrides: Partial<LandingItem> = {}): LandingItem => ({
     hostRun: { key: 'T1', codeHost: 'fake', startedBy: 'ada', parentRunId: null, taskId: null },
@@ -56,12 +57,12 @@ function setup(gates: Record<string, Gate>, mergeError?: Error) {
 }
 
 describe('MergeLanding', () => {
-  it('merges a clean gate with its head as guard and records the files before it returns merged', async () => {
+  it('merges a clean gate with its head as guard and records the files up to that head before it returns merged', async () => {
     const { landing, item, log } = setup({ web: gate() });
 
     await expect(landing.land(item(['web']))).resolves.toEqual({ kind: 'merged', merged: { web: 'sha-web' } });
 
-    expect(log).toEqual(['merge web h1', 'landed web sha-web', 'record {"web":"sha-web"} on main-of-web']);
+    expect(log).toEqual(['merge web h1', 'landed web sha-web', 'record web@h1']);
   });
 
   it('takes the sha of a request the host already merged, with no merge call', async () => {
@@ -69,7 +70,7 @@ describe('MergeLanding', () => {
 
     await expect(landing.land(item(['web']))).resolves.toEqual({ kind: 'merged', merged: { web: 's9' } });
 
-    expect(log.some((line) => line.startsWith('merge '))).toBe(false);
+    expect(log).toEqual(['landed web s9', 'record web@h1']);
   });
 
   it('holds a behind request as rebased and does not land the next request of the item', async () => {
@@ -152,14 +153,23 @@ describe('MergeLanding', () => {
       kind: 'merged',
       merged: { web: 'old' },
     });
-    expect(log).toEqual(['record {"web":"old"} on main-of-web']);
+    expect(log).toEqual(['record web@host-head-of-web']);
   });
 
-  it('adopts a merge by recording its files and asking the host nothing', async () => {
-    const { landing, log, queue } = setup({});
+  it('adopts a merge by recording its files up to the head the host reports for its request', async () => {
+    const { landing, item, log } = setup({});
 
-    await landing.adopt({ key: 'T1' } as RunEntity, { web: 's1' }, (repo) => queue.targetBranch(repo));
+    await landing.adopt({ key: 'T1' } as RunEntity, { web: 's1' }, item(['web']).requests);
 
-    expect(log).toEqual(['record {"web":"s1"} on main-of-web']);
+    expect(log).toEqual(['record web@host-head-of-web']);
+  });
+
+  it('rejects the head of a repository that has no request to read it from', async () => {
+    const { landing, log } = setup({});
+
+    await expect(landing.adopt({ key: 'T1' } as RunEntity, { web: 's1' }, [])).rejects.toThrow(
+      'no merge request of T1 in web',
+    );
+    expect(log).toEqual([]);
   });
 });

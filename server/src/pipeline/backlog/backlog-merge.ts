@@ -85,7 +85,7 @@ export class BacklogMerge {
     if (!run) return;
     try {
       const { state } = storedState(run);
-      if (state === 'merged') await this.adopt(backlog, task, run, readOutcome(run.mergeOutcome));
+      if (state === 'merged') await this.adopt(task, run, readOutcome(run.mergeOutcome));
       else if (state === 'closed') await this.save(task, { note: CLOSED_NOTE });
       else if (state !== 'done') await this.save(task, { note: '' });
       else await this.merge(backlog, task, run, mains, held);
@@ -94,20 +94,16 @@ export class BacklogMerge {
     }
   }
 
-  /** A run MergeWatch saw merged: the task is merged with the commits of the run's outcome, and the host is asked nothing. */
-  private async adopt(
-    backlog: Backlog,
-    task: BacklogTaskRecord,
-    run: RunEntity,
-    outcome: MergeOutcome | null,
-  ): Promise<void> {
+  /** A run MergeWatch saw merged: the task is merged with the commits of the run's outcome. */
+  private async adopt(task: BacklogTaskRecord, run: RunEntity, outcome: MergeOutcome | null): Promise<void> {
     const facts = outcome && 'merged' in outcome ? outcome.merged : {};
     const merged = { ...task.merged };
     for (const repo of task.repositories) {
       const fact = facts[(await this.origins.of(repo)).project];
       if (fact) merged[repo] = fact.sha ?? '';
     }
-    await this.landing.adopt(run, merged, (repo) => this.host.defaultBranch(repo, backlog.owner));
+    const body = (await this.documents.latestBody(run.key, 'merge_request')) ?? '';
+    await this.landing.adopt(run, merged, (await this.requestsOf(run, body, Object.keys(merged))).requests);
     await this.save(task, { status: 'merged', merged, note: '' });
     await this.events.taskMerged(task.backlogId, task.slug);
   }
@@ -183,12 +179,14 @@ export class BacklogMerge {
       backlog.owner,
       mains,
     );
+    // The requests merged in an earlier pass go along: the landing reads the head of each to record the files.
+    const earlierRequests = (await this.requestsOf(run, body, Object.keys(task.merged))).requests;
     let current = task;
     const landing = await this.landing.land({
       hostRun: run,
       run,
       title: task.title,
-      requests,
+      requests: [...earlierRequests, ...requests],
       merged: task.merged,
       queue: {
         target: (repo) => ({
@@ -213,7 +211,6 @@ export class BacklogMerge {
           progress.merged = current.merged;
           mains.set(repo, { state: 'pending' });
         },
-        targetBranch: (repo) => this.host.defaultBranch(repo, backlog.owner),
       },
     });
     if (landing.kind === 'merged' && notes.length === 0) {

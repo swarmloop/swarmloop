@@ -168,6 +168,8 @@ describe('a task merges with the method the repository allows', () => {
       git(clone(), ['fetch', 'origin']);
       mkdirSync(join(tree, '..'), { recursive: true });
       git(clone(), ['worktree', 'add', '-b', branch, tree, `origin/${DEFAULT_BRANCH}`]);
+      // The base tip the prepare step records when it makes a worktree.
+      run.baseTips = { demo: git(tree, ['rev-parse', 'HEAD']) };
       mkdirSync(join(tree, 'src'), { recursive: true });
       const identity = ['-c', 'user.name=Dev', '-c', 'user.email=dev@example.com'];
       if (partFile) {
