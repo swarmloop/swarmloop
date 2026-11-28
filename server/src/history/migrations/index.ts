@@ -6,6 +6,7 @@ import { PlannerChat1797600000000 } from './1797600000000-planner-chat';
 import { RunStateFilled1797700000000 } from './1797700000000-run-state-filled';
 import { CommandsWithoutRun1797800000000 } from './1797800000000-commands-without-run';
 import { TaskRevision1797900000000 } from './1797900000000-task-revision';
+import { BacklogMessageOffers1798000000000 } from './1798000000000-backlog-message-offers';
 import { AgentExchangeChatIndex1797000000002 } from './1797000000002-agent-exchange-chat-index';
 import { BlockedCodes1797100000000 } from './1797100000000-blocked-codes';
 import { ExchangeReportedTotals1797200000000 } from './1797200000000-exchange-reported-totals';
@@ -121,4 +122,5 @@ export const migrations = [
   RunStateFilled1797700000000,
   CommandsWithoutRun1797800000000,
   TaskRevision1797900000000,
+  BacklogMessageOffers1798000000000,
 ];

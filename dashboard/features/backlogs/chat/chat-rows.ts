@@ -1,14 +1,19 @@
 import type { BacklogView } from '@contract/backlog';
 import type { BacklogChatView, BacklogMessageView } from '@contract/backlog-chat';
+import { settled } from '@contract/subtask';
 import { localTime } from '../../../lib/format';
 import { actionSentence } from './action-words';
 
 type Milestone = BacklogView['milestones'][number];
 
+/** A start the planner offered on a message that the owner can still take: a milestone (the first proposed one also starts the backlog), or a task. */
+export type LiveOffer =
+  { kind: 'milestone'; number: number; first: boolean } | { kind: 'task'; slug: string; title: string };
+
 export type ChatRow =
   | { type: 'older'; key: string; sentence: string }
-  | { type: 'message'; key: string; message: BacklogMessageView }
-  | { type: 'proposal'; key: string; message: BacklogMessageView; milestone: Milestone; first: boolean }
+  | { type: 'message'; key: string; message: BacklogMessageView; offers: LiveOffer[] }
+  | { type: 'proposal'; key: string; message: BacklogMessageView; milestone: Milestone; offers: LiveOffer[] }
   | { type: 'info'; key: string; sentence: string }
   | { type: 'problem'; key: string; sentence: string; reason: string; resume: boolean }
   | { type: 'working'; key: string; startedAt: string | null };
@@ -18,16 +23,40 @@ interface Dated {
   row: ChatRow;
 }
 
+/**
+ * The starts of a message the owner can still take: the milestone it proposes and the starts it offers, each only
+ * while the milestone is still proposed, or the task has not started and is outside the active milestone.
+ */
+export function liveOffers(message: BacklogMessageView, view: BacklogView, first: number | undefined): LiveOffer[] {
+  const active = view.milestones.find((item) => item.status === 'active');
+  const offered = message.offers.map((offer) => ('milestone' in offer ? offer.milestone : offer.task));
+  const asked = [...(message.proposes === null ? [] : [message.proposes]), ...offered];
+  const live: LiveOffer[] = [];
+  for (const name of new Set(asked)) {
+    if (typeof name === 'number') {
+      const milestone = view.milestones.find((item) => item.number === name);
+      if (milestone?.status === 'proposed') live.push({ kind: 'milestone', number: name, first: name === first });
+      continue;
+    }
+    const task = view.tasks.find((item) => item.slug === name);
+    if (task && !task.runKey && !settled(task) && task.milestone !== active?.number) {
+      live.push({ kind: 'task', slug: name, title: task.title });
+    }
+  }
+  return live;
+}
+
 function messageRow(message: BacklogMessageView, view: BacklogView, first: number | undefined): ChatRow {
   const key = `message-${message.id}`;
   if (message.kind === 'info' || message.kind === 'refused' || message.kind === 'failed') {
     return { type: 'info', key, sentence: message.text };
   }
   const milestone = view.milestones.find((item) => item.number === message.proposes);
-  if (message.author === 'planner' && milestone?.status === 'proposed') {
-    return { type: 'proposal', key, message, milestone, first: milestone.number === first };
+  const offers = message.author === 'planner' ? liveOffers(message, view, first) : [];
+  if (milestone?.status === 'proposed' && message.author === 'planner') {
+    return { type: 'proposal', key, message, milestone, offers };
   }
-  return { type: 'message', key, message };
+  return { type: 'message', key, message, offers };
 }
 
 function olderSentence(older: number): string {

@@ -40,10 +40,14 @@ export type BacklogTurnAction = Reasoned &
     | { action: 'rebase'; run: string }
     | { action: 'skipTask'; run: string; task: string }
     | { action: 'stop'; run: string }
+    | { action: 'offerRun'; milestone?: number; task?: string }
   );
 
 /** An action that sends a command to a run, as a person does. */
 export type RunAction = Extract<BacklogTurnAction, { run: string }>;
+
+/** The offer of a start only the owner takes: the planner puts its button on its message, and the owner presses it. */
+export type OfferRun = Extract<BacklogTurnAction, { action: 'offerRun' }>;
 
 export function isRunAction(action: object): action is RunAction {
   return 'run' in action;
@@ -79,12 +83,14 @@ const REQUIRED: Record<BacklogTurnAction['action'], string[]> = {
   rebase: ['run'],
   skipTask: ['run', 'task'],
   stop: ['run'],
+  offerRun: [],
 };
 
 /** The fields an action may give of its own, besides `reason`, which every action takes. */
 const OPTIONAL: Partial<Record<BacklogTurnAction['action'], string[]>> = {
   changeTask: ['title', 'description', 'repositories', 'covers', 'depends', 'files', 'proof', 'milestone'],
   passQuestion: ['question'],
+  offerRun: ['milestone', 'task'],
 };
 
 /** The fields each action may also give: its own optional ones, and `reason` where the action does not need it. */
@@ -121,6 +127,9 @@ const action = requiredBy(
       'One line that says why. For answerRun, passQuestion and recordDecision it is shown to the person as an info line; for answerRun it is also kept as a decision. passQuestion needs it',
     ),
     ...taskFields,
+    milestone: taskFields.milestone.description(
+      'The number of the milestone. offerRun: the proposed milestone, or the task, whose start button the owner gets on your message; one of the two',
+    ),
     goal: text('proposeMilestone: the goal of the milestone'),
     texts: list('addRequirements: one requirement per entry'),
     tasks: Joi.array()
@@ -136,7 +145,7 @@ const action = requiredBy(
       )
       .description('addTasks: the tasks to add'),
     task: text(
-      'changeTask, deleteTask, skipBacklogTask, moveItem, dropItem: the task id; skipTask: the id of the run task',
+      'changeTask, deleteTask, skipBacklogTask, moveItem, dropItem: the task id; skipTask: the id of the run task; offerRun: the task, or the proposed milestone, whose start button the owner gets on your message; one of the two',
     ),
     revision: Joi.number()
       .integer()

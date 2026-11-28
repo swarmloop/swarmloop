@@ -191,4 +191,62 @@ describe('PlannerTurnActions', () => {
         'Keep the names',
       ]);
     }));
+  it('stores an accepted offer on the say message and leaves the milestone proposed', () =>
+    withPlanner(async (harness) => {
+      const { backlogId } = await harness.seed();
+      await harness.turns.apply(
+        'alpha',
+        'turn-1',
+        turnResult('M2 is ready; its button is below.', { action: 'proposeMilestone', title: 'Second', goal: 'G' }),
+      );
+      await harness.turns.apply(
+        'alpha',
+        'turn-2',
+        turnResult('M2 is ready; its button is below.', { action: 'offerRun', milestone: 2 }),
+      );
+      const { messages } = await harness.chat.lastMessages(backlogId, 10);
+      expect(messages.map((message) => [message.turn, message.offers])).toEqual([
+        ['turn-1', []],
+        ['turn-2', [{ milestone: 2 }]],
+      ]);
+      expect((await harness.backlogs.milestones(backlogId)).map((milestone) => milestone.status)).toEqual([
+        'active',
+        'proposed',
+      ]);
+      expect(harness.sent).toEqual([]);
+    }));
+
+  it('writes one message with the offer reason when the say is empty, one line per offer', () =>
+    withPlanner(async (harness) => {
+      const { backlogId } = await harness.seed();
+      await harness.task(backlogId, null, 'idle');
+      await harness.turns.apply(
+        'alpha',
+        'turn-1',
+        turnResult(
+          '',
+          { action: 'offerRun', task: 'idle', reason: 'Start idle from the button below.' },
+          { action: 'offerRun', task: 'idle' },
+        ),
+      );
+      const { messages } = await harness.chat.lastMessages(backlogId, 10);
+      expect(messages.map((message) => [message.text, message.offers])).toEqual([
+        ['Start idle from the button below.\noffer to run idle', [{ task: 'idle' }, { task: 'idle' }]],
+      ]);
+    }));
+
+  it('drops a refused offer with the usual line and gives the message no offer', () =>
+    withPlanner(async (harness) => {
+      const { backlogId } = await harness.seed();
+      const result = turnResult('Ready.', { action: 'offerRun', milestone: 1 });
+      expect(await harness.turns.check('alpha', result)).toEqual([
+        'offer to run milestone M1: M1 is not a proposed milestone',
+      ]);
+      await harness.turns.apply('alpha', 'turn-1', result);
+      const { messages } = await harness.chat.lastMessages(backlogId, 10);
+      expect(messages.map((message) => [message.kind, message.text, message.offers])).toEqual([
+        ['message', 'Ready.', []],
+        ['refused', 'I did not offer to run milestone M1: M1 is not a proposed milestone', []],
+      ]);
+    }));
 });

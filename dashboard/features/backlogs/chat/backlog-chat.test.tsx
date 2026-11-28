@@ -3,7 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BacklogView } from '@contract/backlog';
 import type { BacklogChatView } from '@contract/backlog-chat';
-import { resumeBacklogTurn, runBacklog, runMilestone, sendBacklogMessage } from '../../../lib/backlog-endpoints';
+import {
+  resumeBacklogTurn,
+  runBacklog,
+  runBacklogTaskNow,
+  runMilestone,
+  sendBacklogMessage,
+} from '../../../lib/backlog-endpoints';
 import { uploadFile } from '../../../lib/endpoints';
 import { localTime } from '../../../lib/format';
 import {
@@ -21,6 +27,7 @@ vi.mock('../../../lib/backlog-endpoints', () => ({
   resumeBacklogTurn: vi.fn(),
   runMilestone: vi.fn(),
   runBacklog: vi.fn(),
+  runBacklogTaskNow: vi.fn(),
 }));
 vi.mock('../../../lib/endpoints', () => ({ uploadFile: vi.fn() }));
 
@@ -103,6 +110,55 @@ describe('BacklogChat proposals', () => {
     await user.click(screen.getAllByRole('button', { name: 'Run milestone' })[0]);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Another milestone is active');
+  });
+});
+
+describe('BacklogChat offered starts', () => {
+  const offered = (offers: BacklogChatView['messages'][number]['offers']): BacklogChatView =>
+    backlogChatView({ messages: [chatMessage({ id: 1, author: 'planner', text: 'It is ready.', offers })] });
+
+  it('puts Run milestone and Run backlog under a plain message that offers a proposed milestone', async () => {
+    const user = userEvent.setup({ delay: null });
+    const view = backlogView({ milestones: [milestone({ number: 1, status: 'proposed' })], tasks: [] });
+    vi.mocked(runMilestone).mockResolvedValue(view);
+    show(offered([{ milestone: 1 }]), view);
+
+    expect(screen.getByText('It is ready.')).toBeInTheDocument();
+    expect(screen.queryByText('Question for you')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Run / }).map((button) => button.textContent)).toEqual([
+      'Run milestone',
+      'Run backlog',
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'Run milestone' }));
+
+    expect(runMilestone).toHaveBeenCalledWith('swarmloop', 1);
+    await waitFor(() => expect(onView).toHaveBeenCalledWith(view));
+  });
+
+  it('puts Run <task title> under a message that offers an idle task, and a click runs it now', async () => {
+    const user = userEvent.setup({ delay: null });
+    const view = backlogView({
+      tasks: [task({ slug: 'add-login', title: 'Add login', status: 'waiting', milestone: null })],
+    });
+    vi.mocked(runBacklogTaskNow).mockResolvedValue(view);
+    show(offered([{ task: 'add-login' }]), view);
+
+    await user.click(screen.getByRole('button', { name: 'Run Add login' }));
+
+    expect(runBacklogTaskNow).toHaveBeenCalledWith('swarmloop', 'add-login');
+    await waitFor(() => expect(onView).toHaveBeenCalledWith(view));
+  });
+
+  it('shows no button to a person who is not the owner, and none for an offer that is no longer live', () => {
+    const view = backlogView({ milestones: [milestone({ number: 1, status: 'proposed' })], tasks: [] });
+    show(offered([{ milestone: 1 }]), view, 'bob');
+    expect(screen.queryByRole('button', { name: /Run / })).not.toBeInTheDocument();
+  });
+
+  it('shows no button once the offered milestone started', () => {
+    show(offered([{ milestone: 1 }]), backlogView({ milestones: [milestone({ number: 1, status: 'active' })] }));
+    expect(screen.queryByRole('button', { name: /Run / })).not.toBeInTheDocument();
   });
 });
 

@@ -31,6 +31,9 @@ export class BacklogMessageEntity {
   @Column({ type: 'text', default: '[]' })
   attachments!: string;
 
+  @Column({ type: 'text', default: '[]' })
+  offers!: string;
+
   @Column({ name: 'created_at', type: 'text' })
   createdAt!: string;
 }

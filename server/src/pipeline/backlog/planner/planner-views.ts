@@ -16,7 +16,7 @@ export function messageState(record: BacklogMessageRecord, turns: BacklogTurnRec
 
 /** A stored message as the conversation shows it, with its state among the turns that may hold it. */
 export function messageView(record: BacklogMessageRecord, turns: BacklogTurnRecord[] = []): BacklogMessageView {
-  const { id, author, kind, text, proposes, createdAt, attachments } = record;
+  const { id, author, kind, text, proposes, offers, createdAt, attachments } = record;
   const state = messageState(record, turns);
   return {
     id: id as number,
@@ -24,6 +24,7 @@ export function messageView(record: BacklogMessageRecord, turns: BacklogTurnReco
     kind,
     text,
     proposes,
+    offers,
     createdAt,
     ...(state ? { state } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),

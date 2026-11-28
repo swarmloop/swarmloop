@@ -150,10 +150,13 @@ describe('the backlog-plan skill', () => {
     );
   });
 
-  it('starts a milestone only when the owner presses a button, and a proposal points at both buttons', () => {
-    expect(skill).toContain('starts only when the owner starts it (`Run milestone` or `Run backlog`)');
+  it('offers a start with a button on its message, in one line, and never asks for a reply', () => {
+    expect(skill).toContain('A milestone, the backlog or a task starts only when the owner starts it.');
     expect(skill).toContain(
-      'A proposal ends by pointing at `Run milestone` and `Run backlog`, which the conversation shows right under it; it does not ask whether to run it.',
+      'add `offerRun` with the proposed milestone or the task: its button shows on your message, and one click starts it.',
+    );
+    expect(skill).toContain(
+      'Say the offer in one line, for example that the button is below. Never ask whether to run it and never wait for a reply',
     );
     expect(skill).not.toContain('one short question whether to run it');
   });

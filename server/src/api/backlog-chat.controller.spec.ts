@@ -44,6 +44,7 @@ function setup(resumeError?: Error) {
         proposes: null,
         turn: null,
         attachments,
+        offers: [],
         createdAt: 'now',
       });
       return messages[messages.length - 1];
@@ -144,6 +145,7 @@ describe('BacklogChatController', () => {
       proposes: 2,
       turn: 't1',
       attachments: [],
+      offers: [],
       createdAt: 'now',
     });
     turns.push(
@@ -167,7 +169,7 @@ describe('BacklogChatController', () => {
     const chat = await routes.messages('shop');
     expect(chat.older).toBe(3);
     expect(chat.messages).toEqual([
-      { id: 1, author: 'planner', kind: 'message', text: 'Run it?', proposes: 2, createdAt: 'now' },
+      { id: 1, author: 'planner', kind: 'message', text: 'Run it?', proposes: 2, offers: [], createdAt: 'now' },
     ]);
     expect(chat.turns).toEqual([
       {

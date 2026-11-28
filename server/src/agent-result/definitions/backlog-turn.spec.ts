@@ -91,6 +91,14 @@ describe('backlog turn result', () => {
     expect(errorsOf({ say: '', actions: [{ action: 'passQuestion', run: 'r', reason: 'Yours.' }] })).toEqual([]);
   });
 
+  it('reads an offer to run a milestone and one to run a task, and refuses an unknown field of it', () => {
+    expect(errorsOf({ say: '', actions: [{ action: 'offerRun', milestone: 1, reason: 'Ready.' }] })).toEqual([]);
+    expect(errorsOf({ say: '', actions: [{ action: 'offerRun', task: 'add-login' }] })).toEqual([]);
+    expect(errorsOf({ say: '', actions: [{ action: 'offerRun', milestone: 1, nothing: 'r' }] })).toEqual([
+      expect.stringContaining('nothing'),
+    ]);
+  });
+
   it('needs a say that is text, or none', () => {
     expect(readResult(backlogTurn, block({ actions: [] }))).toEqual({ ok: true, value: { say: '', actions: [] } });
     expect(errorsOf({ say: 3, actions: [] })).toEqual([expect.stringContaining('say')]);

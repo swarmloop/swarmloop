@@ -1,15 +1,15 @@
 'use client';
 
-import { type ReactElement, useState } from 'react';
+import type { ReactElement } from 'react';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import type { BacklogView } from '@contract/backlog';
 import type { BacklogMessageView } from '@contract/backlog-chat';
 import { MarkdownBody } from '../../../components/ui/markdown-body';
-import { runBacklog, runMilestone } from '../../../lib/backlog-endpoints';
 import { isLong, MessageBubble } from '../../run';
+import type { LiveOffer } from './chat-rows';
 import { toEntry } from './message-entry';
+import { StartButtons } from './start-buttons';
 
 function proposalText(view: BacklogView, number: number): string {
   const milestone = view.milestones.find((item) => item.number === number);
@@ -49,55 +49,24 @@ export function ProposalEntry({
   view,
   message,
   number,
-  first,
+  offers,
   owner,
   onView,
 }: {
   view: BacklogView;
   message: BacklogMessageView;
   number: number;
-  first: boolean;
+  offers: LiveOffer[];
   owner: boolean;
   onView: (view: BacklogView) => void;
 }): ReactElement {
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const act = (run: () => Promise<BacklogView>): void => {
-    setBusy(true);
-    setError(null);
-    run()
-      .then(onView)
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'The action was refused'))
-      .finally(() => setBusy(false));
-  };
   return (
     <MessageBubble entry={toEntry(message)} title="Question for you">
       <Folded text={proposalText(view, number)} />
       <Typography variant="body2" sx={{ mt: 1 }}>
         Do you want to run this milestone?
       </Typography>
-      {owner ? (
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-          <Button
-            size="small"
-            variant="contained"
-            disabled={busy}
-            onClick={() => act(() => runMilestone(view.name, number))}
-          >
-            Run milestone
-          </Button>
-          {first ? (
-            <Button size="small" variant="outlined" disabled={busy} onClick={() => act(() => runBacklog(view.name))}>
-              Run backlog
-            </Button>
-          ) : null}
-        </Box>
-      ) : null}
-      {error ? (
-        <Typography color="error" variant="body2" role="alert">
-          {error}
-        </Typography>
-      ) : null}
+      {owner && offers.length > 0 ? <StartButtons view={view} offers={offers} onView={onView} /> : null}
     </MessageBubble>
   );
 }

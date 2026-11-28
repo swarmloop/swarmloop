@@ -13,6 +13,7 @@ function message(author: 'person' | 'planner', turn: string | null): BacklogMess
     proposes: null,
     turn,
     attachments: [],
+    offers: [],
     createdAt: '2026-11-26T10:00:00Z',
   };
 }
@@ -48,5 +49,13 @@ describe('messageState', () => {
   it('puts the state on the view of a person message, waiting when no turn is given', () => {
     expect(messageView(message('person', 't1'), [turn('t1', 'done')]).state).toBe('answered');
     expect(messageView(message('person', null)).state).toBe('waiting');
+  });
+});
+
+describe('messageView offers', () => {
+  it('carries the starts a stored message offers', () => {
+    const offers = [{ milestone: 2 }, { task: 'add-login' }];
+    expect(messageView({ ...message('planner', 't1'), offers }).offers).toEqual(offers);
+    expect(messageView(message('person', null)).offers).toEqual([]);
   });
 });

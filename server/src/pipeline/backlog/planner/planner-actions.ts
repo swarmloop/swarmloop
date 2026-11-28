@@ -1,7 +1,7 @@
 import { HttpException, Injectable } from '@nestjs/common';
 import { isRunAction } from '../../../agent-result/definitions/backlog-turn';
 import type { BacklogTurnAction, BacklogTurnResult } from '../../../agent-result/definitions/backlog-turn';
-import type { MessageKind } from '../../../contract/backlog-chat';
+import type { MessageKind, StartOffer } from '../../../contract/backlog-chat';
 import { Clock } from '../../../core/clock';
 import { SwarmloopError } from '../../../core/swarmloop-error';
 import { BacklogChatRepository } from '../../../history/backlog-chat.repository';
@@ -24,6 +24,8 @@ interface Dropped {
 interface Evaluation {
   /** The number of the milestone the turn proposed, when it did. */
   proposed: number | null;
+  /** The starts the turn offers the owner, each with the line that says it. */
+  offers: { offer: StartOffer; text: string }[];
   dropped: Dropped[];
   /** The reasons the planner gave for the answers it wrote itself. */
   infos: { index: number; text: string }[];
@@ -160,7 +162,7 @@ export class PlannerTurnActions {
     writers: BacklogWriters,
   ): Promise<Evaluation> {
     const call = { owner: backlog.owner, backlog, context: { turn, writers } };
-    const result: Evaluation = { proposed: null, dropped: [], infos: [] };
+    const result: Evaluation = { proposed: null, offers: [], dropped: [], infos: [] };
     for (const [index, given] of value.actions.entries()) {
       try {
         const judged = await this.rules.judge(writers, backlog, given);
@@ -169,6 +171,12 @@ export class PlannerTurnActions {
           continue;
         }
         const action = judged.action;
+        if (action.action === 'offerRun') {
+          const offer =
+            action.milestone === undefined ? { task: action.task as string } : { milestone: action.milestone };
+          result.offers.push({ offer, text: action.reason || describeAction(action) });
+          continue;
+        }
         if (isRunAction(action)) await this.calls.record(call, index, commandOf(action));
         else await this.calls.run(call, action);
         if (action.action === 'proposeMilestone') {
@@ -197,8 +205,11 @@ export class PlannerTurnActions {
     value: BacklogTurnResult,
     evaluation: Evaluation,
   ): Promise<void> {
-    if (value.say.trim()) {
-      await this.say(writers, backlog, `${turn}-say`, turn, value.say, 'message', evaluation.proposed);
+    const { proposed, offers } = evaluation;
+    const said = value.say.trim() ? value.say : offers.map(({ text }) => text).join('\n');
+    if (said) {
+      const starts = offers.map(({ offer }) => offer);
+      await this.say(writers, backlog, `${turn}-say`, turn, said, 'message', proposed, starts);
     }
     for (const { index, text } of evaluation.infos) {
       await this.say(writers, backlog, `${turn}-info-${index}`, turn, text, 'info');
@@ -217,6 +228,7 @@ export class PlannerTurnActions {
     text: string,
     kind: MessageKind,
     proposes: number | null = null,
+    offers: StartOffer[] = [],
   ): Promise<boolean> {
     return writers.addMessage({
       backlogId: backlog.id as number,
@@ -227,6 +239,7 @@ export class PlannerTurnActions {
       proposes,
       turn,
       attachments: [],
+      offers,
       createdAt: this.clock.iso(),
     });
   }

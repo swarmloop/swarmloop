@@ -2,7 +2,7 @@ import type { EntityManager } from 'typeorm';
 import { In } from 'typeorm';
 import type { Clock } from '../core/clock';
 import type { BacklogEventKind, MergeMode, MilestoneStatus, RequirementStatus, TaskMadeBy } from '../contract/backlog';
-import type { MessageAuthor, MessageKind, TurnStatus } from '../contract/backlog-chat';
+import type { MessageAuthor, MessageKind, StartOffer, TurnStatus } from '../contract/backlog-chat';
 import type { AttachmentRef } from '../contract/attachments';
 import type { SubtaskStatus } from '../contract/subtask';
 import { conditionalUpdate } from './conditional-write';
@@ -110,6 +110,8 @@ export interface BacklogMessageRecord {
   turn: string | null;
   /** The files a person sent with the message; planner messages have none. */
   attachments: AttachmentRef[];
+  /** The starts the planner offers with the message; a person's message has none. */
+  offers: StartOffer[];
   createdAt: string;
 }
 
@@ -214,6 +216,7 @@ export function toMessage(row: BacklogMessageEntity): BacklogMessageRecord {
     author: row.author as MessageAuthor,
     kind: row.kind as MessageKind,
     attachments: JSON.parse(row.attachments) as AttachmentRef[],
+    offers: JSON.parse(row.offers) as StartOffer[],
   };
 }
 
@@ -290,7 +293,11 @@ export function writersOn(manager: EntityManager, clock: Clock): BacklogWriters 
     },
     async addMessage(record) {
       try {
-        await manager.insert(BacklogMessageEntity, { ...record, attachments: JSON.stringify(record.attachments) });
+        await manager.insert(BacklogMessageEntity, {
+          ...record,
+          attachments: JSON.stringify(record.attachments),
+          offers: JSON.stringify(record.offers),
+        });
       } catch (error) {
         if ((error as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') return false;
         throw error;
